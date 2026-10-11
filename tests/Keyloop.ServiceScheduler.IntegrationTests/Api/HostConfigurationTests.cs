@@ -196,6 +196,33 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("UAT", true)]
+    [InlineData("Production", true)]
+    [InlineData("Development", false)]
+    [InlineData("SystemTest", false)]
+    [InlineData("Demo", false)]
+    public async Task Hsts_is_present_on_https_non_loopback_responses_only_in_deployment_environments(string environment, bool expected)
+    {
+        await using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseEnvironment(environment)
+            .UseSetting("Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/24"));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://scheduler.example"), // HSTS intentionally excludes loopback hosts
+            AllowAutoRedirect = false,
+        });
+
+        using var response = await client.GetAsync("/alive", Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.Contains("Strict-Transport-Security").ShouldBe(expected);
+        if (expected)
+        {
+            response.Headers.GetValues("Strict-Transport-Security").ShouldBe(["max-age=2592000"]);
+        }
+    }
+
+    [Theory]
     [InlineData("UAT")]
     [InlineData("Production")]
     public void Forwarded_headers_fail_startup_in_UAT_and_Production_until_the_platform_supplies_the_ingress_addresses(string environment)
