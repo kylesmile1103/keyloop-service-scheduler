@@ -30,6 +30,7 @@
 - Docker is provided by **Colima** on the author's machine (`colima status`; `colima start --cpu 4 --memory 6 --disk 40` if stopped). Integration tests and Aspire need it running.
 - Frontend package manager is **pnpm**; Node 22. Follow the template conventions found in `../references/shadcn-dashboard-landing-template/vite-version` (Base UI primitives, `cn` from the `cn` package in `components/ui`, `@/` alias, Tailwind v4 CSS tokens).
 - Never copy code from `../references/mirotalkwebrtc` (AGPL). Only the MIT shadcn template may be vendored.
+- **Reflection budget (ADR-016, Addendum A `docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md`):** no assembly scanning, no reflection-based discovery, no runtime-compiled expressions in our code; JSON via `SchedulerJsonContext` with reflection disabled; mapping via Mapperly; options validated by `[OptionsValidator]`; logging via `[LoggerMessage]`; RDG enabled. Tasks 6–12, 14 and 18 name the addendum sections they must apply.
 
 ## Review Focus
 
@@ -559,6 +560,8 @@ public static class AllocationPolicy
 
 ### Task 6: DbContext, configurations, interceptor, migration with exclusion constraints, seeding, integration fixture
 
+**Addendum A (reflection/AOT):** apply §A2 (create `Common/Serialization/SchedulerJsonContext.cs` with the six event types), §A5 (`Common/Telemetry/SchedulerLog.cs` with event ids 1100/1101 for migration/seed logs) and §A7 (public static enum-array conversion methods; interceptor serialises payloads through the context; explicit `AppointmentHistoryEntry.From`). Read `docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md` first.
+
 **Files:**
 - Create: `Infrastructure/Persistence/SchedulerDbContext.cs`, `SchedulerDbContextDesignTimeFactory.cs`, `AppointmentHistoryEntry.cs`, `IdempotencyKey.cs`, `DealershipLock.cs`, `PostgresErrorClassifier.cs`, `DatabaseInitializer.cs`
 - Create: `Infrastructure/Persistence/Configurations/*.cs` (7 files), `Interceptors/DomainEventInterceptor.cs`, `Interceptors/IDomainEventObserver.cs`
@@ -707,6 +710,8 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 
 ### Task 7: Cross-cutting API infrastructure (endpoints, validation, problems, telemetry, options, security)
 
+**Addendum A (reflection/AOT):** apply §A1 (csproj switches, Mapperly package), §A2 (register `SchedulerJsonContext` first in the resolver chain, register ProblemDetails extension records, no `JsonStringEnumConverter`), §A3 (`EndpointRegistry`, explicit validator/handler registration — `AddValidatorsFromAssemblyContaining` is forbidden), §A4 (`[OptionsValidator]` validators replacing `ValidateDataAnnotations()`), §A5 (all log calls through `SchedulerLog`). Replace the anonymous `operatingWindow` extension object with a named record `OperatingWindowExtension(DateTime StartUtc, DateTime EndUtc)` registered in the context. Read the addendum first.
+
 **Files:**
 - Create: `Common/Endpoints/IEndpoint.cs`, `EndpointExtensions.cs`; `Common/Validation/ValidationFilter.cs`; `Common/Problems/ProblemTypes.cs`, `ApiExceptions.cs`, `GlobalExceptionHandler.cs`, `SuggestedSlot.cs`; `Common/Telemetry/SchedulerTelemetry.cs`, `TelemetryDomainEventObserver.cs`; `Common/Options/SchedulingOptions.cs`, `SecurityOptions.cs`; `Common/Http/SecurityHeadersMiddleware.cs`, `CurrentActorMiddleware.cs`
 - Modify: `Program.cs`; `appsettings*.json` (all five)
@@ -797,6 +802,8 @@ public partial class Program;
 
 ### Task 8: GetDealerships and GetServiceTypes slices
 
+**Addendum A (reflection/AOT):** apply §A6 (`Features/Dealerships/Mapping/DealershipMapper.cs`, `Features/Catalog/Mapping/ServiceTypeMapper.cs` with Mapperly), §A2 (register `DealershipResponse`, `DayOperatingHoursResponse`, `ServiceTypeResponse` and the top-level `IReadOnlyList<...>` types in `SchedulerJsonContext`), §A3 (add both endpoints to `EndpointRegistry`).
+
 **Files:** `Features/Dealerships/GetDealerships/{GetDealershipsEndpoint,GetDealershipsHandler,DealershipResponse}.cs`; `Features/Catalog/GetServiceTypes/{GetServiceTypesEndpoint,GetServiceTypesHandler,ServiceTypeResponse}.cs`; tests `IntegrationTests/Api/DealershipsEndpointTests.cs`, `ServiceTypesEndpointTests.cs`; modify `Program.cs` (register handlers).
 
 **Interfaces (produced):**
@@ -813,6 +820,8 @@ public sealed record ServiceTypeResponse(Guid Id, string Code, string Name, int 
 - [ ] **Step 5: Commit** `feat(api): add dealerships and service catalogue slices`
 
 ### Task 9: GetAvailability slice
+
+**Addendum A (reflection/AOT):** apply §A6 (`Features/Availability/Mapping/AvailabilityMapper.cs` for `AvailabilitySlot`→`AvailabilitySlotResponse` with the local string as an additional parameter), §A2 (register `AvailabilityResponse`, `AvailabilitySlotResponse`, `OperatingWindowResponse`), §A3 (registry line), explicit `AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>()`.
 
 **Files:** `Features/Availability/GetAvailability/{GetAvailabilityEndpoint,GetAvailabilityQuery,GetAvailabilityValidator,GetAvailabilityHandler,AvailabilityResponse}.cs`; test `IntegrationTests/Api/AvailabilityEndpointTests.cs`, `UnitTests/Features/GetAvailabilityValidatorTests.cs`.
 
@@ -835,6 +844,8 @@ public sealed class GetAvailabilityHandler(DayScheduleReader reader, IOptions<Sc
 - [ ] **Step 5: Commit** `feat(api): add availability slice backed by the domain calculator`
 
 ### Task 10: BookAppointment slice (lock, allocation, idempotency, suggestions)
+
+**Addendum A (reflection/AOT):** apply §A6 (`Features/Appointments/Mapping/AppointmentMapper.cs`; `AppointmentResponseMapper` becomes a thin wrapper), §A2 (register `BookAppointmentRequest`, `CustomerRequest`, `VehicleRequest`, `AppointmentResponse` and its nested records, `SuggestedSlot`, `IReadOnlyList<SuggestedSlot>`; serialise/deserialise idempotency bodies with `SchedulerJsonContext.Default.AppointmentResponse`), §A3 (registry line, explicit validator registration), §A5 (events 1001–1004 via `SchedulerLog`).
 
 **Files:** `Features/Appointments/Shared/{AppointmentResponse,AppointmentResponseMapper}.cs`; `Features/Appointments/BookAppointment/{BookAppointmentEndpoint,BookAppointmentRequest,BookAppointmentValidator,BookAppointmentHandler,BookingAttempt,IdempotencyFingerprint}.cs`; `IntegrationTests/Api/BookAppointmentTests.cs`, `IdempotencyTests.cs`, `Fixtures/ProblemAssertions.cs`; `UnitTests/Features/BookAppointmentValidatorTests.cs`.
 
@@ -964,6 +975,8 @@ finally
 
 ### Task 11: GetAppointment and CancelAppointment slices
 
+**Addendum A (reflection/AOT):** apply §A2 (register `CancelAppointmentRequest`), §A3 (registry lines, explicit validator registration), §A5 (event 1010), reuse `AppointmentMapper` from Task 10.
+
 **Files:** `Features/Appointments/GetAppointment/{GetAppointmentEndpoint,GetAppointmentHandler}.cs`; `Features/Appointments/CancelAppointment/{CancelAppointmentEndpoint,CancelAppointmentRequest,CancelAppointmentValidator,CancelAppointmentHandler}.cs`; tests `IntegrationTests/Api/AppointmentLifecycleTests.cs`.
 
 **Interfaces (produced):**
@@ -978,6 +991,8 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
 - [ ] **Step 5: Commit** `feat(api): add GetAppointment and CancelAppointment slices with optimistic concurrency`
 
 ### Task 12: GetWorkshopSchedule slice
+
+**Addendum A (reflection/AOT):** apply §A6 (`Features/Schedule/Mapping/ScheduleMapper.cs` for bays, technicians and scheduled appointments), §A2 (register `WorkshopScheduleResponse` and nested records), §A3 (registry line).
 
 **Files:** `Features/Schedule/GetWorkshopSchedule/{GetWorkshopScheduleEndpoint,GetWorkshopScheduleHandler,WorkshopScheduleResponse}.cs`; test `IntegrationTests/Api/ScheduleEndpointTests.cs`.
 
@@ -1055,6 +1070,8 @@ Plus `Thirty_bookings_for_different_slots_all_succeed` (30 requests, each at a d
 - [ ] **Step 3: Commit** `test: add adversarial 30-way concurrent booking proof with orphan and deadlock assertions`
 
 ### Task 14: OpenAPI contract export, AppHost orchestration, Dockerfile
+
+**Addendum A (reflection/AOT):** the contract test also asserts that `/openapi/v1.json` renders every enum as string values and every response schema is present (a type missing from `SchedulerJsonContext` surfaces here as a failing request). No other change.
 
 **Files:** `IntegrationTests/Contract/OpenApiContractTests.cs`; `contracts/openapi/v1.json`; `scripts/export-openapi.sh`; `src/Keyloop.ServiceScheduler.AppHost/*` (`AppHost.cs`, csproj, `appsettings.json`, `Properties/launchSettings.json`); `src/Keyloop.ServiceScheduler.Api/Dockerfile`; modify `Keyloop.ServiceScheduler.sln`.
 
@@ -1239,6 +1256,8 @@ export async function fireParallelBookings(n: number, build: (i: number) => Book
 ## Phase 5 — CI, documentation, final verification
 
 ### Task 18: CI workflow, README, video guide, CLAUDE.md, final gate
+
+**Addendum A (reflection/AOT):** apply §A8 (`scripts/aot-readiness.sh`, non-blocking CI step uploading its output, README section "Runtime reflection budget" listing generated vs explicit vs residual items and the compiled-model command with its drift caveat). CI coverage uses `dotnet test --coverage` (Microsoft.Testing.Platform), not `--collect:"XPlat Code Coverage"`.
 
 **Files:** `.github/workflows/ci.yml`; `README.md`; `docs/VIDEO_WALKTHROUGH.md`; `CLAUDE.md` (update); `.github/dependabot.yml`.
 

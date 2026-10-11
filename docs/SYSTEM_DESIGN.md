@@ -644,6 +644,7 @@ src/Keyloop.ServiceScheduler.Api/
 ```
 
 Conventions:
+- **No assembly scanning, no runtime code generation in our code.** Endpoints are listed in an explicit `EndpointRegistry`; handlers and validators are registered one by one; DTOs are listed in `SchedulerJsonContext`; mappers are Mapperly-generated (§9.1, ADR-016).
 - **No mediator library.** Each slice registers its handler in DI and its endpoint calls it directly. MediatR moved to a commercial licence in 2025 and a hand-rolled dispatcher adds indirection without value here (ADR-001). Cross-cutting behaviour (validation, problem mapping, telemetry) lives in endpoint filters and middleware, not in a pipeline of behaviours.
 - **Handlers own their persistence.** A slice queries `SchedulerDbContext` directly with projections; there is no generic repository. The domain stays persistence-ignorant via EF configurations.
 - **Requests are records, validated by FluentValidation**; domain rules are enforced by the domain and surfaced as typed exceptions (`DomainRuleViolation` → `422`, `ResourceConflict` → `409`).
@@ -902,7 +903,9 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 | Architecture style | **Vertical Slice + DDD** without a mediator | Each capability is independently readable and testable; domain owns invariants | Clean Architecture layers (more projects, more indirection for the same slice count); MediatR (now commercial) |
 | ORM | **EF Core 10** + **Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3** (via `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL`) | Code-first migrations, LINQ projections, Npgsql's range/array support, `xmin` tokens, Aspire health/tracing integration | Dapper (hand-written SQL everywhere; fine for reads, poor for aggregates) |
 | Database | **PostgreSQL 17** with `btree_gist` | Exclusion constraints give an index-enforced no-overlap invariant; advisory locks; `tstzrange` | SQL Server (no exclusion constraints; would need app-level serialisation as the primary mechanism) |
-| Validation | **FluentValidation 12.2** via endpoint filter | Declarative, testable, produces field-level `400` problems | DataAnnotations (weaker composition) |
+| Validation | **FluentValidation 12.2** via endpoint filter, validators registered explicitly (no assembly scanning) | Declarative, testable, produces field-level `400` problems; mandated by the brief | DataAnnotations (weaker composition); hand-written validators (would be fully AOT-clean) |
+| Object mapping | **Mapperly 4.3** (source generator) | Build-time generated mappers, no reflection, unmapped members are build errors | AutoMapper (runtime reflection/expression compilation); hand-written mappers (reflection-free but boilerplate) |
+| JSON | **System.Text.Json source generation** (`JsonSerializerContext`) with reflection disabled | AOT-safe, faster startup, missing types fail fast | Reflection-based STJ (default) |
 | API reference UI | **Scalar.AspNetCore 2.17** | Modern, reads the built-in OpenAPI doc; off in Production | Swagger UI |
 | Telemetry | **OpenTelemetry 1.19** via ServiceDefaults + custom `ActivitySource`/`Meter`; `Npgsql.OpenTelemetry` | Vendor-neutral; Aspire dashboard locally, any OTLP backend in UAT/Prod | Application Insights SDK (vendor lock-in) |
 | Resilience | `Microsoft.Extensions.Http.Resilience`; Npgsql execution strategy | Standard handlers; DB transient retries re-run the whole lock+check+insert unit | Polly direct |
@@ -910,6 +913,29 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 | Frontend | **React 19.3, Vite 8, TypeScript 6, Tailwind 4, shadcn/ui (Base UI), react-router-dom 7, react-hook-form + zod 4, TanStack Query 5.104** | Brief-mandated; matches the provided template's conventions exactly | — |
 | Contract sync | **@hey-api/openapi-ts 0.99** with `@hey-api/client-fetch` and `@tanstack/react-query` plugins | Generates types, SDK, `queryOptions`/`mutationOptions` straight from the committed OpenAPI doc; drift caught in CI | openapi-typescript + hand-written hooks; `Microsoft.Extensions.ApiDescription.Server` build-time emission (rejected: starts the host at build) |
 | Package management | pnpm 12 (web), NuGet Central Package Management (`Directory.Packages.props`) | Single source of truth for versions; reproducible installs | — |
+
+### 9.1 Runtime reflection budget and NativeAOT readiness
+
+Direction added on 2026-10-11 (stakeholder request): prefer build-time source generation over runtime reflection and runtime code generation, and stay on the NativeAOT-compatible subset of the framework without yet targeting `PublishAot`. The budget below is explicit and measured by `scripts/aot-readiness.sh` (trim/AOT analyzer warning counts, published as a CI artefact).
+
+| Concern | Mechanism chosen | Reflection at runtime? | Notes |
+|---------|------------------|------------------------|-------|
+| Request dispatch (minimal APIs) | **Request Delegate Generator** (`EnableRequestDelegateGenerator`) | No | Endpoint delegates are compiled at build time; a non-interceptable endpoint is a build error under warnings-as-errors. |
+| Endpoint discovery | Explicit `EndpointRegistry` (one line per slice) | No | Replaces assembly scanning for `IEndpoint` implementers. |
+| JSON (requests, responses, idempotency bodies, audit payloads) | **System.Text.Json source generation** (`SchedulerJsonContext`, `UseStringEnumConverter`), `JsonSerializerIsReflectionEnabledByDefault=false` | No | Any type missing from the context fails fast and is caught by the integration suite. |
+| Object mapping | **Mapperly** (`Riok.Mapperly`, build-time generator, `RequiredMappingStrategy.Target`) | No | Unmapped target members are build errors. |
+| Mediator / handler pipeline | None (ADR-001) | No | Nothing to replace; endpoints call handlers directly. |
+| Configuration binding | **Configuration binding source generator** (`EnableConfigurationBindingGenerator`) | No | `BindConfiguration` calls are intercepted at build time. |
+| Options validation | **`[OptionsValidator]` source generator** | No | Replaces `ValidateDataAnnotations()` reflection. |
+| Logging | **`[LoggerMessage]` source generator**, stable event ids | No | No interpolated log calls in product code. |
+| Regex | **`[GeneratedRegex]`** | No | VIN rule. |
+| DI container | `Microsoft.Extensions.DependencyInjection`, explicit registrations only | Constructor discovery at startup (AOT-compatible) | Microsoft ships no source-generated container; third-party generators (Jab, Pure.DI) would replace the container under ASP.NET Core hosting — rejected as high risk for negligible gain. |
+| Input validation | FluentValidation, validators registered explicitly | Expression trees compiled at first use (interpreted under AOT) | Mandated by the brief; no assembly scanning. Residual item in the budget. |
+| ORM | EF Core 10 + Npgsql (AOT-compatible driver) | Model building and LINQ translation | Residual item. Next steps when needed: `dotnet ef dbcontext optimize` (compiled model; documented with its silent-drift caveat — not adopted for a 7-entity model) and precompiled queries once they leave preview. |
+| OpenAPI / Scalar | `Microsoft.AspNetCore.OpenApi` | Endpoint metadata inspection | Non-production environments only. |
+| Telemetry | OpenTelemetry .NET (AOT-compatible) | No | — |
+
+See ADR-016.
 
 ---
 
@@ -1133,6 +1159,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | 400 vs 422 | Everything-is-400 vs semantic split | Split (ADR-011) so clients branch on `type`. |
 | Contract sync | Generate from the live URL at dev time vs MSBuild-time emission vs test-exported committed document | Committed document exported by a contract test + CI drift check: deterministic, reviewable in PRs, and the export is exactly what the running API serves. |
 | CORS vs proxy in dev | Allow-list the Vite origin vs Vite proxy | Proxy (same-origin), CORS default-deny with configurable origins for other deployments. |
+| Reflection reduction / AOT readiness (added mid-implementation at the stakeholder's request) | Source-generated DI containers (Jab, Pure.DI) vs explicit MEDI registrations; EF compiled models now vs later; Mapperly vs hand mappers; mediator source generators | Explicit MEDI registrations (Microsoft ships no DI generator; MEDI is AOT-compatible); compiled models deferred with the drift caveat; Mapperly adopted; no mediator exists to replace. The model inventoried every reflection site in the design and produced the budget table in §9.1. |
 
 **Edge cases the model was asked to stress-test** (and that became tests): DST days, half-open adjacency, union-of-free-sets fallacy (§6.1), duration longer than any free gap, closing-time boundary, cancelled rows and the partial constraint, retry after timeout (idempotency), concurrent cancels (`xmin`), out-of-band writers (constraint backstop), lock re-acquisition under transient retry.
 
@@ -1152,6 +1179,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | Authentication not wired (A-10) | Cannot deploy beyond demo | §11.3 seam; estimated effort < 1 day with an existing OIDC authority. |
 | Same-VIN double booking | Customer confusion | Add a domain rule (`422 vehicle-already-booked`) if the business confirms it should be hard-blocked. |
 | Real-time board updates | Polling every 5 s | SSE/SignalR fan-out from the after-commit domain event dispatcher. |
+| Remaining reflection (EF Core model/LINQ, FluentValidation expressions) | Blocks `PublishAot` | EF compiled model (`dotnet ef dbcontext optimize`, with a CI drift check) and precompiled queries once stable; replace FluentValidation with hand-written validators if the brief's mandate is lifted. |
 | Exclusion constraint on a large existing table (future migration) | Lock on build | `CREATE INDEX CONCURRENTLY` then `ADD CONSTRAINT … USING INDEX`. |
 
 ---
@@ -1175,6 +1203,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-013** | Testcontainers + `WebApplicationFactory` for integration/concurrency tests; `Aspire.Hosting.Testing` optional smoke | Real PostgreSQL semantics, fast and hermetic. |
 | **ADR-014** | GUID v7 primary keys | Index locality without exposing sequence; generated in the domain. |
 | **ADR-015** | Domain events persisted as `appointment_history` rows in the same transaction (lightweight outbox) | Audit trail is atomic with the change; integration events can relay from the same table later. |
+| **ADR-016** | Prefer build-time source generation over runtime reflection: RDG, STJ source generation with reflection disabled, Mapperly, configuration-binding and options-validator generators, `[LoggerMessage]`, explicit endpoint/DI/validator registration; keep MEDI as the container; FluentValidation and EF Core are the measured residue | Stakeholder direction (2026-10-11). Consequence: missing JSON registrations and unmapped DTO members are build/test failures; `scripts/aot-readiness.sh` tracks the residue; `PublishAot` is not enabled yet. |
 
 ---
 
