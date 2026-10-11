@@ -22,6 +22,7 @@ import { type DealershipListStatus, DealershipSelect } from "./components/dealer
 import { DispatchToolbar } from "./components/dispatch-toolbar"
 import { KpiStrip } from "./components/kpi-strip"
 import { ScheduleBoard } from "./components/schedule-board"
+import { StressPanel } from "./components/stress-panel"
 import { useBoardParams } from "./hooks/use-board-params"
 import { useNow } from "./hooks/use-now"
 import { useSelectedDealership } from "./hooks/use-selected-dealership"
@@ -137,8 +138,8 @@ interface DealershipDayProps {
 }
 
 /**
- * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet and the booking
- * dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
+ * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet, the booking
+ * dialog and the concurrency test. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
  * the same board; there is one schedule query, which both lane views and both presentations draw from.
  */
 function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayProps) {
@@ -275,6 +276,8 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           }}
         />
       </Tabs>
+
+      <StressPanel dealership={dealership} date={date} today={today} compact={agenda} onWinner={(id) => highlight(id, false)} />
 
       <BookingDialog
         key={booking.session}

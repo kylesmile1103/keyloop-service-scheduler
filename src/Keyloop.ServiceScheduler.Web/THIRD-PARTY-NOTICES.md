@@ -20,8 +20,10 @@ control (`date-navigator.tsx`); `calendar/components/calendars.tsx` and `calenda
 (`lane-filter.tsx`); the list view of `calendar/components/calendar-main.tsx` as the phone agenda (`schedule-agenda.tsx`);
 and the mobile sheet of `calendar/components/calendar.tsx` as the board's Filters sheet (`filters-sheet.tsx`);
 `calendar/components/event-form.tsx` and `users/components/user-form-dialog.tsx` as the booking dialog
-(`booking-dialog.tsx`). The
-`components/ui/switch.tsx`, `checkbox.tsx` and `collapsible.tsx` primitives are vendored unmodified.
+(`booking-dialog.tsx`); `dashboard/components/section-cards.tsx` again as the stress panel's tally tiles
+(`stress-panel.tsx`). The
+`components/ui/switch.tsx`, `checkbox.tsx` and `collapsible.tsx` primitives are vendored unmodified, and
+`components/ui/table.tsx` with the design system's table header and row heights.
 
 ```
 MIT License
