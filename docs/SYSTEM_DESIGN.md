@@ -474,7 +474,7 @@ Lock key: a stable 64-bit value derived from the dealership id (`BitConverter.To
 
 Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a site. A busy site books tens to low hundreds of appointments per day; a critical section of ~2–5 ms yields capacity of hundreds of bookings per second per dealership — three orders of magnitude above demand. If a future multi-site tenant ever needed more, the refinement is two locks keyed on `(bay_id)` and `(technician_id)` acquired in *sorted key order* (which again cannot cycle). Noted in §17.
 
-**Layer 3 — optimistic concurrency for state transitions.** `Cancel`, `CheckIn`, etc. update an existing row. PostgreSQL's system column `xmin` is mapped as the EF concurrency token (`UseXminAsConcurrencyToken`), so two concurrent transitions on the same appointment resolve as first-writer-wins and `409 concurrency-conflict` for the loser. No lock is required because the conflict set is a single row.
+**Layer 3 — optimistic concurrency for state transitions.** `Cancel`, `CheckIn`, etc. update an existing row. PostgreSQL's system column `xmin` is mapped as the EF concurrency token (a `uint` property configured with `IsRowVersion()`, which Npgsql maps to `xmin` without creating a column), so two concurrent transitions on the same appointment resolve as first-writer-wins and `409 concurrency-conflict` for the loser. No lock is required because the conflict set is a single row.
 
 ### 7.4 Error classification
 
