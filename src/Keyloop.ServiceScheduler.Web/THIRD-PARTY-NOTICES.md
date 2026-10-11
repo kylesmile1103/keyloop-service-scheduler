@@ -1,0 +1,49 @@
+# Third-party notices
+
+The dispatch board's application shell and UI primitives are derived from the projects below. npm dependencies carry
+their own licence files in `node_modules/<package>`; the notices here cover source code and assets copied into this
+project or shipped in its build output.
+
+## shadcn-dashboard-landing-template (Vite version)
+
+Source: https://github.com/shadcnstore/shadcn-dashboard-landing-template — used for the project layout and
+configuration (Vite, TypeScript, ESLint, `components.json`), the app shell (`components/app-sidebar.tsx`,
+`site-header.tsx`, `nav-main.tsx`, `nav-user.tsx`, `mode-toggle.tsx`, `theme-provider.tsx`, `layouts/base-layout.tsx`,
+`router/root-layout.tsx`, `hooks/*`), the vendored `components/ui/*` primitives and the Tailwind v4 theme tokens in
+`src/index.css`. Files have been modified for this project. The template's own logos, landing pages, demo apps and
+analytics are not included.
+
+```
+MIT License
+
+Copyright (c) 2025 ShadcnStore
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## shadcn/ui
+
+Source: https://github.com/shadcn-ui/ui — the `components/ui/*` primitives in the template above originate from
+shadcn/ui (Base UI variant). MIT License, Copyright (c) 2023 shadcn. The licence text is identical to the one above.
+
+## Inter typeface
+
+Source: https://github.com/rsms/inter, packaged as `@fontsource-variable/inter`; the font files are served from the
+build output. SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors. The full licence ships with the
+package (`node_modules/@fontsource-variable/inter/LICENSE`).

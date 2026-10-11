@@ -1,0 +1,3 @@
+# Template style for the web project (the repository root defaults to 4-space indents for C#).
+[*.{ts,tsx,js,mjs,cjs,css,html,json}]
+indent_size = 2
