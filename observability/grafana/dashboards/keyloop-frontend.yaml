@@ -1,0 +1,500 @@
+apiVersion: dashboard.grafana.app/v1
+kind: Dashboard
+metadata:
+  name: keyloop-frontend
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: Keyloop Scheduler - Frontend
+  description: TraceQL browser UX, errors, page load, fetch and click-to-SQL continuity. No Faro app, spanmetrics generator or browser metrics datasource is assumed.
+  tags:
+  - keyloop
+  - scheduler
+  timezone: browser
+  schemaVersion: 39
+  version: 1
+  editable: false
+  graphTooltip: 1
+  refresh: 1m
+  time:
+    from: now-6h
+    to: now
+  timepicker: {}
+  annotations:
+    list: []
+  links:
+  - title: Booking engine overview
+    type: link
+    url: /d/keyloop-booking-engine?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: API health
+    type: link
+    url: /d/keyloop-api-health?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: Notifications
+    type: link
+    url: /d/keyloop-notifications?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  templating:
+    list:
+    - name: ds_metrics
+      label: Metrics datasource
+      type: datasource
+      query: prometheus
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_logs
+      label: Logs datasource
+      type: datasource
+      query: loki
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_traces
+      label: Traces datasource
+      type: datasource
+      query: tempo
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: namespace
+      type: constant
+      query: keyloop-scheduler
+      hide: 2
+    - name: service
+      label: Service
+      type: textbox
+      query: web-browser
+      current:
+        text: web-browser
+        value: web-browser
+      options: []
+    - name: api_service
+      type: constant
+      query: api
+      hide: 2
+    - name: env
+      label: Environment
+      type: query
+      datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      query:
+        query: label_values(target_info{service_namespace="$namespace", service_name="$api_service"}, deployment_environment_name)
+        refId: env
+      definition: label_values(target_info{service_namespace="$namespace", service_name="$api_service"}, deployment_environment_name)
+      refresh: 2
+      sort: 1
+      multi: true
+      includeAll: true
+      allValue: .*
+      current:
+        text: Production
+        value: Production
+      options: []
+  panels:
+  - id: 1
+    title: ui.book_appointment duration p50 and p95
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Click-to-completion duration
+      in seconds, measured from traces rather than API-only metrics.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 0
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: s
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "ui.book_appointment" } | quantile_over_time(span:duration, .5, .95)'
+      filters: []
+      limit: 20
+      tableType: traces
+      metricsQueryType: range
+      step: 1m
+      exemplars: 0
+      refId: A
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 2
+    title: Booking attempts by span status
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Span status is unset,
+      ok or error, not an HTTP status code. Verify failure handling marks error on the parent UI span.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 0
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ops
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "ui.book_appointment" } | rate() by (span:status)'
+      filters: []
+      limit: 20
+      tableType: traces
+      metricsQueryType: range
+      step: 1m
+      exemplars: 0
+      refId: A
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 3
+    title: Browser span errors by name
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Error span rate by operation.
+      Frontend has traces only; no invented browser counter or spanmetrics series is used.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 7
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ops
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:status = error } | rate() by (span:name)'
+      filters: []
+      limit: 20
+      tableType: traces
+      metricsQueryType: range
+      step: 1m
+      exemplars: 0
+      refId: A
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 4
+    title: Recent failed browser spans
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Open a trace to inspect
+      the failing browser operation and API descendant, when traceparent propagation works.
+    type: table
+    gridPos:
+      x: 12
+      y: 7
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:status = error }'
+      filters: []
+      limit: 20
+      tableType: traces
+      refId: A
+    options:
+      showHeader: true
+      cellHeight: sm
+      sortBy: []
+  - id: 5
+    title: Document load p50 and p95
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. documentLoad is the SDK's
+      expected span name, to be confirmed after deploy. TraceQL quantiles report seconds.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 14
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: s
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "documentLoad" } | quantile_over_time(span:duration, .5, .95)'
+      filters: []
+      limit: 20
+      tableType: traces
+      metricsQueryType: range
+      step: 1m
+      exemplars: 0
+      refId: A
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 6
+    title: Fetch span p95 by name
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Client span names are
+      discovered after deploy. Board polling every 5 seconds can dominate volume and change this distribution.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 14
+      w: 12
+      h: 7
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: s
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:kind = client } | quantile_over_time(span:duration, .95) by (span:name)'
+      filters: []
+      limit: 20
+      tableType: traces
+      metricsQueryType: range
+      step: 1m
+      exemplars: 0
+      refId: A
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 7
+    title: Click-to-SQL traces
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Structural descendant
+      query proves the browser booking span and API booking span share one trace. Open the tree for Npgsql SQL; separate trace ids mean propagation is broken.
+    type: table
+    gridPos:
+      x: 0
+      y: 21
+      w: 12
+      h: 8
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "ui.book_appointment" } >> { resource.service.namespace = "${namespace}" && resource.service.name = "${api_service}" && resource.deployment.environment.name
+        =~ "${env:regex}" && span:name = "scheduler.book_appointment" }'
+      filters: []
+      limit: 20
+      tableType: traces
+      refId: A
+    options:
+      showHeader: true
+      cellHeight: sm
+      sortBy: []
+  - id: 8
+    title: ui.stress_test runs
+    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Whole stress-run traces.
+      A run should include one confirmed booking and expected contention failures; verify the two UI spans exist in the deployed Task 17 build.
+    type: table
+    gridPos:
+      x: 12
+      y: 21
+      w: 12
+      h: 8
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "ui.stress_test" }'
+      filters: []
+      limit: 20
+      tableType: traces
+      refId: A
+    options:
+      showHeader: true
+      cellHeight: sm
+      sortBy: []

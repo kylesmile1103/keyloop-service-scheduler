@@ -1,0 +1,190 @@
+[
+  {
+    "instrument": "scheduler.booking.requests",
+    "kind": "counter",
+    "unit": "{request}",
+    "labels": [
+      "outcome",
+      "dealership_id"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.booking.duration",
+    "kind": "histogram",
+    "unit": "ms",
+    "labels": [
+      "outcome"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.booking.lock_wait",
+    "kind": "histogram",
+    "unit": "ms",
+    "labels": [
+      "dealership_id"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.booking.constraint_backstop",
+    "kind": "counter",
+    "unit": "{event}",
+    "labels": [
+      "constraint"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.booking.deadlocks",
+    "kind": "counter",
+    "unit": "{event}",
+    "labels": [],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.availability.duration",
+    "kind": "histogram",
+    "unit": "ms",
+    "labels": [
+      "dealership_id"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.availability.slots_returned",
+    "kind": "histogram",
+    "unit": "{slot}",
+    "labels": [],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.appointments.cancellations",
+    "kind": "counter",
+    "unit": "{appointment}",
+    "labels": [
+      "previous_status"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.notifications.sent",
+    "kind": "counter",
+    "unit": "{notification}",
+    "labels": [
+      "kind"
+    ],
+    "source": "notifications",
+    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+  },
+  {
+    "instrument": "scheduler.notifications.failed",
+    "kind": "counter",
+    "unit": "{notification}",
+    "labels": [
+      "kind"
+    ],
+    "source": "notifications",
+    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+  },
+  {
+    "instrument": "scheduler.notifications.retried",
+    "kind": "counter",
+    "unit": "{notification}",
+    "labels": [
+      "kind"
+    ],
+    "source": "notifications",
+    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+  },
+  {
+    "instrument": "scheduler.notifications.dispatch_duration",
+    "kind": "histogram",
+    "unit": "ms",
+    "labels": [
+      "kind"
+    ],
+    "source": "notifications",
+    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+  },
+  {
+    "instrument": "scheduler.notifications.outbox_age",
+    "kind": "histogram",
+    "unit": "s",
+    "labels": [
+      "kind"
+    ],
+    "source": "notifications",
+    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+  },
+  {
+    "instrument": "scheduler.notifications.outbox_pending",
+    "kind": "gauge",
+    "unit": "{notification}",
+    "labels": [
+      "kind"
+    ],
+    "source": "planned",
+    "evidence": "Task 19 brief G2 addendum; NOT PRESENT in notification code at authoring time"
+  },
+  {
+    "instrument": "scheduler.notifications.oldest_pending_age",
+    "kind": "gauge",
+    "unit": "s",
+    "labels": [],
+    "source": "planned",
+    "evidence": "Task 19 brief G2 addendum; supersedes plan outbox_oldest_pending_age spelling; NOT PRESENT in code"
+  },
+  {
+    "instrument": "http.server.request.duration",
+    "kind": "histogram",
+    "unit": "s",
+    "labels": [
+      "http_route",
+      "http_request_method",
+      "http_response_status_code",
+      "error_type"
+    ],
+    "source": "framework",
+    "evidence": "docs/SYSTEM_DESIGN.md section 12.1; ServiceDefaults AddAspNetCoreInstrumentation; https://learn.microsoft.com/en-us/aspnet/core/metrics/http?view=aspnetcore-10.0"
+  },
+  {
+    "instrument": "aspnetcore.rate_limiting.requests",
+    "kind": "counter",
+    "unit": "{request}",
+    "labels": [
+      "aspnetcore_rate_limiting_result",
+      "aspnetcore_rate_limiting_policy"
+    ],
+    "source": "framework",
+    "evidence": "SYSTEM_DESIGN section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/RateLimiting/src/RateLimitingMetrics.cs"
+  },
+  {
+    "instrument": "aspnetcore.diagnostics.exceptions",
+    "kind": "counter",
+    "unit": "{exception}",
+    "labels": [
+      "error_type",
+      "aspnetcore_diagnostics_exception_result"
+    ],
+    "source": "framework",
+    "evidence": "SYSTEM_DESIGN section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/Diagnostics/src/DiagnosticsMetrics.cs"
+  },
+  {
+    "instrument": "target_info",
+    "kind": "info",
+    "unit": "",
+    "labels": [],
+    "source": "otlp",
+    "evidence": "Generated by OTLP-to-Prometheus resource translation, not an application instrument; https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/"
+  }
+]

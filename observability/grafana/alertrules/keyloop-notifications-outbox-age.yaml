@@ -1,0 +1,68 @@
+apiVersion: rules.alerting.grafana.app/v0alpha1
+kind: AlertRule
+metadata:
+  name: keyloop-notifications-outbox-age
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: Oldest pending notification above 5 minutes
+  paused: false
+  trigger:
+    interval: 1m
+  for: 10m
+  noDataState: Ok
+  execErrState: Error
+  labels:
+    service: keyloop-scheduler-api
+    environment: ${ENVIRONMENT}
+    severity: ticket
+  annotations:
+    summary: The oldest pending notification is more than 300 seconds old.
+    description: 'G2 gauge must refresh even when dispatch is disabled. Missing gauge is an instrumentation gap: No data is Ok to avoid a false outage, and must be
+      checked before enabling this rule. Do not substitute the attempt-only age histogram.'
+    runbook_url: ${RUNBOOK_BASE_URL}#outbox-age
+    __dashboardUid__: keyloop-notifications
+    __panelId__: '6'
+  panelRef:
+    dashboardUID: keyloop-notifications
+    panelID: 6
+  notificationSettings:
+    type: SimplifiedRouting
+    receiver: ${ALERT_RECEIVER}
+  expressions:
+    A:
+      datasourceUID: ${METRICS_DATASOURCE_UID}
+      relativeTimeRange:
+        from: 10m
+        to: 0s
+      model:
+        refId: A
+        datasource:
+          type: prometheus
+          uid: ${METRICS_DATASOURCE_UID}
+        editorMode: code
+        instant: true
+        range: false
+        expr: max(scheduler_notifications_oldest_pending_age_seconds{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"})
+        intervalMs: 60000
+        maxDataPoints: 43200
+    C:
+      source: true
+      model:
+        refId: C
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 300
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query

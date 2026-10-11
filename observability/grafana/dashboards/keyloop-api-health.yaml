@@ -1,0 +1,827 @@
+apiVersion: dashboard.grafana.app/v1
+kind: Dashboard
+metadata:
+  name: keyloop-api-health
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: Keyloop Scheduler - API health
+  description: HTTP RED by route, rate limiting and observed readiness. No external synthetic check is assumed; OTLP silence can reflect idle container sleep.
+  tags:
+  - keyloop
+  - scheduler
+  timezone: browser
+  schemaVersion: 39
+  version: 1
+  editable: false
+  graphTooltip: 1
+  refresh: 1m
+  time:
+    from: now-6h
+    to: now
+  timepicker: {}
+  annotations:
+    list: []
+  links:
+  - title: Booking engine overview
+    type: link
+    url: /d/keyloop-booking-engine?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: Notifications
+    type: link
+    url: /d/keyloop-notifications?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: Frontend
+    type: link
+    url: /d/keyloop-frontend?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  templating:
+    list:
+    - name: ds_metrics
+      label: Metrics datasource
+      type: datasource
+      query: prometheus
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_logs
+      label: Logs datasource
+      type: datasource
+      query: loki
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_traces
+      label: Traces datasource
+      type: datasource
+      query: tempo
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: namespace
+      type: constant
+      query: keyloop-scheduler
+      hide: 2
+    - name: service
+      label: Service
+      type: textbox
+      query: api
+      current:
+        text: api
+        value: api
+      options: []
+    - name: job
+      label: Job
+      type: query
+      datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      query:
+        query: label_values(target_info{service_namespace="$namespace", service_name="$service"}, job)
+        refId: job
+      definition: label_values(target_info{service_namespace="$namespace", service_name="$service"}, job)
+      refresh: 2
+      sort: 1
+      multi: false
+      includeAll: false
+      allValue: null
+      current:
+        text: keyloop-scheduler/api
+        value: keyloop-scheduler/api
+      options: []
+    - name: env
+      label: Environment
+      type: query
+      datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      query:
+        query: label_values(target_info{service_namespace="$namespace", service_name="$service"}, deployment_environment_name)
+        refId: env
+      definition: label_values(target_info{service_namespace="$namespace", service_name="$service"}, deployment_environment_name)
+      refresh: 2
+      sort: 1
+      multi: true
+      includeAll: true
+      allValue: .*
+      current:
+        text: Production
+        value: Production
+      options: []
+    - name: route
+      label: Route
+      type: query
+      datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      query:
+        query: label_values(http_server_request_duration_seconds_count{job="$job", deployment_environment_name=~"$env", http_route!~"/health|/alive"}, http_route)
+        refId: route
+      definition: label_values(http_server_request_duration_seconds_count{job="$job", deployment_environment_name=~"$env", http_route!~"/health|/alive"}, http_route)
+      refresh: 2
+      sort: 1
+      multi: true
+      includeAll: true
+      allValue: .*
+      current:
+        text: All
+        value: $__all
+      options: []
+  panels:
+  - id: 1
+    title: Request rate
+    description: API traffic excluding /health and /alive. Route selection applies to all RED panels, including 429 rejections.
+    type: stat
+    gridPos:
+      x: 0
+      y: 0
+      w: 8
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum(rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval]))
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 2
+    title: 5xx ratio
+    description: 5xx requests divided by all selected API requests. Red above 0.1 percent. A never-fired 5xx counter shows 0 with traffic; no traffic leaves 0/0 undefined.
+    type: stat
+    gridPos:
+      x: 8
+      y: 0
+      w: 8
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: percentunit
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 0.001
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: (sum(rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", http_route=~"${route:regex}", http_route!~"/health|/alive",
+        http_response_status_code=~"5.."}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval]))
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 3
+    title: p95 latency, selected routes
+    description: HTTP server duration in seconds, including response write time. Custom booking histograms use milliseconds. Health paths are excluded.
+    type: stat
+    gridPos:
+      x: 16
+      y: 0
+      w: 8
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: s
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval])))
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 4
+    title: Rate by route
+    description: Per-route HTTP request throughput. Route labels are bounded templates rather than raw URLs. Unknown routes can lack http_route.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 4
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (http_route) (rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", http_route=~"${route:regex}",
+        http_route!~"/health|/alive"}[$__rate_interval]))
+      legendFormat: '{{http_route}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 5
+    title: Errors by route and status
+    description: 4xx and 5xx request rates, including expected contention 409 and rate limit 429. Business outcomes are explained in Booking engine overview.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 4
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive", http_response_status_code=~"4..|5.."}[$__rate_interval]))
+      legendFormat: '{{http_route}} {{http_response_status_code}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 6
+    title: p50, p95, p99 by route
+    description: Per-route HTTP duration quantiles in seconds. Low traffic and empty histogram buckets can yield gaps or NaN.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 11
+      w: 24
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: s
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.5, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval])))
+      legendFormat: p50 {{http_route}}
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval])))
+      legendFormat: p95 {{http_route}}
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: B
+      interval: 1m
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.99, sum by (le, http_route) (rate(http_server_request_duration_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive"}[$__rate_interval])))
+      legendFormat: p99 {{http_route}}
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: C
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 7
+    title: 4xx and 5xx by status code
+    description: G3 problem.type has not landed, so this panel groups actual status codes. Do not infer a problem slug from a status; booking outcomes provide the
+      business breakdown.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 18
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (http_response_status_code) (rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"${route:regex}", http_route!~"/health|/alive", http_response_status_code=~"4..|5.."}[$__rate_interval]))
+      legendFormat: '{{http_response_status_code}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 8
+    title: Exceptions by handling result
+    description: ASP.NET Core diagnostic exception rate, grouped by exception type and handled/unhandled result. Handled domain failures can occur here; Error logs
+      identify unexpected faults.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 18
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ops
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (error_type, aspnetcore_diagnostics_exception_result) (rate(aspnetcore_diagnostics_exceptions_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      legendFormat: '{{error_type}} {{aspnetcore_diagnostics_exception_result}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 9
+    title: Rejections by limiter
+    description: Rate-limiter rejections by result and policy. Before G5 forwards client IP safely, users behind the Worker share a partition. The empty policy is
+      the global limiter.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 24
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (aspnetcore_rate_limiting_result, aspnetcore_rate_limiting_policy) (rate(aspnetcore_rate_limiting_requests_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        aspnetcore_rate_limiting_result=~"global_limiter|endpoint_limiter"}[$__rate_interval]))
+      legendFormat: '{{aspnetcore_rate_limiting_policy}} {{aspnetcore_rate_limiting_result}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 10
+    title: 429 by route
+    description: HTTP rate-limit responses for selected routes. Correlate with limiter results and ingress configuration; a 429 does not imply booking invariant failure.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 24
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (http_route) (rate(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", http_route=~"${route:regex}",
+        http_route!~"/health|/alive", http_response_status_code="429"}[$__rate_interval]))
+      legendFormat: '{{http_route}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 11
+    title: /alive and /health answers
+    description: Observed process-liveness and database-readiness responses. A /health 503 means a failed health check. Only actual polls appear; absence does not
+      establish uptime.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 30
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (http_route, http_response_status_code) (increase(http_server_request_duration_seconds_count{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+        http_route=~"/health|/alive"}[$__rate_interval]))
+      legendFormat: '{{http_route}} {{http_response_status_code}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 12
+    title: API process exporting
+    description: OTLP target_info presence by instance and version. A gap can mean a sleeping container or failed export, not necessarily downtime. No missing-telemetry
+      alert is attached.
+    type: state-timeline
+    gridPos:
+      x: 12
+      y: 30
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: count by (instance, service_version) (target_info{job=~"${job:regex}", deployment_environment_name=~"${env:regex}"})
+      legendFormat: '{{instance}} {{service_version}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      mergeValues: true
+      rowHeight: 0.9
+      showValue: auto
+      alignValue: left
+      legend:
+        showLegend: false
+  - id: 13
+    title: API errors (logs)
+    description: Error and Critical log severity across the selected service/environment. The exact detected_level metadata and Loki-to-Tempo correlation must be
+      confirmed after deploy.
+    type: logs
+    gridPos:
+      x: 0
+      y: 37
+      w: 24
+      h: 8
+    datasource:
+      type: loki
+      uid: ${ds_logs}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: loki
+        uid: ${ds_logs}
+      expr: '{service_name=~"${service:regex}", service_namespace="${namespace}", deployment_environment_name=~"${env:regex}"} | detected_level=~"error|critical"'
+      queryType: range
+      maxLines: 100
+      refId: A
+    options:
+      showTime: true
+      showLabels: false
+      showCommonLabels: false
+      wrapLogMessage: true
+      sortOrder: Descending
+      enableLogDetails: true
+      dedupStrategy: none

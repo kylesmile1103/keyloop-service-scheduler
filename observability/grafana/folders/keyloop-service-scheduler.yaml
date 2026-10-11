@@ -1,0 +1,7 @@
+apiVersion: folder.grafana.app/v1
+kind: Folder
+metadata:
+  name: keyloop-service-scheduler
+spec:
+  title: Keyloop Service Scheduler
+  description: 'Unified Service Scheduler: booking invariants, API RED, notifications and browser traces.'

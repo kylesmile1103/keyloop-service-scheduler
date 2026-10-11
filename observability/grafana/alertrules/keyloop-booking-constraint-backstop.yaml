@@ -1,0 +1,68 @@
+apiVersion: rules.alerting.grafana.app/v0alpha1
+kind: AlertRule
+metadata:
+  name: keyloop-booking-constraint-backstop
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: Booking exclusion backstop fired
+  paused: false
+  trigger:
+    interval: 1m
+  for: 0s
+  noDataState: Ok
+  execErrState: Error
+  labels:
+    service: keyloop-scheduler-api
+    environment: ${ENVIRONMENT}
+    severity: ticket
+  annotations:
+    summary: A booking passed the locked check but hit an exclusion constraint.
+    description: Inspect event 1003, the constraint label, and out-of-band writers bypassing the dealership lock.
+    runbook_url: ${RUNBOOK_BASE_URL}#constraint-backstop
+    __dashboardUid__: keyloop-booking-engine
+    __panelId__: '2'
+  panelRef:
+    dashboardUID: keyloop-booking-engine
+    panelID: 2
+  notificationSettings:
+    type: SimplifiedRouting
+    receiver: ${ALERT_RECEIVER}
+  expressions:
+    A:
+      datasourceUID: ${METRICS_DATASOURCE_UID}
+      relativeTimeRange:
+        from: 10m
+        to: 0s
+      model:
+        refId: A
+        datasource:
+          type: prometheus
+          uid: ${METRICS_DATASOURCE_UID}
+        editorMode: code
+        instant: true
+        range: false
+        expr: sum by (constraint) (increase(scheduler_booking_constraint_backstop_total{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"}[10m])) or
+          vector(0)
+        intervalMs: 60000
+        maxDataPoints: 43200
+    C:
+      source: true
+      model:
+        refId: C
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query

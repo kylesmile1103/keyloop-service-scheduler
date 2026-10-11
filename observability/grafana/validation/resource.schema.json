@@ -1,0 +1,778 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Keyloop local Grafana authoring contract",
+  "description": "Project subset for classic dashboards and the fields used from Grafana AlertRule v0alpha1. Does not replace the destination stack schema or datasource query validation.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "folder.grafana.app/v1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "Folder"
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^keyloop-[a-z0-9-]+$"
+            },
+            "annotations": {
+              "type": "object",
+              "properties": {
+                "grafana.app/folder": {
+                  "enum": [
+                    "keyloop-service-scheduler"
+                  ]
+                }
+              },
+              "required": [
+                "grafana.app/folder"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "spec": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "title",
+            "description"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "dashboard.grafana.app/v1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "Dashboard"
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^keyloop-[a-z0-9-]+$"
+            },
+            "annotations": {
+              "type": "object",
+              "properties": {
+                "grafana.app/folder": {
+                  "enum": [
+                    "keyloop-service-scheduler"
+                  ]
+                }
+              },
+              "required": [
+                "grafana.app/folder"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "spec": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 2
+            },
+            "timezone": {
+              "enum": [
+                "browser"
+              ]
+            },
+            "schemaVersion": {
+              "type": "integer",
+              "minimum": 36
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "editable": {
+              "enum": [
+                false
+              ]
+            },
+            "graphTooltip": {
+              "type": "integer"
+            },
+            "refresh": {
+              "enum": [
+                "1m"
+              ]
+            },
+            "time": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            },
+            "timepicker": {
+              "type": "object"
+            },
+            "annotations": {
+              "type": "object",
+              "properties": {
+                "list": {
+                  "type": "array"
+                }
+              },
+              "required": [
+                "list"
+              ],
+              "additionalProperties": false
+            },
+            "links": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "enum": [
+                      "link"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "keepTime": {
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "title",
+                  "type",
+                  "url",
+                  "keepTime"
+                ],
+                "additionalProperties": true
+              },
+              "minItems": 3
+            },
+            "templating": {
+              "type": "object",
+              "properties": {
+                "list": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "enum": [
+                          "query",
+                          "constant",
+                          "textbox",
+                          "custom",
+                          "datasource"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "type"
+                    ],
+                    "additionalProperties": true
+                  },
+                  "minItems": 6
+                }
+              },
+              "required": [
+                "list"
+              ],
+              "additionalProperties": false
+            },
+            "panels": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "enum": [
+                      "stat",
+                      "timeseries",
+                      "table",
+                      "logs",
+                      "bargauge",
+                      "heatmap",
+                      "state-timeline"
+                    ]
+                  },
+                  "gridPos": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 23
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "w": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 24
+                      },
+                      "h": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "w",
+                      "h"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "datasource": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "prometheus",
+                          "loki",
+                          "tempo"
+                        ]
+                      },
+                      "uid": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "uid"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "interval": {
+                    "enum": [
+                      "1m"
+                    ]
+                  },
+                  "fieldConfig": {
+                    "type": "object",
+                    "properties": {
+                      "defaults": {
+                        "type": "object",
+                        "properties": {
+                          "unit": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "thresholds": {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "enum": [
+                                  "absolute"
+                                ]
+                              },
+                              "steps": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "color": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "value": {
+                                      "type": [
+                                        "number",
+                                        "null"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "color",
+                                    "value"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "minItems": 1
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "steps"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "unit",
+                          "thresholds"
+                        ],
+                        "additionalProperties": true
+                      },
+                      "overrides": {
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "defaults",
+                      "overrides"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "targets": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "refId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "datasource": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "prometheus",
+                                "loki",
+                                "tempo"
+                              ]
+                            },
+                            "uid": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "uid"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "expr": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "query": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "queryType": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "refId",
+                        "datasource"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "minItems": 1
+                  },
+                  "options": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "description",
+                  "type",
+                  "gridPos",
+                  "datasource",
+                  "interval",
+                  "fieldConfig",
+                  "targets",
+                  "options"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "title",
+            "description",
+            "tags",
+            "timezone",
+            "schemaVersion",
+            "version",
+            "editable",
+            "graphTooltip",
+            "refresh",
+            "time",
+            "timepicker",
+            "annotations",
+            "links",
+            "templating",
+            "panels"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "rules.alerting.grafana.app/v0alpha1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "AlertRule"
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^keyloop-[a-z0-9-]+$"
+            },
+            "annotations": {
+              "type": "object",
+              "properties": {
+                "grafana.app/folder": {
+                  "enum": [
+                    "keyloop-service-scheduler"
+                  ]
+                }
+              },
+              "required": [
+                "grafana.app/folder"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "spec": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "paused": {
+              "type": "boolean"
+            },
+            "trigger": {
+              "type": "object",
+              "properties": {
+                "interval": {
+                  "enum": [
+                    "1m"
+                  ]
+                }
+              },
+              "required": [
+                "interval"
+              ],
+              "additionalProperties": false
+            },
+            "for": {
+              "type": "string",
+              "minLength": 1
+            },
+            "noDataState": {
+              "enum": [
+                "Ok"
+              ]
+            },
+            "execErrState": {
+              "enum": [
+                "Error"
+              ]
+            },
+            "labels": {
+              "type": "object",
+              "properties": {
+                "service": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "environment": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "severity": {
+                  "enum": [
+                    "page",
+                    "ticket"
+                  ]
+                }
+              },
+              "required": [
+                "service",
+                "environment",
+                "severity"
+              ],
+              "additionalProperties": false
+            },
+            "annotations": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "runbook_url": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "__dashboardUid__": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "__panelId__": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "summary",
+                "description",
+                "runbook_url",
+                "__dashboardUid__",
+                "__panelId__"
+              ],
+              "additionalProperties": false
+            },
+            "panelRef": {
+              "type": "object",
+              "properties": {
+                "dashboardUID": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "panelID": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "dashboardUID",
+                "panelID"
+              ],
+              "additionalProperties": false
+            },
+            "notificationSettings": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "SimplifiedRouting"
+                  ]
+                },
+                "receiver": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "receiver"
+              ],
+              "additionalProperties": false
+            },
+            "expressions": {
+              "type": "object",
+              "minProperties": 2,
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "datasourceUID": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "relativeTimeRange": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "to": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "source": {
+                    "type": "boolean"
+                  },
+                  "model": {
+                    "type": "object",
+                    "properties": {
+                      "refId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "expr": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "expression": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "type": {
+                        "enum": [
+                          "threshold",
+                          "math"
+                        ]
+                      },
+                      "instant": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "refId"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "model"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "title",
+            "paused",
+            "trigger",
+            "for",
+            "noDataState",
+            "execErrState",
+            "labels",
+            "annotations",
+            "panelRef",
+            "notificationSettings",
+            "expressions"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+apiVersion: rules.alerting.grafana.app/v0alpha1
+kind: AlertRule
+metadata:
+  name: keyloop-api-5xx-ratio
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: API 5xx ratio above 0.1 percent
+  paused: false
+  trigger:
+    interval: 1m
+  for: 5m
+  noDataState: Ok
+  execErrState: Error
+  labels:
+    service: keyloop-scheduler-api
+    environment: ${ENVIRONMENT}
+    severity: ticket
+  annotations:
+    summary: More than 0.1 percent of API requests fail with 5xx.
+    description: Health paths are excluded. Inspect event 1200 and infrastructure logs, grouped by route; idle 0/0 does not fire.
+    runbook_url: ${RUNBOOK_BASE_URL}#api-5xx
+    __dashboardUid__: keyloop-api-health
+    __panelId__: '2'
+  panelRef:
+    dashboardUID: keyloop-api-health
+    panelID: 2
+  notificationSettings:
+    type: SimplifiedRouting
+    receiver: ${ALERT_RECEIVER}
+  expressions:
+    A:
+      datasourceUID: ${METRICS_DATASOURCE_UID}
+      relativeTimeRange:
+        from: 10m
+        to: 0s
+      model:
+        refId: A
+        datasource:
+          type: prometheus
+          uid: ${METRICS_DATASOURCE_UID}
+        editorMode: code
+        instant: true
+        range: false
+        expr: (sum(rate(http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}", http_route!~"/health|/alive", http_response_status_code=~"5.."}[10m]))
+          or vector(0)) / sum(rate(http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}", http_route!~"/health|/alive"}[10m]))
+        intervalMs: 60000
+        maxDataPoints: 43200
+    C:
+      source: true
+      model:
+        refId: C
+        type: threshold
+        expression: A
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.001
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            type: last
+            params: []
+          type: query
