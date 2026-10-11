@@ -55,6 +55,46 @@ public class OptionsValidatorTests
         result.FailureMessage.ShouldContain("PermitsPerMinute");
     }
 
+    [Theory]
+    [InlineData("*")]
+    [InlineData("localhost:5173")]
+    [InlineData("ftp://board.example")]
+    [InlineData("https://board.example/path")]
+    public void Allowed_origins_must_be_exact_http_origins(string origin) =>
+        SecurityFailure(new SecurityOptions { AllowedOrigins = ["https://board.example", origin] }).ShouldContain(nameof(SecurityOptions.AllowedOrigins));
+
+    [Fact]
+    public void Exact_origins_are_valid() =>
+        new SecurityOptionsValidator().Validate(null, new SecurityOptions { AllowedOrigins = ["https://board.example", "http://localhost:5173"] })
+            .Succeeded.ShouldBeTrue();
+
+    [Theory]
+    [InlineData("not-an-ip", null)]
+    [InlineData(null, "10.0.0.0/33")]
+    [InlineData(null, "10.0.0.0")]
+    public void Known_proxies_and_networks_must_parse(string? proxy, string? network)
+    {
+        var forwarded = new SecurityOptions.ForwardedHeadersSettings
+        {
+            KnownProxies = proxy is null ? [] : [proxy],
+            KnownNetworks = network is null ? [] : [network],
+        };
+
+        SecurityFailure(new SecurityOptions { ForwardedHeaders = forwarded }).ShouldContain(proxy is null ? "KnownNetworks" : "KnownProxies");
+    }
+
+    [Fact]
+    public void Enabled_forwarded_headers_need_a_trusted_proxy_or_network() =>
+        // With both lists empty the framework trusts X-Forwarded-For from any peer, so anyone could pick their rate-limit partition.
+        SecurityFailure(new SecurityOptions { ForwardedHeaders = new() { Enabled = true } }).ShouldContain("ForwardedHeaders");
+
+    [Fact]
+    public void Enabled_forwarded_headers_with_trusted_addresses_are_valid() =>
+        new SecurityOptionsValidator().Validate(null, new SecurityOptions
+        {
+            ForwardedHeaders = new() { Enabled = true, KnownProxies = ["10.1.2.3", "::1"], KnownNetworks = ["10.0.0.0/8", "fd00::/8"] },
+        }).Succeeded.ShouldBeTrue();
+
     [Fact]
     public void Binding_an_invalid_value_from_configuration_fails_validation()
     {
@@ -68,6 +108,13 @@ public class OptionsValidatorTests
         var ex = Should.Throw<OptionsValidationException>(() => services.GetRequiredService<IOptions<SchedulingOptions>>().Value);
 
         ex.Message.ShouldContain(nameof(SchedulingOptions.SlotGranularityMinutes));
+    }
+
+    private static string SecurityFailure(SecurityOptions options)
+    {
+        var result = new SecurityOptionsValidator().Validate(null, options);
+        result.Failed.ShouldBeTrue();
+        return result.FailureMessage;
     }
 
     private static string Failure(SchedulingOptions options)

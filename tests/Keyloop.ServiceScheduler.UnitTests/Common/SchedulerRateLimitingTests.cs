@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Net;
 using System.Threading.RateLimiting;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
 
@@ -91,6 +94,37 @@ public class SchedulerRateLimitingTests
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Rejection_is_429_with_Retry_After_whether_or_not_the_client_accepts_json(bool acceptsJson)
+    {
+        var options = new RateLimiterOptions();
+        SchedulerRateLimiting.Configure(options, Settings(global: 1));
+        var problems = new StrictProblemDetailsService(acceptsJson);
+        var http = Request("/api/v1/dealerships");
+        http.RequestServices = new ServiceCollection().AddSingleton<IProblemDetailsService>(problems).BuildServiceProvider();
+        var partition = SchedulerRateLimiting.GlobalPartition(http, Settings(global: 1));
+        using var limiter = partition.Factory(partition.PartitionKey);
+        using var granted = limiter.AttemptAcquire();
+        using var rejected = limiter.AttemptAcquire();
+
+        await options.OnRejected.ShouldNotBeNull()(new OnRejectedContext { HttpContext = http, Lease = rejected }, CancellationToken.None);
+
+        http.Response.StatusCode.ShouldBe(429);
+        int.Parse(http.Response.Headers.RetryAfter.ToString(), CultureInfo.InvariantCulture).ShouldBeInRange(1, 60);
+        if (acceptsJson)
+        {
+            var problem = problems.Written.ShouldHaveSingleItem();
+            problem.Type.ShouldBe("https://api.keyloop.example/problems/rate-limited");
+            problem.Extensions["retryAfterSeconds"].ShouldBe(int.Parse(http.Response.Headers.RetryAfter.ToString(), CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            problems.Written.ShouldBeEmpty();
+        }
+    }
+
     [Fact]
     public void Clients_without_a_remote_address_share_one_partition()
     {
@@ -109,6 +143,34 @@ public class SchedulerRateLimitingTests
         http.Request.Path = path;
         http.Connection.RemoteIpAddress = IPAddress.Parse(ip);
         return http;
+    }
+
+    /// <summary>Honours the real contract: WriteAsync throws and TryWriteAsync returns false when the client does not accept JSON.</summary>
+    private sealed class StrictProblemDetailsService(bool acceptsJson) : IProblemDetailsService
+    {
+        public List<ProblemDetails> Written { get; } = [];
+
+        public ValueTask WriteAsync(ProblemDetailsContext context) =>
+            acceptsJson
+                ? Record(context)
+                : throw new InvalidOperationException("Unable to find a registered `IProblemDetailsWriter` that can write to the given context.");
+
+        public async ValueTask<bool> TryWriteAsync(ProblemDetailsContext context)
+        {
+            if (!acceptsJson)
+            {
+                return false;
+            }
+
+            await Record(context);
+            return true;
+        }
+
+        private ValueTask Record(ProblemDetailsContext context)
+        {
+            Written.Add(context.ProblemDetails);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private static int AcquiredOutOf(RateLimitPartition<string> partition, int attempts)

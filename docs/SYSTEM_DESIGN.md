@@ -995,8 +995,9 @@ flowchart LR
 ### 11.2 Controls implemented
 
 - Security headers middleware: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on API responses, `Permissions-Policy` minimal; HSTS outside Development.
-- CORS: default-deny; allowed origins come from configuration (`Security:AllowedOrigins`) and are empty in Development because the Vite proxy keeps the browser same-origin.
-- Rate limiting: named policies `global` and `booking`, `429` with `rate-limited` problem and `Retry-After`.
+- CORS: default-deny; allowed origins come from configuration (`Security:AllowedOrigins`, exact http(s) origins only — `*` fails startup) and are empty in Development because the Vite proxy keeps the browser same-origin.
+- Rate limiting: named policies `global` and `booking`, partitioned per client IP, `429` with `rate-limited` problem and `Retry-After` (also for clients that do not accept JSON); health probes are exempt.
+- Forwarded headers: behind the TLS-terminating ingress (UAT/Production, `Security:ForwardedHeaders`), `X-Forwarded-For`/`X-Forwarded-Proto` are honoured as the first middleware, from configured `KnownProxies`/`KnownNetworks` only and for the last hop only, so rate-limit partitions, the audit actor and HTTPS redirection see the client. Enabling it without a trusted proxy or network fails startup (the framework would otherwise trust any peer).
 - Input hardening: VIN, email, phone, name length limits; GUID route constraints; date parsing restricted to `yyyy-MM-dd`.
 - Build hardening: `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, `<AnalysisLevel>latest-recommended</AnalysisLevel>`, `<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>`.
 - Container hardening: multi-stage Dockerfile, non-root user, no SDK in the runtime image, health check.

@@ -84,6 +84,9 @@ public static class SchedulerRateLimiting
             Instance = http.Request.Path,
         };
         problem.Extensions["retryAfterSeconds"] = seconds;
-        await http.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new ProblemDetailsContext { HttpContext = http, ProblemDetails = problem });
+
+        // TryWriteAsync, not WriteAsync: when the client's Accept header excludes JSON nothing can be written, and WriteAsync would
+        // throw, turning the 429 into a 500. The status and Retry-After above already carry the answer.
+        await http.RequestServices.GetRequiredService<IProblemDetailsService>().TryWriteAsync(new ProblemDetailsContext { HttpContext = http, ProblemDetails = problem });
     }
 }

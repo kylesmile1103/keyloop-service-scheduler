@@ -190,6 +190,9 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
 
         var problem = await ReadProblemAsync(response, HttpStatusCode.BadRequest, "validation-error");
         problem.GetProperty("title").GetString().ShouldBe("Validation failed");
+        var errors = problem.GetProperty("errors"); // §8.7: validation-error always carries errors, here with no field to name
+        errors.ValueKind.ShouldBe(JsonValueKind.Object);
+        errors.EnumerateObject().ShouldBeEmpty();
     }
 
     private async Task<JsonElement> ProblemAsync(string kind, HttpStatusCode status, string slug)

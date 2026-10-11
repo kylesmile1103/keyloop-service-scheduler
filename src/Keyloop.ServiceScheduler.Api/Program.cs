@@ -73,15 +73,27 @@ builder.Services.AddOptions<CorsOptions>().Configure<IOptions<SecurityOptions>>(
     }
 }));
 builder.Services.AddSchedulerRateLimiting();
+builder.Services.AddSchedulerForwardedHeaders();
 builder.Services.AddSingleton<SecurityHeadersMiddleware>();
 builder.Services.AddScoped<CurrentActorMiddleware>();
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024);
 
 var app = builder.Build();
 
+// Validate every ValidateOnStart options type now: the host would do it only in StartAsync, after the database initialiser below
+// has already migrated or seeded on a misconfigured instance.
+app.Services.GetRequiredService<IStartupValidator>().Validate();
+
 var apiReference = !app.Environment.IsProduction();
 var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+var security = app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value;
 app.Logger.ApiStarting(app.Environment.EnvironmentName, database.MigrateOnStartup, database.SeedDemoData, apiReference ? "on" : "off", "anonymous (authentication is deferred)");
+
+// First, so that everything after it sees the client's address and scheme rather than the ingress's.
+if (security.ForwardedHeaders.Enabled)
+{
+    app.UseForwardedHeaders();
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

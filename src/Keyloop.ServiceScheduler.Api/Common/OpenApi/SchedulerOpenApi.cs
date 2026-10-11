@@ -51,7 +51,7 @@ internal static class SchedulerOpenApi
     public static IServiceCollection AddSchedulerOpenApi(this IServiceCollection services) =>
         services.AddOpenApi(DocumentName, options => options.AddDocumentTransformer(TransformDocument));
 
-    private static Task TransformDocument(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
+    internal static Task TransformDocument(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
     {
         document.Info = new OpenApiInfo
         {
@@ -61,17 +61,37 @@ internal static class SchedulerOpenApi
         };
         document.Servers = [];
 
-        // Fixed order first; a tag outside the list (a review miss) is kept rather than silently dropped.
-        var tags = new HashSet<OpenApiTag>(Tags.Select(tag => new OpenApiTag { Name = tag.Name, Description = tag.Description }));
+        // The order is explicit (a sorted set ranked by the fixed list), not a hash set's enumeration order, so the build-time document
+        // is byte-stable. A tag outside the list (a review miss) is kept after the fixed ones, by name, rather than silently dropped.
+        var tags = new SortedSet<OpenApiTag>(TagOrder.Instance);
+        foreach (var (name, description) in Tags)
+        {
+            tags.Add(new OpenApiTag { Name = name, Description = description });
+        }
+
         foreach (var extra in document.Tags ?? Enumerable.Empty<OpenApiTag>())
         {
-            if (!Tags.Any(tag => tag.Name == extra.Name))
-            {
-                tags.Add(extra);
-            }
+            tags.Add(extra); // a fixed tag compares equal to its listed entry, which is kept
         }
 
         document.Tags = tags;
         return Task.CompletedTask;
+    }
+
+    private sealed class TagOrder : IComparer<OpenApiTag>
+    {
+        public static readonly TagOrder Instance = new();
+
+        public int Compare(OpenApiTag? x, OpenApiTag? y)
+        {
+            var byRank = Rank(x).CompareTo(Rank(y));
+            return byRank != 0 ? byRank : string.CompareOrdinal(x?.Name, y?.Name);
+        }
+
+        private static int Rank(OpenApiTag? tag)
+        {
+            var index = Array.FindIndex(Tags, fixedTag => fixedTag.Name == tag?.Name);
+            return index < 0 ? Tags.Length : index;
+        }
     }
 }

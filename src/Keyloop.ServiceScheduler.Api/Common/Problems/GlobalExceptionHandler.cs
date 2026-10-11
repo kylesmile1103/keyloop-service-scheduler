@@ -66,22 +66,24 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
 
         // Binding failures (missing or malformed parameters, unreadable JSON). RouteHandlerOptions.ThrowOnBadRequest is on in every
         // environment so they all arrive here; the framework's message names C# types, so the detail is generic.
+        // validation-error always carries `errors` (§8.7); a binding failure names no field, so it is empty.
         BadHttpRequestException { StatusCode: StatusCodes.Status400BadRequest } => Problem(
-            StatusCodes.Status400BadRequest, ProblemTypes.ValidationError, "The request could not be read: a parameter is missing or malformed, or the body is not valid JSON."),
+            new HttpValidationProblemDetails(), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError,
+            "The request could not be read: a parameter is missing or malformed, or the body is not valid JSON."),
         BadHttpRequestException other => new ProblemDetails { Status = other.StatusCode }, // e.g. 413: the framework's default type and title for the status
 
         _ => Problem(StatusCodes.Status500InternalServerError, ProblemTypes.InternalError, UnexpectedDetail),
     };
 
-    private static ProblemDetails Problem(int status, string type, string detail, KeyValuePair<string, object?>[]? extensions = null)
+    private static ProblemDetails Problem(int status, string type, string detail, KeyValuePair<string, object?>[]? extensions = null) =>
+        Problem(new ProblemDetails(), status, type, detail, extensions);
+
+    private static ProblemDetails Problem(ProblemDetails problem, int status, string type, string detail, KeyValuePair<string, object?>[]? extensions = null)
     {
-        var problem = new ProblemDetails
-        {
-            Status = status,
-            Type = type,
-            Title = ProblemTypes.TitleFor(type) ?? ProblemTypes.UncataloguedRuleTitle,
-            Detail = detail,
-        };
+        problem.Status = status;
+        problem.Type = type;
+        problem.Title = ProblemTypes.TitleFor(type) ?? ProblemTypes.UncataloguedRuleTitle;
+        problem.Detail = detail;
         foreach (var (key, value) in extensions ?? [])
         {
             problem.Extensions[key] = value;

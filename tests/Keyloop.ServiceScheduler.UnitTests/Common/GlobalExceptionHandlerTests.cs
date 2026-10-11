@@ -134,6 +134,7 @@ public class GlobalExceptionHandlerTests
         problem.Type.ShouldBe(ProblemTypes.ValidationError);
         problem.Title.ShouldBe("Validation failed");
         problem.Detail.ShouldNotBeNull().ShouldNotContain("BookAppointmentRequest");
+        problem.ShouldBeOfType<HttpValidationProblemDetails>().Errors.ShouldBeEmpty(); // validation-error always carries `errors` (§8.7)
     }
 
     [Fact]
@@ -229,8 +230,14 @@ public class GlobalExceptionHandlerTests
         /// <summary>False simulates a request whose Accept header excludes JSON: the real service then writes nothing.</summary>
         public bool Accepts { get; set; } = true;
 
+        // The real ProblemDetailsService throws from WriteAsync when no writer accepts the request (Accept excludes JSON).
         public ValueTask WriteAsync(ProblemDetailsContext context)
         {
+            if (!Accepts)
+            {
+                throw new InvalidOperationException("Unable to find a registered `IProblemDetailsWriter` that can write to the given context.");
+            }
+
             Written.Add(context);
             return ValueTask.CompletedTask;
         }
