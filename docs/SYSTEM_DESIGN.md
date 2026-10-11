@@ -962,7 +962,7 @@ Four environments share one codebase; behaviour differs only by configuration, n
 | Secret source | AppHost user secrets (generated on first run; nothing typed by hand) | Testcontainers credentials per run | Platform secret store → parameters | Platform secret store → parameters (rotated) |
 | DB role | Single dev role | Single role | `scheduler_app` (DML only); migrations run as owner | Same, least privilege |
 
-Configuration sources (last wins): `appsettings.json` → `appsettings.{Environment}.json` → environment variables (Aspire injects `ConnectionStrings__schedulerdb`, `OTEL_*`) → user-secrets (Development only). All strongly-typed options use `ValidateDataAnnotations().ValidateOnStart()` so a misconfigured deployment fails fast at boot rather than at first request.
+Configuration sources (last wins): `appsettings.json` → `appsettings.{Environment}.json` → environment variables (Aspire injects `ConnectionStrings__schedulerdb`, `OTEL_*`) → user-secrets (Development only). All strongly-typed options are validated with `ValidateOnStart()` by `[OptionsValidator]` source-generated validators (§9.1) so a misconfigured deployment fails fast at boot rather than at first request.
 
 A fifth environment, **Demo**, exists only for the Aspire-published Docker Compose bundle: UAT's security posture (rate limits on, Scalar on, no secrets in files) with migrations and demo seeding at startup and HSTS off because compose serves plain HTTP. It is a convenience for evaluators without the .NET SDK, not a deployment target.
 
