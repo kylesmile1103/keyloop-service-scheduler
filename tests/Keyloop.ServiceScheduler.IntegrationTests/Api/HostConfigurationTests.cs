@@ -51,6 +51,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("proxy", "Security:ForwardedHeaders:KnownProxies:0", "not-an-ip", "SecurityOptions", "KnownProxies")]
     [InlineData("network", "Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/33", "SecurityOptions", "KnownNetworks")]
     [InlineData("trust_all", "Security:ForwardedHeaders:Enabled", "true", "SecurityOptions", "ForwardedHeaders")]
+    [InlineData("reseed_key", "Demo:ReseedKey", "too-short", "DemoOptions", "ReseedKey")]
     public async Task Invalid_configuration_fails_startup_before_any_database_work(string name, string key, string value, string optionsType, string member)
     {
         // A fresh, empty database: if startup migrated before validating, the history table would exist afterwards.

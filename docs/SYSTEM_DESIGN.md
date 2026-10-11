@@ -476,6 +476,8 @@ Why `READ COMMITTED` matters: under `REPEATABLE READ` the snapshot is taken at t
 
 Why there can be no deadlock: each booking transaction acquires exactly one lock it waits for while holding nothing else (the dealership key), *before* any write, and the appointment insert is its only insert contended on the resources. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking reads, inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships interact only through the idempotency-key row, the scoped exception in ADR-003: the expired-key `DELETE` and the key `INSERT` can wait, but only on the *same key* being used at *another* dealership at the same moment. The waiter then holds only its own dealership's lock, which the transaction it waits for never requests, and a transaction inserts its key only after its own appointment insert has succeeded, after which it waits for nothing. So the wait cannot close a cycle either. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second lock or perform a second contended insert, except on its own idempotency-key row*.
 
+The Development-only demo reseed (`POST /admin/demo/reseed`, §8.7) is not a booking transaction. It takes both demo dealerships' locks, always in the same order, before it deletes anything, so a booking in flight finishes first and a later one waits and then sees the new week. That cannot close a cycle either: a booking holds one dealership's lock and never waits for another, and two reseeds take the locks in the same order.
+
 Lock key: a stable 64-bit value derived from the dealership id (`BitConverter.ToInt64(id.ToByteArray(), 0)`). The two-argument form `pg_advisory_xact_lock(namespace, hashtext(id::text))` would also work; the single `bigint` form is used for simplicity.
 
 Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a site. A busy site books tens to low hundreds of appointments per day; a critical section of ~2–5 ms yields capacity of hundreds of bookings per second per dealership — three orders of magnitude above demand. If a future multi-site tenant ever needed more, the refinement is two locks keyed on `(bay_id)` and `(technician_id)` acquired in *sorted key order* (which again cannot cycle). Noted in §17.
@@ -642,7 +644,8 @@ src/Keyloop.ServiceScheduler.Api/
 │   ├── Appointments/BookAppointment/   Endpoint, Command, Validator, Handler, Response, IdempotencyGuard
 │   ├── Appointments/GetAppointment/
 │   ├── Appointments/CancelAppointment/
-│   └── Schedule/GetWorkshopSchedule/
+│   ├── Schedule/GetWorkshopSchedule/
+│   └── Demo/ReseedDemoData/            the Aspire dashboard's reseed command (Development only, outside the contract)
 ├── Infrastructure/
 │   ├── Persistence/   SchedulerDbContext, Configurations/*, Migrations/*, Seeding/*, Interceptors/DomainEventInterceptor,
 │   │                  DealershipLock, PostgresErrorClassifier, DatabaseInitializer (migrate + seed, env-gated)
@@ -654,9 +657,9 @@ src/Keyloop.ServiceScheduler.Api/
 │   ├── Validation/    ValidationFilter (FluentValidation -> 400 validation-error)
 │   ├── Problems/      ProblemTypes, ProblemDetailsFactory, GlobalExceptionHandler
 │   ├── Telemetry/     SchedulerTelemetry (ActivitySource, Meter, instruments)
-│   └── Options/       SchedulingOptions, DatabaseOptions, SecurityOptions (validated on start)
+│   └── Options/       SchedulingOptions, DatabaseOptions, SecurityOptions, DemoOptions (validated on start)
 ├── appsettings.json / appsettings.{Development,SystemTest,UAT,Production}.json
-└── Dockerfile                          # multi-stage, non-root, read-only FS friendly
+└── Dockerfile                          # multi-stage, non-root (uid 1654), /alive health check, read-only FS friendly
 ```
 
 Conventions:
@@ -797,6 +800,7 @@ Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never
 | `GET /appointments/{appointmentId}` | Read one appointment in any status (a booking's `Location` points here) | `200`, the appointment (the booking's body shape) | `404 not-found`, `429` |
 | `POST /appointments/{appointmentId}/cancel` | Cancel a `Confirmed` or `CheckedIn` appointment with `{ reason }` (1–500 characters after trimming; stored and audited, never logged); its slot is re-bookable at once; rate-limited by the stricter write policy like booking | `200`, the appointment as read back after the commit (`status: Cancelled`, `cancellationReason`, `updatedAtUtc`) | `400 validation-error` (`reason`), `404 not-found`, `409 invalid-state-transition` (`currentStatus`, `attempted: cancel`) / `concurrency-conflict`, `429` |
 | `GET /openapi/v1.json` · `GET /scalar/v1` | Contract and interactive reference (not in Production) | `200` | — |
+| `POST /admin/demo/reseed` | Development only and **not in the OpenAPI contract**: the Aspire dashboard's *Reseed demo data* command. Deletes the demo dealerships' appointments in every status, with their history rows and idempotency keys, and books the deterministic demo week again, in one transaction under both dealership locks (§7.3). Mapped only when `Database:SeedDemoData` is true and `Demo:ReseedKey` is set (the AppHost generates a key for each run; at least 16 characters); header `X-Reseed-Key`, compared in fixed time; write rate limit | `200` `{ appointmentsDeleted, appointmentsCreated }` | `404` for a missing or wrong key, the same answer as an unknown route (never `401`, which would advertise it), `429` |
 | `GET /health` · `GET /alive` | Readiness (includes DB) and liveness | `200/503` | — |
 
 **Problem type catalogue** (`type` is `https://api.keyloop.example/problems/{slug}`; the `.example` TLD is reserved for documentation):
@@ -922,7 +926,7 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 
 | Concern | Choice (version) | Why | Alternatives considered |
 |---------|------------------|-----|-------------------------|
-| Orchestration | **.NET Aspire 13.6** (`Aspire.AppHost.Sdk`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`) | One-command local stack, service discovery, OTLP wiring, dashboard; first-class Vite support (`AddViteApp`) and publish-time Dockerfile/migration-bundle generation | docker-compose (no telemetry/dashboard, manual env plumbing) |
+| Orchestration | **.NET Aspire 13.6** (`Aspire.AppHost.Sdk`, `Aspire.Hosting.PostgreSQL`, `Aspire.Hosting.JavaScript`, `Aspire.Hosting.Docker`) | One-command local stack, service discovery, OTLP wiring, dashboard; first-class Vite support (`AddViteApp`) and publish-time Dockerfile/migration-bundle generation | docker-compose (no telemetry/dashboard, manual env plumbing) |
 | Runtime / API | **.NET 10 (LTS)** Minimal APIs, `TypedResults`, built-in OpenAPI (`Microsoft.AspNetCore.OpenApi`) | Brief-mandated; minimal APIs fit vertical slices; built-in OpenAPI generator is accurate for `TypedResults` | Controllers + Swashbuckle (more ceremony, legacy generator) |
 | Architecture style | **Vertical Slice + DDD** without a mediator | Each capability is independently readable and testable; domain owns invariants | Clean Architecture layers (more projects, more indirection for the same slice count); MediatR (now commercial) |
 | ORM | **EF Core 10** + **Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3** (via `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL`) | Code-first migrations, LINQ projections, Npgsql's range/array support, `xmin` tokens, Aspire health/tracing integration | Dapper (hand-written SQL everywhere; fine for reads, poor for aggregates) |
@@ -933,7 +937,7 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 | API test UI | **Scalar.AspNetCore 2.17** at `/scalar/v1` | Modern interactive client (request history, editable bodies prefilled from XML `<example>`s, code snippets), OpenAPI 3.1, dark mode; off in Production (ADR-018) | Swagger UI via `Swashbuckle.AspNetCore.SwaggerUI` 10.3 (familiar, older UX); ReDoc (read-only); `Scalar.Aspire` 0.11 (pre-1.0, extra container) |
 | Telemetry | **OpenTelemetry 1.19** via ServiceDefaults + custom `ActivitySource`/`Meter`; `Npgsql.OpenTelemetry` | Vendor-neutral; Aspire dashboard locally, any OTLP backend in UAT/Prod | Application Insights SDK (vendor lock-in) |
 | Resilience | `Microsoft.Extensions.Http.Resilience`; Npgsql execution strategy | Standard handlers; DB transient retries re-run the whole lock+check+insert unit | Polly direct |
-| Testing | **xunit.v3 4.0**, **Shouldly 4.3**, **Testcontainers.PostgreSql 4.16**, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.Extensions.TimeProvider.Testing` | Real PostgreSQL semantics for the concurrency proof; `FakeTimeProvider` for time rules | `Aspire.Hosting.Testing` (boots the whole AppHost — slower, used optionally for a smoke test) |
+| Testing | **xunit.v3 4.0**, **Shouldly 4.3**, **Testcontainers.PostgreSql 4.16**, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.Extensions.TimeProvider.Testing` | Real PostgreSQL semantics for the concurrency proof; `FakeTimeProvider` for time rules | `Aspire.Hosting.Testing` (boots the whole AppHost — slower; used for the whole-stack smoke test in its own project, §14.3) |
 | Frontend | **React 19.3, Vite 8, TypeScript 6, Tailwind 4, shadcn/ui (Base UI), react-router-dom 7, react-hook-form + zod 4, TanStack Query 5.104** | Brief-mandated; matches the provided template's conventions exactly | — |
 | Contract sync | **Build-time OpenAPI** (`Microsoft.Extensions.ApiDescription.Server` 10.0) + **XML-comment source generator** (`Microsoft.AspNetCore.OpenApi`) → **@hey-api/openapi-ts 0.99** with `@hey-api/client-fetch` and `@tanstack/react-query` plugins | Document produced by `dotnet build`, descriptions/examples compiled from XML comments, typed SDK and `queryOptions`/`mutationOptions` generated from the committed file; drift caught in CI | openapi-typescript + hand-written hooks; exporting the document from a test (earlier draft, replaced) |
 | Package management | pnpm 12 (web), NuGet Central Package Management (`Directory.Packages.props`) | Single source of truth for versions; reproducible installs | — |
@@ -979,7 +983,7 @@ Four environments share one codebase; behaviour differs only by configuration, n
 | Lead time / horizon | 0 min / 90 days | 0 / 90 | 60 min / 90 days | 60 min / 90 days |
 | HTTPS / HSTS | Dev certificate; HSTS off | Off | TLS at ingress; HSTS on | TLS at ingress; HSTS on |
 | Telemetry export | Aspire dashboard (OTLP injected by AppHost) | None (in-memory exporters in tests) | OTLP collector → vendor | OTLP collector → vendor; sampling 100 % traces at this volume |
-| Secrets | Aspire parameters + user-secrets (`postgres-password` generated) | Testcontainers-generated | Key vault / env vars injected by platform | Key vault; DB auth via managed identity or rotated secrets |
+| Secrets | Aspire parameters + user-secrets (`postgres-password` generated once and persisted; the demo reseed key generated for each run) | Testcontainers-generated | Key vault / env vars injected by platform | Key vault; DB auth via managed identity or rotated secrets |
 | Secret source | AppHost user secrets (generated on first run; nothing typed by hand) | Testcontainers credentials per run | Platform secret store → parameters | Platform secret store → parameters (rotated) |
 | DB role | Single dev role | Single role | `scheduler_app` (DML only); migrations run as owner | Same, least privilege |
 
@@ -1015,9 +1019,10 @@ flowchart LR
 
 - Security headers middleware: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on API responses, `Permissions-Policy` minimal; HSTS outside Development.
 - CORS: default-deny; allowed origins come from configuration (`Security:AllowedOrigins`, exact http(s) origins only — `*` fails startup) and are empty in Development because the Vite proxy keeps the browser same-origin.
-- Rate limiting: named policies `global` and `booking`, partitioned per client IP (`booking` is the stricter write policy, applied on top of `global` to both state-changing routes: booking and cancellation), `429` with `rate-limited` problem and `Retry-After` (also for clients that do not accept JSON); health probes are exempt.
+- Rate limiting: named policies `global` and `booking`, partitioned per client IP (`booking` is the stricter write policy, applied on top of `global` to the state-changing routes: booking, cancellation and the Development-only demo reseed), `429` with `rate-limited` problem and `Retry-After` (also for clients that do not accept JSON); health probes are exempt.
 - Forwarded headers: behind the TLS-terminating ingress (UAT/Production, `Security:ForwardedHeaders`), `X-Forwarded-For`/`X-Forwarded-Proto` are honoured as the first middleware, from configured `KnownProxies`/`KnownNetworks` only and for the last hop only, so rate-limit partitions, the audit actor and HTTPS redirection see the client. Enabling it without a trusted proxy or network fails startup (the framework would otherwise trust any peer). UAT and Production enable it but ship both lists empty, so startup fails until the platform supplies the ingress addresses (e.g. `Security__ForwardedHeaders__KnownNetworks__0=10.0.0.0/24`): a shipped default would be unsafe to override, because configuration arrays merge by index and an override of entry 0 keeps the remaining entries trusted.
 - Input hardening: VIN, email, phone, name length limits; GUID route constraints; date parsing restricted to `yyyy-MM-dd`.
+- Demo reseed route (Development only): mapped only with demo data seeded and an AppHost-generated key (at least 16 characters, validated at startup without echoing it); the `X-Reseed-Key` header is compared in fixed time over SHA-256 digests; a missing or wrong key gets the unknown-route `404` and a Warning log (1106) that never contains the key; excluded from the OpenAPI contract.
 - Build hardening: `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, `<AnalysisLevel>latest-recommended</AnalysisLevel>`, `<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>`.
 - Container hardening: multi-stage Dockerfile, non-root user, no SDK in the runtime image, health check.
 - Database: migrations are the only DDL path; the application never runs with superuser in UAT/Production (documented role split).
@@ -1070,7 +1075,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 A request the framework cannot bind at all (a body that is not JSON, a `413`) never reaches the booking endpoint's filters or handler, so it has no booking outcome: it is visible as `http.server.request.duration` with `http.response.status_code` 400 (or 413) on the booking route, and `GlobalExceptionHandler` answers it.
 
-**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` — written after the commit, with the previous status and never the reason, …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
+**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` — written after the commit, with the previous status and never the reason, `1105 DemoDataReseeded`, `1106 DemoReseedRefused` (never the key), …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
 
 ### 12.2 Correlation
 
@@ -1132,7 +1137,7 @@ One container per test session; each test class gets a fresh schema via migratio
 
 ### 14.3 Why Testcontainers + WebApplicationFactory rather than Aspire.Hosting.Testing
 
-The concurrency proof must hit a *real* PostgreSQL (exclusion constraints and advisory locks have no in-memory equivalent), and it must be fast and hermetic in CI. `Aspire.Hosting.Testing` boots the whole AppHost (including the Vite app) which is slower and brings unrelated failure modes; it is kept as an optional smoke test (`[Trait("Category","Aspire")]`) that asserts the composed application starts and `/health` returns healthy.
+The concurrency proof must hit a *real* PostgreSQL (exclusion constraints and advisory locks have no in-memory equivalent), and it must be fast and hermetic in CI. `Aspire.Hosting.Testing` boots the whole AppHost (including the Vite app) which is slower and brings unrelated failure modes; it is kept as a whole-stack smoke test (`[Trait("Category","Aspire")]`) in its own project, `tests/Keyloop.ServiceScheduler.AspireTests`: Aspire.Hosting runs in the test process and deserialises DCP's answers with reflection-based JSON, which the integration test process disables so that it fails where the API would (ADR-016). It asserts that the API becomes healthy on the composed database, serves the seeded dealerships, is linked to Scalar, and that the *Reseed demo data* command works end to end through the key-protected route; a model check pins the Development database's persistence and generated secret credentials. The run itself is hermetic: it supplies the database password (so the developer's user secrets are neither read nor written) and runs PostgreSQL and pgweb with session lifetimes and no named volume (so nothing is left behind and the persistent development database is never touched).
 
 ### 14.4 Adversarial concurrency test (the brief's acceptance criterion)
 
@@ -1153,7 +1158,7 @@ A second variant removes the advisory lock (via a test-only option) to *demonstr
 
 ### 14.6 Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`): restore/build with warnings-as-errors → unit tests → integration + concurrency tests (Docker available on `ubuntu-latest`) → `dotnet list package --vulnerable` → contract regeneration + `git diff --exit-code` → `pnpm install --frozen-lockfile`, lint, typecheck, vitest, build. Test results and coverage (`coverlet`) are uploaded as artefacts.
+GitHub Actions (`.github/workflows/ci.yml`): restore/build with warnings-as-errors → unit tests → integration + concurrency tests (Docker available on `ubuntu-latest`) → `dotnet list package --vulnerable` → contract regeneration + `git diff --exit-code` → `pnpm install --frozen-lockfile`, lint, typecheck, vitest, build → the Aspire smoke test (`dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests`). Test results and coverage (`coverlet`) are uploaded as artefacts.
 
 ---
 
@@ -1234,7 +1239,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-010** | Authentication/authorisation deferred with an explicit seam and anonymous-mode logging | Keeps the evaluated engine in focus; production posture documented. |
 | **ADR-011** | Problem type catalogue: 400 malformed, 422 business rule, 409 state conflict; RFC 9457 | Clients branch on `type`; no text parsing. |
 | **ADR-012** | Vite dev proxy for same-origin API access; CORS default-deny with configured origins | No CORS complexity in development; production via ingress. |
-| **ADR-013** | Testcontainers + `WebApplicationFactory` for integration/concurrency tests; `Aspire.Hosting.Testing` optional smoke | Real PostgreSQL semantics, fast and hermetic. |
+| **ADR-013** | Testcontainers + `WebApplicationFactory` for integration/concurrency tests; `Aspire.Hosting.Testing` whole-stack smoke test in its own project (`tests/Keyloop.ServiceScheduler.AspireTests`, Category `Aspire`), because Aspire.Hosting needs reflection-based JSON, which the integration test process disables (ADR-016) | Real PostgreSQL semantics, fast and hermetic. |
 | **ADR-014** | GUID v7 primary keys | Index locality without exposing sequence; generated in the domain. |
 | **ADR-015** | Domain events persisted as `appointment_history` rows in the same transaction (lightweight outbox) | Audit trail is atomic with the change; integration events can relay from the same table later. |
 | **ADR-016** | Prefer build-time source generation over runtime reflection: RDG, STJ source generation with reflection disabled, Mapperly, configuration-binding and options-validator generators, `[LoggerMessage]`, explicit endpoint/DI/validator registration; keep MEDI as the container; FluentValidation and EF Core are the measured residue | Stakeholder direction (2026-10-11). Consequence: missing JSON registrations and unmapped DTO members are build/test failures; `scripts/aot-readiness.sh` tracks the residue; `PublishAot` is not enabled yet. |

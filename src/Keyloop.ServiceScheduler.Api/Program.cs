@@ -14,6 +14,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
+using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
@@ -39,6 +40,8 @@ builder.Services.AddSingleton<IValidateOptions<SchedulingOptions>, SchedulingOpt
 builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateOnStart(); // nothing to validate beyond binding
 builder.Services.AddOptions<SecurityOptions>().BindConfiguration(SecurityOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
+builder.Services.AddOptions<DemoOptions>().BindConfiguration(DemoOptions.SectionName).ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<DemoOptions>, DemoOptionsValidator>();
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp =>
@@ -77,6 +80,7 @@ builder.Services.AddScoped<CancelAppointmentHandler>();
 builder.Services.AddScoped<IValidator<CancelAppointmentRequest>, CancelAppointmentValidator>();
 builder.Services.AddScoped<GetWorkshopScheduleHandler>();
 builder.Services.AddScoped<IValidator<GetWorkshopScheduleQuery>, GetWorkshopScheduleValidator>();
+builder.Services.AddScoped<ReseedDemoDataHandler>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);

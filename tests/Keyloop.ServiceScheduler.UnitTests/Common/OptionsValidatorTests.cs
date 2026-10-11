@@ -13,6 +13,7 @@ public class OptionsValidatorTests
     {
         new SchedulingOptionsValidator().Validate(null, new SchedulingOptions()).Succeeded.ShouldBeTrue();
         new SecurityOptionsValidator().Validate(null, new SecurityOptions()).Succeeded.ShouldBeTrue();
+        new DemoOptionsValidator().Validate(null, new DemoOptions()).Succeeded.ShouldBeTrue();
     }
 
     [Theory]
@@ -94,6 +95,27 @@ public class OptionsValidatorTests
         {
             ForwardedHeaders = new() { Enabled = true, KnownProxies = ["10.1.2.3", "::1"], KnownNetworks = ["10.0.0.0/8", "fd00::/8"] },
         }).Succeeded.ShouldBeTrue();
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("0123456789abcdef")]
+    public void Reseed_key_is_optional_but_at_least_16_characters_when_set(string? key) =>
+        // No key means no reseed route (Addendum C §C3); an empty value, as an unset environment variable binds, is no key either.
+        new DemoOptionsValidator().Validate(null, new DemoOptions { ReseedKey = key }).Succeeded.ShouldBeTrue();
+
+    [Theory]
+    [InlineData("x")]
+    [InlineData("0123456789abcde")]
+    public void Reseed_key_shorter_than_16_characters_is_rejected(string key)
+    {
+        // The key is all that stands between a caller and wiping the demo data, so a guessable one fails the boot.
+        var result = new DemoOptionsValidator().Validate(null, new DemoOptions { ReseedKey = key });
+
+        result.Failed.ShouldBeTrue();
+        result.FailureMessage.ShouldContain(nameof(DemoOptions.ReseedKey));
+        result.FailureMessage.ShouldNotContain(key, Case.Sensitive, "a validation message never echoes the secret");
+    }
 
     [Fact]
     public void Binding_an_invalid_value_from_configuration_fails_validation()

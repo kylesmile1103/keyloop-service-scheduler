@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Keyloop.ServiceScheduler.In
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Keyloop.ServiceScheduler.AppHost", "src\Keyloop.ServiceScheduler.AppHost\Keyloop.ServiceScheduler.AppHost.csproj", "{F935B14E-8533-42BC-AAAB-26DFF2CD83D1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Keyloop.ServiceScheduler.AspireTests", "tests\Keyloop.ServiceScheduler.AspireTests\Keyloop.ServiceScheduler.AspireTests.csproj", "{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{F935B14E-8533-42BC-AAAB-26DFF2CD83D1}.Release|x64.Build.0 = Release|Any CPU
 		{F935B14E-8533-42BC-AAAB-26DFF2CD83D1}.Release|x86.ActiveCfg = Release|Any CPU
 		{F935B14E-8533-42BC-AAAB-26DFF2CD83D1}.Release|x86.Build.0 = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|x64.Build.0 = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Debug|x86.Build.0 = Debug|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|Any CPU.Build.0 = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|x64.ActiveCfg = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|x64.Build.0 = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|x86.ActiveCfg = Release|Any CPU
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{7684A811-066A-408C-99FC-BA687D44112E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{4AFAF8F5-068D-4DA4-A4C9-BBAD19F12FFB} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{F935B14E-8533-42BC-AAAB-26DFF2CD83D1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{811A14ED-FCE7-46F7-B7B2-98C61FDC6595} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
@@ -5,7 +6,9 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
+using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Endpoints;
 
@@ -25,6 +28,13 @@ public static class EndpointRegistry
         GetAppointmentEndpoint.Map(group);
         CancelAppointmentEndpoint.Map(group);
         GetWorkshopScheduleEndpoint.Map(group);
+
+        // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
+        var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+        if (app.Services.GetRequiredService<IOptions<DemoOptions>>().Value.ReseedEnabled(database))
+        {
+            ReseedDemoDataEndpoint.Map(group);
+        }
 
         if (app.Environment.IsEnvironment("SystemTest"))
         {

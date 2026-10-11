@@ -7,7 +7,8 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// Source-generated log methods with stable event ids (Addendum A §A5); product code logs only through these. Ids:
 /// 1001 BookingConfirmed (written by the post-commit TelemetryDomainEventObserver), 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected,
 /// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
-/// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog); 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
+/// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog), 1105 DemoDataReseeded, 1106 DemoReseedRefused;
+/// 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
 /// </summary>
 internal static partial class SchedulerLog
 {
@@ -75,6 +76,19 @@ internal static partial class SchedulerLog
     [LoggerMessage(EventId = 1104, EventName = "StartupConfigurationFailed", Level = LogLevel.Critical,
         Message = "Configuration could not be loaded; the API will not start: {ExceptionType}: {Detail}")]
     public static partial void StartupConfigurationFailed(this ILogger logger, string exceptionType, string detail);
+
+    /// <summary>The Aspire dashboard's <em>Reseed demo data</em> command replaced the demo dealerships' appointments (Addendum C §C3).</summary>
+    [LoggerMessage(EventId = 1105, EventName = "DemoDataReseeded", Level = LogLevel.Information,
+        Message = "Demo data reseeded: {Deleted} appointment(s) deleted, {Created} created")]
+    public static partial void DemoDataReseeded(this ILogger logger, int deleted, int created);
+
+    /// <summary>
+    /// A reseed request carried no <c>X-Reseed-Key</c> or the wrong one and was answered like an unknown route. The key presented is never
+    /// logged, right or wrong.
+    /// </summary>
+    [LoggerMessage(EventId = 1106, EventName = "DemoReseedRefused", Level = LogLevel.Warning,
+        Message = "Demo reseed refused: the X-Reseed-Key header was missing or wrong; answered 404")]
+    public static partial void DemoReseedRefused(this ILogger logger);
 
     [LoggerMessage(EventId = 1200, EventName = "UnhandledException", Level = LogLevel.Error,
         Message = "Unhandled exception for {Method} {Path}; answered 500 internal-error")]
