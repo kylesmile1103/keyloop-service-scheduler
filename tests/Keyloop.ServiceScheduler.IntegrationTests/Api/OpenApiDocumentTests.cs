@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
@@ -96,6 +97,68 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         var duration = schemas.GetProperty("ServiceTypeResponse").GetProperty("properties").GetProperty("durationMinutes");
         duration.GetProperty("type").GetString().ShouldBe("integer");
         duration.TryGetProperty("pattern", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Availability_operation_documents_typed_required_parameters_with_seeded_examples()
+    {
+        using var document = JsonDocument.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct));
+        var root = document.RootElement;
+        var availability = root.GetProperty("paths").GetProperty("/api/v1/dealerships/{dealershipId}/availability").GetProperty("get");
+
+        ShouldBeDocumented(availability, "GetAvailability", "Availability");
+        var responses = availability.GetProperty("responses");
+        responses.GetProperty("200").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString()
+            .ShouldBe("#/components/schemas/AvailabilityResponse");
+        foreach (var (status, schema, reasonPhrase) in new[] { ("400", "HttpValidationProblemDetails", "Bad Request"), ("404", "ProblemDetails", "Not Found") })
+        {
+            var response = responses.GetProperty(status);
+            response.GetProperty("description").GetString().ShouldNotBe(reasonPhrase, $"the <response code=\"{status}\"> comment");
+            response.GetProperty("content").GetProperty("application/problem+json").GetProperty("schema").GetProperty("$ref").GetString()
+                .ShouldBe($"#/components/schemas/{schema}");
+        }
+
+        // The route and query parameters keep their wire names and types, are required, and carry examples from the reference
+        // seed, so Scalar's "Test request" works against a seeded database as is. The date is a string (it binds as one, so the
+        // validator can reject any other form with a field error), documented as an RFC 3339 full-date.
+        var parameters = availability.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
+        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date"], ignoreOrder: true);
+        foreach (var (name, location, format, example) in new[]
+                 {
+                     ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),
+                     ("serviceTypeId", "query", "uuid", ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE").ToString()),
+                     ("date", "query", "date", "2026-10-13"),
+                 })
+        {
+            var parameter = parameters[name];
+            parameter.GetProperty("in").GetString().ShouldBe(location, name);
+            parameter.GetProperty("required").GetBoolean().ShouldBeTrue(name);
+            parameter.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace(name);
+            parameter.GetProperty("example").GetString().ShouldBe(example, name);
+            var schema = parameter.GetProperty("schema");
+            schema.GetProperty("type").GetString().ShouldBe("string", name);
+            schema.GetProperty("format").GetString().ShouldBe(format, name);
+        }
+
+        var schemas = root.GetProperty("components").GetProperty("schemas");
+        foreach (var (schema, properties) in new (string, string[])[]
+                 {
+                     ("AvailabilityResponse", ["date", "timeZoneId", "operatingWindow", "durationMinutes", "slotGranularityMinutes", "slots", "unavailableReason"]),
+                     ("OperatingWindowResponse", ["startUtc", "endUtc", "opensAtLocal", "closesAtLocal"]),
+                     ("AvailabilitySlotResponse", ["startUtc", "endUtc", "startLocal", "freeBays", "freeTechnicians"]),
+                 })
+        {
+            // A nullable object property is oneOf [null, $ref]; its description sits beside the $ref.
+            var described = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject()
+                .Select(p => (p.Name, Described: HasDescription(p.Value)
+                    || (p.Value.TryGetProperty("oneOf", out var branches) && branches.EnumerateArray().Any(HasDescription))))
+                .ToList();
+            described.Select(p => p.Name).ShouldBe(properties, schema);
+            described.Where(p => !p.Described).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
+        }
+
+        static bool HasDescription(JsonElement schema) =>
+            schema.TryGetProperty("description", out var description) && !string.IsNullOrWhiteSpace(description.GetString());
     }
 
     private static void ShouldBeDocumented(JsonElement operation, string operationId, string tag)

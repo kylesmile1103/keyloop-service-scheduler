@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
@@ -7,6 +8,7 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
@@ -54,6 +56,8 @@ builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
 // e.g. builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
 builder.Services.AddScoped<GetDealershipsHandler>();
 builder.Services.AddScoped<GetServiceTypesHandler>();
+builder.Services.AddScoped<GetAvailabilityHandler>();
+builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);

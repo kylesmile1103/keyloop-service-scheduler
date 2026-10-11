@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -14,8 +16,8 @@ public static class ApiTags
 }
 
 /// <summary>
-/// The <c>v1</c> OpenAPI document: fixed info, tags in a fixed order with descriptions, and no <c>servers</c> (Scalar uses the
-/// current origin, and the build-time document must not depend on the host).
+/// The <c>v1</c> OpenAPI document: fixed info, tags in a fixed order with descriptions, no <c>servers</c> (Scalar uses the
+/// current origin, and the build-time document must not depend on the host), and <c>format: date</c> on date parameters bound as text.
 /// </summary>
 internal static class SchedulerOpenApi
 {
@@ -49,7 +51,23 @@ internal static class SchedulerOpenApi
     ];
 
     public static IServiceCollection AddSchedulerOpenApi(this IServiceCollection services) =>
-        services.AddOpenApi(DocumentName, options => options.AddDocumentTransformer(TransformDocument));
+        services.AddOpenApi(DocumentName, options => options.AddDocumentTransformer(TransformDocument).AddSchemaTransformer(TransformParameterSchema));
+
+    /// <summary>
+    /// A parameter marked <c>[DataType(DataType.Date)]</c> is documented as an RFC 3339 full-date (<c>type: string, format: date</c>),
+    /// as a <see cref="DateOnly"/> parameter would be. Such parameters bind as text so that the validator can reject any other form
+    /// with a field error (e.g. <c>GetAvailabilityQuery.Date</c>); Microsoft.AspNetCore.OpenApi does not map the attribute itself.
+    /// </summary>
+    internal static Task TransformParameterSchema(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
+    {
+        if (context.ParameterDescription?.ParameterDescriptor is IParameterInfoParameterDescriptor { ParameterInfo: var parameter }
+            && parameter.GetCustomAttributes(typeof(DataTypeAttribute), inherit: true).OfType<DataTypeAttribute>().Any(a => a.DataType == DataType.Date))
+        {
+            schema.Format = "date";
+        }
+
+        return Task.CompletedTask;
+    }
 
     internal static Task TransformDocument(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
     {

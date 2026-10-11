@@ -3,6 +3,7 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 
@@ -51,5 +52,12 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(IReadOnlyList<DealershipResponse>))]
 [JsonSerializable(typeof(ServiceTypeResponse))]
 [JsonSerializable(typeof(IReadOnlyList<ServiceTypeResponse>))]
-// Tasks 9+: every request, response and extension payload type, including top-level collections.
+// Task 9: availability
+[JsonSerializable(typeof(AvailabilityResponse))]
+[JsonSerializable(typeof(OperatingWindowResponse))]
+[JsonSerializable(typeof(AvailabilitySlotResponse))]
+[JsonSerializable(typeof(IReadOnlyList<AvailabilitySlotResponse>))]
+[JsonSerializable(typeof(DateOnly))] // date (the schedule's too, Task 12)
+[JsonSerializable(typeof(Guid?))] // the serviceTypeId query parameter: the OpenAPI document builds parameter schemas through this resolver too
+// Tasks 10+: every request, response and extension payload type, including top-level collections.
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;
