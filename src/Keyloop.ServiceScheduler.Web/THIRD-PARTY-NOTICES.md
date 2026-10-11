@@ -13,6 +13,14 @@ configuration (Vite, TypeScript, ESLint, `components.json`), the app shell (`com
 `src/index.css`. Files have been modified for this project. The template's own logos, landing pages, demo apps and
 analytics are not included.
 
+Adopted from the template's apps (`vite-version/src/app/`) and adapted to the generated API client, with their sample
+data removed: `dashboard/components/section-cards.tsx` (and `dashboard-2/components/metrics-overview.tsx`) as the dispatch
+board's KPI strip (`app/dispatch/components/kpi-strip.tsx`); `calendar/components/date-picker.tsx` as the board's date
+control (`date-navigator.tsx`); `calendar/components/calendars.tsx` and `calendar-sidebar.tsx` as the lane filter
+(`lane-filter.tsx`); the list view of `calendar/components/calendar-main.tsx` as the phone agenda (`schedule-agenda.tsx`);
+and the mobile sheet of `calendar/components/calendar.tsx` as the board's Filters sheet (`filters-sheet.tsx`). The
+`components/ui/switch.tsx`, `checkbox.tsx` and `collapsible.tsx` primitives are vendored unmodified.
+
 ```
 MIT License
 

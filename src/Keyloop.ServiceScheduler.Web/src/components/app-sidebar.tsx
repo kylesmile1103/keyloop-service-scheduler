@@ -68,7 +68,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="cursor-pointer"
+              className="cursor-pointer pointer-coarse:h-11"
               render={
                 <a href="/scalar/v1" target="_blank" rel="noopener noreferrer" />
               }

@@ -38,7 +38,7 @@ export function NavMain({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 tooltip={item.title}
-                className="cursor-pointer"
+                className="cursor-pointer pointer-coarse:h-11"
                 isActive={isActive(item.url)}
                 render={
                   <Link

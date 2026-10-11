@@ -21,7 +21,7 @@ export function ModeToggle({ variant = "outline" }: ModeToggleProps) {
       variant={variant}
       size="icon"
       onClick={toggleTheme}
-      className="cursor-pointer mode-toggle-button relative overflow-hidden"
+      className="cursor-pointer mode-toggle-button relative overflow-hidden pointer-coarse:size-11"
     >
       {/* Show the icon for the mode you can switch TO */}
       {isDarkMode ? (

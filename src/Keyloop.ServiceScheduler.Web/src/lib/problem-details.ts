@@ -80,3 +80,27 @@ export function describeFailure(error: unknown): FailureDescription {
   }
   return { summary: "Something went wrong, and the server sent no explanation." }
 }
+
+const catalogue = "https://api.keyloop.example/problems/"
+
+/**
+ * The problem's slug from the catalogue (SYSTEM_DESIGN §8.7): the last path segment of its `type`, such as
+ * `invalid-state-transition`. Empty for a problem outside the catalogue (the framework's RFC links) or without a type, so
+ * branching on the slug never matches by accident.
+ */
+export function problemSlug(problem: ProblemDetails): string {
+  if (!problem.type?.startsWith(catalogue)) return ""
+  return problem.type.slice(catalogue.length).split("/").filter(Boolean).at(-1) ?? ""
+}
+
+/**
+ * A validation problem's field errors, one sentence per field, keyed by the form's field paths. The API already keys `errors`
+ * by camelCase JSON path (`customer.email`); each segment's first letter is lowered too, so a PascalCase path
+ * (`Vehicle.Vin`) maps onto the same field. Several messages for one field are joined.
+ */
+export function fieldErrors(problem: ProblemDetails): Record<string, string> {
+  const camel = (segment: string) => segment.charAt(0).toLowerCase() + segment.slice(1)
+  return Object.fromEntries(
+    Object.entries(problem.errors ?? {}).map(([path, messages]) => [path.split(".").map(camel).join("."), messages.join(" ")])
+  )
+}

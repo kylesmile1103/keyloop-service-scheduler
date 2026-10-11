@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { describeFailure, parseProblem, UnexpectedResponseError } from "@/lib/problem-details"
+import { describeFailure, fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 
 const rateLimited = {
   type: "https://api.keyloop.example/problems/rate-limited",
@@ -65,5 +65,56 @@ describe("describeFailure", () => {
 
   it("never shows nothing", () => {
     expect(describeFailure({})).toEqual({ summary: "Something went wrong, and the server sent no explanation." })
+  })
+})
+
+// The cancel endpoint's real answers (captured from the API in Development).
+const alreadyCancelled = {
+  type: "https://api.keyloop.example/problems/invalid-state-transition",
+  title: "Invalid state transition",
+  status: 409,
+  detail: "Cannot cancel this appointment while it is Cancelled.",
+  instance: "/api/v1/appointments/2af6cbb1-1aec-8b16-b666-7a694cced4d0/cancel",
+  currentStatus: "Cancelled",
+  attempted: "cancel",
+  traceId: "00-c891f6205bdf228d5ac20dc267806559-144af9ccbd8f8f2b-01",
+}
+
+describe("the brief's problem helpers", () => {
+  it("parses_hey_api_error_shape", () => {
+    // A mutation built from the generated options throws the body; a direct SDK call returns { data, error, request, response }.
+    const response = new Response(JSON.stringify(alreadyCancelled), { status: 409 })
+    expect(parseProblem(alreadyCancelled)).toBe(alreadyCancelled)
+    expect(parseProblem({ data: undefined, error: alreadyCancelled, request: new Request("http://localhost/"), response })).toBe(
+      alreadyCancelled
+    )
+    expect(parseProblem(alreadyCancelled)?.currentStatus).toBe("Cancelled")
+  })
+
+  it("slug_from_type", () => {
+    expect(problemSlug(alreadyCancelled)).toBe("invalid-state-transition")
+    expect(problemSlug({ type: "https://api.keyloop.example/problems/concurrency-conflict/" })).toBe("concurrency-conflict")
+    // Framework-generated problems keep their RFC links (SYSTEM_DESIGN §8.7); they have no catalogue slug.
+    expect(problemSlug({ type: "https://tools.ietf.org/html/rfc9110#section-15.5.5" })).toBe("")
+    expect(problemSlug({ title: "No type" })).toBe("")
+  })
+
+  it("fieldErrors_lowercases_paths", () => {
+    expect(
+      fieldErrors({
+        errors: {
+          "Vehicle.Vin": ["VIN must be 17 characters.", "VIN must not contain I, O or Q."],
+          "Customer.Email": ["Email is not valid."],
+          ServiceTypeId: ["serviceTypeId is required."],
+          reason: ["reason is required, 1 to 500 characters after trimming."],
+        },
+      })
+    ).toEqual({
+      "vehicle.vin": "VIN must be 17 characters. VIN must not contain I, O or Q.",
+      "customer.email": "Email is not valid.",
+      serviceTypeId: "serviceTypeId is required.",
+      reason: "reason is required, 1 to 500 characters after trimming.",
+    })
+    expect(fieldErrors(alreadyCancelled)).toEqual({})
   })
 })

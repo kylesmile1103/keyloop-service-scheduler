@@ -3,17 +3,20 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup } from "@testing-library/react"
 import { afterEach } from "vitest"
 
+import { matchesWidth } from "@/test/media-query"
+
 afterEach(() => {
   cleanup()
   localStorage.clear()
   document.documentElement.className = ""
 })
 
-// jsdom has no matchMedia (used by the sidebar's mobile hook and the theme provider): report a wide, light-scheme
-// desktop viewport. Tests that need another answer spy on window.matchMedia.
+// jsdom has no matchMedia (used by the sidebar's breakpoint hooks and the theme provider): report a wide (1440 px),
+// light-scheme desktop viewport, answering width queries against that width and everything else with "no".
+// Tests that need another answer spy on window.matchMedia (see viewportOf in src/test/render-board.tsx).
 if (!window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList => ({
-    matches: false,
+    matches: matchesWidth(query, 1440),
     media: query,
     onchange: null,
     addEventListener: () => {},

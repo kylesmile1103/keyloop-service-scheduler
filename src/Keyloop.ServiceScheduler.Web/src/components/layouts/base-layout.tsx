@@ -4,6 +4,10 @@ import * as React from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { useMediaQuery } from "@/hooks/use-media-query"
+
+/** The full layout's width (Tailwind `xl`): below it the sidebar starts off-canvas, opened from the header. */
+const WIDE_LAYOUT = "(min-width: 1280px)"
 
 interface BaseLayoutProps {
   children: React.ReactNode
@@ -14,8 +18,20 @@ interface BaseLayoutProps {
 }
 
 export function BaseLayout({ children, title, description, actions }: BaseLayoutProps) {
+  // Expanded on wide screens, off-canvas on tablets (phones always use the template's sheet). The sidebar follows the
+  // breakpoint when the window crosses it, and otherwise stays as the user left it.
+  const wide = useMediaQuery(WIDE_LAYOUT)
+  const [open, setOpen] = React.useState(wide)
+  const [openFor, setOpenFor] = React.useState(wide)
+  if (openFor !== wide) {
+    setOpenFor(wide)
+    setOpen(wide)
+  }
+
   return (
     <SidebarProvider
+      open={open}
+      onOpenChange={setOpen}
       style={
         {
           "--sidebar-width": "16rem",

@@ -1,5 +1,7 @@
 import type { DayOfWeek, DealershipResponse } from "@/api/types.gen"
 
+import { shiftDate, weekdayOf } from "./calendar-date"
+
 export interface OpeningHours {
   /** Local wall-clock time, `HH:mm`. */
   opensAt: string
@@ -34,4 +36,13 @@ export function hourMarks({ opensAt, closesAt }: OpeningHours): string[] {
   const first = Math.floor(minutes(opensAt) / 60)
   const end = Math.ceil(minutes(closesAt) / 60)
   return Array.from({ length: Math.max(end - first, 0) }, (_, index) => pad(first + index))
+}
+
+/** The first date after `date` (`yyyy-MM-dd`) on which the dealership opens, within a week; `null` when it never opens. */
+export function nextOpenDate(dealership: DealershipResponse, date: string): string | null {
+  for (let days = 1; days <= 7; days++) {
+    const candidate = shiftDate(date, days)
+    if (openingHoursOn(dealership, weekdayOf(candidate))) return candidate
+  }
+  return null
 }

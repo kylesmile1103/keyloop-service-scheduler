@@ -5,8 +5,9 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 import App from "@/App"
 import { appRoutes } from "@/config/routes"
 import { createQueryClient } from "@/lib/query-client"
-import { munich, reading } from "@/test/dealerships"
-import { jsonResponse, mockApi } from "@/test/mock-api"
+import { mockBoardApi } from "@/test/board-api"
+import { reading } from "@/test/dealerships"
+import { viewportOf } from "@/test/render-board"
 
 function renderAt(path: string) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
@@ -22,7 +23,7 @@ beforeAll(async () => {
 
 // The dispatch board lists dealerships as it opens.
 beforeEach(() => {
-  mockApi(() => jsonResponse([reading, munich]))
+  mockBoardApi()
 })
 
 const pageHeading = (name: string) => screen.findByRole("heading", { level: 1, name })
@@ -114,5 +115,34 @@ describe("app shell", () => {
 
     expect(await pageHeading("Page not found")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
+  })
+})
+
+describe("app shell across widths", () => {
+  const sidebar = () => document.querySelector<HTMLElement>('[data-slot="sidebar"]')!
+  const sidebarPanel = () => document.querySelector<HTMLElement>('[data-slot="sidebar-container"]')!
+
+  it("shows the sidebar expanded on a wide screen", async () => {
+    viewportOf(1440)
+    renderAt("/dispatch")
+    await pageHeading("Dispatch Board")
+
+    expect(sidebar()).toHaveAttribute("data-state", "expanded")
+    expect(sidebarPanel()).not.toHaveAttribute("inert")
+  })
+
+  it("keeps the sidebar off-canvas on a tablet until the header's button opens it", async () => {
+    viewportOf(1024)
+    renderAt("/dispatch")
+    await pageHeading("Dispatch Board")
+
+    // Collapsed off-canvas, its links are out of the tab order as well as out of sight.
+    expect(sidebar()).toHaveAttribute("data-state", "collapsed")
+    expect(sidebarPanel()).toHaveAttribute("inert")
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }))
+
+    expect(sidebar()).toHaveAttribute("data-state", "expanded")
+    expect(sidebarPanel()).not.toHaveAttribute("inert")
   })
 })

@@ -1,4 +1,4 @@
-import { CircleAlert, RotateCw } from "lucide-react"
+import { CircleAlert, RotateCw, TriangleAlert } from "lucide-react"
 
 import { CopyButton } from "@/components/copy-button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -14,6 +14,11 @@ interface ProblemAlertProps {
   onRetry?: () => void
   /** True while the retry is in flight. */
   retrying?: boolean
+  /**
+   * `error` (the default) for a failure to load or save; `warning` for a refusal that reflects the current state, such as a
+   * `409` conflict: the request was understood, and the screen should be read again rather than retried.
+   */
+  tone?: "error" | "warning"
   className?: string
 }
 
@@ -21,12 +26,16 @@ interface ProblemAlertProps {
  * A failed API call: what failed, the API's explanation, and its trace id (to look the request up in the Aspire dashboard,
  * §12.2), with a retry when one makes sense.
  */
-export function ProblemAlert({ title, error, onRetry, retrying = false, className }: ProblemAlertProps) {
+export function ProblemAlert({ title, error, onRetry, retrying = false, tone = "error", className }: ProblemAlertProps) {
   const { summary, traceId } = describeFailure(error)
+  const Icon = tone === "warning" ? TriangleAlert : CircleAlert
 
   return (
-    <Alert variant="destructive" className={cn("bg-card px-4 py-3", className)}>
-      <CircleAlert aria-hidden="true" />
+    <Alert
+      variant={tone === "warning" ? "default" : "destructive"}
+      className={cn("bg-card px-4 py-3", tone === "warning" && "border-warning/60", className)}
+    >
+      <Icon aria-hidden="true" />
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription className="flex flex-col gap-2">
         <span>{summary}</span>

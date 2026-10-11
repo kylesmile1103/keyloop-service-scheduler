@@ -1,14 +1,11 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { StrictMode } from "react"
-import { createMemoryRouter } from "react-router-dom"
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { getDealershipsQueryKey } from "@/api/@tanstack/react-query.gen"
-import App from "@/App"
-import { appRoutes } from "@/config/routes"
-import { createQueryClient } from "@/lib/query-client"
+import { mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
-import { jsonResponse, mockApi, problemResponse } from "@/test/mock-api"
+import { problemResponse } from "@/test/mock-api"
+import { pointerClick, renderBoard, search } from "@/test/render-board"
 
 // The board's route is lazy: load its code once up front, so each test's wait measures rendering, not the first,
 // cold compile of the page's modules (about 0.4 s, more on a busy machine).
@@ -16,31 +13,12 @@ beforeAll(async () => {
   await import("@/app/dispatch/page")
 })
 
-function renderBoard(path = "/dispatch", { cached }: { cached?: unknown } = {}) {
-  const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
-  const queryClient = createQueryClient()
-  if (cached) queryClient.setQueryData(getDealershipsQueryKey(), cached)
-  // Failures show at once; the production retry policy is covered by lib/query-client.test.ts.
-  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: false } })
-  // StrictMode, as in main.tsx: effects run twice in development, and the board must cope.
-  render(
-    <StrictMode>
-      <App router={router} queryClient={queryClient} />
-    </StrictMode>
-  )
-  return { router, queryClient }
-}
-
 const dealershipSelect = () => screen.findByRole("combobox", { name: "Dealership" })
-const search = (router: ReturnType<typeof renderBoard>["router"]) =>
-  Object.fromEntries(new URLSearchParams(router.state.location.search))
 
 /** A mouse choosing an option: Base UI selects on a click that started on the option (pointerdown, then click). */
 async function choose(name: RegExp) {
   fireEvent.click(await dealershipSelect())
-  const option = await screen.findByRole("option", { name })
-  fireEvent.pointerDown(option, { pointerType: "mouse" })
-  fireEvent.click(option)
+  pointerClick(await screen.findByRole("option", { name }))
 }
 
 describe("dispatch board: dealership", () => {
@@ -54,21 +32,22 @@ describe("dispatch board: dealership", () => {
   })
 
   it("shows that dealerships are loading until the list arrives", async () => {
-    let answer: (response: Response) => void = () => {}
-    mockApi(() => new Promise<Response>((resolve) => (answer = resolve)))
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({ dealerships: async () => (await held, [reading, munich]) })
     renderBoard()
 
     expect(await dealershipSelect()).toHaveAttribute("data-disabled")
     expect(screen.getByRole("status")).toHaveTextContent("Loading dealerships")
 
-    answer(jsonResponse([reading, munich]))
+    answer()
 
-    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText("Loading dealerships…")).not.toBeInTheDocument())
     expect(await dealershipSelect()).not.toHaveAttribute("data-disabled")
   })
 
   it("loads the dealerships from the API and offers each one with its time zone", async () => {
-    const api = mockApi(() => jsonResponse([reading, munich]))
+    const api = mockBoardApi()
     renderBoard()
     await screen.findByRole("heading", { level: 2, name: reading.name })
 
@@ -80,11 +59,11 @@ describe("dispatch board: dealership", () => {
       "Keyloop Autohaus MünchenEurope/Berlin",
     ])
     // StrictMode's remount cancels the first request and sends it again, so count destinations, not requests.
-    expect(new Set(api.requests.map((request) => new URL(request.url).pathname))).toEqual(new Set(["/api/v1/dealerships"]))
+    expect(new Set(api.requests.map((request) => new URL(request.url).pathname))).toContain("/api/v1/dealerships")
   })
 
   it("selects the first dealership and records it in the address without adding a history entry", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     const { router } = renderBoard()
 
     expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
@@ -94,7 +73,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("opens the dealership the address names", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     const { router } = renderBoard(`/dispatch?dealership=${munich.id}`)
 
     expect(await screen.findByRole("heading", { level: 2, name: munich.name })).toBeInTheDocument()
@@ -103,7 +82,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("switches dealership from the select, keeping the rest of the address", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     const { router } = renderBoard("/dispatch?date=2026-10-13")
     await screen.findByRole("heading", { level: 2, name: reading.name })
 
@@ -115,7 +94,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("can be operated from the keyboard alone", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     const { router } = renderBoard()
     await screen.findByRole("heading", { level: 2, name: reading.name })
     const trigger = await dealershipSelect()
@@ -137,7 +116,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("says so when the address names a dealership that does not exist, and shows the first one instead", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     const { router } = renderBoard("/dispatch?dealership=00000000-0000-0000-0000-000000000000")
 
     expect(await screen.findAllByText("Dealership not found")).toHaveLength(1)
@@ -147,7 +126,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("reports a stale link once when the list is already loaded, as on returning to the board", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     renderBoard("/dispatch?dealership=00000000-0000-0000-0000-000000000000", { cached: [reading, munich] })
 
     expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
@@ -155,7 +134,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("shows the selected dealership's opening hours for today in its own time zone", async () => {
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     renderBoard(`/dispatch?dealership=${munich.id}`)
 
     expect(await screen.findByText("Open today 07:30–18:30 (Europe/Berlin).")).toBeInTheDocument()
@@ -163,7 +142,7 @@ describe("dispatch board: dealership", () => {
 
   it("says when the selected dealership is closed today", async () => {
     vi.setSystemTime(new Date("2026-10-17T09:00:00Z")) // Saturday: Reading opens, Munich does not
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     renderBoard(`/dispatch?dealership=${munich.id}`)
 
     expect(await screen.findByText("Closed today (Europe/Berlin).")).toBeInTheDocument()
@@ -171,7 +150,7 @@ describe("dispatch board: dealership", () => {
 
   it("goes by the dealership's own calendar day near midnight, not the browser's", async () => {
     vi.setSystemTime(new Date("2026-10-16T22:30:00Z")) // Friday 23:30 in Reading, already Saturday 00:30 in Munich
-    mockApi(() => jsonResponse([reading, munich]))
+    mockBoardApi()
     renderBoard(`/dispatch?dealership=${munich.id}`)
 
     expect(await screen.findByText("Closed today (Europe/Berlin).")).toBeInTheDocument()
@@ -179,7 +158,7 @@ describe("dispatch board: dealership", () => {
 
   it("keeps the board when a background refresh fails", async () => {
     let failing = false
-    mockApi(() => (failing ? new Response("", { status: 503 }) : jsonResponse([reading, munich])))
+    mockBoardApi({ dealerships: () => (failing ? new Response("", { status: 503 }) : [reading, munich]) })
     const { queryClient } = renderBoard()
     await screen.findByRole("heading", { level: 2, name: reading.name })
 
@@ -192,7 +171,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("explains an empty list and checks again on request", async () => {
-    const api = mockApi(() => jsonResponse([]))
+    const api = mockBoardApi({ dealerships: () => [] })
     const { router } = renderBoard()
 
     expect(await screen.findByRole("heading", { level: 2, name: "No dealerships yet" })).toBeInTheDocument()
@@ -208,18 +187,19 @@ describe("dispatch board: dealership", () => {
 
   it("shows the API's explanation and trace id when loading fails, and loads the list on retry", async () => {
     let failing = true
-    mockApi(() =>
-      failing
-        ? problemResponse(429, {
+    mockBoardApi({
+      dealerships: () =>
+        failing
+          ? problemResponse(429, {
             type: "https://api.keyloop.example/problems/rate-limited",
             title: "Too many requests",
             status: 429,
             detail: "Too many requests from this client. Retry after 3 seconds.",
             traceId: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
             retryAfterSeconds: 3,
-          })
-        : jsonResponse([reading, munich])
-    )
+            })
+          : [reading, munich],
+    })
     renderBoard()
 
     const alert = await screen.findByRole("alert")
@@ -237,7 +217,7 @@ describe("dispatch board: dealership", () => {
   })
 
   it("names the status when a failure carries no explanation", async () => {
-    mockApi(() => new Response("", { status: 500, statusText: "Internal Server Error" }))
+    mockBoardApi({ dealerships: () => new Response("", { status: 500, statusText: "Internal Server Error" }) })
     renderBoard()
 
     const alert = await screen.findByRole("alert")
@@ -247,9 +227,7 @@ describe("dispatch board: dealership", () => {
   it("copies the trace id", async () => {
     const writeText = vi.fn(async () => {})
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
-    mockApi(() =>
-      problemResponse(429, { title: "Too many requests", status: 429, traceId: "00-abc-def-01" })
-    )
+    mockBoardApi({ dealerships: () => problemResponse(429, { title: "Too many requests", status: 429, traceId: "00-abc-def-01" }) })
     renderBoard()
 
     fireEvent.click(await screen.findByRole("button", { name: "Copy trace ID" }))

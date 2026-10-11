@@ -5,8 +5,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest"
 import App from "@/App"
 import { appRoutes } from "@/config/routes"
 import { createQueryClient } from "@/lib/query-client"
+import { mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
-import { jsonResponse, mockApi } from "@/test/mock-api"
 
 // Holds the Appointments page's code until the test releases it, like a slow network: the navigation stays pending.
 const appointmentsChunk = vi.hoisted(() => ({ release: () => {} }))
@@ -23,15 +23,16 @@ beforeAll(async () => {
 
 describe("leaving the dispatch board", () => {
   it("is not undone by the board selecting a dealership while the next page loads", async () => {
-    let answer: (response: Response) => void = () => {}
-    mockApi(() => new Promise<Response>((resolve) => (answer = resolve)))
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({ dealerships: async () => (await held, [reading, munich]) })
     const router = createMemoryRouter(appRoutes, { initialEntries: ["/dispatch"] })
     render(<App router={router} queryClient={createQueryClient()} />)
     await screen.findByRole("heading", { level: 1, name: "Dispatch Board" })
 
     fireEvent.click(screen.getByRole("link", { name: "Appointments" }))
     await waitFor(() => expect(router.state.navigation.state).toBe("loading"))
-    answer(jsonResponse([reading, munich]))
+    answer()
     await screen.findByRole("heading", { level: 2, name: reading.name })
     appointmentsChunk.release()
 
