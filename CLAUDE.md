@@ -13,14 +13,17 @@ The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Un
 
 ## Commands
 
-Prerequisites: .NET SDK 10.0.100 (`global.json`), Node 22 + pnpm, and a running Docker daemon. On this machine Docker is provided by **Colima**: `colima status` and, if stopped, `colima start --cpu 4 --memory 6 --disk 40`.
+Prerequisites: .NET SDK 10.0.100 (`global.json`), Node 22 + pnpm, and a running Docker daemon. The AppHost uses the Aspire CLI bundle for DCP and the dashboard; an installed Aspire CLI or the SDK's DNX package download resolves it on first run. Aspire CLI 13.6.0 on this machine starts the 13.6.1 AppHost with its 13.6.0 DCP/dashboard bundle without extra setup; publishing can use `dotnet dnx --yes aspire.cli@13.6.1 -- publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` for a matching CLI. On this machine Docker is provided by **Colima**: `colima status` and, if stopped, `colima start --cpu 4 --memory 6 --disk 40`.
 
 ```bash
 # whole stack (PostgreSQL container, API, Vite app, Aspire dashboard); `aspire run` is equivalent
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost
 
 # Docker Compose bundle generated from the AppHost model (Demo environment)
-aspire publish --project src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose
+aspire publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose
+
+# build images, resolve deployment inputs, and deploy the bundle locally
+aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose
 
 # build with the same strictness as CI (warnings are errors)
 dotnet build -warnaserror
@@ -49,6 +52,12 @@ pnpm install && pnpm generate:api      # regenerates src/api/*.gen.ts from contr
 pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 ```
 
+The root `aspire.config.json` selects the C# AppHost for plain CLI commands. `aspire publish` generates Compose YAML and `.env`; it does not build images, fill secret inputs, or create EF migration bundles. Use `aspire deploy` for the managed build/deploy pipeline, or build the API/web Dockerfiles and supply `API_IMAGE`, `WEB_IMAGE` (when web exists), and `POSTGRES_PASSWORD` before manual `docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml up -d`. Discover the web host port with `docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml port web 8080`. Tear down an isolated project with `down --volumes --remove-orphans`; never remove the developer's database volume. UAT/Production migration bundles are a separate release step (`dotnet ef migrations bundle`).
+
+The Demo bundle creates `schedulerdb` on an empty PostgreSQL data directory via `POSTGRES_DB`, runs migration and seeding, and serves Scalar over HTTP. Its dedicated Compose network is `172.30.14.0/24`, the sole trusted network in `appsettings.Demo.json`. Change both together if that subnet conflicts locally. UAT/Production require explicit ingress trust configuration. Aspire's automatic forwarded-header injection is disabled so the API's validated policy controls trust. Readiness probes use the API's HTTP endpoint, so they do not require trusting the development certificate; Scalar still links to HTTPS when available.
+
+For a fresh, isolated AppHost verification, supply a temporary password and disable persistence: `dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --AppHost:UsePersistentResources=false --Parameters:postgres-password=<temporary-password>`. Stop the AppHost after the check; its session containers are removed. The supplied password prevents evaluation or persistence of the generated default. Keep ordinary development runs on the default persistent resources.
+
 ## Architecture in one screen
 
 - **Vertical slices, no mediator.** `src/Keyloop.ServiceScheduler.Api/Features/<Capability>/<Slice>/` holds the endpoint (implements `IEndpoint`, listed in `EndpointRegistry`, which maps it into the `/api/v1` group), request record, FluentValidation validator (applied by `ValidationFilter<T>`), handler (plain class registered in DI), and response records. Handlers query `SchedulerDbContext` directly; there is no repository layer.
@@ -69,9 +78,9 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 
 - Keep `docs/SYSTEM_DESIGN.md` and the code in agreement; if a design decision changes, update the ADR table in the same commit.
 - Test names describe behaviour (`Rejects_off_grid_start_422`); domain tests use `FakeTimeProvider` at `2026-10-12T08:00:00Z` and book on `2026-10-13`.
-- The AppHost smoke test lives in `tests/Keyloop.ServiceScheduler.AspireTests`, not in the integration tests: Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016). It supplies the database password and strips persistence, so it never touches the developer's user secrets or `keyloop-scheduler-pgdata`.
+- The AppHost smoke test lives in `tests/Keyloop.ServiceScheduler.AspireTests`, not in the integration tests: Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016). It supplies the database password and strips persistence, so it never evaluates or writes the persisted password default and never mounts `keyloop-scheduler-pgdata` (configuration can still load user secrets). Create/build/start/readiness share a five-minute deadline; failed setup and failed stop both dispose the application, with stop bounded to 30 seconds.
 - Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened - a failure is a design defect.
 - `references/` holds provenance notes only; the reference clones live outside the repo and the AGPL one (MiroTalk) must never be copied.
-- Commit messages: Conventional Commits, ending with the `Co-Authored-By`/`Claude-Session` trailers used in the existing history.
+- Commit messages: Conventional Commits, ending with exactly one `Co-Authored-By` trailer for the current author; Codex uses `Co-Authored-By: OpenAI Codex (gpt-6.1-sol) <noreply@openai.com>`.
 - When interacting with Cloudflare, use the `cf` CLI unless the project has a
   Wrangler configuration file.

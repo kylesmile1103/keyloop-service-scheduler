@@ -29,12 +29,9 @@ public static class DatabaseInitializer
 
         if (options.MigrateOnStartup)
         {
-            // On a fresh database every query against the missing history table fails (Migrate itself issues one; EF reports it as a
-            // command error, Information since Program.cs lowers CommandError); checking for the table first avoids adding another.
-            var historyExists = await db.Database
-                .SqlQuery<bool>($"""SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL AS "Value" """)
-                .SingleAsync(ct);
-            var pending = historyExists ? (await db.Database.GetPendingMigrationsAsync(ct)).ToList() : db.Database.GetMigrations().ToList();
+            // EF's history repository handles both a missing database and a missing history table. A direct SQL probe here would
+            // require the database to exist before MigrateAsync gets the chance to create it (Development/Demo on a bare server).
+            var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
             await db.Database.MigrateAsync(ct);
             logger.MigrationsApplied(pending.Count, pending.Count == 0 ? "none" : string.Join(", ", pending));
         }

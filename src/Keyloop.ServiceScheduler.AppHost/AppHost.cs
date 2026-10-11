@@ -2,10 +2,18 @@
 // `aspire run`) generates and keeps the secrets, starts PostgreSQL with a persistent volume and pgweb, the API (which migrates and seeds
 // in Development) behind its health check, and, once it exists, the dispatch board; `aspire publish` turns the same model into Docker
 // Compose.
+using Aspire.Hosting.Docker.Resources.ServiceNodes;
+using Microsoft.Extensions.Configuration;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 // The publish target (Addendum C §C6, Task 18). In run mode it is not part of the model.
-builder.AddDockerComposeEnvironment("compose");
+builder.AddDockerComposeEnvironment("compose")
+    // This dedicated subnet is the only network trusted by appsettings.Demo.json. Keep both values in sync.
+    .ConfigureComposeFile(compose => compose.Networks["aspire"].Ipam = new Ipam
+    {
+        Config = [new Dictionary<string, string> { ["subnet"] = "172.30.14.0/24" }],
+    });
 
 // Secrets (§C1): the password is generated on the first run and kept in this project's user secrets (Parameters:postgres-password),
 // so the persistent container's credentials stay valid across runs and nobody types a secret. In publish mode both parameters become
@@ -15,24 +23,33 @@ var pgPassword = builder.AddParameter("postgres-password", new GenerateParameter
 
 // PostgreSQL 17, the version the integration tests run against (Testcontainers postgres:17). The tag is set before the data volume
 // because WithDataVolume picks the data directory from it (/var/lib/postgresql/data up to 17). The container and its volume outlive
-// the AppHost, so a restart keeps the data and skips the database start-up; `docker volume rm keyloop-scheduler-pgdata` starts over.
+// the AppHost, so a restart keeps the data. Isolated verification can opt out without changing the developer's volume or secrets.
+var persistentResources = builder.Configuration.GetValue("AppHost:UsePersistentResources", true);
 var postgres = builder.AddPostgres("postgres", pgUser, pgPassword)
-    .WithImageTag("17")
-    .WithDataVolume("keyloop-scheduler-pgdata")
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithImageTag("17");
+if (persistentResources)
+{
+    postgres.WithDataVolume("keyloop-scheduler-pgdata").WithLifetime(ContainerLifetime.Persistent);
+}
 if (builder.ExecutionContext.IsRunMode)
 {
-    postgres.WithPgWeb(pgweb => pgweb.WithLifetime(ContainerLifetime.Persistent));
+    postgres.WithPgWeb(pgweb => pgweb.WithLifetime(persistentResources ? ContainerLifetime.Persistent : ContainerLifetime.Session));
 }
 
 var db = postgres.AddDatabase("schedulerdb");
+if (builder.ExecutionContext.IsPublishMode)
+{
+    // Compose does not execute AddDatabase's run-mode creation callback. PostgreSQL's entrypoint handles an empty data directory.
+    postgres.WithEnvironment("POSTGRES_DB", "schedulerdb");
+}
 
 // The API receives its connection string only as ConnectionStrings__schedulerdb (WithReference), starts once the database is
 // healthy, and is healthy itself when /health (which includes the database check) answers 200.
 var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
+    .DisableForwardedHeaders() // the API owns the fail-closed trust policy, including when forwarding is disabled
     .WithReference(db)
     .WaitFor(db)
-    .WithHttpHealthCheck("/health")
+    .WithHttpHealthCheck("/health", endpointName: "http") // readiness does not depend on trusting a local development certificate
     .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
 
 // The dashboard labels the API's endpoints and links to Scalar. The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE):
@@ -73,6 +90,12 @@ if (builder.ExecutionContext.IsRunMode)
                 PrepareRequest = async context =>
                     context.Request.Headers.Add("X-Reseed-Key", await reseedKey.Resource.GetValueAsync(context.CancellationToken)),
             });
+}
+else
+{
+    api.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Demo")
+        .WithEnvironment("DOTNET_ENVIRONMENT", "Demo")
+        .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
 }
 
 // The dispatch board (§C5). The frontend lane removes this guard when it lands src/Keyloop.ServiceScheduler.Web (Task 15).

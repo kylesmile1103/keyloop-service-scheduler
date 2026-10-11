@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/Keyloop.ServiceScheduler.AppHost/Keyloop.ServiceScheduler.AppHost.csproj"
+  }
+}

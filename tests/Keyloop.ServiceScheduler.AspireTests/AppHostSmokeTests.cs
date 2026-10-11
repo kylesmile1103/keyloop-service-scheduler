@@ -17,9 +17,9 @@ namespace Keyloop.ServiceScheduler.AspireTests;
 /// </summary>
 /// <remarks>
 /// Two things are made hermetic, and only for the test. The database password is supplied (as <c>Parameters:postgres-password</c>), so the
-/// AppHost neither reads nor writes the developer's user secrets. PostgreSQL and pgweb run with session lifetimes and without the named
+/// persisted password default is never evaluated or written (configuration can still load user secrets). PostgreSQL and pgweb run with session lifetimes and without the named
 /// data volume, so the run leaves no container or volume behind and never touches the developer's persistent database. Everything else is
-/// the AppHost exactly as <c>dotnet run</c> starts it; <see cref="Development_database_is_persistent_with_generated_secret_credentials"/>
+/// the AppHost model, with testing's random ports and disabled dashboard; <see cref="Development_database_is_persistent_with_generated_secret_credentials"/>
 /// pins the persistence the run takes away.
 /// </remarks>
 [Trait("Category", "Aspire")]
@@ -135,30 +135,55 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
 
         public async ValueTask InitializeAsync()
         {
-            var ct = TestContext.Current.CancellationToken;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(StartupTimeout);
+            var ct = timeout.Token;
             var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
             var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
                 [$"--Parameters:postgres-password={password}"], ct);
-            foreach (var container in builder.Resources.OfType<ContainerResource>().ToList())
+            try
             {
-                builder.CreateResourceBuilder(container).WithLifetime(ContainerLifetime.Session);
-                foreach (var volume in container.Annotations.OfType<ContainerMountAnnotation>().Where(m => m.Type == ContainerMountType.Volume).ToList())
+                foreach (var container in builder.Resources.OfType<ContainerResource>().ToList())
                 {
-                    container.Annotations.Remove(volume);
+                    builder.CreateResourceBuilder(container).WithLifetime(ContainerLifetime.Session);
+                    foreach (var volume in container.Annotations.OfType<ContainerMountAnnotation>().Where(m => m.Type == ContainerMountType.Volume).ToList())
+                    {
+                        container.Annotations.Remove(volume);
+                    }
                 }
-            }
 
-            App = await builder.BuildAsync(ct);
-            await App.StartAsync(ct).WaitAsync(StartupTimeout, ct);
-            await App.ResourceNotifications.WaitForResourceHealthyAsync("api", ct).WaitAsync(StartupTimeout, ct);
+                App = await builder.BuildAsync(ct);
+                await App.StartAsync(ct);
+                await App.ResourceNotifications.WaitForResourceHealthyAsync("api", ct);
+            }
+            catch
+            {
+                if (App is not null)
+                {
+                    await DisposeAsync();
+                }
+                else
+                {
+                    await builder.DisposeAsync();
+                }
+                throw;
+            }
         }
 
         public async ValueTask DisposeAsync()
         {
             if (App is not null)
             {
-                await App.StopAsync();
-                await App.DisposeAsync();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                try
+                {
+                    await App.StopAsync(timeout.Token);
+                }
+                finally
+                {
+                    await App.DisposeAsync();
+                    App = null!;
+                }
             }
         }
     }

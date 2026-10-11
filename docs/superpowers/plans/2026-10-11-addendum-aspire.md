@@ -16,9 +16,15 @@ Applies to Tasks 7, 14, 14b, 15 and 18 of `2026-10-11-keyloop-service-scheduler.
 ## C2. Resources and orchestration (Task 14b, AppHost)
 
 ```csharp
+using Aspire.Hosting.Docker.Resources.ServiceNodes;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
-var compose = builder.AddDockerComposeEnvironment("compose");                 // publish target only (C6)
+var compose = builder.AddDockerComposeEnvironment("compose")                 // publish target only (C6)
+    .ConfigureComposeFile(file => file.Networks["aspire"].Ipam = new Ipam
+    {
+        Config = [new Dictionary<string, string> { ["subnet"] = "172.30.14.0/24" }],
+    });
 
 var pgUser = builder.AddParameter("postgres-user", "scheduler");
 var pgPassword = builder.AddParameter("postgres-password", new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);
@@ -32,13 +38,18 @@ if (builder.ExecutionContext.IsRunMode)
     postgres.WithPgWeb(pgweb => pgweb.WithLifetime(ContainerLifetime.Persistent));
 }
 var db = postgres.AddDatabase("schedulerdb");
+if (builder.ExecutionContext.IsPublishMode)
+{
+    postgres.WithEnvironment("POSTGRES_DB", "schedulerdb");
+}
 
 var reseedKey = builder.ExecutionContext.IsRunMode ? Guid.NewGuid().ToString("N") : null;
 
 var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
+    .DisableForwardedHeaders() // validated Security options own trust in every environment
     .WithReference(db)
     .WaitFor(db)
-    .WithHttpHealthCheck("/health")
+    .WithHttpHealthCheck("/health", endpointName: "http")
     .WithUrlForEndpoint("https", url => url.DisplayText = "API (https)")
     .WithUrls(ctx => ctx.Urls.Add(new() { Url = "/scalar/v1", DisplayText = "Scalar API reference", Endpoint = ctx.GetEndpoint("https") }))
     .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
@@ -57,6 +68,13 @@ if (reseedKey is not null)
        });
 }
 
+if (builder.ExecutionContext.IsPublishMode)
+{
+    api.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Demo")
+       .WithEnvironment("DOTNET_ENVIRONMENT", "Demo")
+       .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
+}
+
 builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
     .WithPnpm()                                   // installer child resource runs `pnpm install` before start
     .WithReference(api)                           // injects API_HTTP / API_HTTPS (and services__api__*) for the Vite proxy
@@ -70,6 +88,8 @@ builder.Build().Run();
 ```
 
 Every API shape above (`WithUrls` URL model, `WithHttpCommand` options, `WithOtlpExporter(OtlpProtocol)`, `PublishAsDockerComposeService`, `WithPgWeb` configure callback, the `GenerateParameterDefault` overload) must be verified against Aspire 13.6.1 before use; adjust to the real signatures and record any deviation in the task report. Until Task 15 creates the web project, keep the `AddViteApp` block behind `if (Directory.Exists(...))` exactly as the plan says.
+
+**CLI selection.** The root `aspire.config.json` selects `src/Keyloop.ServiceScheduler.AppHost/Keyloop.ServiceScheduler.AppHost.csproj`; explicit `--apphost` remains the documented publish/deploy form.
 
 **AppHost launch settings.** Both profiles define `ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL` (in addition to the gRPC endpoint) so the dashboard accepts browser OTLP over HTTP; CORS for resource origins is configured automatically when the AppHost starts the dashboard.
 
@@ -93,9 +113,13 @@ Every API shape above (`WithUrls` URL model, `WithHttpCommand` options, `WithOtl
 
 ## C6. Docker Compose publishing (Task 18)
 
-- `aspire publish -o artifacts/compose` (with the `compose` environment from C2) generates `docker-compose.yaml` and `.env`. A fifth environment, **Demo**, is used there: `appsettings.Demo.json` = UAT security posture (rate limits on, Scalar on, HSTS off because compose serves plain HTTP behind no TLS terminator) **plus** `Database:MigrateOnStartup=true` and `Database:SeedDemoData=true`, so `docker compose up` yields a working demo without the .NET SDK. The AppHost sets `ASPNETCORE_ENVIRONMENT=Demo` for the API only in publish mode.
-- Task 18 runs the publish, `docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml up -d`, curls `/health` and `/api/v1/dealerships` through the web container's `/api` proxy, then tears down. `artifacts/` is git-ignored; the README documents the two commands.
+- `aspire publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` generates `docker-compose.yaml` and `.env` with the `compose` environment from C2. It does not build images or populate secret inputs. Use `aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` for the managed build/input-resolution/deployment pipeline, or build the committed API/web Dockerfiles and supply `API_IMAGE`, `WEB_IMAGE` (when present), and `POSTGRES_PASSWORD` before manual Compose startup. `POSTGRES_USER` has the nonsecret scheduler default. With an older PATH CLI, the documented equivalent is `dotnet dnx --yes aspire.cli@13.6.1 -- publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose`.
+- The API sets both environment variables to **Demo** only when publishing. `appsettings.Demo.json` retains UAT rate limits and a 60-minute lead time, enables migration and demo seeding, serves Scalar, and excludes HSTS/HTTPS redirection for plain HTTP. Forwarded headers are enabled with only `KnownNetworks=["172.30.14.0/24"]`, matching the dedicated Compose IPAM subnet. Keep both values synchronized if changing the subnet. Aspire's automatic forwarded-header injection is disabled; UAT/Production still fail startup until the platform supplies trusted ingress addresses.
+- PostgreSQL's `POSTGRES_DB=schedulerdb` creates the declared database on an empty data directory in Compose; `AddDatabase` handles creation in run mode. The API initializer uses EF's database-aware migration history lookup and can create a missing database on a bare server. Existing volumes are not repaired by changing `POSTGRES_DB`, and their original credentials must remain consistent. UAT/Production migration bundles are a separate `dotnet ef migrations bundle` release step.
+- Task 18 runs the publish/deploy, or `docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml up -d` after building images and resolving inputs, curls `/health` and `/api/v1/dealerships` through the web container, then tears down its isolated project with `down --volumes --remove-orphans`. Discover the dynamically assigned web host port with `docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml port web 8080`. `artifacts/` is git-ignored. Never delete or clear the developer's volume or AppHost secrets for verification.
 
 ## C7. Whole-stack smoke test (Task 14b creates, Task 15 extends)
 
-`tests/Keyloop.ServiceScheduler.IntegrationTests/Aspire/AppHostSmokeTests.cs` with `[Trait("Category", "Aspire")]` using `Aspire.Hosting.Testing` 13.6.1 (`DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>()`): start, wait for `api` healthy (`app.ResourceNotifications.WaitForResourceHealthyAsync("api")`), `GET /api/v1/dealerships` returns the two seeded dealerships. Task 15 adds: wait for `web` healthy and `GET /api/v1/dealerships` **through the web resource's endpoint** (proves Vite proxy + discovery). Default `dotnet test` runs exclude nothing; CI runs this category in its own step after `pnpm install`.
+`tests/Keyloop.ServiceScheduler.AspireTests/AppHostSmokeTests.cs` with `[Trait("Category", "Aspire")]` using `Aspire.Hosting.Testing` 13.6.1 (`DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>()`): start, wait for `api` healthy (`app.ResourceNotifications.WaitForResourceHealthyAsync("api")`), `GET /api/v1/dealerships` returns the two seeded dealerships. Task 15 adds: wait for `web` healthy and `GET /api/v1/dealerships` **through the web resource's endpoint** (proves Vite proxy + discovery). Default `dotnet test` runs exclude nothing; CI runs this category in its own step after `pnpm install`.
+
+Task 14c bounds create/build/start/readiness with one five-minute deadline and stop with 30 seconds, and disposes on setup or stop failure. Tests supply the database password and remove persistent mounts/lifetimes; configuration can still load user secrets, but the persisted default is not evaluated or written. The AppHost uses the Aspire CLI bundle, resolved through the installed CLI or DNX; `dotnet run` remains supported. An isolated manual run supplies a temporary password and `--AppHost:UsePersistentResources=false`, retaining the default Development persistence for ordinary runs.

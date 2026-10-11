@@ -2,11 +2,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <UserSecretsId>keyloop-service-scheduler-apphost</UserSecretsId>
-    <!-- DCP and the dashboard come from the NuGet packages the SDK restores, so `dotnet run` and the Aspire smoke test need nothing
-         beyond the .NET SDK and Docker. Aspire 13.6 warns (ASPIRE010) that the Aspire CLI bundle is the future source of both; opting
-         in would make the `aspire` CLI (or a DNX download) a prerequisite of every run and CI job, so the warning is acknowledged. -->
-    <AspireUseCliBundle>false</AspireUseCliBundle>
-    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+    <AspireUseCliBundle>true</AspireUseCliBundle>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
