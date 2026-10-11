@@ -1,5 +1,4 @@
 using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 

@@ -1,3 +1,5 @@
+using Keyloop.ServiceScheduler.Api.Domain.Common;
+
 namespace Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
 public sealed record CustomerDetails

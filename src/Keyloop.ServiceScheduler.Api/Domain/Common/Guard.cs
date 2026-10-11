@@ -1,4 +1,4 @@
-namespace Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+namespace Keyloop.ServiceScheduler.Api.Domain.Common;
 
 internal static class Guard
 {
