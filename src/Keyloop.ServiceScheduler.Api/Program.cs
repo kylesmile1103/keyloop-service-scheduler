@@ -81,8 +81,23 @@ builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024);
 var app = builder.Build();
 
 // Validate every ValidateOnStart options type now: the host would do it only in StartAsync, after the database initialiser below
-// has already migrated or seeded on a misconfigured instance.
-app.Services.GetRequiredService<IStartupValidator>().Validate();
+// has already migrated or seeded on a misconfigured instance. A failure is logged (event 1103, one per options type) and the app
+// is disposed before rethrowing, which flushes the console and OTLP log exporters: the crash leaves a structured record.
+try
+{
+    app.Services.GetRequiredService<IStartupValidator>().Validate();
+}
+catch (Exception ex) when (ex is OptionsValidationException or AggregateException)
+{
+    var failures = ex is AggregateException aggregate ? aggregate.InnerExceptions.OfType<OptionsValidationException>() : [(OptionsValidationException)ex];
+    foreach (var failure in failures)
+    {
+        app.Logger.StartupValidationFailed(failure.OptionsType.Name, string.Join("; ", failure.Failures));
+    }
+
+    await app.DisposeAsync();
+    throw;
+}
 
 var apiReference = !app.Environment.IsProduction();
 var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

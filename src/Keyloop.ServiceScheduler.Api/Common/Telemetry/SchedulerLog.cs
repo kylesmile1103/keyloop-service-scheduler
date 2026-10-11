@@ -6,8 +6,8 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// <summary>
 /// Source-generated log methods with stable event ids (Addendum A §A5); product code logs only through these. Ids:
 /// 1001 BookingConfirmed, 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected (Task 10 adds 1002–1004),
-/// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting;
-/// 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
+/// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
+/// 1103 StartupValidationFailed; 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
 /// </summary>
 internal static partial class SchedulerLog
 {
@@ -36,6 +36,15 @@ internal static partial class SchedulerLog
         Message = "Scheduler API starting in {Environment}: migrate on startup {MigrateOnStartup}, seed demo data {SeedDemoData}, OpenAPI and Scalar {ApiReference}, authentication {Authentication}")]
     public static partial void ApiStarting(
         this ILogger logger, string environment, bool migrateOnStartup, bool seedDemoData, string apiReference, string authentication);
+
+    /// <summary>
+    /// The configuration failed validation and the API will not start. <paramref name="failures"/> are the validators' messages,
+    /// each prefixed with the member names it concerns; validator messages never echo secret values, and neither the bound options
+    /// nor the configuration are logged. The exception is not attached: its stack is always the startup validator's.
+    /// </summary>
+    [LoggerMessage(EventId = 1103, EventName = "StartupValidationFailed", Level = LogLevel.Critical,
+        Message = "Configuration validation failed for {OptionsType}; the API will not start: {Failures}")]
+    public static partial void StartupValidationFailed(this ILogger logger, string optionsType, string failures);
 
     [LoggerMessage(EventId = 1200, EventName = "UnhandledException", Level = LogLevel.Error,
         Message = "Unhandled exception for {Method} {Path}; answered 500 internal-error")]

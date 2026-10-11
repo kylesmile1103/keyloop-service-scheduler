@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
@@ -177,13 +178,50 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("Production", HttpStatusCode.NotFound)]
     public async Task OpenApi_and_Scalar_are_mapped_everywhere_but_production(string environment, HttpStatusCode expected)
     {
-        // Also boots the environment's appsettings file through options validation.
-        await using var factory = _factory.WithWebHostBuilder(builder => builder.UseEnvironment(environment));
+        // Also boots the environment's appsettings file through options validation, with the ingress network the platform supplies.
+        await using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseEnvironment(environment)
+            .UseSetting("Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/24"));
         using var client = factory.CreateClient();
 
         (await client.GetAsync("/openapi/v1.json", Ct)).StatusCode.ShouldBe(expected);
         (await client.GetAsync("/scalar/v1", Ct)).StatusCode.ShouldBe(expected);
         (await client.GetAsync("/api/v1/__throw?kind=ok", Ct)).StatusCode.ShouldBe(HttpStatusCode.NotFound, "the probe exists only in SystemTest");
+    }
+
+    [Theory]
+    [InlineData("UAT")]
+    [InlineData("Production")]
+    public void Forwarded_headers_fail_startup_in_UAT_and_Production_until_the_platform_supplies_the_ingress_addresses(string environment)
+    {
+        // The environment files enable forwarded headers but ship no trusted addresses: configuration arrays merge by index, so an
+        // environment variable meant to replace a shipped default would only overwrite one entry and keep the rest trusted.
+        using var factory = _factory.WithWebHostBuilder(builder => builder.UseEnvironment(environment));
+
+        var ex = Should.Throw<Exception>(() => factory.CreateClient());
+
+        var validation = Find<OptionsValidationException>(ex).ShouldNotBeNull(ex.ToString());
+        validation.OptionsType.ShouldBe(typeof(SecurityOptions));
+        validation.Message.ShouldContain("ForwardedHeaders is enabled without KnownProxies or KnownNetworks");
+        validation.Message.ShouldContain("Security__ForwardedHeaders__KnownNetworks__0", Case.Sensitive, "the message says how to fix it");
+    }
+
+    [Fact]
+    public void Startup_validation_failure_is_logged_as_critical_1103_before_the_host_stops()
+    {
+        var logs = new CapturingLoggerProvider();
+        using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseSetting("Scheduling:SlotGranularityMinutes", "90")
+            .ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+
+        Should.Throw<Exception>(() => factory.CreateClient());
+
+        // A structured record (JSON console, OTLP) of why the process is about to die, not only the crash text on stderr.
+        var entry = logs.Entries.Where(e => e.EventId.Id == 1103).ShouldHaveSingleItem();
+        entry.EventId.Name.ShouldBe("StartupValidationFailed");
+        entry.Level.ShouldBe(LogLevel.Critical);
+        entry.Message.ShouldContain("SchedulingOptions");
+        entry.Message.ShouldContain("SlotGranularityMinutes: The field SchedulingOptions.SlotGranularityMinutes must be between 5 and 60.");
     }
 
     private WebApplicationFactory<Program> BehindIngress(bool forwardedHeaders, string knownProxy, int? globalPermitsPerMinute = null) =>

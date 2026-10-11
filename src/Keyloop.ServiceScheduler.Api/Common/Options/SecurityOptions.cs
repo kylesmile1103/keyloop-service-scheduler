@@ -58,6 +58,11 @@ public sealed class SecurityOptions : IValidatableObject
     /// audit actor and HTTPS redirection see the client rather than the ingress. Only the listed peers are trusted, and only the
     /// last hop is taken.
     /// </summary>
+    /// <remarks>
+    /// UAT and Production enable it but ship both lists empty, so startup fails until the platform supplies its ingress addresses
+    /// (e.g. <c>Security__ForwardedHeaders__KnownNetworks__0</c>). A shipped default would be unsafe to override: configuration
+    /// arrays merge by index, so an environment variable for entry 0 replaces only that entry and keeps the rest trusted.
+    /// </remarks>
     public sealed class ForwardedHeadersSettings : IValidatableObject
     {
         public bool Enabled { get; set; }
@@ -85,7 +90,8 @@ public sealed class SecurityOptions : IValidatableObject
             if (Enabled && KnownProxies.Length == 0 && KnownNetworks.Length == 0)
             {
                 yield return new ValidationResult(
-                    "ForwardedHeaders is enabled without KnownProxies or KnownNetworks, which would trust X-Forwarded-For from any peer.",
+                    "ForwardedHeaders is enabled without KnownProxies or KnownNetworks, which would trust X-Forwarded-For from any peer. "
+                    + "Supply the ingress addresses, e.g. Security__ForwardedHeaders__KnownNetworks__0=10.0.0.0/24.",
                     [nameof(KnownProxies), nameof(KnownNetworks)]);
             }
         }
