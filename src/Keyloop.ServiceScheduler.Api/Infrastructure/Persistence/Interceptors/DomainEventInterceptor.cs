@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Keyloop.ServiceScheduler.Api.Common.Http;
+using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -15,12 +16,15 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 /// One instance per DbContext (both are scoped). When SaveChanges runs in its own transaction, observers are notified as soon as it
 /// returns; inside an explicit transaction they are notified when that transaction commits, and never if it rolls back. A failed
 /// SaveChanges detaches the staged history rows and leaves the aggregates' events in place, so a retry audits them exactly once.
+/// An observer that throws (cancellation included) is logged as event 1005 and never rethrown: the change is already committed, so
+/// the caller must not see a failure, and a retrying execution strategy must not re-run the unit of work.
 /// </remarks>
-public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers)
+public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger)
     : SaveChangesInterceptor, IDbTransactionInterceptor
 {
     private readonly CurrentActor _actor = actor ?? throw new ArgumentNullException(nameof(actor));
     private readonly IDomainEventObserver[] _observers = observers?.ToArray() ?? throw new ArgumentNullException(nameof(observers));
+    private readonly ILogger<DomainEventInterceptor> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     // Events saved inside an explicit transaction that has not committed yet.
     private readonly List<IDomainEvent> _awaitingCommit = [];
@@ -201,9 +205,19 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
 
     private async Task NotifyAsync(IReadOnlyList<IDomainEvent> committed, CancellationToken cancellationToken)
     {
+        // Each observer is isolated, so one failure neither reaches the caller nor silences the observers after it.
         foreach (var observer in _observers)
         {
-            await observer.OnCommittedAsync(committed, cancellationToken);
+            try
+            {
+                await observer.OnCommittedAsync(committed, cancellationToken);
+            }
+#pragma warning disable CA1031 // Deliberately broad: nothing an observer throws after the commit may surface to the caller.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                _logger.DomainEventObserverFailed(ex, observer.GetType().Name, string.Join(", ", committed.Select(e => e.EventType).Distinct()));
+            }
         }
     }
 

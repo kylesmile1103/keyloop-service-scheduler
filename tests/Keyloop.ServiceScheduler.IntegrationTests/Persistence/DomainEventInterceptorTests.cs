@@ -7,6 +7,8 @@ using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
@@ -184,11 +186,68 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         observer.Batches.ShouldHaveSingleItem().ShouldHaveSingleItem().AppointmentId.ShouldBe(appointment.Id);
     }
 
+    [Fact]
+    public async Task Observer_failure_after_commit_is_logged_and_never_reaches_the_caller()
+    {
+        var logger = new CapturingLogger<DomainEventInterceptor>();
+        var later = new RecordingObserver();
+        IDomainEventObserver[] observers =
+        [
+            new ThrowingObserver(new InvalidOperationException("observer bug")),
+            new ThrowingObserver(new OperationCanceledException()),
+            later,
+        ];
+
+        // Implicit transaction (async), explicit transaction commit, and the synchronous path: each commits and audits although
+        // two observers throw, and the observer after them is still told.
+        var implicitSave = _workshop.Book(TestData.LondonTime(9));
+        await using (var db = NewContext(new CurrentActor(), observers, logger))
+        {
+            db.Appointments.Add(implicitSave);
+            (await db.SaveChangesAsync(Ct)).ShouldBeGreaterThan(0);
+        }
+
+        var explicitCommit = _workshop.Book(TestData.LondonTime(10));
+        await using (var db = NewContext(new CurrentActor(), observers, logger))
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(Ct);
+            db.Appointments.Add(explicitCommit);
+            await db.SaveChangesAsync(Ct);
+            await transaction.CommitAsync(Ct);
+        }
+
+        var synchronousSave = _workshop.Book(TestData.LondonTime(11));
+        using (var db = NewContext(new CurrentActor(), observers, logger))
+        {
+            db.Appointments.Add(synchronousSave);
+            db.SaveChanges(); // the synchronous path is part of the subject
+        }
+
+        foreach (var appointment in new[] { implicitSave, explicitCommit, synchronousSave })
+        {
+            (await HistoryOfAsync(appointment.Id)).ShouldHaveSingleItem().EventType.ShouldBe("Booked");
+            (await _factory.WithDbAsync(db => db.Appointments.CountAsync(a => a.Id == appointment.Id, Ct))).ShouldBe(1);
+        }
+
+        later.Batches.Select(batch => batch.ShouldHaveSingleItem().AppointmentId)
+            .ShouldBe([implicitSave.Id, explicitCommit.Id, synchronousSave.Id]);
+
+        var failures = logger.Entries.Where(e => e.EventId.Id == 1005).ToList();
+        failures.Count.ShouldBe(6, "two failing observers on each of three commits");
+        failures.ShouldAllBe(e => e.Level == LogLevel.Error && e.EventId.Name == "DomainEventObserverFailed");
+        failures.ShouldAllBe(e => e.Message.Contains(nameof(ThrowingObserver)) && e.Message.Contains("Booked"));
+        failures.Select(e => e.Exception).OfType<InvalidOperationException>().Count().ShouldBe(3);
+        failures.Select(e => e.Exception).OfType<OperationCanceledException>().Count().ShouldBe(3);
+    }
+
     private SchedulerDbContext NewContext(CurrentActor actor, IDomainEventObserver observer) =>
+        NewContext(actor, [observer], NullLogger<DomainEventInterceptor>.Instance);
+
+    private SchedulerDbContext NewContext(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger) =>
         new(new DbContextOptionsBuilder<SchedulerDbContext>()
             .UseNpgsql(pg.ConnectionString)
             .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new DomainEventInterceptor(actor, [observer]))
+            .AddInterceptors(new DomainEventInterceptor(actor, observers, logger))
             .Options);
 
     private Task<List<AppointmentHistoryEntry>> HistoryOfAsync(Guid appointmentId) =>
@@ -196,6 +255,11 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
             .Where(h => h.AppointmentId == appointmentId)
             .OrderBy(h => h.OccurredAtUtc)
             .ToListAsync(Ct));
+
+    private sealed class ThrowingObserver(Exception exception) : IDomainEventObserver
+    {
+        public Task OnCommittedAsync(IReadOnlyList<IDomainEvent> events, CancellationToken ct) => Task.FromException(exception);
+    }
 
     private sealed class RecordingObserver : IDomainEventObserver
     {

@@ -33,8 +33,8 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "
 scripts/export-openapi.sh
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "Category=Contract"
 
-# EF Core migrations (design-time factory needs no database)
-dotnet ef migrations add <Name> --project src/Keyloop.ServiceScheduler.Api -o Infrastructure/Persistence/Migrations
+# EF Core migrations (design-time factory needs no database; dotnet-ef is pinned in .config/dotnet-tools.json)
+dotnet tool restore && dotnet ef migrations add <Name> --project src/Keyloop.ServiceScheduler.Api -o Infrastructure/Persistence/Migrations
 
 # frontend (run inside src/Keyloop.ServiceScheduler.Web)
 pnpm install && pnpm generate:api      # regenerates src/api/*.gen.ts from contracts/openapi/v1.json — never hand-edit generated files
