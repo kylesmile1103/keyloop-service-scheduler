@@ -18,7 +18,9 @@ data removed: `dashboard/components/section-cards.tsx` (and `dashboard-2/compone
 board's KPI strip (`app/dispatch/components/kpi-strip.tsx`); `calendar/components/date-picker.tsx` as the board's date
 control (`date-navigator.tsx`); `calendar/components/calendars.tsx` and `calendar-sidebar.tsx` as the lane filter
 (`lane-filter.tsx`); the list view of `calendar/components/calendar-main.tsx` as the phone agenda (`schedule-agenda.tsx`);
-and the mobile sheet of `calendar/components/calendar.tsx` as the board's Filters sheet (`filters-sheet.tsx`). The
+and the mobile sheet of `calendar/components/calendar.tsx` as the board's Filters sheet (`filters-sheet.tsx`);
+`calendar/components/event-form.tsx` and `users/components/user-form-dialog.tsx` as the booking dialog
+(`booking-dialog.tsx`). The
 `components/ui/switch.tsx`, `checkbox.tsx` and `collapsible.tsx` primitives are vendored unmodified.
 
 ```

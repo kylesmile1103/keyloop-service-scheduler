@@ -47,3 +47,8 @@ export function initials(name: string): string {
 export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name
 }
+
+/** The wall-clock time of a `…Local` value as the API writes it (`2026-10-13T10:15+01:00` → `10:15`). */
+export function localTime(local: string): string {
+  return local.slice(11, 16)
+}
