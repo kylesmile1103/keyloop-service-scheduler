@@ -274,6 +274,53 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             || (schema.TryGetProperty("oneOf", out var branches) && branches.EnumerateArray().Any(b => Describes(b, keyword)));
     }
 
+    [Fact]
+    public async Task Appointment_read_and_cancel_operations_are_documented_with_an_example_reason()
+    {
+        using var document = JsonDocument.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct));
+        var root = document.RootElement;
+        var paths = root.GetProperty("paths");
+
+        var read = paths.GetProperty("/api/v1/appointments/{appointmentId}").GetProperty("get");
+        ShouldBeDocumented(read, "GetAppointment", "Appointments");
+        var cancel = paths.GetProperty("/api/v1/appointments/{appointmentId}/cancel").GetProperty("post");
+        ShouldBeDocumented(cancel, "CancelAppointment", "Appointments");
+        cancel.GetProperty("description").GetString().ShouldNotBeNull().ShouldContain("re-bookable");
+
+        foreach (var (operation, statuses) in new[] { (read, new[] { "200", "404", "429" }), (cancel, ["200", "400", "404", "409", "429"]) })
+        {
+            var operationId = operation.GetProperty("operationId").GetString();
+            var responses = operation.GetProperty("responses");
+            responses.EnumerateObject().Select(r => r.Name).ShouldBe(statuses, ignoreOrder: true, customMessage: operationId);
+            responses.GetProperty("200").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString()
+                .ShouldBe("#/components/schemas/AppointmentResponse", operationId);
+
+            // The appointment id is the only parameter: a described, required uuid in the path (services and the token are not parameters).
+            var parameter = operation.GetProperty("parameters").EnumerateArray().ShouldHaveSingleItem(operationId);
+            (parameter.GetProperty("name").GetString(), parameter.GetProperty("in").GetString()).ShouldBe(("appointmentId", "path"), operationId);
+            parameter.GetProperty("required").GetBoolean().ShouldBeTrue(operationId);
+            parameter.GetProperty("schema").GetProperty("format").GetString().ShouldBe("uuid", operationId);
+            parameter.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace(operationId);
+        }
+
+        var conflict = cancel.GetProperty("responses").GetProperty("409").GetProperty("description").GetString().ShouldNotBeNull();
+        conflict.ShouldContain("invalid-state-transition");
+        conflict.ShouldContain("concurrency-conflict");
+
+        // The body is the request record, required; its one property is described, required, and has the example Scalar sends.
+        var body = cancel.GetProperty("requestBody");
+        body.GetProperty("required").GetBoolean().ShouldBeTrue();
+        body.GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString()
+            .ShouldBe("#/components/schemas/CancelAppointmentRequest");
+        var request = root.GetProperty("components").GetProperty("schemas").GetProperty("CancelAppointmentRequest");
+        request.GetProperty("required").EnumerateArray().Select(r => r.GetString()).ShouldBe(["reason"]);
+        var reason = request.GetProperty("properties").EnumerateObject().ShouldHaveSingleItem();
+        reason.Name.ShouldBe("reason");
+        reason.Value.GetProperty("type").GetString().ShouldBe("string");
+        reason.Value.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace();
+        Example(reason.Value).ShouldNotBeNull("an <example> on the property").GetValue<string>().ShouldBe("Customer called to reschedule.");
+    }
+
     /// <summary>A property schema's example: the first of its JSON Schema <c>examples</c>, or its OpenAPI <c>example</c>; null when it has none.</summary>
     private static JsonNode? Example(JsonElement schema) =>
         schema.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0

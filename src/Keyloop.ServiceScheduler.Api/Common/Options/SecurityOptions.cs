@@ -48,7 +48,7 @@ public sealed class SecurityOptions : IValidatableObject
         [Range(1, 100_000)]
         public int GlobalPermitsPerMinute { get; set; } = 300;
 
-        /// <summary>The <c>booking</c> policy, applied to the booking endpoint on top of the global limiter.</summary>
+        /// <summary>The <c>booking</c> policy, the stricter write limit shared by booking and cancellation, on top of the global limiter.</summary>
         [Range(1, 100_000)]
         public int BookingPermitsPerMinute { get; set; } = 30;
     }

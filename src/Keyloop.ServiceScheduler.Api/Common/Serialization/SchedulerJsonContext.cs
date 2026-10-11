@@ -4,6 +4,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
@@ -70,5 +71,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(ResourceSummary))]
 [JsonSerializable(typeof(CustomerResponse))]
 [JsonSerializable(typeof(VehicleResponse))]
-// Tasks 11+: every request, response and extension payload type, including top-level collections.
+// Task 11: cancellation (GetAppointment and CancelAppointment answer with AppointmentResponse, registered above)
+[JsonSerializable(typeof(CancelAppointmentRequest))]
+// Tasks 12+: every request, response and extension payload type, including top-level collections.
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

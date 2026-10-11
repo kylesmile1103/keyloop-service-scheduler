@@ -9,6 +9,8 @@ using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -69,6 +71,9 @@ builder.Services.AddScoped<GetAvailabilityHandler>();
 builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
 builder.Services.AddScoped<BookAppointmentHandler>();
 builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
+builder.Services.AddScoped<GetAppointmentHandler>();
+builder.Services.AddScoped<CancelAppointmentHandler>();
+builder.Services.AddScoped<IValidator<CancelAppointmentRequest>, CancelAppointmentValidator>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);

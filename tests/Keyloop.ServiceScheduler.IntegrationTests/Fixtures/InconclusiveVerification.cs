@@ -17,9 +17,12 @@ public sealed class InconclusiveVerification : DbCommandInterceptor
 
     public int Fired { get; private set; }
 
+    /// <summary>Optional: runs when the verification is hidden, before its read is sent (e.g. to take a lock the next run must wait for).</summary>
+    public Func<CancellationToken, Task>? OnFired { get; set; }
+
     public void Arm() => Interlocked.Exchange(ref _armed, 1);
 
-    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+    public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
         DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -28,11 +31,16 @@ public sealed class InconclusiveVerification : DbCommandInterceptor
             && Interlocked.Exchange(ref _armed, 0) == 1)
         {
             Fired++;
+            if (OnFired is { } onFired)
+            {
+                await onFired(cancellationToken);
+            }
+
 #pragma warning disable CA2100 // The test's own wrapper around the SQL EF Core generated; no input reaches it.
             command.CommandText = $"SELECT * FROM ({command.CommandText}) AS hidden WHERE FALSE";
 #pragma warning restore CA2100
         }
 
-        return ValueTask.FromResult(result);
+        return result;
     }
 }

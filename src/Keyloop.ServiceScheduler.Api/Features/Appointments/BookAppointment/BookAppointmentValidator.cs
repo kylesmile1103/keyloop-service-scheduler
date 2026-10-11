@@ -1,4 +1,5 @@
 using FluentValidation;
+using Keyloop.ServiceScheduler.Api.Common.Validation;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
@@ -29,22 +30,19 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
             .WithMessage($"notes must be at most {Appointment.MaxNotesLength} characters.");
     }
 
-    /// <summary>Trimmed length within [<paramref name="min"/>, <paramref name="max"/>], as <c>Guard.Required</c> measures it.</summary>
-    internal static bool TrimmedLength(string? value, int min, int max) => value?.Trim().Length is { } length && length >= min && length <= max;
-
     private sealed class CustomerRequestValidator : AbstractValidator<CustomerRequest>
     {
         public CustomerRequestValidator()
         {
-            RuleFor(c => c.Name).Must(name => TrimmedLength(name, 1, 120)).WithMessage("customer.name is required, at most 120 characters.");
+            RuleFor(c => c.Name).Must(name => TrimmedText.HasLength(name, 1, 120)).WithMessage("customer.name is required, at most 120 characters.");
 
             RuleFor(c => c.Email)
                 .Cascade(CascadeMode.Stop)
-                .Must(email => TrimmedLength(email, 3, 254)).WithMessage(EmailMessage)
+                .Must(email => TrimmedText.HasLength(email, 3, 254)).WithMessage(EmailMessage)
                 .EmailAddress().WithMessage(EmailMessage);
 
             RuleFor(c => c.Phone)
-                .Must(phone => TrimmedLength(phone, 3, 40) && phone.All(c => char.IsAsciiDigit(c) || c is ' ' or '+' or '(' or ')' or '-'))
+                .Must(phone => TrimmedText.HasLength(phone, 3, 40) && phone.All(c => char.IsAsciiDigit(c) || c is ' ' or '+' or '(' or ')' or '-'))
                 .WithMessage("customer.phone must be 3 to 40 characters of digits, spaces and + ( ) -.");
         }
 
@@ -58,9 +56,9 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
             RuleFor(v => v.Vin)
                 .Must(vin => Vin.TryCreate(vin, out _))
                 .WithMessage("vehicle.vin must be a 17-character VIN of digits and letters other than I, O and Q.");
-            RuleFor(v => v.Registration).Must(registration => TrimmedLength(registration, 1, 16)).WithMessage("vehicle.registration is required, at most 16 characters.");
-            RuleFor(v => v.Make).Must(make => TrimmedLength(make, 1, 60)).WithMessage("vehicle.make is required, at most 60 characters.");
-            RuleFor(v => v.Model).Must(model => TrimmedLength(model, 1, 60)).WithMessage("vehicle.model is required, at most 60 characters.");
+            RuleFor(v => v.Registration).Must(registration => TrimmedText.HasLength(registration, 1, 16)).WithMessage("vehicle.registration is required, at most 16 characters.");
+            RuleFor(v => v.Make).Must(make => TrimmedText.HasLength(make, 1, 60)).WithMessage("vehicle.make is required, at most 60 characters.");
+            RuleFor(v => v.Model).Must(model => TrimmedText.HasLength(model, 1, 60)).WithMessage("vehicle.model is required, at most 60 characters.");
         }
     }
 }

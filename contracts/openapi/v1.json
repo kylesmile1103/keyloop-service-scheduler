@@ -338,6 +338,161 @@
           }
         }
       }
+    },
+    "/api/v1/appointments/{appointmentId}": {
+      "get": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Get an appointment",
+        "description": "The appointment in whatever status it is now (cancelled ones included), with its service, the bay and technician reserved for\nit, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's `Location`\nheader points here.",
+        "operationId": "GetAppointment",
+        "parameters": [
+          {
+            "name": "appointmentId",
+            "in": "path",
+            "description": "The appointment's id, as returned by the booking (its `id`, or the last segment of its `Location`).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The appointment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appointments/{appointmentId}/cancel": {
+      "post": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Cancel an appointment",
+        "description": "Cancels a confirmed or checked-in appointment and records why. Its bay and technician are free again at once, so the slot is\nre-bookable; the appointment stays readable, with status `Cancelled` and the reason as `cancellationReason`. Cancelling is\nnot repeatable: a second cancel, or one after work has started, is refused with the current status. When another request changed\nthe appointment after this one read it, nothing is overwritten: read it again and decide.",
+        "operationId": "CancelAppointment",
+        "parameters": [
+          {
+            "name": "appointmentId",
+            "in": "path",
+            "description": "The appointment to cancel.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The cancellation: why the appointment is cancelled.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelAppointmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled: the appointment with status `Cancelled`, its `cancellationReason` and the time of the change as `updatedAtUtc`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The reason is missing, blank or longer than 500 characters (`validation-error`, `errors` keyed `reason`), or the body is not valid JSON.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The appointment cannot be cancelled in its current status (`invalid-state-transition`, with `currentStatus` and `attempted` = `cancel`), or another request changed it after this one read it (`concurrency-conflict`: read it again).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many state-changing requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -628,6 +783,22 @@
           }
         },
         "description": "The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The\nexamples form a valid booking at the seeded Keyloop Motors Reading dealership."
+      },
+      "CancelAppointmentRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "examples": [
+              "Customer called to reschedule."
+            ],
+            "type": "string",
+            "description": "Why the appointment is cancelled, 1 to 500 characters after trimming. Stored on the appointment (returned as\n`cancellationReason`) and in its audit history; never written to logs."
+          }
+        },
+        "description": "The body of `POST /appointments/{appointmentId}/cancel`."
       },
       "Certification": {
         "enum": [

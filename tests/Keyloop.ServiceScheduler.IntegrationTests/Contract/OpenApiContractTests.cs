@@ -23,8 +23,9 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     private const string Drift =
         "contract drift: run scripts/export-openapi.sh (dotnet build regenerates contracts/openapi/v1.json), then commit the file";
 
-    /// <summary>Every operation, in route order. Tasks 11 and 12 append <c>GetAppointment</c>, <c>CancelAppointment</c> and <c>GetWorkshopSchedule</c>.</summary>
-    private static readonly string[] OperationIds = ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment"];
+    /// <summary>Every operation, in route order. Task 12 appends <c>GetWorkshopSchedule</c>.</summary>
+    private static readonly string[] OperationIds =
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -146,6 +147,12 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "409"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "422"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "429"),
+                ("GET /api/v1/appointments/{appointmentId}", "404"),
+                ("GET /api/v1/appointments/{appointmentId}", "429"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "400"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "404"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "409"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "429"),
             ],
             ignoreOrder: true);
 
@@ -198,6 +205,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         bodies.ShouldBe(
         [
             ("BookAppointment", "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes."),
+            ("CancelAppointment", "The cancellation: why the appointment is cancelled."),
         ]);
     }
 
@@ -217,6 +225,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "200", "ServiceTypeResponse[]"),
                 ("GET /api/v1/dealerships/{dealershipId}/availability", "200", "AvailabilityResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "201", "AppointmentResponse"),
+                ("GET /api/v1/appointments/{appointmentId}", "200", "AppointmentResponse"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "200", "AppointmentResponse"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))
