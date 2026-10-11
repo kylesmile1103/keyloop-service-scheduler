@@ -489,7 +489,7 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 | SQLSTATE | Meaning | Mapped to | Expected frequency |
 |----------|---------|-----------|--------------------|
 | `23P01` `exclusion_violation` (constraint name tells bay vs technician) | Overlap backstop fired | `409 slot-conflict` + suggestions; metric `scheduler.booking.constraint_backstop` | ≈ 0 (only out-of-band writers) |
-| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict` (`conflictingResource: unknown`), answered by the handler and **not** retried, although Npgsql calls it transient; **Warning** log (1004) + `scheduler.booking.deadlocks` so it is visible | 0 — asserted by the adversarial test |
+| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict` (`conflictingResource: unknown`), when raised by the booking `SaveChanges` it is answered by the handler and **not** retried, although Npgsql calls it transient (a 40P01 from the lock acquisition, the expired-key `DELETE` or a read would reach the execution strategy and be retried; ADR-003 argues none can occur); **Warning** log (1004) + `scheduler.booking.deadlocks` so it is visible | 0 — asserted by the adversarial test |
 | `40001` `serialization_failure` | Not used (READ COMMITTED) | transient → execution-strategy retry | 0 |
 | `23505` `unique_violation` on `idempotency_keys` | Duplicate idempotency key | load stored response → replay `201` if same fingerprint, else `422 idempotency-key-reuse` | rare |
 | `23514` `check_violation` | Domain guard bypassed | `500` (bug) with trace id | 0 |
@@ -692,7 +692,7 @@ sequenceDiagram
     H->>D: AvailabilityCalculator.IsFeasible(start) -> candidates, AllocationPolicy.Choose
     D-->>H: bay B3, technician T2 (else 409 slot-unavailable + suggestions)
     H->>D: Appointment.Book(...) raises AppointmentBooked
-    H->>DB: INSERT appointments, appointment_history, idempotency_keys
+    H->>DB: INSERT appointments, idempotency_keys, appointment_history
     DB-->>H: ok (exclusion constraints satisfied)
     H->>DB: COMMIT (lock released)
     H-->>EP: AppointmentResponse

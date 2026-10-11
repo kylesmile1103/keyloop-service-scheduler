@@ -1,6 +1,6 @@
 # Agent hand-off — Keyloop Unified Service Scheduler
 
-> **Fresh Claude session: read this file first, then `CLAUDE.md`, then the SDD ledger** (`.superpowers/sdd/2026-10-11-keyloop-service-scheduler/progress.md`, git-ignored). This document is self-contained so the project can continue even if the git-ignored workspace is lost. Last updated: 2026-10-11, at the end of Task 10's fix round.
+> **Fresh Claude session: read this file first, then `CLAUDE.md`, then the SDD ledger** (`.superpowers/sdd/2026-10-11-keyloop-service-scheduler/progress.md`, git-ignored). This document is self-contained so the project can continue even if the git-ignored workspace is lost. Last updated: 2026-10-11, after Task 10 closed (review clean).
 
 ---
 
@@ -8,8 +8,8 @@
 
 - **What this is.** The Keyloop Principal Software Engineer take-home, **Scenario A — Unified Service Scheduler** (brief: `../docs/KeyloopCodingChallange.pdf`, outside the repo). A dealership workshop booking engine: an appointment needs a compatible **service bay** and a certified **technician** for the whole duration, with **zero double bookings under concurrency**. The **backend is the evaluated deliverable**; a React dispatch board is the demo harness.
 - **Where.** Repo `/Users/khaipq5/Documents/research/keyloop/keyloop-service-scheduler`, branch **`feature/initial-implementation`** (31 commits ahead of `main` @ `e54bb1d`). Local only; **nothing has been pushed**. Reference clones live in `../references/` (MIT shadcn template — vendorable; carcareco — inspiration; **MiroTalk — AGPL, never copy code**).
-- **State.** Backend Tasks **1–9 complete and reviewed**. **Task 10** (BookAppointment — the core) is implemented and its fix round 1 is committed (`c51ba9e`); the **scoped re-review of `2a25835..c51ba9e` was in flight when this was written** — see §4. Tasks 11–18 (plus 14b and 17b) remain. Tests at handoff: **unit 384/384, integration 150/150, build 0 warnings**.
-- **Next action.** Confirm or re-run Task 10's scoped re-review (§4), close Task 10 in the ledger, then continue with Task 11 using the process in §5.
+- **State.** Backend Tasks **1–10 complete and reviewed** (Task 10, BookAppointment — the core — closed after one fix round; its scoped re-review was clean). Tasks 11–18 (plus 14b and 17b) remain. Tests at handoff: **unit 384/384, integration 150/150, build 0 warnings**.
+- **Next action.** Start Task 11 using the process in §5, with the carry-overs in §6 (take `BASE` from the current `HEAD`, which is after the hand-off docs commits).
 
 ## 2. What the stakeholder asked for (binding intent)
 
@@ -50,11 +50,9 @@ User preferences (also in Claude memory): Docker runs on **Colima**; prefers bui
 | 7 | Cross-cutting API (problems, validation, telemetry, options, security, rate limits, forwarded headers) | `64d2cb6..227f7a6` (excl. `19fd942`) | |
 | 8 | GetDealerships, GetServiceTypes (pattern-setting slice) | `227f7a6..86e5d24` | **pattern files** — see §7 |
 | 9 | GetAvailability | `86e5d24..2e178c5` | strict `yyyy-MM-dd` |
-| 10 | **BookAppointment** (lock, allocation, idempotency, suggestions) | `2e178c5..c51ba9e` | **re-review pending** |
+| 10 | **BookAppointment** (lock, allocation, idempotency, suggestions) | `2e178c5..c51ba9e` | lost-commit-ack duplicate fixed; re-review clean |
 
-**Task 10 — open item.** Fix round 1 (`c51ba9e`) addressed: phantom second appointment after a lost COMMIT acknowledgement for unkeyed requests (id minted once outside the execution strategy + `verifySucceeded` + in-attempt id-existence check; either guard alone sufficient by mutation); ADR-003/§7.3/§7.5 amended (scoped exception for the idempotency-key row); expired keys never replayed; EF `SaveChangesFailed`/`CommandError` lowered to Information (`TransactionError` stays Error); `Stopwatch` for latency metrics; deadlock mapping unit-tested; §12.1 documents outcome `error`. **The scoped Opus re-review of `2a25835..c51ba9e` was dispatched in the previous session.** If the ledger's last Task 10 line is still "scoped re-review dispatched", re-run it (package: `review-2a25835..c51ba9e.diff`; regenerate with the `review-package` script if missing) using the re-review checklist in §5.4, then:
-- all addressed → append `Task 10: fix round 1/5 (… addressed, 0 open; commits 2a25835..c51ba9e)` and `Task 10: complete (commits 2e178c5..c51ba9e, review clean after 1 fix round)`;
-- findings open → fix round 2 with a **fresh** implementer (agent ids do not survive sessions) given the brief, the report file and the findings.
+**Task 10 — how it closed.** Fix round 1 (`c51ba9e`) addressed: phantom second appointment after a lost COMMIT acknowledgement for unkeyed requests (id minted once outside the execution strategy + `verifySucceeded` + in-attempt id-existence check; either guard alone sufficient by mutation); ADR-003/§7.3/§7.5 amended (scoped exception for the idempotency-key row); expired keys never replayed; EF `SaveChangesFailed`/`CommandError` lowered to Information (`TransactionError` stays Error); `Stopwatch` for latency metrics; deadlock mapping unit-tested; §12.1 documents outcome `error`. The scoped Opus re-review confirmed all findings addressed (it verified that `verifySucceeded` runs on a fresh connection outside the failed transaction and can only see committed rows) and left one telemetry Minor, carried into Task 11 (§6). Remember: subagent ids do not survive sessions, so any future fix round on an old task needs a **fresh** implementer given the brief, the report file and the findings.
 
 **Remaining:** Tasks 11, 12, 13, 14, 14b, 15, 16, 17, 17b, 18, then the final whole-branch review and branch finish (§6).
 
@@ -123,6 +121,7 @@ Ledger line formats: `Ruling: <decision> — <why> — <cost if wrong>`; `Task N
 Regenerate each brief with `task-brief` before dispatch (the plan changed since some were staged). Carry-overs below are **binding rulings** not present in the brief text.
 
 **Task 11 — GetAppointment, CancelAppointment** (Opus recommended; the xmin concurrency test matters).
+- **First commit (carried from the Task 10 re-review):** in `BookAppointmentHandler.VerifyCommittedAsync`, resolve the in-doubt domain events ONLY when the appointment row is found — an inconclusive "not found" must not drop them, because the in-lock id check settles that case later; add a test for the in-doubt path; and filter `scheduler.booking.duration` by outcome in the lock-wait test.
 - Reuse `AppointmentMapper`/`AppointmentResponseMapper` from Task 10; tag `Appointments`; `<example>` on `Reason`; register `CancelAppointmentRequest` in `SchedulerJsonContext`; explicit validator registration; log 1010 via `TelemetryDomainEventObserver` (already logs on commit — do not double-log).
 - Cancel runs inside the execution strategy; `DbUpdateConcurrencyException` → 409 `concurrency-conflict`; `invalid-state-transition` carries `currentStatus` and machine `attempted` token.
 - Tests per brief incl. **Review Focus #3** (cancelled slot re-bookable on the same bay/technician) and the **xmin stale-update** test (deferred from Task 6).
@@ -248,6 +247,8 @@ Every decision taken on the stakeholder's behalf, in order, with its cost if wro
 - Ruling (Task 10 minor #3): malformed-JSON 400s are documented as visible via http.server.request.duration{status=400} instead of being counted as booking outcome — cost if wrong: one metric gap, documented.
 - Ruling (Task 10): keep EF `TransactionError` (failed commit) at Error — a lost commit acknowledgement is a genuine infrastructure fault even when verified afterwards — cost if wrong: one Error line per lost ack.
 - Ruling (Task 10): accept ExecuteAsync + verifySucceeded instead of ExecuteInTransactionAsync — refusal paths must roll back, which ExecuteInTransactionAsync would commit — cost if wrong: none.
+- Ruling (Task 10 re-review minor): carry into Task 11's first commit — in `VerifyCommittedAsync` resolve the in-doubt domain events only when the row IS found (an inconclusive "not found" must not drop them; the in-lock id check settles it), with a test; filter `scheduler.booking.duration` by outcome in the lock-wait test — cost if wrong: a 1001 log line missing in a rare in-doubt case.
+- Ruling (Task 10 re-review nits): controller fixed docs — CLAUDE.md ADR-003 wording with the key-row exception, §7.4 40P01 scope, §8.5 insert order (12 diagrams re-validated) — cost if wrong: none.
 
 ## 11. Deferred minors for the final whole-branch review (verbatim from the ledger)
 
@@ -262,7 +263,8 @@ The final reviewer triages which must be fixed before merge.
 - **[partly resolved: framework problem types documented in §8.7 (`19fd942`); 64 KB/413, traceId over HTTP proven in Task 10; EF Error 20102 on first migration still open]** Task 7: minor (deferred → final review / docs): framework-generated 404/405/413/415 problem types keep RFC links (controller to document in §8.7); EF Error 20102 logged on a fresh database's first migration (Task 6 behaviour; investigate a log filter later); 64 KB body limit, HSTS, ValidationProblem traceId over HTTP to be proven in Task 10 on real Kestrel.
 - Task 8: minor (deferred → final review): 1104 redaction relies on the binder's message wording; non-binder startup exception messages pass through unredacted.
 - **[superseded: latencies now use `Stopwatch` (Task 10 fix round)]** Task 9: minor (deferred): duration metric value cannot fail a test under FakeTimeProvider (by design).
-- - Note (process): controller docs commit 19fd942 (§8.7 framework problem types) landed inside Task 7 fix range; exclude it from the re-review package. Controller avoids committing while an implementer is active from here on.
+- Task 10: minor (deferred → final review): no `lock_timeout` on the booking transaction — after a dropped connection whose COMMIT never reached the server, retries queue behind the orphaned backend's advisory lock until PostgreSQL reaps it (latency, not correctness); decide whether to `SET LOCAL lock_timeout` and map 55P03.
+- Note (process): controller docs commit 19fd942 (§8.7 framework problem types) landed inside Task 7 fix range; exclude it from the re-review package. Controller avoids committing while an implementer is active from here on.
 
 ## 12. Guardrails
 
