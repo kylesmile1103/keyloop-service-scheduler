@@ -72,3 +72,5 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 - Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened - a failure is a design defect.
 - `references/` holds provenance notes only; the reference clones live outside the repo and the AGPL one (MiroTalk) must never be copied.
 - Commit messages: Conventional Commits, ending with the `Co-Authored-By`/`Claude-Session` trailers used in the existing history.
+- When interacting with Cloudflare, use the `cf` CLI unless the project has a
+  Wrangler configuration file.
