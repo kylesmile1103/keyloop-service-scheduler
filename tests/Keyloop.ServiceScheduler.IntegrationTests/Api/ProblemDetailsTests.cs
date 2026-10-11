@@ -165,7 +165,7 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
     {
         var problem = await ProblemAsync("not-found", HttpStatusCode.NotFound, "not-found");
 
-        problem.GetProperty("resource").GetString().ShouldBe("Appointment");
+        problem.GetProperty("resource").GetString().ShouldBe("appointment");
         problem.GetProperty("id").GetGuid().ShouldBe(Guid.Parse("0199d2a4-0000-7000-8000-000000000001"));
     }
 

@@ -3,8 +3,11 @@ namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 // Application-level outcomes thrown by handlers and mapped to problems by GlobalExceptionHandler (the only mapper). Domain rule
 // violations and illegal transitions are the domain's own exceptions (Domain/Common).
 
-/// <summary>404 <c>not-found</c>. <see cref="Resource"/> names the kind of thing (e.g. <c>Dealership</c>), <see cref="Id"/> the id asked for.</summary>
-public sealed class NotFoundException(string resource, Guid id) : Exception($"{resource} '{id}' was not found.")
+/// <summary>
+/// 404 <c>not-found</c>. <see cref="Resource"/> names the kind of thing as a lowercase kebab token (<c>dealership</c>,
+/// <c>service-type</c>, <c>appointment</c>), the <c>resource</c> extension clients branch on; <see cref="Id"/> is the id asked for.
+/// </summary>
+public sealed class NotFoundException(string resource, Guid id) : Exception($"No {resource} with id '{id}' exists.")
 {
     public string Resource { get; } = resource;
 

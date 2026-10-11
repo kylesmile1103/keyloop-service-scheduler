@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
@@ -40,6 +41,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         options.TypeInfoResolverChain[0].ShouldBeSameAs(SchedulerJsonContext.Default);
         options.TypeInfoResolverChain.Select(resolver => resolver.GetType().Name).ShouldContain("ProblemDetailsJsonContext");
         options.TryGetTypeInfo(typeof(NotRegistered), out _).ShouldBeFalse();
+        options.NumberHandling.ShouldBe(JsonNumberHandling.Strict, "the web defaults would also read numbers from strings");
     }
 
     [Theory]

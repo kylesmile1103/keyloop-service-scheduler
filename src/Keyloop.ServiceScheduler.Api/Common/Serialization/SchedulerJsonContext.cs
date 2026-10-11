@@ -3,6 +3,8 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
+using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 
@@ -13,7 +15,10 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 /// <remarks>
 /// ProblemDetails extensions are <c>object</c>-typed and serialised by their <em>runtime</em> type, so each runtime type a throw
 /// site stores there is listed (a <c>List&lt;T&gt;</c> is not covered by <c>T[]</c>; <c>GlobalExceptionHandler</c> copies
-/// suggestions into arrays). Top-level collection response types are listed explicitly; nested types are discovered.
+/// suggestions into arrays). Top-level collection response types are listed explicitly, as the endpoint declares them
+/// (<c>Ok&lt;IReadOnlyList&lt;T&gt;&gt;</c> → <c>IReadOnlyList&lt;T&gt;</c>): the HTTP writer serialises a declared collection type with
+/// its own metadata whatever list the handler returns (<c>List&lt;T&gt;</c>, an array, a collection expression), so the runtime
+/// list type needs no entry. Nested types are discovered.
 /// </remarks>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
@@ -40,6 +45,11 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(string))] // attempted, resource, conflictingResource, traceId
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(Guid))] // id
-// Tasks 8+: every request, response and extension payload type, including top-level collections, e.g.
-// [JsonSerializable(typeof(IReadOnlyList<DealershipResponse>))]
+// Task 8: dealerships and the service catalogue
+[JsonSerializable(typeof(DealershipResponse))]
+[JsonSerializable(typeof(DayOperatingHoursResponse))]
+[JsonSerializable(typeof(IReadOnlyList<DealershipResponse>))]
+[JsonSerializable(typeof(ServiceTypeResponse))]
+[JsonSerializable(typeof(IReadOnlyList<ServiceTypeResponse>))]
+// Tasks 9+: every request, response and extension payload type, including top-level collections.
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

@@ -1,4 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Problems;
+using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
+using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Endpoints;
 
@@ -11,6 +13,8 @@ public static class EndpointRegistry
         var group = app.MapGroup("/api/v1").WithGroupName("v1");
 
         // Each slice adds its line here (Tasks 8–12), in API order.
+        GetDealershipsEndpoint.Map(group);
+        GetServiceTypesEndpoint.Map(group);
 
         if (app.Environment.IsEnvironment("SystemTest"))
         {

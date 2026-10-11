@@ -53,6 +53,68 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Catalogue_operations_carry_ids_tags_xml_docs_and_response_schemas()
+    {
+        using var document = JsonDocument.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct));
+        var root = document.RootElement;
+        var paths = root.GetProperty("paths");
+
+        var dealerships = paths.GetProperty("/api/v1/dealerships").GetProperty("get");
+        ShouldBeDocumented(dealerships, "GetDealerships", "Dealerships");
+        ItemsRef(dealerships, "200", "application/json").ShouldBe("#/components/schemas/DealershipResponse");
+
+        var serviceTypes = paths.GetProperty("/api/v1/dealerships/{dealershipId}/service-types").GetProperty("get");
+        ShouldBeDocumented(serviceTypes, "GetServiceTypes", "Catalog");
+        ItemsRef(serviceTypes, "200", "application/json").ShouldBe("#/components/schemas/ServiceTypeResponse");
+        var parameter = serviceTypes.GetProperty("parameters").EnumerateArray().ShouldHaveSingleItem(); // services and the token are not parameters
+        parameter.GetProperty("name").GetString().ShouldBe("dealershipId");
+        parameter.GetProperty("in").GetString().ShouldBe("path");
+        parameter.GetProperty("schema").GetProperty("format").GetString().ShouldBe("uuid");
+        parameter.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace();
+        var notFound = serviceTypes.GetProperty("responses").GetProperty("404");
+        notFound.GetProperty("description").GetString().ShouldNotBe("Not Found", "the <response> comment, not the default reason phrase");
+        notFound.GetProperty("content").GetProperty("application/problem+json").GetProperty("schema").GetProperty("$ref").GetString()
+            .ShouldBe("#/components/schemas/ProblemDetails");
+
+        // Every response property is described by its XML comment (Addendum B §B2).
+        var schemas = root.GetProperty("components").GetProperty("schemas");
+        foreach (var (schema, properties) in new (string, string[])[]
+                 {
+                     ("DealershipResponse", ["id", "name", "timeZoneId", "operatingHours"]),
+                     ("DayOperatingHoursResponse", ["day", "opensAt", "closesAt"]),
+                     ("ServiceTypeResponse", ["id", "code", "name", "durationMinutes", "requiredBayCapabilities", "requiredCertifications", "bookable"]),
+                 })
+        {
+            var described = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject()
+                .Select(p => (p.Name, Described: p.Value.TryGetProperty("description", out var d) && !string.IsNullOrWhiteSpace(d.GetString())))
+                .ToList();
+            described.Select(p => p.Name).ShouldBe(properties, schema);
+            described.Where(p => !p.Described).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
+        }
+
+        // Numbers are numbers on the wire, so the generated client types them as number, not number | string.
+        var duration = schemas.GetProperty("ServiceTypeResponse").GetProperty("properties").GetProperty("durationMinutes");
+        duration.GetProperty("type").GetString().ShouldBe("integer");
+        duration.TryGetProperty("pattern", out _).ShouldBeFalse();
+    }
+
+    private static void ShouldBeDocumented(JsonElement operation, string operationId, string tag)
+    {
+        operation.GetProperty("operationId").GetString().ShouldBe(operationId);
+        operation.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ShouldBe([tag]);
+        operation.GetProperty("summary").GetString().ShouldNotBeNullOrWhiteSpace(operationId); // <summary>
+        operation.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace(operationId); // <remarks>
+        operation.GetProperty("responses").GetProperty("200").GetProperty("description").GetString().ShouldNotBe("OK", operationId);
+    }
+
+    private static string? ItemsRef(JsonElement operation, string status, string mediaType)
+    {
+        var schema = operation.GetProperty("responses").GetProperty(status).GetProperty("content").GetProperty(mediaType).GetProperty("schema");
+        schema.GetProperty("type").GetString().ShouldBe("array");
+        return schema.GetProperty("items").GetProperty("$ref").GetString();
+    }
+
+    [Fact]
     public async Task Scalar_reference_is_served_at_scalar_v1()
     {
         using var response = await _client.GetAsync("/scalar/v1", Ct);

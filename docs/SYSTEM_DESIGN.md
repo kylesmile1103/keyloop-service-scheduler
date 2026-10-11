@@ -622,8 +622,10 @@ src/Keyloop.ServiceScheduler.Api/
 │   └── Scheduling/    Appointment, AppointmentStatus, TimeSlot, Vin, CustomerDetails, VehicleDetails,
 │                      AppointmentEvents, AvailabilityCalculator, AllocationPolicy, BookingWindowPolicy
 ├── Features/                          # one folder per capability; nothing shared across slices except Domain + Common
-│   ├── Dealerships/GetDealerships/     Endpoint.cs, Query.cs, Handler.cs, Response.cs
-│   ├── Catalog/GetServiceTypes/
+│   ├── Dealerships/GetDealerships/     GetDealershipsEndpoint, GetDealershipsHandler, DealershipResponse
+│   ├── Dealerships/Mapping/            DealershipMapper (Mapperly; one mapper per feature family)
+│   ├── Catalog/GetServiceTypes/        GetServiceTypesEndpoint, GetServiceTypesHandler, ServiceTypeResponse
+│   ├── Catalog/Mapping/                ServiceTypeMapper
 │   ├── Availability/GetAvailability/   Endpoint, Query, Validator, Handler, Response
 │   ├── Appointments/BookAppointment/   Endpoint, Command, Validator, Handler, Response, IdempotencyGuard
 │   ├── Appointments/GetAppointment/
@@ -634,7 +636,7 @@ src/Keyloop.ServiceScheduler.Api/
 │   │                  DealershipLock, PostgresErrorClassifier, DatabaseInitializer (migrate + seed, env-gated)
 │   └── Idempotency/   IdempotencyKey entity + store
 ├── Common/
-│   ├── Endpoints/     IEndpoint + MapEndpoints() discovery, route group /api/v1
+│   ├── Endpoints/     IEndpoint + EndpointRegistry (explicit list, no discovery), route group /api/v1
 │   ├── Validation/    ValidationFilter (FluentValidation -> 400 validation-error)
 │   ├── Problems/      ProblemTypes, ProblemDetailsFactory, GlobalExceptionHandler
 │   ├── Telemetry/     SchedulerTelemetry (ActivitySource, Meter, instruments)
@@ -766,12 +768,12 @@ flowchart LR
 
 ### 8.7 API contract
 
-Base path `/api/v1`. JSON only; enums as strings; instants ISO-8601 UTC. All errors are `application/problem+json` (RFC 9457, the successor of RFC 7807) with `traceId`.
+Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never read from strings); instants ISO-8601 UTC. All errors are `application/problem+json` (RFC 9457, the successor of RFC 7807) with `traceId`.
 
 | Method & path | Purpose | Success | Errors |
 |---------------|---------|---------|--------|
-| `GET /dealerships` | List dealerships (id, name, timeZone, operating hours) | `200` | — |
-| `GET /dealerships/{dealershipId}/service-types` | Catalogue with `bookable` flag and requirement lists | `200` | `404 not-found` |
+| `GET /dealerships` | List dealerships by name: `[{ id, name, timeZoneId, operatingHours[7]{ day, opensAt, closesAt } }]`, days Monday first, times `HH:mm` local, `null` when closed | `200` | — |
+| `GET /dealerships/{dealershipId}/service-types` | The whole (global) catalogue by name: `[{ id, code, name, durationMinutes, requiredBayCapabilities[], requiredCertifications[], bookable }]`; `bookable` = the dealership has an active bay and an active technician that qualify | `200` | `404 not-found` |
 | `GET /dealerships/{dealershipId}/availability?serviceTypeId=&date=YYYY-MM-DD` | Feasible start times for a local date | `200` `{ date, timeZone, operatingWindow, durationMinutes, slotGranularityMinutes, slots[{startUtc,endUtc,startLocal,freeBays,freeTechnicians}] }` | `400`, `404` |
 | `GET /dealerships/{dealershipId}/schedule?date=YYYY-MM-DD` | Dispatch-board read model: `{ dealership, operatingWindow, bays[{…, appointments[]}], technicians[] }` | `200` | `400`, `404` |
 | `POST /dealerships/{dealershipId}/appointments` | Book (headers: optional `Idempotency-Key`) | `201` + `Location`; an idempotent replay returns the stored `201` plus `Idempotent-Replayed: true` | `400 validation-error`, `404 not-found`, `422 outside-operating-hours / lead-time-not-met / beyond-booking-horizon / slot-not-aligned / no-qualified-resources / idempotency-key-reuse`, `409 slot-unavailable / slot-conflict`, `429` |

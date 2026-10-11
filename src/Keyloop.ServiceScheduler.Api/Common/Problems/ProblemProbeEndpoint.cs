@@ -46,7 +46,7 @@ internal sealed class ProblemProbeEndpoint : IEndpoint
         "unavailable" => throw new SlotUnavailableException(new List<SuggestedSlot> { Suggestion(Nine), Suggestion(Nine.AddHours(1)) }),
         "conflict" => throw new SlotConflictException("technician", new List<SuggestedSlot> { Suggestion(Nine) }),
         "transition" => throw new InvalidStateTransitionException(AppointmentStatus.Cancelled, "cancel"),
-        "not-found" => throw new NotFoundException("Appointment", Guid.Parse("0199d2a4-0000-7000-8000-000000000001")),
+        "not-found" => throw new NotFoundException("appointment", Guid.Parse("0199d2a4-0000-7000-8000-000000000001")),
         "idempotency" => throw new IdempotencyKeyReuseException(),
         "concurrency" => throw new DbUpdateConcurrencyException("Simulated stale row version."),
         _ => throw new InvalidOperationException("Simulated failure: Host=db;Password=do-not-leak"),

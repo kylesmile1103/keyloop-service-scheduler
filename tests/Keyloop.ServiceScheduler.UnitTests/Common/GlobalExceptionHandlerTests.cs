@@ -67,13 +67,13 @@ public class GlobalExceptionHandlerTests
     public async Task Not_found_is_404_with_resource_and_id()
     {
         var id = Guid.NewGuid();
-        var (http, problem) = await HandleAsync(new NotFoundException("Appointment", id));
+        var (http, problem) = await HandleAsync(new NotFoundException("appointment", id));
 
         http.Response.StatusCode.ShouldBe(404);
         problem.Type.ShouldBe(ProblemTypes.NotFound);
         problem.Title.ShouldBe("Resource not found");
-        problem.Detail.ShouldBe($"Appointment '{id}' was not found.");
-        problem.Extensions["resource"].ShouldBe("Appointment");
+        problem.Detail.ShouldBe($"No appointment with id '{id}' exists.");
+        problem.Extensions["resource"].ShouldBe("appointment");
         problem.Extensions["id"].ShouldBe(id);
     }
 

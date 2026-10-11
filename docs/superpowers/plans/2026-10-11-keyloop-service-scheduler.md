@@ -740,7 +740,7 @@ public static class ProblemTypes
 }
 public sealed record SuggestedSlot(DateTime StartUtc, DateTime EndUtc, string StartLocal);
 // ApiExceptions.cs (application-level, thrown by handlers, mapped by GlobalExceptionHandler)
-public sealed class NotFoundException(string resource, Guid id) : Exception($"{resource} '{id}' was not found.") { public string Resource {get;} public Guid Id {get;} }
+public sealed class NotFoundException(string resource, Guid id) : Exception($"No {resource} with id '{id}' exists.") { public string Resource {get;} public Guid Id {get;} }
 public sealed class SlotUnavailableException(IReadOnlyList<SuggestedSlot> suggestions) : Exception("No compatible bay and certified technician are free at the requested time.") { public IReadOnlyList<SuggestedSlot> Suggestions {get;} }
 public sealed class SlotConflictException(string conflictingResource, IReadOnlyList<SuggestedSlot> suggestions) : Exception("The slot was taken by a concurrent booking.") { ... }
 public sealed class IdempotencyKeyReuseException() : Exception("The Idempotency-Key was already used with a different request.");

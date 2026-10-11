@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
@@ -6,6 +7,8 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
+using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
@@ -48,15 +51,22 @@ builder.Services.AddDbContext<SchedulerDbContext>((sp, options) => options
 builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
 
 // Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12),
-// e.g. builder.Services.AddScoped<GetDealershipsHandler>(); builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
+// e.g. builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
+builder.Services.AddScoped<GetDealershipsHandler>();
+builder.Services.AddScoped<GetServiceTypesHandler>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);
 
 // Ours first in the resolver chain (Addendum A §A2). AddProblemDetails and AddOpenApi each insert their own context at index 0
 // when the options are configured, so this runs as a post-configuration, after all of them; their contexts stay in the chain.
-// Enums are strings via the context's UseStringEnumConverter, not the reflection-based JsonStringEnumConverter.
-builder.Services.PostConfigure<JsonOptions>(o => o.SerializerOptions.TypeInfoResolverChain.Insert(0, SchedulerJsonContext.Default));
+// Enums are strings via the context's UseStringEnumConverter, not the reflection-based JsonStringEnumConverter. Numbers are strict:
+// the web defaults also read them from strings, which the OpenAPI document then types as "integer or string".
+builder.Services.PostConfigure<JsonOptions>(o =>
+{
+    o.SerializerOptions.TypeInfoResolverChain.Insert(0, SchedulerJsonContext.Default);
+    o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+});
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 // Binding failures throw in every environment (not only Development), so GlobalExceptionHandler answers all of them the same way.
