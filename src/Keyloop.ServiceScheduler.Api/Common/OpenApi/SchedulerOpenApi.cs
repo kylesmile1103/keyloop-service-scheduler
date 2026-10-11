@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
@@ -72,6 +73,7 @@ internal static class SchedulerOpenApi
             .AddSchemaTransformer(TypeStringEnums)
             .AddSchemaTransformer(DocumentProblemTraceId)
             .AddOperationTransformer(AddResponseHeaders)
+            .AddOperationTransformer(DocumentRequestCorrelation)
             .AddOperationTransformer(DescribeRequestBody));
 
     /// <summary>Adds the response headers endpoints declare with <see cref="ResponseHeaderExtensions.WithResponseHeader"/> (e.g. <c>Location</c> on a 201).</summary>
@@ -93,6 +95,30 @@ internal static class SchedulerOpenApi
             };
         }
 
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Documents the middleware's optional UUID input and mandatory echo on every declared response, including problems.</summary>
+    internal static Task DocumentRequestCorrelation(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        operation.Parameters ??= [];
+        operation.Parameters.Add(new OpenApiParameter
+        {
+            Name = RequestCorrelationMiddleware.HeaderName,
+            In = ParameterLocation.Header,
+            Required = false,
+            Description = "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "uuid", MinLength = 36, MaxLength = 36 },
+        });
+        foreach (var response in operation.Responses?.Values.OfType<OpenApiResponse>() ?? [])
+        {
+            response.Headers ??= new Dictionary<string, IOpenApiHeader>();
+            response.Headers[RequestCorrelationMiddleware.HeaderName] = new OpenApiHeader
+            {
+                Description = "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "uuid" },
+            };
+        }
         return Task.CompletedTask;
     }
 

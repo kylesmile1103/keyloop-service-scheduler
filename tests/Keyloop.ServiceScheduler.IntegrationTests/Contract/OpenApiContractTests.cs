@@ -102,6 +102,27 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Every_operation_documents_optional_request_id_and_echo_on_every_response()
+    {
+        var document = await ServedAsync();
+        foreach (var operation in Operations(document))
+        {
+            var parameter = operation.Operation["parameters"].ShouldNotBeNull().AsArray()
+                .Where(p => Text(p?["name"]) == "X-Request-Id").ShouldHaveSingleItem().ShouldNotBeNull();
+            Text(parameter["in"]).ShouldBe("header");
+            (parameter["required"]?.GetValue<bool>() ?? false).ShouldBeFalse();
+            Text(parameter["schema"]?["format"]).ShouldBe("uuid");
+            foreach (var response in operation.Operation["responses"]!.AsObject())
+            {
+                var header = (response.Value?["headers"]?["X-Request-Id"]).ShouldNotBeNull($"{operation.Name} {response.Key}");
+                Text(header["schema"]?["type"]).ShouldBe("string");
+                Text(header["schema"]?["format"]).ShouldBe("uuid");
+                Text(header["description"]).ShouldNotBeNullOrWhiteSpace();
+            }
+        }
+    }
+
+    [Fact]
     public async Task Enums_are_string_valued_with_the_member_names()
     {
         var document = await ServedAsync();

@@ -12,6 +12,17 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// </summary>
 internal static partial class SchedulerLog
 {
+    // Typed scope state: no reflection or discovery. Nested scopes add ids as soon as they are known and flow through async EF work.
+    private static readonly Func<ILogger, string, IDisposable?> RequestScopeDefinition = LoggerMessage.DefineScope<string>("RequestId:{RequestId}");
+    private static readonly Func<ILogger, Guid, IDisposable?> DealershipScopeDefinition = LoggerMessage.DefineScope<Guid>("DealershipId:{DealershipId}");
+    private static readonly Func<ILogger, Guid, IDisposable?> AppointmentScopeDefinition = LoggerMessage.DefineScope<Guid>("AppointmentId:{AppointmentId}");
+    private static readonly Func<ILogger, string, IDisposable?> IdempotencyScopeDefinition = LoggerMessage.DefineScope<string>("IdempotencyKey:{IdempotencyKey}");
+
+    public static IDisposable? RequestScope(this ILogger logger, string requestId) => RequestScopeDefinition(logger, requestId);
+    public static IDisposable? DealershipScope(this ILogger logger, Guid dealershipId) => DealershipScopeDefinition(logger, dealershipId);
+    public static IDisposable? AppointmentScope(this ILogger logger, Guid appointmentId) => AppointmentScopeDefinition(logger, appointmentId);
+    public static IDisposable? IdempotencyScope(this ILogger logger, string key) => IdempotencyScopeDefinition(logger, key);
+
     [LoggerMessage(EventId = 1001, EventName = "BookingConfirmed", Level = LogLevel.Information,
         Message = "Booking {AppointmentId} confirmed at dealership {DealershipId}: bay {BayId}, technician {TechnicianId}, start {StartUtc:O}, vehicle {MaskedVin}")]
     public static partial void BookingConfirmed(

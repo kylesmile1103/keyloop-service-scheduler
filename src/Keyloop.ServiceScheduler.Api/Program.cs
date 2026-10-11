@@ -110,12 +110,13 @@ builder.Services.AddOptions<CorsOptions>().Configure<IOptions<SecurityOptions>>(
     // Default-deny: no origins configured means no CORS headers at all.
     if (security.Value.AllowedOrigins is { Length: > 0 } origins)
     {
-        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Location", "Idempotent-Replayed");
+        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Location", "Idempotent-Replayed", RequestCorrelationMiddleware.HeaderName);
     }
 }));
 builder.Services.AddSchedulerRateLimiting();
 builder.Services.AddSchedulerForwardedHeaders();
 builder.Services.AddSingleton<SecurityHeadersMiddleware>();
+builder.Services.AddSingleton<RequestCorrelationMiddleware>();
 builder.Services.AddScoped<CurrentActorMiddleware>();
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024);
 
@@ -147,6 +148,7 @@ if (security.ForwardedHeaders.Enabled)
     app.UseForwardedHeaders();
 }
 
+app.UseMiddleware<RequestCorrelationMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 

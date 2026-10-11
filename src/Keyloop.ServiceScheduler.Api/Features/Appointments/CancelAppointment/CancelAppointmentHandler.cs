@@ -38,11 +38,12 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 /// back after the commit (<see cref="AppointmentResponseQuery"/>), so it is what the database holds.
 /// </para>
 /// </remarks>
-public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider clock)
+public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider clock, ILogger<CancelAppointmentHandler> logger)
 {
     public async Task<AppointmentResponse> HandleAsync(Guid appointmentId, string reason, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(reason);
+        using var appointmentScope = logger.AppointmentScope(appointmentId);
 
         // Read once per request: a retried run cancels at the same instant as the run it replaces.
         var run = new CancelRun(appointmentId, reason, clock.GetUtcNow().UtcDateTime);
@@ -52,6 +53,7 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
             (_, state, token) => VerifyCommittedAsync(state, token),
             ct);
 
+        using var dealershipScope = run.DealershipId is { } dealershipId ? logger.DealershipScope(dealershipId) : null;
         return await AppointmentResponseQuery.FindAsync(db, appointmentId, ct)
             ?? throw new NotFoundException(ProblemResources.Appointment, appointmentId);
     }
@@ -73,6 +75,9 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
 
         var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == run.AppointmentId, ct)
             ?? throw new NotFoundException(ProblemResources.Appointment, run.AppointmentId);
+
+        run.DealershipId = appointment.DealershipId;
+        using var dealershipScope = logger.DealershipScope(appointment.DealershipId);
 
         if (inDoubt is { } written)
         {
@@ -111,6 +116,7 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
             return new ExecutionResult<bool>(false, false);
         }
 
+        using var dealershipScope = run.DealershipId is { } dealershipId ? logger.DealershipScope(dealershipId) : null;
         var version = await db.Appointments.AsNoTracking().Where(a => a.Id == run.AppointmentId).Select(a => (uint?)a.RowVersion).FirstOrDefaultAsync(ct);
         if (version != written)
         {
@@ -128,6 +134,8 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
     private sealed class CancelRun(Guid appointmentId, string reason, DateTime nowUtc)
     {
         public Guid AppointmentId { get; } = appointmentId;
+
+        public Guid? DealershipId { get; set; }
 
         public string Reason { get; } = reason;
 

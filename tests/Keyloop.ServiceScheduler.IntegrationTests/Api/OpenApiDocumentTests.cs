@@ -69,7 +69,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         var serviceTypes = paths.GetProperty("/api/v1/dealerships/{dealershipId}/service-types").GetProperty("get");
         ShouldBeDocumented(serviceTypes, "GetServiceTypes", "Catalog");
         ItemsRef(serviceTypes, "200", "application/json").ShouldBe("#/components/schemas/ServiceTypeResponse");
-        var parameter = serviceTypes.GetProperty("parameters").EnumerateArray().ShouldHaveSingleItem(); // services and the token are not parameters
+        var parameter = serviceTypes.GetProperty("parameters").EnumerateArray().Where(p => p.GetProperty("in").GetString() == "path").ShouldHaveSingleItem(); // services and the token are not parameters
         parameter.GetProperty("name").GetString().ShouldBe("dealershipId");
         parameter.GetProperty("in").GetString().ShouldBe("path");
         parameter.GetProperty("schema").GetProperty("format").GetString().ShouldBe("uuid");
@@ -124,7 +124,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         // seed, so Scalar's "Test request" works against a seeded database as is. The date is a string (it binds as one, so the
         // validator can reject any other form with a field error), documented as an RFC 3339 full-date.
         var parameters = availability.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
-        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date"], ignoreOrder: true);
+        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date", "X-Request-Id"], ignoreOrder: true);
         foreach (var (name, location, format, example) in new[]
                  {
                      ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),
@@ -194,11 +194,11 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         var created = responses.GetProperty("201").GetProperty("headers");
-        created.EnumerateObject().Select(h => h.Name).ShouldBe(["Location", "Idempotent-Replayed"], ignoreOrder: true);
+        created.EnumerateObject().Select(h => h.Name).ShouldBe(["Location", "Idempotent-Replayed", "X-Request-Id"], ignoreOrder: true);
         created.EnumerateObject().ShouldAllBe(h => !string.IsNullOrWhiteSpace(h.Value.GetProperty("description").GetString()));
 
         var parameters = booking.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
-        parameters.Keys.ShouldBe(["dealershipId", "Idempotency-Key"], ignoreOrder: true);
+        parameters.Keys.ShouldBe(["dealershipId", "Idempotency-Key", "X-Request-Id"], ignoreOrder: true);
         parameters["dealershipId"].GetProperty("example").GetString().ShouldBe(ReferenceDataSeed.ReadingDealershipId.ToString());
         var key = parameters["Idempotency-Key"];
         key.GetProperty("in").GetString().ShouldBe("header");
@@ -295,8 +295,8 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             responses.GetProperty("200").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString()
                 .ShouldBe("#/components/schemas/AppointmentResponse", operationId);
 
-            // The appointment id is the only parameter: a described, required uuid in the path (services and the token are not parameters).
-            var parameter = operation.GetProperty("parameters").EnumerateArray().ShouldHaveSingleItem(operationId);
+            // The appointment id is the only path parameter: a described, required uuid in the path (services and the token are not parameters).
+            var parameter = operation.GetProperty("parameters").EnumerateArray().Where(p => p.GetProperty("in").GetString() == "path").ShouldHaveSingleItem(operationId);
             (parameter.GetProperty("name").GetString(), parameter.GetProperty("in").GetString()).ShouldBe(("appointmentId", "path"), operationId);
             parameter.GetProperty("required").GetBoolean().ShouldBeTrue(operationId);
             parameter.GetProperty("schema").GetProperty("format").GetString().ShouldBe("uuid", operationId);
@@ -344,9 +344,10 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                 .ShouldBe($"#/components/schemas/{schema}", status);
         }
 
-        // As availability's: the route id and a strict date, required, typed, described, with examples that work on a seeded database.
+        // As availability's: the route id and a strict date, required, typed, described, with examples that work on a seeded database
+        // (plus the optional X-Request-Id header every operation documents).
         var parameters = schedule.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
-        parameters.Keys.ShouldBe(["dealershipId", "date"], ignoreOrder: true);
+        parameters.Keys.ShouldBe(["dealershipId", "date", "X-Request-Id"], ignoreOrder: true);
         foreach (var (name, location, format, example) in new[]
                  {
                      ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),

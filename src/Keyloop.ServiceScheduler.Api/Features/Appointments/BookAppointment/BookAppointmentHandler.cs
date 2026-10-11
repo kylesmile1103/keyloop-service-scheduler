@@ -70,6 +70,8 @@ public sealed class BookAppointmentHandler(
         ArgumentNullException.ThrowIfNull(command);
         var request = command.Request;
         var key = command.IdempotencyKey;
+        using var dealershipScope = logger.DealershipScope(command.DealershipId);
+        using var idempotencyScope = key is null ? null : logger.IdempotencyScope(key);
 
         using var activity = SchedulerTelemetry.Source.StartActivity("scheduler.book_appointment");
         activity?.SetTag("dealership.id", command.DealershipId.ToString());
@@ -114,6 +116,7 @@ public sealed class BookAppointmentHandler(
                 ToCustomer(request.Customer), ToVehicle(request.Vehicle));
 
             // 3. The transaction (see the remarks). A second pass happens only when a duplicate key's stored row turns out expired.
+            using var appointmentScope = logger.AppointmentScope(booking.AppointmentId);
             for (var pass = 1; ; pass++)
             {
                 var attempt = await RunAsync(booking, ct);
@@ -460,6 +463,7 @@ public sealed class BookAppointmentHandler(
 
         var response = JsonSerializer.Deserialize(stored.ResponseBody, SchedulerJsonContext.Default.AppointmentResponse)
             ?? throw new InvalidOperationException("A stored booking response is JSON null.");
+        activity?.SetTag("service_type.code", response.ServiceType.Code);
         activity?.SetTag("idempotency.replayed", true);
         activity?.SetTag("booking.bay_id", response.Bay.Id.ToString());
         activity?.SetTag("booking.technician_id", response.Technician.Id.ToString());
