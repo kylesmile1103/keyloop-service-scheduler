@@ -69,6 +69,23 @@ describe("scheduleKpis", () => {
     expect(scheduleKpis(readingTuesday, midMorning).utilisation).toEqual({ bookedMinutes: 420, capacityMinutes: 3600 })
   })
 
+  it("counts only the minutes inside the operating window", () => {
+    // Work carried over from before opening: 06:00–08:00Z on a 07:00–17:00Z day uses one hour of the window.
+    const early = {
+      ...appointments.mot,
+      id: "0f0e0d0c-0b0a-8909-8807-060504030201",
+      startUtc: "2026-10-13T06:00:00Z",
+      endUtc: "2026-10-13T08:00:00Z",
+      status: "Completed" as const,
+    }
+    const schedule = {
+      ...readingTuesday,
+      bays: readingTuesday.bays.map((bay) => (bay.id === bays.heavy.id ? { ...bay, appointments: [early] } : bay)),
+    }
+
+    expect(scheduleKpis(schedule, midMorning).utilisation).toEqual({ bookedMinutes: 480, capacityMinutes: 3600 })
+  })
+
   it("leaves no-shows and inactive bays out of utilisation", () => {
     const schedule = withStatus(
       {

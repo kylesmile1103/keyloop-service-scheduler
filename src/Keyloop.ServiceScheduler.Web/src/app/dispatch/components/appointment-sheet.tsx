@@ -167,10 +167,10 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
               <Pending loading={details.isPending}>
                 {record && (
                   <>
-                    <a className="w-fit break-all text-primary underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-current" href={`mailto:${record.customer.email}`}>
+                    <a className={cn(contactLink, "break-all")} href={`mailto:${record.customer.email}`}>
                       {record.customer.email}
                     </a>
-                    <a className="w-fit text-primary tabular-nums underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-current" href={`tel:${record.customer.phone.replaceAll(" ", "")}`}>
+                    <a className={cn(contactLink, "tabular-nums")} href={`tel:${record.customer.phone.replaceAll(" ", "")}`}>
                       {record.customer.phone}
                     </a>
                   </>
@@ -227,6 +227,10 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
     </>
   )
 }
+
+/** A contact link: underlined, and 44 px tall on a touch screen, where calling or writing is one tap. */
+const contactLink =
+  "w-fit text-primary underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-current pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
 
 function Row({ term, children }: { term: string; children: ReactNode }) {
   return (
@@ -328,7 +332,12 @@ function CancelForm({ appointment, status, timeZone, onCancelled, onConflict }: 
               </span>
             </div>
           </Field>
-          <Button type="submit" variant="destructive" disabled={cancel.isPending} className="h-9 self-stretch sm:self-end max-md:h-11">
+          <Button
+            type="submit"
+            variant="destructive"
+            disabled={cancel.isPending}
+            className="h-9 self-stretch sm:self-end max-md:h-11 pointer-coarse:h-11"
+          >
             {cancel.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
             {cancel.isPending ? "Cancelling…" : "Cancel appointment"}
           </Button>

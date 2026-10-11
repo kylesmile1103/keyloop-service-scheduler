@@ -22,11 +22,13 @@ beforeAll(async () => {
 })
 
 describe("leaving the dispatch board", () => {
-  it("is not undone by the board selecting a dealership while the next page loads", async () => {
+  it("is not undone by the board correcting its address while the next page loads", async () => {
     let answer: () => void = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
     mockBoardApi({ dealerships: async () => (await held, [reading, munich]) })
-    const router = createMemoryRouter(appRoutes, { initialEntries: ["/dispatch"] })
+    // No dealership and no real date: once the dealerships arrive, the board would select one and drop the date, and either
+    // rewrite of the address, made while the link's navigation is pending, would cancel it.
+    const router = createMemoryRouter(appRoutes, { initialEntries: ["/dispatch?date=2026-02-30"] })
     render(<App router={router} queryClient={createQueryClient()} />)
     await screen.findByRole("heading", { level: 1, name: "Dispatch Board" })
 

@@ -45,13 +45,18 @@ interface DispatchToolbarProps {
 export function DispatchToolbar({ dealershipSelect, board, onBookAppointment }: DispatchToolbarProps) {
   const isMobile = useIsMobile()
 
+  // On a touch screen each tab is 44 px tall (the touch-target rule), so the list grows to hold it inside its 3 px inset:
+  // `min-h-12.5` wins over the list's fixed height without a specificity contest.
   const laneTabs = (
-    <TabsList aria-label="Lanes" className={cn(isMobile && "h-11 flex-1 group-data-horizontal/tabs:h-11")}>
-      <TabsTrigger value="bays" className="cursor-pointer px-2.5 pointer-coarse:min-h-10">
+    <TabsList
+      aria-label="Lanes"
+      className={cn("pointer-coarse:min-h-12.5", isMobile && "h-11 flex-1 group-data-horizontal/tabs:h-11")}
+    >
+      <TabsTrigger value="bays" className="cursor-pointer px-2.5 pointer-coarse:min-h-11">
         <Warehouse aria-hidden="true" />
         Bays
       </TabsTrigger>
-      <TabsTrigger value="technicians" className="cursor-pointer px-2.5 pointer-coarse:min-h-10">
+      <TabsTrigger value="technicians" className="cursor-pointer px-2.5 pointer-coarse:min-h-11">
         <UsersRound aria-hidden="true" />
         Technicians
       </TabsTrigger>
@@ -71,7 +76,8 @@ export function DispatchToolbar({ dealershipSelect, board, onBookAppointment }: 
         {board && (
           <>
             <DateNavigator dealership={board.dealership} date={board.date} today={board.today} onDateChange={board.onDateChange} />
-            <div className="flex items-center gap-2">
+            {/* Stretched, so the Filters button matches the lane tabs' height on a touch screen. */}
+            <div className="flex items-stretch gap-2">
               {laneTabs}
               <FiltersSheet
                 lanes={board.lanes}

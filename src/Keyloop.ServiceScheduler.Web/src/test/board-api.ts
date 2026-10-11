@@ -1,7 +1,9 @@
 import type {
   AppointmentResponse,
+  AvailabilityResponse,
   DealershipResponse,
   ScheduledAppointmentResponse,
+  ServiceTypeResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
 import { munich, reading } from "@/test/dealerships"
@@ -21,6 +23,10 @@ export interface BoardApiOptions {
   dealerships?: () => Answer<DealershipResponse[]>
   /** The schedule for a dealership and date. By default: Reading's Tuesday (Sunday closed), München's Tuesday. */
   schedule?: (dealershipId: string, date: string) => Answer<WorkshopScheduleResponse>
+  /** The dealership's catalogue. By default: Interim Service only. */
+  serviceTypes?: (dealershipId: string) => Answer<ServiceTypeResponse[]>
+  /** Free starts for a service on a date. By default: Interim Service's, whatever the service asked for. */
+  availability?: (dealershipId: string, serviceTypeId: string, date: string) => Answer<AvailabilityResponse>
   appointment?: (appointmentId: string) => Answer<AppointmentResponse>
   cancel?: (appointmentId: string, body: { reason?: unknown }) => Answer<AppointmentResponse>
 }
@@ -95,9 +101,13 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
       const date = url.searchParams.get("date") ?? ""
       return answer(options.schedule?.(match[1], date) ?? defaultSchedule(match[1], date))
     }
-    if (/^\/api\/v1\/dealerships\/[^/]+\/service-types$/.test(path)) return answer([interimServiceType])
-    if (/^\/api\/v1\/dealerships\/[^/]+\/availability$/.test(path)) {
-      return answer({ ...interimAvailability, date: url.searchParams.get("date") ?? interimAvailability.date })
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/service-types$/.exec(path))) {
+      return answer(options.serviceTypes?.(match[1]) ?? [interimServiceType])
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/availability$/.exec(path))) {
+      const date = url.searchParams.get("date") ?? interimAvailability.date
+      const serviceTypeId = url.searchParams.get("serviceTypeId") ?? ""
+      return answer(options.availability?.(match[1], serviceTypeId, date) ?? { ...interimAvailability, date })
     }
     if ((match = /^\/api\/v1\/appointments\/([^/]+)\/cancel$/.exec(path)) && request.method === "POST") {
       // Read a copy, so the recorded request's body stays readable for assertions.

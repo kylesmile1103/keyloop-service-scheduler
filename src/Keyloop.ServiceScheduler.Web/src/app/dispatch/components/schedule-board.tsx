@@ -39,6 +39,9 @@ interface ScheduleBoardProps {
   onSelect: (appointment: BoardAppointment, element: HTMLElement) => void
 }
 
+/** Phones and touch screens get 44 px targets (task 16 mobile addendum). */
+const touch = "max-md:h-11 pointer-coarse:h-11"
+
 /** "Open today 08:00–18:00 (Europe/London).", from the schedule's window once it arrives, the weekly hours until then. */
 function daySentence(dealership: DealershipResponse, date: string, today: string, schedule: WorkshopScheduleResponse | undefined) {
   const window = schedule?.operatingWindow
@@ -115,7 +118,7 @@ export function ScheduleBoard({
         title={isToday ? "Closed today" : `Closed on ${formatDay(date, "long").replace(/ \d{4}$/, "")}`}
         action={
           next && (
-            <Button type="button" variant="outline" className="cursor-pointer max-md:h-11" onClick={() => onDateChange(next)}>
+            <Button type="button" variant="outline" className={cn("cursor-pointer", touch)} onClick={() => onDateChange(next)}>
               <CalendarArrowUp aria-hidden="true" />
               {`Go to ${formatDay(next, "long").replace(/ \d{4}$/, "")}`}
             </Button>
@@ -148,7 +151,7 @@ export function ScheduleBoard({
           level={3}
           title="Every lane is hidden"
           action={
-            <Button type="button" variant="outline" className="cursor-pointer max-md:h-11" onClick={onShowAllLanes}>
+            <Button type="button" variant="outline" className={cn("cursor-pointer", touch)} onClick={onShowAllLanes}>
               Show all lanes
             </Button>
           }

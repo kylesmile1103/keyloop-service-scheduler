@@ -1,5 +1,6 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
+import { labelDayButton } from "react-day-picker"
 
 import type { DealershipResponse } from "@/api/types.gen"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,14 @@ interface DateNavigatorProps {
 /** Touch layouts get 44 px targets (task 16 mobile addendum). */
 const touch = "max-md:h-11 pointer-coarse:h-11"
 const touchIcon = "max-md:size-11 pointer-coarse:size-11"
+
+/** The calendar's day names, with "closed" after a day the dealership does not open, which is otherwise only struck through. */
+const dayLabels = {
+  labelDayButton: (...args: Parameters<typeof labelDayButton>) => {
+    const [, modifiers] = args
+    return modifiers.closed ? `${labelDayButton(...args)}, closed` : labelDayButton(...args)
+  },
+}
 
 /**
  * Which day the board shows: previous and next day, a calendar in a popover (adopted from the template calendar's
@@ -67,6 +76,7 @@ export function DateNavigator({ date, today, onDateChange, dealership, className
             }}
             modifiers={{ closed: isClosed }}
             modifiersClassNames={{ closed: "text-muted-foreground [&_button]:font-normal [&_button]:line-through" }}
+            labels={dayLabels}
             className="w-full [&_[role=gridcell]_button]:cursor-pointer [&_button]:cursor-pointer max-md:[--cell-size:--spacing(10)] pointer-coarse:[--cell-size:--spacing(11)]"
           />
           {/* w-0 min-w-full: the note wraps to the calendar's width instead of widening the popover past a phone screen. */}

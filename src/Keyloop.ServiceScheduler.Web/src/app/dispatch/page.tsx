@@ -65,7 +65,14 @@ export default function DispatchPage() {
                   icon={Building2}
                   title="No dealerships yet"
                   action={
-                    <Button type="button" variant="outline" size="sm" onClick={retry} disabled={dealerships.isFetching}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={retry}
+                      disabled={dealerships.isFetching}
+                      className="pointer-coarse:h-11"
+                    >
                       <RotateCw aria-hidden="true" className={cn(dealerships.isFetching && "animate-spin")} />
                       Check again
                     </Button>
@@ -190,8 +197,14 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
         now={now}
         refetchInterval={refetchInterval}
       />
-      <TabsContent value="bays">{mode === "bays" && boardFor("bays")}</TabsContent>
-      <TabsContent value="technicians">{mode === "technicians" && boardFor("technicians")}</TabsContent>
+      {/* Out of the tab order: the panel holds focusable content (the timeline, its blocks, the agenda's lanes), so Tab goes
+          from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). */}
+      <TabsContent value="bays" tabIndex={-1}>
+        {mode === "bays" && boardFor("bays")}
+      </TabsContent>
+      <TabsContent value="technicians" tabIndex={-1}>
+        {mode === "technicians" && boardFor("technicians")}
+      </TabsContent>
       <AppointmentSheet
         appointment={current?.appointment ?? null}
         open={current?.open ?? false}

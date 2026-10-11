@@ -47,8 +47,9 @@ export function PlateChip({
 
 /**
  * One appointment on the timeline: a button in its status's colours (and icon) spanning its time. A narrow block keeps the
- * status icon, the start of the service name and the avatar; wider ones add the plate, then the VIN, then the counterpart's
- * name. Hover or focus shows the whole record; a click opens the details sheet.
+ * start of the service name and the avatar; wider ones add the status icon, the plate, the technician's first name (a
+ * two-hour job at 1440 px shows it), and the VIN once it fits whole: a VIN cut short identifies nothing. Hover or focus
+ * shows the whole record; a click opens the details sheet.
  */
 export function AppointmentBlock({ appointment, mode, timeZone, style, selected, onSelect }: AppointmentBlockProps) {
   const { icon: StatusIcon, classes, label: statusLabel } = statusMeta[appointment.status]
@@ -79,8 +80,8 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-[11px]">
           <PlateChip registration={appointment.registration} className="@max-[5.5rem]/block:hidden" />
-          <span className="hidden min-w-0 truncate font-mono tracking-wide @min-[11rem]/block:inline">{appointment.vin}</span>
-          <span className="ml-auto flex min-w-0 shrink-0 items-center gap-1 @max-[5.5rem]/block:ml-0">
+          <span className="hidden min-w-0 truncate font-mono tracking-wide @min-[16rem]/block:inline">{appointment.vin}</span>
+          <span className="ml-auto flex min-w-0 items-center gap-1 @max-[5.5rem]/block:ml-0">
             {mode === "bays" ? (
               <>
                 <Avatar className="size-5 ring-1 ring-card after:hidden">
@@ -88,7 +89,7 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
                     {initials(counterpart)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="hidden font-medium @min-[13rem]/block:inline">{firstName(counterpart)}</span>
+                <span className="hidden min-w-0 truncate font-medium @min-[9rem]/block:inline">{firstName(counterpart)}</span>
               </>
             ) : (
               <>

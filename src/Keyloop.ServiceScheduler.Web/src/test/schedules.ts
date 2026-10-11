@@ -248,6 +248,14 @@ export const interimServiceType: ServiceTypeResponse = {
   bookable: true,
 }
 
+/** A second catalogue entry, listed before Interim Service in some tests (the KPI strip must still pick Interim Service). */
+export const fullServiceType: ServiceTypeResponse = {
+  ...services.full,
+  requiredBayCapabilities: ["StandardLift"],
+  requiredCertifications: ["GeneralService"],
+  bookable: true,
+}
+
 /** GET availability for Interim Service at Reading on 2026-10-13: the first free start is 10:15 local. */
 export const interimAvailability: AvailabilityResponse = {
   date: "2026-10-13",

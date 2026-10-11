@@ -122,8 +122,9 @@ export function TimelineGrid({ lanes, mode, operatingWindow, granularityMinutes,
           ))}
           {nowLeft !== null && <div className="absolute inset-y-0 left-0 bg-foreground/[0.025]" style={{ width: nowLeft }} />}
         </div>
+        {/* Under the blocks (z-1) and the sticky lane column: the line shows in the free time and never crosses a block's text. */}
         {nowLeft !== null && (
-          <div aria-hidden="true" className="pointer-events-none relative z-[5]" style={{ ...timeColumns, gridRow: "2 / -1" }}>
+          <div aria-hidden="true" className="pointer-events-none relative z-0" style={{ ...timeColumns, gridRow: "2 / -1" }}>
             <div data-slot="now-line" className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-destructive" style={{ left: nowLeft }} />
           </div>
         )}

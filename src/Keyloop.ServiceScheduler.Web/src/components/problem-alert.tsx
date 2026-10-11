@@ -24,7 +24,8 @@ interface ProblemAlertProps {
 
 /**
  * A failed API call: what failed, the API's explanation, and its trace id (to look the request up in the Aspire dashboard,
- * §12.2), with a retry when one makes sense.
+ * §12.2), with a retry when one makes sense. It fits any width: the text wraps, the trace id is cut short (its full value is
+ * in its tooltip and the copy button), so the copy button never leaves the screen.
  */
 export function ProblemAlert({ title, error, onRetry, retrying = false, tone = "error", className }: ProblemAlertProps) {
   const { summary, traceId } = describeFailure(error)
@@ -33,12 +34,13 @@ export function ProblemAlert({ title, error, onRetry, retrying = false, tone = "
   return (
     <Alert
       variant={tone === "warning" ? "default" : "destructive"}
+      data-tone={tone}
       className={cn("bg-card px-4 py-3", tone === "warning" && "border-warning/60", className)}
     >
       <Icon aria-hidden="true" />
-      <AlertTitle>{title}</AlertTitle>
+      <AlertTitle className="wrap-break-word">{title}</AlertTitle>
       <AlertDescription className="flex flex-col gap-2">
-        <span>{summary}</span>
+        <span className="wrap-break-word">{summary}</span>
         {traceId && (
           <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
             <span className="shrink-0 text-xs">Trace ID</span>
@@ -50,7 +52,14 @@ export function ProblemAlert({ title, error, onRetry, retrying = false, tone = "
         )}
         {onRetry && (
           <span className="pt-1">
-            <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={retrying} className="text-foreground">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRetry}
+              disabled={retrying}
+              className="text-foreground pointer-coarse:h-11"
+            >
               <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
               Try again
             </Button>

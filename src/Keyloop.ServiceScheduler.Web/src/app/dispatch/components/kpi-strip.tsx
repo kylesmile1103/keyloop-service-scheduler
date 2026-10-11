@@ -94,6 +94,7 @@ export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed
         timeZone={timeZone}
         schedule={schedule}
         failed={failed}
+        now={now}
         refetchInterval={refetchInterval}
       />
     </section>
@@ -155,11 +156,13 @@ interface NextFreeSlotProps {
   timeZone: string
   schedule: WorkshopScheduleResponse | undefined
   failed: boolean
+  /** Starts before this instant have passed, even while the last availability read still lists them. */
+  now: Date
   refetchInterval: number | false
 }
 
 /** The earliest bookable start for an interim service that day: the next one from now on today's board. */
-function NextFreeSlot({ dealershipId, date, today, timeZone, schedule, failed, refetchInterval }: NextFreeSlotProps) {
+function NextFreeSlot({ dealershipId, date, today, timeZone, schedule, failed, now, refetchInterval }: NextFreeSlotProps) {
   const label = date === today ? "Next free slot" : "First free slot"
   const past = date < today
   const closed = schedule?.operatingWindow === null
@@ -183,13 +186,15 @@ function NextFreeSlot({ dealershipId, date, today, timeZone, schedule, failed, r
     ;[value, footer] = [NO_FIGURE, (problem && fieldErrors(problem).date) || "Couldn’t check availability"]
   } else if (serviceTypes.data && !service) [value, footer] = [NO_FIGURE, "No bookable services"]
   else if (availability.data && service) {
-    const slot = availability.data.slots[0]
+    // The API leaves out starts that have passed when it answers; between reads (auto-refresh off, no window focus) the
+    // answer ages, so a start already behind `now` is skipped here too. Later days' starts are all ahead of now.
+    const slot = availability.data.slots.find((candidate) => Date.parse(candidate.startUtc) >= now.getTime())
     ;[value, footer] = slot
       ? [
           formatLocalTime(slot.startUtc, timeZone),
           `${plural(slot.freeBays, "bay")} and ${plural(slot.freeTechnicians, "technician")} free`,
         ]
-      : ["None", `${service.name} is fully booked`]
+      : ["None", date === today ? "No free start left today" : `${service.name} is fully booked`]
   }
 
   return (

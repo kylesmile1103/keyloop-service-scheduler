@@ -1,11 +1,22 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { AvailabilityResponse } from "@/api/types.gen"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { problemResponse } from "@/test/mock-api"
 import { boardHeading, pointerClick, renderBoard, search } from "@/test/render-board"
-import { appointments, bays, interimDetails, readingTuesday, without, withStatus } from "@/test/schedules"
+import {
+  appointments,
+  bays,
+  fullServiceType,
+  interimAvailability,
+  interimDetails,
+  interimServiceType,
+  readingTuesday,
+  without,
+  withStatus,
+} from "@/test/schedules"
 
 // The board's route is lazy: load its code once up front, so each test's wait measures rendering, not the first compile.
 beforeAll(async () => {
@@ -18,6 +29,23 @@ const scheduleDates = (requests: readonly Request[]) =>
   requestsTo(requests, "/schedule").map((request) => new URL(request.url).searchParams.get("date"))
 const lane = (name: string) => screen.findByRole("group", { name: new RegExp(`^${name}`) })
 const block = (name: string) => screen.findByRole("button", { name })
+
+/** Reading's availability on 2026-10-13 with free starts at these UTC instants, each as long as the service. */
+function availabilityAt(durationMinutes: number, ...starts: string[]): AvailabilityResponse {
+  const at = (instant: number) => new Date(instant).toISOString().replace(".000Z", "Z")
+  return {
+    ...interimAvailability,
+    durationMinutes,
+    slots: starts.map((startUtc) => ({
+      startUtc,
+      endUtc: at(Date.parse(startUtc) + durationMinutes * 60_000),
+      // British Summer Time: UTC+1.
+      startLocal: `${at(Date.parse(startUtc) + 3_600_000).slice(0, 16)}+01:00`,
+      freeBays: 2,
+      freeTechnicians: 2,
+    })),
+  }
+}
 
 beforeEach(() => {
   // Tuesday 2026-10-13, 09:30 in Reading (BST). Only Date is faked; timers stay real for the UI.
@@ -48,7 +76,7 @@ describe("dispatch board: timeline", () => {
     expect(new Set(scheduleDates(api.requests))).toEqual(new Set(["2026-10-13"]))
   })
 
-  it("labels the ruler with the dealership's whole local hours and widens a half-hour opening to the hour", async () => {
+  it("labels the ruler with the dealership's whole local hours, widening a half-hour opening to the hour and hatching it", async () => {
     mockBoardApi()
     renderBoard(`/dispatch?dealership=${munich.id}`)
     await boardHeading(munich.name)
@@ -69,6 +97,12 @@ describe("dispatch board: timeline", () => {
       "16:00",
       "17:00",
       "18:00",
+    ])
+    // 07:00–07:30 and 18:30–19:00 are drawn but closed: two hatched runs of two 15-minute columns out of 48.
+    const closed = [...document.querySelectorAll<HTMLElement>('[data-slot="closed-time"]')]
+    expect(closed.map((run) => [run.style.left, run.style.width])).toEqual([
+      ["0%", "4.17%"],
+      ["95.83%", "4.17%"],
     ])
   })
 
@@ -105,8 +139,6 @@ describe("dispatch board: timeline", () => {
     expect(screen.queryByRole("group", { name: /^Bay 1/ })).not.toBeInTheDocument()
     expect(search(router)).toEqual({ dealership: reading.id, lanes: "technicians" })
     // A view of the same day, not a new place: Back leaves the board instead of flipping the lanes.
-    expect(router.state.historyAction).toBe("REPLACE")
-    // A view preference, not a place: Back does not step through lane views.
     expect(router.state.historyAction).toBe("REPLACE")
     // One schedule serves both views.
     expect(new Set(scheduleDates(api.requests))).toEqual(new Set(["2026-10-13"]))
@@ -178,6 +210,19 @@ describe("dispatch board: day, lanes and refresh", () => {
     await waitFor(() => expect(scheduleDates(api.requests)).toContain("2026-10-15"))
   })
 
+  it("says in words, not only by striking them through, which days the calendar's dealership is closed", async () => {
+    mockBoardApi()
+    renderBoard(readingBoard)
+    await lane("Bay 1 - Standard")
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose date, Tuesday 13 October 2026" }))
+    const calendar = await screen.findByRole("dialog", { name: "Choose date" })
+
+    // Reading closes on Sundays.
+    expect(within(calendar).getByRole("button", { name: /October 18th, 2026/ })).toHaveAccessibleName(/, closed$/)
+    expect(within(calendar).getByRole("button", { name: /October 15th, 2026/ })).not.toHaveAccessibleName(/closed/)
+  })
+
   it("shows today when the address names no real date, and corrects the address", async () => {
     const api = mockBoardApi()
     const { router } = renderBoard(`${readingBoard}&date=2026-02-30`)
@@ -216,23 +261,37 @@ describe("dispatch board: day, lanes and refresh", () => {
     expect(await lane("Bay 3 - Heavy duty")).toBeInTheDocument()
   })
 
-  it("refreshes the board every 5 seconds while auto-refresh is on", async () => {
+  it("refreshes the board and its next free slot every 5 seconds while auto-refresh is on", async () => {
     const api = mockBoardApi()
     renderBoard(readingBoard)
     await lane("Bay 1 - Standard")
+    expect(await within(screen.getByRole("group", { name: "Next free slot" })).findByText("10:15")).toBeInTheDocument()
     const switchControl = screen.getByRole("switch", { name: "Auto-refresh" })
     expect(switchControl).not.toBeChecked()
 
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] })
     vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
     const before = requestsTo(api.requests, "/schedule").length
+    const availabilityBefore = requestsTo(api.requests, "/availability").length
     await act(() => vi.advanceTimersByTimeAsync(6000))
     expect(requestsTo(api.requests, "/schedule")).toHaveLength(before)
+    expect(requestsTo(api.requests, "/availability")).toHaveLength(availabilityBefore)
 
     fireEvent.click(switchControl)
     expect(switchControl).toBeChecked()
     await act(() => vi.advanceTimersByTimeAsync(5100))
     expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(before)
+    expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityBefore)
+  })
+
+  it("leaves the lane view's panel out of the tab order, so Tab goes from the toolbar straight into the timeline", async () => {
+    mockBoardApi()
+    renderBoard(readingBoard)
+    await lane("Bay 1 - Standard")
+
+    // The panel holds focusable content (the timeline, its blocks); a stop on the panel itself would show no focus.
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("tabindex", "-1")
+    expect(screen.getByRole("region", { name: "Timeline by bay" })).toHaveAttribute("tabindex", "0")
   })
 })
 
@@ -251,6 +310,53 @@ describe("dispatch board: day summary", () => {
     expect(await within(card("Next free slot")).findByText("10:15")).toBeInTheDocument()
     expect(within(card("Next free slot")).getByText("4 bays and 3 technicians free")).toBeInTheDocument()
     expect(within(card("Next free slot")).getByText("Interim Service, 60 min")).toBeInTheDocument()
+  })
+
+  it("names the next start that has not passed, even before the availability is read again", async () => {
+    // 08:00 and 09:15 local are behind 09:30; the next start still ahead is 09:45.
+    mockBoardApi({ availability: () => availabilityAt(60, "2026-10-13T07:00:00Z", "2026-10-13T08:15:00Z", "2026-10-13T08:45:00Z") })
+    renderBoard(readingBoard)
+
+    const next = await screen.findByRole("group", { name: "Next free slot" })
+    expect(await within(next).findByText("09:45")).toBeInTheDocument()
+  })
+
+  it("says so when every free start today has passed", async () => {
+    mockBoardApi({ availability: () => availabilityAt(60, "2026-10-13T07:00:00Z", "2026-10-13T08:15:00Z") })
+    renderBoard(readingBoard)
+
+    const next = await screen.findByRole("group", { name: "Next free slot" })
+    expect(await within(next).findByText("No free start left today")).toBeInTheDocument()
+    expect(within(next).getByText("None")).toBeInTheDocument()
+  })
+
+  /** Each service's own free starts: Interim Service from 10:15 local, Full Service from 11:00. */
+  const availabilityByService = (_: string, serviceTypeId: string) =>
+    serviceTypeId === interimServiceType.id
+      ? availabilityAt(60, "2026-10-13T09:15:00Z")
+      : serviceTypeId === fullServiceType.id
+        ? availabilityAt(120, "2026-10-13T10:00:00Z")
+        : problemResponse(404, { type: "https://api.keyloop.example/problems/not-found", title: "Resource not found", status: 404 })
+
+  it("looks up Interim Service's free starts wherever the catalogue lists it", async () => {
+    mockBoardApi({ serviceTypes: () => [fullServiceType, interimServiceType], availability: availabilityByService })
+    renderBoard(readingBoard)
+
+    const next = await screen.findByRole("group", { name: "Next free slot" })
+    expect(await within(next).findByText("10:15")).toBeInTheDocument()
+    expect(within(next).getByText("Interim Service, 60 min")).toBeInTheDocument()
+  })
+
+  it("falls back to the first bookable service when the dealership cannot book Interim Service", async () => {
+    mockBoardApi({
+      serviceTypes: () => [{ ...interimServiceType, bookable: false }, fullServiceType],
+      availability: availabilityByService,
+    })
+    renderBoard(readingBoard)
+
+    const next = await screen.findByRole("group", { name: "Next free slot" })
+    expect(await within(next).findByText("11:00")).toBeInTheDocument()
+    expect(within(next).getByText("Full Service, 120 min")).toBeInTheDocument()
   })
 
   it("has no 'busy now' figure on another day, and names that day's first free slot", async () => {
@@ -292,7 +398,19 @@ describe("dispatch board: details and cancellation", () => {
     expect(within(sheet).getByText("Customer waiting in the lounge.")).toBeInTheDocument()
   })
 
-  it("cancels an appointment with a reason, then refreshes the board without it", async () => {
+  it("returns focus to the block that opened the sheet when it closes", async () => {
+    mockBoardApi()
+    renderBoard(readingBoard)
+    const sheet = await openInterim()
+    await waitFor(() => expect(within(sheet).getByRole("heading", { name: "Interim Service" })).toHaveFocus())
+
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" })
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("button", { name: interimLabel })).toHaveFocus())
+  })
+
+  it("cancels an appointment with a reason, then refreshes the board and the next free slot without it", async () => {
     let cancelled = false
     const api = mockBoardApi({
       schedule: () => (cancelled ? without(readingTuesday, appointments.interim.id) : readingTuesday),
@@ -302,6 +420,8 @@ describe("dispatch board: details and cancellation", () => {
       },
     })
     renderBoard(readingBoard)
+    expect(await within(await screen.findByRole("group", { name: "Next free slot" })).findByText("10:15")).toBeInTheDocument()
+    const availabilityBefore = requestsTo(api.requests, "/availability").length
     const sheet = await openInterim()
 
     fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang to rearrange" } })
@@ -314,6 +434,8 @@ describe("dispatch board: details and cancellation", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
     await waitFor(() => expect(screen.queryByRole("button", { name: interimLabel })).not.toBeInTheDocument())
     expect(within(await lane("Bay 1 - Standard")).getAllByRole("button")).toHaveLength(2)
+    // The freed bay and technician may change the next free slot, so it is read again too.
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityBefore))
     // Its block has left the board, so focus returns into the board (its timeline) rather than to the page body.
     await waitFor(() => expect(screen.getByRole("region", { name: reading.name })).toContainElement(document.activeElement as HTMLElement))
   })
@@ -331,34 +453,65 @@ describe("dispatch board: details and cancellation", () => {
     expect(requestsTo(api.requests, "/cancel")).toEqual([])
   })
 
-  it("shows the API's refusal, with its trace id, when the appointment can no longer be cancelled", async () => {
+  it.each([
+    {
+      slug: "invalid-state-transition",
+      title: "Invalid state transition",
+      detail: "Cannot cancel this appointment while it is Cancelled.",
+      extensions: { currentStatus: "Cancelled", attempted: "cancel" },
+    },
+    {
+      slug: "concurrency-conflict",
+      title: "Concurrency conflict",
+      detail: "The resource was changed by another request after it was read. Reload it and retry.",
+      extensions: {},
+    },
+  ])("shows the API's $slug refusal with its trace id as a warning, and reads the board and the record again", async ({ slug, title, detail, extensions }) => {
     const api = mockBoardApi({
       cancel: () =>
         problemResponse(409, {
-          type: "https://api.keyloop.example/problems/invalid-state-transition",
-          title: "Invalid state transition",
+          type: `https://api.keyloop.example/problems/${slug}`,
+          title,
           status: 409,
-          detail: "Cannot cancel this appointment while it is Cancelled.",
-          currentStatus: "Cancelled",
-          attempted: "cancel",
+          detail,
+          ...extensions,
           traceId: "00-c891f6205bdf228d5ac20dc267806559-144af9ccbd8f8f2b-01",
         }),
     })
     renderBoard(readingBoard)
     const sheet = await openInterim()
-    await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(0))
+    // The whole record has arrived (its contact details show).
+    await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
+    const record = `/appointments/${appointments.interim.id}`
+    const recordsBefore = requestsTo(api.requests, record).length
     const schedulesBefore = requestsTo(api.requests, "/schedule").length
 
     fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 
     const alert = await within(sheet).findByRole("alert")
-    expect(within(alert).getByText("Invalid state transition")).toBeInTheDocument()
-    expect(within(alert).getByText("Cannot cancel this appointment while it is Cancelled.")).toBeInTheDocument()
+    expect(within(alert).getByText(title)).toBeInTheDocument()
+    expect(within(alert).getByText(detail)).toBeInTheDocument()
     expect(within(alert).getByText("00-c891f6205bdf228d5ac20dc267806559-144af9ccbd8f8f2b-01")).toBeInTheDocument()
-    // The board is read again: someone else changed this appointment.
+    // A refusal that reflects the current state, not a failure: read again rather than retried.
+    expect(alert).toHaveAttribute("data-tone", "warning")
+    // The board and the record are read again: someone else changed this appointment.
     await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
+    await waitFor(() => expect(requestsTo(api.requests, record).length).toBeGreaterThan(recordsBefore))
     expect(screen.getByRole("dialog", { name: "Interim Service" })).toBeInTheDocument()
+  })
+
+  it("shows a failed cancellation as an error", async () => {
+    mockBoardApi({ cancel: () => new Response("", { status: 502, statusText: "Bad Gateway" }) })
+    renderBoard(readingBoard)
+    const sheet = await openInterim()
+
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+
+    const alert = await within(sheet).findByRole("alert")
+    expect(within(alert).getByText("Couldn’t cancel the appointment")).toBeInTheDocument()
+    expect(alert).toHaveAttribute("data-tone", "error")
   })
 
   it("puts the API's validation message under the reason", async () => {

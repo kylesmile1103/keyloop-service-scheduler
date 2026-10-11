@@ -39,7 +39,7 @@ export function CopyButton({ value, label, copiedLabel }: CopyButtonProps) {
       size="icon-xs"
       onClick={copy}
       aria-label={copied ? copiedLabel : label}
-      className="text-muted-foreground hover:text-foreground"
+      className="text-muted-foreground hover:text-foreground pointer-coarse:size-11"
     >
       {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </Button>

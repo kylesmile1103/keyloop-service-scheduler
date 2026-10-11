@@ -24,7 +24,7 @@ export function FiltersSheet({ lanes, mode, hidden, onHiddenChange, autoRefresh,
 
   return (
     <Sheet>
-      <SheetTrigger render={<Button type="button" variant="outline" className="h-11 shrink-0 cursor-pointer" />}>
+      <SheetTrigger render={<Button type="button" variant="outline" className="h-auto min-h-11 shrink-0 cursor-pointer" />}>
         <SlidersHorizontal aria-hidden="true" className="text-muted-foreground" />
         Filters
         {shown < lanes.length && (

@@ -58,7 +58,7 @@ export function RootErrorBoundary() {
         <AlertDescription className="flex flex-col items-start gap-3">
           <p className="font-mono text-xs break-all">{detail}</p>
           <p>Reload to try again. After an update, reloading also fetches the latest version.</p>
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          <Button variant="outline" size="sm" className="pointer-coarse:h-11" onClick={() => window.location.reload()}>
             <RotateCw />
             Reload the page
           </Button>
