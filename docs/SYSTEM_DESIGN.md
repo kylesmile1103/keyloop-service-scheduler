@@ -800,6 +800,8 @@ Base path `/api/v1`. JSON only; enums as strings; instants ISO-8601 UTC. All err
 | `rate-limited` | 429 | Policy exceeded | `retryAfterSeconds` |
 | `internal-error` | 500 | Unhandled | `traceId` only — never exception details |
 
+Framework-generated responses that never reach application code (an unknown route `404`, `405`, `413` request too large, `415`) keep the RFC 9110 `type` links that ASP.NET Core assigns; every problem raised by the application uses the catalogue base above.
+
 The 400-vs-422 split is deliberate: `400` means "the request is malformed", `422` means "the request is well-formed but violates a business rule given current reference data", and `409` means "the request collides with current *state*". Clients can branch on `type` without parsing text.
 
 ### 8.8 Data model
