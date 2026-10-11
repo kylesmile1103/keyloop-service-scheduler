@@ -5,7 +5,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
 /// <summary>
 /// Source-generated log methods with stable event ids (Addendum A §A5); product code logs only through these. Ids:
-/// 1001 BookingConfirmed, 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected (Task 10 adds 1002–1004),
+/// 1001 BookingConfirmed (written by the post-commit TelemetryDomainEventObserver), 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected,
 /// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
 /// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog); 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
 /// </summary>
@@ -15,6 +15,28 @@ internal static partial class SchedulerLog
         Message = "Booking {AppointmentId} confirmed at dealership {DealershipId}: bay {BayId}, technician {TechnicianId}, start {StartUtc:O}, vehicle {MaskedVin}")]
     public static partial void BookingConfirmed(
         this ILogger logger, Guid appointmentId, Guid dealershipId, Guid bayId, Guid technicianId, DateTime startUtc, string maskedVin);
+
+    /// <summary>
+    /// A booking was refused (<paramref name="outcome"/> is the <c>scheduler.booking.requests</c> outcome tag, e.g. <c>slot_unavailable</c>).
+    /// Ids and the service code only: the request's customer and vehicle are never logged. <paramref name="serviceCode"/> is null when the
+    /// request was rejected before the service type was read (validation, unknown dealership or service type).
+    /// </summary>
+    [LoggerMessage(EventId = 1002, EventName = "BookingRejected", Level = LogLevel.Information,
+        Message = "Booking rejected at dealership {DealershipId} for service {ServiceCode}: {Outcome}")]
+    public static partial void BookingRejected(this ILogger logger, string outcome, Guid dealershipId, string? serviceCode);
+
+    /// <summary>
+    /// An exclusion constraint rejected a booking that had passed the locked pre-check: some writer bypassed the booking path
+    /// (SYSTEM_DESIGN §7.4). The constraint name says whether the bay or the technician overlapped.
+    /// </summary>
+    [LoggerMessage(EventId = 1003, EventName = "ConstraintBackstopFired", Level = LogLevel.Warning,
+        Message = "Overlap constraint {Constraint} rejected a booking at dealership {DealershipId} that passed the locked pre-check; an out-of-band writer holds the slot")]
+    public static partial void ConstraintBackstopFired(this ILogger logger, string constraint, Guid dealershipId);
+
+    /// <summary>PostgreSQL broke a deadlock on the booking path, which ADR-003 says cannot happen: a code change has added a second lock.</summary>
+    [LoggerMessage(EventId = 1004, EventName = "DeadlockDetected", Level = LogLevel.Warning,
+        Message = "Deadlock detected while booking at dealership {DealershipId}; the booking path must take one lock only (ADR-003)")]
+    public static partial void DeadlockDetected(this ILogger logger, Exception exception, Guid dealershipId);
 
     [LoggerMessage(EventId = 1005, EventName = "DomainEventObserverFailed", Level = LogLevel.Error,
         Message = "Domain event observer {Observer} failed after commit for {EventTypes}; the committed change stands")]

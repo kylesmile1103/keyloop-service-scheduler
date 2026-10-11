@@ -21,7 +21,10 @@ public sealed class SlotUnavailableException(IReadOnlyList<SuggestedSlot> sugges
     public IReadOnlyList<SuggestedSlot> Suggestions { get; } = suggestions;
 }
 
-/// <summary>409 <c>slot-conflict</c>: the database overlap constraint fired (backstop). <see cref="ConflictingResource"/> is <see cref="ProblemResources.Bay"/> or <see cref="ProblemResources.Technician"/>.</summary>
+/// <summary>
+/// 409 <c>slot-conflict</c>: the database overlap constraint fired (backstop). <see cref="ConflictingResource"/> is
+/// <see cref="ProblemResources.Bay"/> or <see cref="ProblemResources.Technician"/> (<see cref="ProblemResources.Unknown"/> for a deadlock).
+/// </summary>
 public sealed class SlotConflictException(string conflictingResource, IReadOnlyList<SuggestedSlot> suggestions)
     : Exception("The slot was taken by a concurrent booking.")
 {

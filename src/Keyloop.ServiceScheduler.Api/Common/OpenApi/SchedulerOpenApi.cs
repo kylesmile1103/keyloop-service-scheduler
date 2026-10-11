@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
@@ -51,7 +52,32 @@ internal static class SchedulerOpenApi
     ];
 
     public static IServiceCollection AddSchedulerOpenApi(this IServiceCollection services) =>
-        services.AddOpenApi(DocumentName, options => options.AddDocumentTransformer(TransformDocument).AddSchemaTransformer(TransformParameterSchema));
+        services.AddOpenApi(DocumentName, options => options
+            .AddDocumentTransformer(TransformDocument)
+            .AddSchemaTransformer(TransformParameterSchema)
+            .AddOperationTransformer(AddResponseHeaders));
+
+    /// <summary>Adds the response headers endpoints declare with <see cref="ResponseHeaderExtensions.WithResponseHeader"/> (e.g. <c>Location</c> on a 201).</summary>
+    internal static Task AddResponseHeaders(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        foreach (var header in context.Description.ActionDescriptor.EndpointMetadata.OfType<ResponseHeaderMetadata>())
+        {
+            if (operation.Responses?.GetValueOrDefault(header.StatusCode.ToString(CultureInfo.InvariantCulture)) is not OpenApiResponse response)
+            {
+                throw new InvalidOperationException(
+                    $"Operation '{operation.OperationId}' documents header {header.Name} for status {header.StatusCode}, which it does not declare.");
+            }
+
+            response.Headers ??= new Dictionary<string, IOpenApiHeader>();
+            response.Headers[header.Name] = new OpenApiHeader
+            {
+                Description = header.Description,
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = header.Format },
+            };
+        }
+
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// A parameter marked <c>[DataType(DataType.Date)]</c> is documented as an RFC 3339 full-date (<c>type: string, format: date</c>),

@@ -110,4 +110,28 @@ public class TelemetryTests
 
         logger.Entries.ShouldBeEmpty();
     }
+
+    [Fact]
+    public void Booking_rejection_backstop_and_deadlock_logs_have_stable_ids_and_no_pii()
+    {
+        var logger = new CapturingLogger<TelemetryTests>();
+        var dealershipId = Guid.NewGuid();
+        var deadlock = new InvalidOperationException("40P01: deadlock detected");
+
+        logger.BookingRejected("slot_unavailable", dealershipId, "INTERIM-SERVICE");
+        logger.ConstraintBackstopFired("ex_appointments_bay_no_overlap", dealershipId);
+        logger.DeadlockDetected(deadlock, dealershipId);
+
+        logger.Entries.Select(e => (e.EventId, e.Level)).ShouldBe(
+        [
+            (new EventId(1002, "BookingRejected"), LogLevel.Information),
+            (new EventId(1003, "ConstraintBackstopFired"), LogLevel.Warning),
+            (new EventId(1004, "DeadlockDetected"), LogLevel.Warning),
+        ]);
+        logger.Entries[0].Message.ShouldContain("slot_unavailable");
+        logger.Entries[0].Message.ShouldContain("INTERIM-SERVICE");
+        logger.Entries.ShouldAllBe(e => e.Message.Contains(dealershipId.ToString()));
+        logger.Entries[1].Message.ShouldContain("ex_appointments_bay_no_overlap");
+        logger.Entries[2].Exception.ShouldBeSameAs(deadlock);
+    }
 }

@@ -11,4 +11,7 @@ public static class ProblemResources
     public const string Appointment = "appointment";
     public const string Bay = "bay";
     public const string Technician = "technician";
+
+    /// <summary><c>conflictingResource</c> when PostgreSQL broke a deadlock on the booking path (which ADR-003 says cannot happen), so no constraint names the resource.</summary>
+    public const string Unknown = "unknown";
 }

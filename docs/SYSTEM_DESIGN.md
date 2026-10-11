@@ -493,14 +493,18 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 
 ### 7.5 Idempotent booking
 
-`POST` is not idempotent by default; a client that times out after the server committed will retry and, without help, receive `409 slot-unavailable` for a booking it actually owns. The optional `Idempotency-Key` header (UUID, ≤ 64 chars) fixes this:
+`POST` is not idempotent by default; a client that times out after the server committed will retry and, without help, receive `409 slot-unavailable` for a booking it actually owns. The optional `Idempotency-Key` header (1–64 characters of `[A-Za-z0-9_-]`, e.g. a UUID; anything else is `400 validation-error` keyed `Idempotency-Key`) fixes this:
 
-1. Compute `fingerprint = SHA-256(dealershipId + canonical JSON body)`.
-2. Inside the booking transaction, insert `(key, fingerprint, status, body, resource_id)` into `idempotency_keys` (unique on key).
-3. On `23505`: read the existing row. Same fingerprint → replay stored status/body with `Idempotent-Replayed: true`. Different fingerprint → `422 idempotency-key-reuse`.
-4. **Only successful (`2xx`) outcomes are memoised**: a `4xx` booking rolled back its transaction (including the key row), and a failed booking is safe to retry. This keeps the design to one transaction and avoids memoising transient conflicts.
+1. Compute `fingerprint = SHA-256(dealershipId + "\n" + canonical JSON body)` (the body re-serialised through the source-generated context, so formatting does not matter).
+2. **Before any rule or availability check, without a lock**, read the key's row. Unexpired with the same fingerprint → replay the stored `201` body with `Location` and `Idempotent-Replayed: true`; unexpired with another fingerprint → `422 idempotency-key-reuse`; expired or missing → continue. This is what makes a sequential retry safe: it never reaches the availability check, where its own committed appointment would make the slot look busy, nor the lead-time rule, which time may since have broken.
+3. **Inside the booking transaction, immediately after the dealership lock**, read the row again with the same rules: a concurrent request with the same key may have committed while this one waited for the lock, and under `READ COMMITTED` this statement sees that commit (§7.3). An expired row is deleted in this transaction, so the new row cannot collide with it.
+4. Only then the availability re-check, allocation, and the inserts (appointment, history, `(key, fingerprint, 201, body, resource_id, expires_at = now + 24 h)`) and commit.
+5. **Backstop**: a `23505` on `idempotency_keys` can now only mean the same key was used concurrently at *another* dealership (whose lock does not serialise with ours); the handler rolls back, re-reads the committed row and applies the rules of step 2 (the fingerprint includes the dealership, so the answer is `422`).
+6. **Only successful (`2xx`) outcomes are memoised**: any `4xx` booking rolled back its transaction (including the key row), so a failed booking may be retried with the same key. This keeps the design to one transaction and avoids memoising transient conflicts.
 
-Concurrent duplicates with the same key serialise on the unique index exactly like any other duplicate. Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17.
+Why this cannot double-book or answer a retry with a wrong `409`: every request for a dealership checks the key and then availability *after* taking the dealership's lock, and each statement sees everything the previous lock holder committed. A same-key request therefore finds the earlier request's row before it can look at availability; the exclusion constraints still forbid any overlap whatever the application does. The expired-key `DELETE` (step 3) takes a row lock on that key only, contended solely by the same key used at another dealership at the same moment; such a transaction waits holding only its own dealership's lock, which the holder never requests, so the wait cannot form a cycle (ADR-003).
+
+Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17. A retry after the 24 hours is a new booking.
 
 ---
 
@@ -668,14 +672,16 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     UI->>EP: POST /api/v1/dealerships/{id}/appointments (+ Idempotency-Key)
-    EP->>V: validate shape (VIN, email, times, ids)
+    EP->>V: validate shape (VIN, email, times, ids) and the key's format
     V-->>EP: ok
     EP->>H: Handle(command)
+    H->>DB: SELECT idempotency_keys row (no lock): a live match is replayed (201), a mismatch is 422 (§7.5)
     H->>DB: load dealership + hours, service type, active bays & technicians (snapshots)
-    H->>D: ResolveOperatingWindow(date), BookingWindowPolicy.Check(start)
+    H->>D: BookingWindowPolicy.OperatingWindowFor(slot), EnsureBookable, EnsureAligned
     D-->>H: window / ok (else 422)
     H->>DB: BEGIN (READ COMMITTED), then SELECT pg_advisory_xact_lock(dealershipKey)
     Note over H,DB: queued behind any concurrent booking at this dealership (ms)
+    H->>DB: SELECT idempotency_keys row again (a same-key request may have committed while we waited)
     H->>DB: SELECT active appointments overlapping [start,end) for candidate resources
     H->>D: AvailabilityCalculator.IsFeasible(start) -> candidates, AllocationPolicy.Choose
     D-->>H: bay B3, technician T2 (else 409 slot-unavailable + suggestions)
@@ -777,7 +783,7 @@ Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never
 | `GET /dealerships/{dealershipId}/service-types` | The whole (global) catalogue by name: `[{ id, code, name, durationMinutes, requiredBayCapabilities[], requiredCertifications[], bookable }]`; `bookable` = the dealership has an active bay and an active technician that qualify | `200` | `404 not-found` |
 | `GET /dealerships/{dealershipId}/availability?serviceTypeId=&date=YYYY-MM-DD` | Feasible start times for a local date (`date` strictly `yyyy-MM-dd`, from yesterday to the horizon) | `200` `{ date, timeZoneId, operatingWindow{startUtc,endUtc,opensAtLocal,closesAtLocal}, durationMinutes, slotGranularityMinutes, slots[{startUtc,endUtc,startLocal,freeBays,freeTechnicians}], unavailableReason }`; `operatingWindow` is `null` on a closed day; `unavailableReason` is `closed`, `no-qualified-resources` or `null` (slots may still be empty: fully booked, a service longer than that day's opening hours, or hours lost to a DST gap); `…Local` strings carry the offset (§6.4) | `400 validation-error`, `404 not-found` |
 | `GET /dealerships/{dealershipId}/schedule?date=YYYY-MM-DD` | Dispatch-board read model: `{ dealership, operatingWindow, bays[{…, appointments[]}], technicians[] }` | `200` | `400`, `404` |
-| `POST /dealerships/{dealershipId}/appointments` | Book (headers: optional `Idempotency-Key`) | `201` + `Location`; an idempotent replay returns the stored `201` plus `Idempotent-Replayed: true` | `400 validation-error`, `404 not-found`, `422 outside-operating-hours / lead-time-not-met / beyond-booking-horizon / slot-not-aligned / no-qualified-resources / idempotency-key-reuse`, `409 slot-unavailable / slot-conflict`, `429` |
+| `POST /dealerships/{dealershipId}/appointments` | Book `{ serviceTypeId, startUtc, customer{name,email,phone}, vehicle{vin,registration,make,model}, preferredBayId?, preferredTechnicianId?, notes? }` (headers: optional `Idempotency-Key`, 1–64 `[A-Za-z0-9_-]`); request bodies are limited to 64 KB (`413`) | `201` + `Location: /api/v1/appointments/{id}`, body `{ id, dealershipId, serviceType{id,code,name,durationMinutes}, bay{id,name}, technician{id,name}, startUtc, endUtc, startLocal, endLocal, status, customer, vehicle, notes, cancellationReason, createdAtUtc, updatedAtUtc }`; an idempotent replay returns the stored `201` plus `Idempotent-Replayed: true` (§7.5) | `400 validation-error` (body fields by JSON path, or `Idempotency-Key`), `404 not-found`, `422 outside-operating-hours / lead-time-not-met / beyond-booking-horizon / slot-not-aligned / no-qualified-resources / idempotency-key-reuse`, `409 slot-unavailable / slot-conflict`, `429` |
 | `GET /appointments/{appointmentId}` | Read | `200` | `404` |
 | `POST /appointments/{appointmentId}/cancel` | Cancel with `{ reason }` | `200` (updated appointment) | `400`, `404`, `409 invalid-state-transition / concurrency-conflict` |
 | `GET /openapi/v1.json` · `GET /scalar/v1` | Contract and interactive reference (not in Production) | `200` | — |
@@ -789,14 +795,14 @@ Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never
 |------|--------|------|------------|
 | `validation-error` | 400 | Request shape/format invalid (FluentValidation) | `errors: { field: [messages] }` |
 | `not-found` | 404 | Unknown dealership / service type / appointment | `resource`, `id` |
-| `outside-operating-hours` | 422 | Slot not inside the operating window or dealership closed | `operatingWindow` |
+| `outside-operating-hours` | 422 | Slot not inside the operating window or dealership closed | `operatingWindow` (`{startUtc,endUtc}`), or `localDate` when the dealership is closed that day |
 | `lead-time-not-met` | 422 | Start earlier than now + minimum lead time | `earliestStartUtc` |
 | `beyond-booking-horizon` | 422 | Start later than now + horizon | `latestStartUtc` |
 | `slot-not-aligned` | 422 | Start not on the granularity grid | `slotGranularityMinutes` |
-| `no-qualified-resources` | 422 | Dealership has no active bay/technician that could ever serve this service | `missingCapabilities`, `missingCertifications` (present when the gap is a capability/certification mismatch; the `detail` text never names individual staff) |
+| `no-qualified-resources` | 422 | Dealership has no active bay/technician that could ever serve this service | `missingCapabilities`, `missingCertifications`: what no active bay / technician has (empty on a side that qualifies); the `detail` text never names individual staff |
 | `idempotency-key-reuse` | 422 | Same key, different request | — |
-| `slot-unavailable` | 409 | All qualified resources busy at that time (pre-check) | `suggestedSlots[]` |
-| `slot-conflict` | 409 | Database overlap constraint fired (backstop) | `suggestedSlots[]`, `conflictingResource` |
+| `slot-unavailable` | 409 | All qualified resources busy at that time (pre-check) | `suggestedSlots[]`: up to `Scheduling:SuggestedSlotCount` bookable starts that day nearest the requested one, from active qualified resources, never the requested start |
+| `slot-conflict` | 409 | Database overlap constraint fired (backstop) | `suggestedSlots[]`, `conflictingResource` (`bay`, `technician`, or `unknown` for a deadlock, which ADR-003 rules out) |
 | `invalid-state-transition` | 409 | e.g. cancel a cancelled appointment | `currentStatus`, `attempted` (machine token: `cancel`, `check-in`, `start`, `complete`, `mark-no-show`) |
 | `no-show-before-slot-end` | 422 | Marking a no-show before the slot has ended (domain rule; no endpoint in this slice) | — |
 | `concurrency-conflict` | 409 | Row changed since read (`xmin`) | — |
@@ -1032,7 +1038,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 | Span | Tags | Notes |
 |------|------|-------|
-| `scheduler.book_appointment` | `dealership.id`, `service_type.code`, `booking.requested_start_utc`, `booking.outcome` (`confirmed`, `slot_unavailable`, `slot_conflict`, `rule_violation`, `validation_failed`), `booking.bay_id`, `booking.technician_id`, `idempotency.replayed` | the business transaction |
+| `scheduler.book_appointment` | `dealership.id`, `service_type.code`, `booking.requested_start_utc`, `booking.outcome` (`confirmed`, `replayed`, `slot_unavailable`, `slot_conflict`, `rule_violation`, `not_found`, `idempotency_reuse`; `validation_failed` never reaches the handler, so it appears only on the metric), `booking.bay_id`, `booking.technician_id`, `idempotency.replayed` | the business transaction |
 | `scheduler.acquire_dealership_lock` | `dealership.id`, `lock.wait_ms` | shows queueing under contention |
 | `scheduler.compute_availability` | `availability.candidates_bays`, `availability.candidates_technicians`, `availability.slots_returned` | shared by availability and booking |
 | `scheduler.persist_appointment` | `db.rows_affected` | wraps `SaveChanges` |
@@ -1042,7 +1048,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 | Instrument | Type | Unit | Tags | Why |
 |------------|------|------|------|-----|
-| `scheduler.booking.requests` | counter | `{request}` | `outcome`, `dealership.id` | throughput and **contention failure rate** (`slot_unavailable + slot_conflict` / total) |
+| `scheduler.booking.requests` | counter | `{request}` | `outcome` (the span's values plus `validation_failed`, counted by the endpoint's outer filter), `dealership.id` | throughput and **contention failure rate** (`slot_unavailable + slot_conflict` / total) |
 | `scheduler.booking.duration` | histogram | `ms` | `outcome` | booking latency SLO (p95 < 150 ms) |
 | `scheduler.booking.lock_wait` | histogram | `ms` | `dealership.id` | queueing depth; a rising p95 means a hot dealership |
 | `scheduler.booking.constraint_backstop` | counter | `{event}` | `constraint` | should stay at 0; non-zero means an out-of-band writer |

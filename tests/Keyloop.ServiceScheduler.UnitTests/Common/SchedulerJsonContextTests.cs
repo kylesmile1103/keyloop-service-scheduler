@@ -6,6 +6,8 @@ using Keyloop.ServiceScheduler.Api.Domain.Common;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
@@ -28,7 +30,7 @@ public class SchedulerJsonContextTests
         var values = DomainExtensionValues();
 
         values.Keys.ShouldBe(
-            ["earliestStartUtc", "latestStartUtc", "slotGranularityMinutes", "missingCapabilities", "missingCertifications", "operatingWindow"],
+            ["earliestStartUtc", "latestStartUtc", "slotGranularityMinutes", "missingCapabilities", "missingCertifications", "operatingWindow", "localDate"],
             ignoreOrder: true);
         foreach (var (key, value) in values)
         {
@@ -42,6 +44,7 @@ public class SchedulerJsonContextTests
         Json(values["missingCapabilities"]).ShouldBe("""["EvHighVoltage"]""");
         Json(values["missingCertifications"]).ShouldBe("""["HighVoltageElectrical"]""");
         Json(values["operatingWindow"]).ShouldBe("""{"startUtc":"2026-10-13T07:00:00Z","endUtc":"2026-10-13T17:00:00Z"}""");
+        Json(values["localDate"]).ShouldBe("\"2026-10-18\"");
     }
 
     [Fact]
@@ -77,6 +80,19 @@ public class SchedulerJsonContextTests
         }
     }
 
+    [Fact]
+    public void Booking_request_and_response_types_are_registered()
+    {
+        foreach (var type in new[]
+                 {
+                     typeof(BookAppointmentRequest), typeof(CustomerRequest), typeof(VehicleRequest), typeof(AppointmentResponse), typeof(ServiceTypeSummary),
+                     typeof(ResourceSummary), typeof(CustomerResponse), typeof(VehicleResponse), typeof(DateOnly),
+                 })
+        {
+            SchedulerJsonContext.Default.GetTypeInfo(type).ShouldNotBeNull(type.ToString());
+        }
+    }
+
     private static Dictionary<string, object?> DomainExtensionValues()
     {
         var values = new Dictionary<string, object?>();
@@ -94,6 +110,7 @@ public class SchedulerJsonContextTests
         Collect(() => BookingWindowPolicy.EnsureAligned(Window.StartUtc.AddMinutes(7), Window, 15));
         Collect(() => Book(new TimeOnly(9, 0), serviceType: EvCheck));
         Collect(() => Book(new TimeOnly(7, 0)));
+        Collect(() => BookingWindowPolicy.OperatingWindowFor(Reading, TimeSlot.FromStart(new DateTime(2026, 10, 18, 9, 0, 0, DateTimeKind.Utc), Interim.Duration)));
         return values;
     }
 

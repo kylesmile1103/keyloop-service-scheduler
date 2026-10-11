@@ -4,9 +4,14 @@ using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 
 namespace Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
-/// <summary>When a booking may start: not before now + lead time, not after now + horizon, and on the slot grid.</summary>
+/// <summary>
+/// When a booking may start: inside the dealership's opening hours that day, not before now + lead time, not after now + horizon, and
+/// on the slot grid.
+/// </summary>
 public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLeadTime, TimeSpan bookingHorizon)
 {
+    private const string OutsideOperatingHours = "outside-operating-hours";
+
     private readonly TimeProvider _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     private readonly TimeSpan _minimumLeadTime = minimumLeadTime >= TimeSpan.Zero
@@ -16,6 +21,57 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
     private readonly TimeSpan _bookingHorizon = bookingHorizon > minimumLeadTime
         ? bookingHorizon
         : throw new ArgumentOutOfRangeException(nameof(bookingHorizon), bookingHorizon, "Booking horizon must be longer than the minimum lead time.");
+
+    /// <summary>
+    /// The operating window that must contain <paramref name="slot"/>: the one of the dealership's local date at the slot's start.
+    /// Throws <c>outside-operating-hours</c> when the dealership is closed that day (extension <c>localDate</c>) or the slot is not
+    /// inside the window (extension <c>operatingWindow</c>; see <see cref="EnsureWithinOperatingHours"/>).
+    /// </summary>
+    public static OperatingWindow OperatingWindowFor(Dealership dealership, TimeSlot slot)
+    {
+        ArgumentNullException.ThrowIfNull(dealership);
+        ArgumentNullException.ThrowIfNull(slot);
+        var localDate = LocalTimeConverter.ToLocalDate(slot.StartUtc, dealership.TimeZone);
+        var window = dealership.ResolveOperatingWindow(localDate)
+            ?? throw new DomainRuleViolationException(
+                OutsideOperatingHours,
+                string.Create(CultureInfo.InvariantCulture, $"{dealership.Name} is closed on {localDate.DayOfWeek}s (no opening hours on {localDate:yyyy-MM-dd})."),
+                new Dictionary<string, object?> { ["localDate"] = localDate });
+        EnsureWithinOperatingHours(dealership, slot, window);
+        return window;
+    }
+
+    /// <summary>
+    /// Throws <c>outside-operating-hours</c> unless <paramref name="slot"/> lies inside <paramref name="window"/> (half-open: a slot may
+    /// end exactly at closing time). The detail gives local times; the <c>operatingWindow</c> extension gives the window in UTC.
+    /// </summary>
+    public static void EnsureWithinOperatingHours(Dealership dealership, TimeSlot slot, OperatingWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(dealership);
+        ArgumentNullException.ThrowIfNull(slot);
+        if (window.Contains(slot))
+        {
+            return;
+        }
+
+        var zone = dealership.TimeZone;
+        string Local(DateTime utc) => LocalTimeConverter.FormatLocal(utc, zone);
+        throw new DomainRuleViolationException(
+            OutsideOperatingHours,
+            $"The slot {Local(slot.StartUtc)} to {Local(slot.EndUtc)} is outside the operating hours of {dealership.Name} " +
+            $"({Local(window.StartUtc)} to {Local(window.EndUtc)}, {dealership.TimeZoneId}).",
+            // A named value (not an anonymous object) so the source-generated JSON context can register it (ADR-016);
+            // it serialises as { "startUtc", "endUtc" } under the camelCase policy.
+            new Dictionary<string, object?> { ["operatingWindow"] = window });
+    }
+
+    /// <summary>Whether <see cref="EnsureBookable"/> would accept <paramref name="startUtc"/> now (used to filter suggestions).</summary>
+    public bool IsBookable(DateTime startUtc)
+    {
+        Guard.Utc(startUtc, nameof(startUtc));
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        return startUtc >= nowUtc + _minimumLeadTime && startUtc <= nowUtc + _bookingHorizon;
+    }
 
     /// <summary>Throws <c>lead-time-not-met</c> (also covers starts in the past) or <c>beyond-booking-horizon</c>.</summary>
     public void EnsureBookable(DateTime startUtc)

@@ -8,6 +8,7 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -52,12 +53,13 @@ builder.Services.AddDbContext<SchedulerDbContext>((sp, options) => options
     .AddInterceptors(sp.GetRequiredService<DomainEventInterceptor>()));
 builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
 
-// Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12),
-// e.g. builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
+// Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12).
 builder.Services.AddScoped<GetDealershipsHandler>();
 builder.Services.AddScoped<GetServiceTypesHandler>();
 builder.Services.AddScoped<GetAvailabilityHandler>();
 builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
+builder.Services.AddScoped<BookAppointmentHandler>();
+builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);

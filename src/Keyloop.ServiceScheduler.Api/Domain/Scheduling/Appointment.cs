@@ -19,7 +19,6 @@ public sealed class Appointment : AggregateRoot
     public const int MaxCancellationReasonLength = 500;
 
     private const string NoQualifiedResources = "no-qualified-resources";
-    private const string OutsideOperatingHours = "outside-operating-hours";
     private const string NoShowBeforeSlotEnd = "no-show-before-slot-end";
 
     // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (SYSTEM_DESIGN §8.7).
@@ -156,18 +155,7 @@ public sealed class Appointment : AggregateRoot
                 });
         }
 
-        if (!window.Contains(slot))
-        {
-            var zone = dealership.TimeZone;
-            string Local(DateTime utc) => LocalTimeConverter.FormatLocal(utc, zone);
-            throw new DomainRuleViolationException(
-                OutsideOperatingHours,
-                $"The slot {Local(slot.StartUtc)} to {Local(slot.EndUtc)} is outside the operating hours of {dealership.Name} " +
-                $"({Local(window.StartUtc)} to {Local(window.EndUtc)}, {dealership.TimeZoneId}).",
-                // A named value (not an anonymous object) so the source-generated JSON context can register it (ADR-016);
-                // it serialises as { "startUtc", "endUtc" } under the camelCase policy.
-                new Dictionary<string, object?> { ["operatingWindow"] = window });
-        }
+        BookingWindowPolicy.EnsureWithinOperatingHours(dealership, slot, window);
 
         var appointment = new Appointment(id, dealership.Id, serviceType.Id, bay.Id, technician.Id, slot, customer, vehicle, normalisedNotes, nowUtc);
         appointment.Raise(new AppointmentBooked(

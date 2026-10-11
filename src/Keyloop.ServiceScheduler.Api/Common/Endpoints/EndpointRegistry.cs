@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Api.Common.Problems;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -17,6 +18,7 @@ public static class EndpointRegistry
         GetDealershipsEndpoint.Map(group);
         GetServiceTypesEndpoint.Map(group);
         GetAvailabilityEndpoint.Map(group);
+        BookAppointmentEndpoint.Map(group);
 
         if (app.Environment.IsEnvironment("SystemTest"))
         {

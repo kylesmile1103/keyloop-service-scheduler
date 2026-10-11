@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Domain.Catalog;
 using Keyloop.ServiceScheduler.Api.Domain.Common;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
@@ -130,4 +131,76 @@ public class BookingWindowPolicyTests
     [Fact]
     public void EnsureAligned_rejects_non_positive_granularity() =>
         Should.Throw<ArgumentOutOfRangeException>(() => BookingWindowPolicy.EnsureAligned(Utc(7, 0), Window, 0));
+
+    [Theory]
+    [InlineData(60, true)] // exactly the lead time
+    [InlineData(59, false)]
+    [InlineData(-60, false)] // the past
+    public void IsBookable_agrees_with_EnsureBookable_on_the_lead_time(int minutesFromNow, bool bookable)
+    {
+        var start = Now.AddMinutes(minutesFromNow);
+
+        Policy().IsBookable(start).ShouldBe(bookable);
+        if (!bookable)
+        {
+            Should.Throw<DomainRuleViolationException>(() => Policy().EnsureBookable(start));
+        }
+    }
+
+    [Fact]
+    public void IsBookable_agrees_with_EnsureBookable_on_the_horizon()
+    {
+        Policy().IsBookable(Now + Horizon).ShouldBeTrue();
+        Policy().IsBookable(Now + Horizon + TimeSpan.FromMinutes(1)).ShouldBeFalse();
+    }
+
+    private static readonly Dealership Reading = Dealership.Create(
+        Guid.NewGuid(), "Keyloop Motors Reading", "Europe/London", OperatingHours.MondayToFriday(new TimeOnly(8, 0), new TimeOnly(18, 0)), Now);
+
+    private static TimeSlot Hour(DateTime startUtc) => TimeSlot.FromStart(startUtc, ServiceDuration.Create(60));
+
+    [Theory]
+    [InlineData(7, 0)] // starts exactly at opening (08:00 BST)
+    [InlineData(16, 0)] // ends exactly at closing (18:00 BST), half-open
+    public void OperatingWindowFor_returns_the_local_day_s_window_for_a_slot_inside_it(int hour, int minute) =>
+        BookingWindowPolicy.OperatingWindowFor(Reading, Hour(Utc(hour, minute))).ShouldBe(Window);
+
+    [Theory]
+    [InlineData(16, 1)] // ends one minute after closing
+    [InlineData(16, 30)]
+    [InlineData(17, 30)] // starts after closing
+    [InlineData(6, 45)] // starts before opening
+    public void OperatingWindowFor_rejects_a_slot_outside_the_window_with_the_window(int hour, int minute)
+    {
+        var ex = Should.Throw<DomainRuleViolationException>(() => BookingWindowPolicy.OperatingWindowFor(Reading, Hour(Utc(hour, minute))));
+
+        ex.RuleCode.ShouldBe("outside-operating-hours");
+        ex.Extensions["operatingWindow"].ShouldBe(Window);
+        ex.Message.ShouldContain("Keyloop Motors Reading (2026-10-13T08:00+01:00 to 2026-10-13T18:00+01:00, Europe/London)");
+    }
+
+    [Fact]
+    public void OperatingWindowFor_rejects_a_closed_day_with_the_local_date()
+    {
+        var sunday = new DateTime(2026, 10, 18, 9, 0, 0, DateTimeKind.Utc);
+
+        var ex = Should.Throw<DomainRuleViolationException>(() => BookingWindowPolicy.OperatingWindowFor(Reading, Hour(sunday)));
+
+        ex.RuleCode.ShouldBe("outside-operating-hours");
+        ex.Extensions["localDate"].ShouldBe(new DateOnly(2026, 10, 18));
+        ex.Message.ShouldBe("Keyloop Motors Reading is closed on Sundays (no opening hours on 2026-10-18).");
+    }
+
+    [Fact]
+    public void OperatingWindowFor_uses_the_dealership_s_local_date_not_the_utc_date()
+    {
+        // 23:30Z on Friday 2026-10-16 is 01:30 on Saturday in Berlin (CEST): Saturday's hours apply, and this dealership is closed then.
+        var berlin = Dealership.Create(
+            Guid.NewGuid(), "Autohaus Test", "Europe/Berlin", OperatingHours.MondayToFriday(new TimeOnly(0, 0), new TimeOnly(23, 0)), Now);
+
+        var ex = Should.Throw<DomainRuleViolationException>(() =>
+            BookingWindowPolicy.OperatingWindowFor(berlin, Hour(new DateTime(2026, 10, 16, 23, 30, 0, DateTimeKind.Utc))));
+
+        ex.Extensions["localDate"].ShouldBe(new DateOnly(2026, 10, 17));
+    }
 }

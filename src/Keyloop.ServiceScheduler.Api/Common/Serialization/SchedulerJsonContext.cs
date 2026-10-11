@@ -3,6 +3,8 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -57,7 +59,16 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(OperatingWindowResponse))]
 [JsonSerializable(typeof(AvailabilitySlotResponse))]
 [JsonSerializable(typeof(IReadOnlyList<AvailabilitySlotResponse>))]
-[JsonSerializable(typeof(DateOnly))] // date (the schedule's too, Task 12)
+[JsonSerializable(typeof(DateOnly))] // date (the schedule's too, Task 12); the localDate extension of a closed-day outside-operating-hours
 [JsonSerializable(typeof(Guid?))] // the serviceTypeId query parameter: the OpenAPI document builds parameter schemas through this resolver too
-// Tasks 10+: every request, response and extension payload type, including top-level collections.
+// Task 10: booking (the request and the appointment response, which is also the memoised idempotency body)
+[JsonSerializable(typeof(BookAppointmentRequest))]
+[JsonSerializable(typeof(CustomerRequest))]
+[JsonSerializable(typeof(VehicleRequest))]
+[JsonSerializable(typeof(AppointmentResponse))]
+[JsonSerializable(typeof(ServiceTypeSummary))]
+[JsonSerializable(typeof(ResourceSummary))]
+[JsonSerializable(typeof(CustomerResponse))]
+[JsonSerializable(typeof(VehicleResponse))]
+// Tasks 11+: every request, response and extension payload type, including top-level collections.
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

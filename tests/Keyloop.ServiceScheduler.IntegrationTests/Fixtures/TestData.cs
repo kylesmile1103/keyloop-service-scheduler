@@ -3,6 +3,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Catalog;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Microsoft.Extensions.Time.Testing;
 
@@ -44,6 +45,27 @@ public static class TestData
             string.Create(CultureInfo.InvariantCulture, $"Customer {n}"),
             string.Create(CultureInfo.InvariantCulture, $"customer{n}@example.com"),
             string.Create(CultureInfo.InvariantCulture, $"+44 7700 9{n % 100000:D5}"));
+
+    /// <summary>A valid VIN that differs per <paramref name="n"/> (its last six characters are <paramref name="n"/> modulo 10⁶).</summary>
+    public static string VinFor(int n) => string.Create(CultureInfo.InvariantCulture, $"WVWZZZ1KZAW{n % 1_000_000:D6}");
+
+    /// <summary>
+    /// A valid <c>POST …/appointments</c> body for <paramref name="customerIndex"/>: distinct customer details and VIN per index, so
+    /// concurrent requests are distinct requests (and distinct idempotency fingerprints).
+    /// </summary>
+    public static BookAppointmentRequest BookingRequest(
+        Guid serviceTypeId, DateTime startUtc, int customerIndex = 1, Guid? preferredBayId = null, Guid? preferredTechnicianId = null, string? notes = null)
+    {
+        var customer = Customer(customerIndex);
+        return new BookAppointmentRequest(
+            serviceTypeId,
+            startUtc,
+            new CustomerRequest(customer.Name, customer.Email, customer.Phone),
+            new VehicleRequest(VinFor(customerIndex), "AB12 CDE", "Volkswagen", "Golf"),
+            preferredBayId,
+            preferredTechnicianId,
+            notes);
+    }
 
     /// <summary>A confirmed appointment on <see cref="BookingDay"/> (or the date of <paramref name="startUtc"/>) built through the aggregate, so it raises <c>AppointmentBooked</c>.</summary>
     public static Appointment NewAppointment(

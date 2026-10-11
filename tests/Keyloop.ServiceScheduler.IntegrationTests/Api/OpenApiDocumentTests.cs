@@ -1,5 +1,7 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
@@ -159,6 +161,138 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
 
         static bool HasDescription(JsonElement schema) =>
             schema.TryGetProperty("description", out var description) && !string.IsNullOrWhiteSpace(description.GetString());
+    }
+
+    [Fact]
+    public async Task Booking_operation_documents_responses_headers_and_an_example_body_that_books()
+    {
+        using var document = JsonDocument.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct));
+        var root = document.RootElement;
+        var booking = root.GetProperty("paths").GetProperty("/api/v1/dealerships/{dealershipId}/appointments").GetProperty("post");
+
+        booking.GetProperty("operationId").GetString().ShouldBe("BookAppointment");
+        booking.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ShouldBe(["Appointments"]);
+        booking.GetProperty("summary").GetString().ShouldNotBeNullOrWhiteSpace();
+        booking.GetProperty("description").GetString().ShouldNotBeNull().ShouldContain("Idempotency-Key");
+
+        var responses = booking.GetProperty("responses");
+        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["201", "400", "404", "409", "422", "429"], ignoreOrder: true);
+        foreach (var (status, mediaType, schema, reasonPhrase) in new[]
+                 {
+                     ("201", "application/json", "AppointmentResponse", "Created"),
+                     ("400", "application/problem+json", "HttpValidationProblemDetails", "Bad Request"),
+                     ("404", "application/problem+json", "ProblemDetails", "Not Found"),
+                     ("409", "application/problem+json", "ProblemDetails", "Conflict"),
+                     ("422", "application/problem+json", "ProblemDetails", "Unprocessable Entity"),
+                     ("429", "application/problem+json", "ProblemDetails", "Too Many Requests"),
+                 })
+        {
+            var response = responses.GetProperty(status);
+            response.GetProperty("description").GetString().ShouldNotBe(reasonPhrase, $"the <response code=\"{status}\"> comment");
+            response.GetProperty("content").GetProperty(mediaType).GetProperty("schema").GetProperty("$ref").GetString()
+                .ShouldBe($"#/components/schemas/{schema}", status);
+        }
+
+        var created = responses.GetProperty("201").GetProperty("headers");
+        created.EnumerateObject().Select(h => h.Name).ShouldBe(["Location", "Idempotent-Replayed"], ignoreOrder: true);
+        created.EnumerateObject().ShouldAllBe(h => !string.IsNullOrWhiteSpace(h.Value.GetProperty("description").GetString()));
+
+        var parameters = booking.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
+        parameters.Keys.ShouldBe(["dealershipId", "Idempotency-Key"], ignoreOrder: true);
+        parameters["dealershipId"].GetProperty("example").GetString().ShouldBe(ReferenceDataSeed.ReadingDealershipId.ToString());
+        var key = parameters["Idempotency-Key"];
+        key.GetProperty("in").GetString().ShouldBe("header");
+        (key.TryGetProperty("required", out var required) && required.GetBoolean()).ShouldBeFalse();
+        key.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace();
+        var keySchema = key.GetProperty("schema");
+        keySchema.GetProperty("maxLength").GetInt32().ShouldBe(64);
+        keySchema.GetProperty("pattern").GetString().ShouldBe("^[A-Za-z0-9_-]{1,64}$");
+
+        var body = booking.GetProperty("requestBody");
+        body.GetProperty("required").GetBoolean().ShouldBeTrue();
+        body.GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("$ref").GetString()
+            .ShouldBe("#/components/schemas/BookAppointmentRequest");
+
+        // Every request property is described and has an example (Addendum B §B2), and the response records are described. Property
+        // examples are JSON Schema `examples` arrays (OpenAPI 3.1), which Scalar reads; a nested object's example is its own schema's.
+        var schemas = root.GetProperty("components").GetProperty("schemas");
+        foreach (var (schema, properties) in new (string, string[])[]
+                 {
+                     ("BookAppointmentRequest", ["serviceTypeId", "startUtc", "customer", "vehicle", "preferredBayId", "preferredTechnicianId", "notes"]),
+                     ("CustomerRequest", ["name", "email", "phone"]),
+                     ("VehicleRequest", ["vin", "registration", "make", "model"]),
+                 })
+        {
+            var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
+            props.Select(p => p.Name).ShouldBe(properties, schema);
+            props.Where(p => !Describes(p.Value, "description")).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
+            props.Where(p => !p.Value.TryGetProperty("$ref", out _) && Example(p.Value) is null).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without an example");
+        }
+
+        foreach (var (schema, properties) in new (string, string[])[]
+                 {
+                     ("AppointmentResponse",
+                     [
+                         "id", "dealershipId", "serviceType", "bay", "technician", "startUtc", "endUtc", "startLocal", "endLocal", "status", "customer",
+                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc",
+                     ]),
+                     ("ServiceTypeSummary", ["id", "code", "name", "durationMinutes"]),
+                     ("ResourceSummary", ["id", "name"]),
+                     ("CustomerResponse", ["name", "email", "phone"]),
+                     ("VehicleResponse", ["vin", "registration", "make", "model"]),
+                 })
+        {
+            var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
+            props.Select(p => p.Name).ShouldBe(properties, schema);
+            props.Where(p => !Describes(p.Value, "description")).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
+        }
+
+        // Optional members are optional in the contract, not "required but nullable".
+        schemas.GetProperty("BookAppointmentRequest").GetProperty("required").EnumerateArray().Select(r => r.GetString())
+            .ShouldBe(["serviceTypeId", "startUtc", "customer", "vehicle"], ignoreOrder: true);
+
+        // Scalar's "Test request" body is built from those examples: against the seeded catalogue it must book.
+        var example = ExampleOf(schemas, "BookAppointmentRequest");
+        example["serviceTypeId"]!.GetValue<string>().ShouldBe(ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE").ToString());
+        example["startUtc"]!.GetValue<string>().ShouldBe("2026-10-13T09:00:00Z");
+        example["preferredBayId"]!.GetValue<string>().ShouldBe(ReferenceDataSeed.BayId("reading", 1).ToString());
+        example["preferredTechnicianId"]!.GetValue<string>().ShouldBe(ReferenceDataSeed.TechnicianId("T-1001").ToString());
+        example["vehicle"]!["vin"]!.GetValue<string>().ShouldBe("WVWZZZ1KZAW123456");
+        await _factory.ResetAsync();
+        await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
+
+        using var booked = await _client.PostAsync(
+            $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/appointments",
+            new StringContent(example.ToJsonString(), Encoding.UTF8, "application/json"),
+            Ct);
+
+        booked.StatusCode.ShouldBe(HttpStatusCode.Created, await booked.Content.ReadAsStringAsync(Ct));
+        await _factory.ResetAsync();
+
+        static bool Describes(JsonElement schema, string keyword) =>
+            (schema.TryGetProperty(keyword, out var value) && value.ValueKind != JsonValueKind.Null && value.ToString().Length > 0)
+            || (schema.TryGetProperty("oneOf", out var branches) && branches.EnumerateArray().Any(b => Describes(b, keyword)));
+    }
+
+    /// <summary>A property schema's example: the first of its JSON Schema <c>examples</c>, or its OpenAPI <c>example</c>; null when it has none.</summary>
+    private static JsonNode? Example(JsonElement schema) =>
+        schema.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0
+            ? JsonNode.Parse(examples[0].GetRawText())
+            : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText()) : null;
+
+    /// <summary>The object Scalar would send: each property's example, with nested objects built from their own schemas' examples.</summary>
+    private static JsonObject ExampleOf(JsonElement schemas, string schema)
+    {
+        var example = new JsonObject();
+        foreach (var property in schemas.GetProperty(schema).GetProperty("properties").EnumerateObject())
+        {
+            var reference = property.Value.TryGetProperty("$ref", out var r) ? r.GetString() : null;
+            example[property.Name] = reference is not null
+                ? ExampleOf(schemas, reference["#/components/schemas/".Length..])
+                : Example(property.Value) ?? throw new ShouldAssertException($"{schema}.{property.Name} has no example");
+        }
+
+        return example;
     }
 
     private static void ShouldBeDocumented(JsonElement operation, string operationId, string tag)
