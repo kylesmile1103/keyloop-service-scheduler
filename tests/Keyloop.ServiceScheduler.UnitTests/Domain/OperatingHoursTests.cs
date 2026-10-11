@@ -1,0 +1,123 @@
+using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
+
+namespace Keyloop.ServiceScheduler.UnitTests.Domain;
+
+public class OperatingHoursTests
+{
+    private static readonly TimeOnly Eight = new(8, 0);
+    private static readonly TimeOnly Thirteen = new(13, 0);
+    private static readonly TimeOnly Eighteen = new(18, 0);
+    private static readonly DateTime CreatedAt = new(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);
+
+    private static Dealership Reading() =>
+        Dealership.Create(Guid.NewGuid(), "Keyloop Motors Reading", "Europe/London", OperatingHours.MondayToFriday(Eight, Eighteen, Thirteen), CreatedAt);
+
+    private static DayOperatingHours Open(DayOfWeek day) => new(day, Eight, Eighteen);
+
+    [Fact]
+    public void Create_requires_all_seven_days()
+    {
+        var sixDays = Enum.GetValues<DayOfWeek>().Where(d => d != DayOfWeek.Sunday).Select(Open).ToList();
+        Should.Throw<ArgumentException>(() => OperatingHours.Create(sixDays));
+
+        var duplicateMonday = sixDays.Append(Open(DayOfWeek.Monday)).ToList();
+        duplicateMonday.Count.ShouldBe(7);
+        Should.Throw<ArgumentException>(() => OperatingHours.Create(duplicateMonday));
+
+        var hours = OperatingHours.Create(Enum.GetValues<DayOfWeek>().Reverse().Select(Open));
+        hours.Days.Select(d => d.Day).ShouldBe(Enum.GetValues<DayOfWeek>());
+        hours.ForDay(DayOfWeek.Wednesday).ShouldBe(Open(DayOfWeek.Wednesday));
+    }
+
+    [Fact]
+    public void Closed_day_has_null_times()
+    {
+        var sunday = new DayOperatingHours(DayOfWeek.Sunday, null, null);
+        sunday.IsClosed.ShouldBeTrue();
+        sunday.OpensAt.ShouldBeNull();
+        sunday.ClosesAt.ShouldBeNull();
+
+        Should.Throw<ArgumentException>(() => new DayOperatingHours(DayOfWeek.Sunday, Eight, null));
+        Should.Throw<ArgumentException>(() => new DayOperatingHours(DayOfWeek.Sunday, null, Eighteen));
+
+        var hours = OperatingHours.MondayToFriday(Eight, Eighteen);
+        hours.ForDay(DayOfWeek.Saturday).IsClosed.ShouldBeTrue();
+        hours.ForDay(DayOfWeek.Sunday).IsClosed.ShouldBeTrue();
+        hours.ForDay(DayOfWeek.Friday).ShouldBe(new DayOperatingHours(DayOfWeek.Friday, Eight, Eighteen));
+        hours.ForDay(DayOfWeek.Friday).IsClosed.ShouldBeFalse();
+
+        var withSaturday = OperatingHours.MondayToFriday(Eight, Eighteen, Thirteen);
+        withSaturday.ForDay(DayOfWeek.Saturday).ShouldBe(new DayOperatingHours(DayOfWeek.Saturday, Eight, Thirteen));
+        withSaturday.ForDay(DayOfWeek.Sunday).IsClosed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Rejects_closes_before_opens()
+    {
+        Should.Throw<ArgumentException>(() => new DayOperatingHours(DayOfWeek.Monday, Eighteen, Eight));
+        Should.Throw<ArgumentException>(() => new DayOperatingHours(DayOfWeek.Monday, Eight, Eight));
+    }
+
+    [Fact]
+    public void ResolveOperatingWindow_returns_null_on_closed_day() =>
+        Reading().ResolveOperatingWindow(new DateOnly(2026, 10, 18)).ShouldBeNull(); // Sunday
+
+    [Fact]
+    public void ResolveOperatingWindow_converts_london_bst()
+    {
+        var window = Reading().ResolveOperatingWindow(new DateOnly(2026, 7, 1)).ShouldNotBeNull(); // Wednesday, UTC+1
+        window.StartUtc.ShouldBe(new DateTime(2026, 7, 1, 7, 0, 0, DateTimeKind.Utc));
+        window.EndUtc.ShouldBe(new DateTime(2026, 7, 1, 17, 0, 0, DateTimeKind.Utc));
+        window.StartUtc.Kind.ShouldBe(DateTimeKind.Utc);
+        window.EndUtc.Kind.ShouldBe(DateTimeKind.Utc);
+    }
+
+    [Fact]
+    public void ResolveOperatingWindow_converts_london_gmt()
+    {
+        var window = Reading().ResolveOperatingWindow(new DateOnly(2026, 1, 15)).ShouldNotBeNull(); // Thursday, UTC+0
+        window.StartUtc.ShouldBe(new DateTime(2026, 1, 15, 8, 0, 0, DateTimeKind.Utc));
+        window.EndUtc.ShouldBe(new DateTime(2026, 1, 15, 18, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void ResolveOperatingWindow_uses_saturday_hours()
+    {
+        var window = Reading().ResolveOperatingWindow(new DateOnly(2026, 10, 17)).ShouldNotBeNull(); // Saturday, BST
+        window.StartUtc.ShouldBe(new DateTime(2026, 10, 17, 7, 0, 0, DateTimeKind.Utc));
+        window.EndUtc.ShouldBe(new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void Dealership_create_rejects_unknown_time_zone() =>
+        Should.Throw<ArgumentException>(() =>
+            Dealership.Create(Guid.NewGuid(), "Nowhere Motors", "Mars/Olympus_Mons", OperatingHours.MondayToFriday(Eight, Eighteen), CreatedAt))
+            .ParamName.ShouldBe("timeZoneId");
+
+    [Fact]
+    public void Dealership_create_validates_arguments()
+    {
+        var hours = OperatingHours.MondayToFriday(Eight, Eighteen);
+        Should.Throw<ArgumentException>(() => Dealership.Create(Guid.Empty, "Reading", "Europe/London", hours, CreatedAt));
+        Should.Throw<ArgumentException>(() => Dealership.Create(Guid.NewGuid(), "  ", "Europe/London", hours, CreatedAt));
+        Should.Throw<ArgumentException>(() => Dealership.Create(Guid.NewGuid(), "Reading", "", hours, CreatedAt));
+        Should.Throw<ArgumentNullException>(() => Dealership.Create(Guid.NewGuid(), "Reading", "Europe/London", null!, CreatedAt));
+        Should.Throw<ArgumentException>(() =>
+            Dealership.Create(Guid.NewGuid(), "Reading", "Europe/London", hours, new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Unspecified)));
+    }
+
+    [Fact]
+    public void Dealership_create_sets_properties()
+    {
+        var id = Guid.NewGuid();
+        var hours = OperatingHours.MondayToFriday(Eight, Eighteen);
+        var dealership = Dealership.Create(id, " Keyloop Autohaus München ", "Europe/Berlin", hours, CreatedAt);
+
+        dealership.Id.ShouldBe(id);
+        dealership.Name.ShouldBe("Keyloop Autohaus München");
+        dealership.TimeZoneId.ShouldBe("Europe/Berlin");
+        dealership.TimeZone.BaseUtcOffset.ShouldBe(TimeSpan.FromHours(1));
+        dealership.Hours.ShouldBeSameAs(hours);
+        dealership.CreatedAtUtc.ShouldBe(CreatedAt);
+    }
+}
