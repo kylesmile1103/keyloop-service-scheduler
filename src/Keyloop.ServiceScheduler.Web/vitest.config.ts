@@ -12,6 +12,13 @@ export default defineConfig((env) =>
         // Tests import `describe`/`it`/`expect` from "vitest" explicitly; the setup file registers RTL's cleanup.
         globals: false,
         restoreMocks: true,
+        unstubGlobals: true,
+        unstubEnvs: true,
+        // A browser resolves the client's same-origin paths ("/api/v1/...") against the page; Node's fetch needs an absolute
+        // URL, so tests give the generated client jsdom's origin as its base URL (see src/api/runtime.ts).
+        // TZ: the browser's own zone must never decide a dealership's day; UTC on every machine makes a test that
+        // confused the two fail everywhere, not only where the zones happen to disagree.
+        env: { VITE_API_BASE_URL: "http://localhost:3000", TZ: "UTC" },
       },
     })
   )

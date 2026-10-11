@@ -1,15 +1,29 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { createMemoryRouter } from "react-router-dom"
-import { describe, expect, it } from "vitest"
+import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 
 import App from "@/App"
 import { appRoutes } from "@/config/routes"
+import { createQueryClient } from "@/lib/query-client"
+import { munich, reading } from "@/test/dealerships"
+import { jsonResponse, mockApi } from "@/test/mock-api"
 
 function renderAt(path: string) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
-  const view = render(<App router={router} />)
+  const view = render(<App router={router} queryClient={createQueryClient()} />)
   return { router, ...view }
 }
+
+// The board's route is lazy: load its code once up front, so each test's wait measures rendering, not the first,
+// cold compile of the page's modules (about 0.4 s, more on a busy machine).
+beforeAll(async () => {
+  await import("@/app/dispatch/page")
+})
+
+// The dispatch board lists dealerships as it opens.
+beforeEach(() => {
+  mockApi(() => jsonResponse([reading, munich]))
+})
 
 const pageHeading = (name: string) => screen.findByRole("heading", { level: 1, name })
 
@@ -19,6 +33,7 @@ describe("app shell", () => {
 
     expect(await pageHeading("Dispatch Board")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/dispatch")
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
     expect(document.title).toBe("Dispatch Board – Keyloop Service Scheduler")
   })
 

@@ -238,6 +238,12 @@ html {
   .route-progress-bar { animation: none; width: 100%; opacity: 0.6; }
 }
 
+/* Time the workshop is not working (a closed day, the hours outside the operating window): a diagonal hatch in the border
+   colour, so it reads as "unavailable" in both themes without borrowing a status colour (Addendum B §B4). */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(-45deg, var(--color-border) 0 1px, transparent 1px 7px);
+}
+
 /* Respect the reduced-motion preference everywhere: no smooth scrolling, pulses or transitions (Addendum B §B4). */
 @media (prefers-reduced-motion: reduce) {
   html {

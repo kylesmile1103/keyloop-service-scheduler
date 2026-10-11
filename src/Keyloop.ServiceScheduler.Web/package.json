@@ -5,8 +5,10 @@
   "type": "module",
   "packageManager": "pnpm@12.9.1",
   "scripts": {
+    "generate:api": "openapi-ts",
+    "predev": "openapi-ts",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm generate:api && tsc -b && vite build",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -b",
     "test": "vitest run",
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@hey-api/openapi-ts": "^0.99.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
