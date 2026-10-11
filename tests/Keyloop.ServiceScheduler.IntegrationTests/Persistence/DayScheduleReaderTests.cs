@@ -84,6 +84,22 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Resources_are_every_bay_and_technician_of_the_dealership_by_name_and_none_for_an_unknown_one()
+    {
+        await SeedDayAsync(); // adds an inactive bay here, and another dealership with a bay of its own
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var reader = scope.ServiceProvider.GetRequiredService<DayScheduleReader>();
+        var (bays, technicians) = await reader.ReadResourcesAsync(_workshop.Dealership.Id, Ct);
+        var unknown = await reader.ReadResourcesAsync(Guid.NewGuid(), Ct);
+
+        bays.Select(b => (b.Name, b.IsActive)).ShouldBe([("Bay 1", true), ("Bay 2", true), ("Bay 9 — Inactive", false)]);
+        technicians.Select(t => t.Name).ShouldBe(["Amelia Clarke", "Ben Okafor"]);
+        unknown.Bays.ShouldBeEmpty();
+        unknown.Technicians.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Load_counts_active_appointments_per_bay_and_technician()
     {
         await SeedDayAsync();

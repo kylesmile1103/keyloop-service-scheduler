@@ -18,6 +18,9 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
     public sealed record DaySnapshot(
         Dealership Dealership, IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians, IReadOnlyList<AppointmentRow> Appointments);
 
+    /// <summary>A dealership's bays and technicians, active or not, each ordered by name (then id).</summary>
+    public sealed record DealershipResources(IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians);
+
     /// <summary>The columns a day view needs. <see cref="Vin"/> is the full VIN; mask it where the audience requires.</summary>
     public sealed record AppointmentRow(
         Guid Id, Guid BayId, Guid TechnicianId, Guid ServiceTypeId, TimeSlot Slot, AppointmentStatus Status, string Vin, string Registration, string CustomerName);
@@ -40,14 +43,7 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
     {
         ArgumentNullException.ThrowIfNull(dealership);
         var dealershipId = dealership.Id;
-        var bays = await db.ServiceBays.AsNoTracking()
-            .Where(b => b.DealershipId == dealershipId)
-            .OrderBy(b => b.Name).ThenBy(b => b.Id)
-            .ToListAsync(ct);
-        var technicians = await db.Technicians.AsNoTracking()
-            .Where(t => t.DealershipId == dealershipId)
-            .OrderBy(t => t.Name).ThenBy(t => t.Id)
-            .ToListAsync(ct);
+        var (bays, technicians) = await ReadResourcesAsync(dealershipId, ct);
 
         var rows = await Overlapping(dealershipId, window, activeOnly)
             .OrderBy(a => a.Slot.StartUtc).ThenBy(a => a.Id)
@@ -71,6 +67,23 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
                 r.Id, r.BayId, r.TechnicianId, r.ServiceTypeId, TimeSlot.Create(r.StartUtc, r.EndUtc), r.Status, r.Vin.Value, r.Registration, r.CustomerName))
             .ToList();
         return new DaySnapshot(dealership, bays, technicians, appointments);
+    }
+
+    /// <summary>
+    /// Every bay and technician of the dealership, active or not, ordered by name (then id), without any appointments: the lanes of
+    /// a day that has no operating window (a closed day). Empty lists for a dealership that does not exist.
+    /// </summary>
+    public async Task<DealershipResources> ReadResourcesAsync(Guid dealershipId, CancellationToken ct)
+    {
+        var bays = await db.ServiceBays.AsNoTracking()
+            .Where(b => b.DealershipId == dealershipId)
+            .OrderBy(b => b.Name).ThenBy(b => b.Id)
+            .ToListAsync(ct);
+        var technicians = await db.Technicians.AsNoTracking()
+            .Where(t => t.DealershipId == dealershipId)
+            .OrderBy(t => t.Name).ThenBy(t => t.Id)
+            .ToListAsync(ct);
+        return new DealershipResources(bays, technicians);
     }
 
     /// <summary>

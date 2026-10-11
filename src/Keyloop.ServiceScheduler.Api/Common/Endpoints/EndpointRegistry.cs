@@ -5,6 +5,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
+using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Endpoints;
 
@@ -23,6 +24,7 @@ public static class EndpointRegistry
         BookAppointmentEndpoint.Map(group);
         GetAppointmentEndpoint.Map(group);
         CancelAppointmentEndpoint.Map(group);
+        GetWorkshopScheduleEndpoint.Map(group);
 
         if (app.Environment.IsEnvironment("SystemTest"))
         {

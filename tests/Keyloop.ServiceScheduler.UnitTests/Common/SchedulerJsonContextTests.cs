@@ -9,6 +9,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
+using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
@@ -88,6 +89,21 @@ public class SchedulerJsonContextTests
                  {
                      typeof(BookAppointmentRequest), typeof(CustomerRequest), typeof(VehicleRequest), typeof(AppointmentResponse), typeof(ServiceTypeSummary),
                      typeof(ResourceSummary), typeof(CustomerResponse), typeof(VehicleResponse), typeof(DateOnly),
+                 })
+        {
+            SchedulerJsonContext.Default.GetTypeInfo(type).ShouldNotBeNull(type.ToString());
+        }
+    }
+
+    [Fact]
+    public void Workshop_schedule_types_are_registered()
+    {
+        foreach (var type in new[]
+                 {
+                     typeof(WorkshopScheduleResponse), typeof(DealershipSummary), typeof(BayScheduleResponse), typeof(IReadOnlyList<BayScheduleResponse>),
+                     typeof(ScheduledAppointmentResponse), typeof(IReadOnlyList<ScheduledAppointmentResponse>), typeof(TechnicianResponse),
+                     typeof(IReadOnlyList<TechnicianResponse>), typeof(IReadOnlyList<BayCapability>), typeof(IReadOnlyList<Certification>),
+                     typeof(OperatingWindowResponse), typeof(DateOnly),
                  })
         {
             SchedulerJsonContext.Default.GetTypeInfo(type).ShouldNotBeNull(type.ToString());

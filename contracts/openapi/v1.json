@@ -493,6 +493,90 @@
           }
         }
       }
+    },
+    "/api/v1/dealerships/{dealershipId}/schedule": {
+      "get": {
+        "tags": [
+          "Schedule"
+        ],
+        "summary": "Get the workshop schedule for a date",
+        "description": "The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and\nevery technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold\nstay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and\nin progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no\n`operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).\nAny well-formed date can be read, past or future. The answer is a snapshot; booking checks again.",
+        "operationId": "GetWorkshopSchedule",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "The dealership whose board is read (the example is the seeded Reading dealership).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "45fa64a1-baa9-8c61-b11a-ee9d7572ae3e"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "description": "The dealership's local calendar date, exactly `yyyy-MM-dd`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-10-13"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The board: the dealership, the operating window (null when closed), the slot grid, the bays with their appointments ordered by start, and the technicians.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopScheduleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The date is missing or not a calendar date in the form `yyyy-MM-dd` (`validation-error`, `errors` keyed `date`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership has this id (`not-found`, with `resource` = `dealership` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -715,6 +799,46 @@
           "AirConditioning"
         ],
         "type": "string"
+      },
+      "BayScheduleResponse": {
+        "required": [
+          "id",
+          "name",
+          "capabilities",
+          "isActive",
+          "appointments"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The bay's id (usable as `preferredBayId` on a booking).",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BayCapability"
+            },
+            "description": "What the bay is equipped for, in the enumeration's declared order."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "False when the bay is out of service: it takes no new bookings, but the appointments it already holds stay listed under it."
+          },
+          "appointments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduledAppointmentResponse"
+            },
+            "description": "Its appointments overlapping that day's opening hours, in every status except `Cancelled`, ordered by start. Empty when\nthe dealership is closed that day."
+          }
+        },
+        "description": "A service bay, a lane of the board, with the appointments it hosts that day."
       },
       "BookAppointmentRequest": {
         "required": [
@@ -941,6 +1065,30 @@
         },
         "description": "A dealership with its time zone and weekly operating hours."
       },
+      "DealershipSummary": {
+        "required": [
+          "id",
+          "name",
+          "timeZoneId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The dealership's id.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "timeZoneId": {
+            "type": "string",
+            "description": "IANA time-zone id (e.g. `Europe/London`); every `…Local` value in the schedule is wall-clock time there, with that zone's offset."
+          }
+        },
+        "description": "The dealership a schedule belongs to."
+      },
       "HttpValidationProblemDetails": {
         "required": [
           "traceId"
@@ -1085,6 +1233,72 @@
         },
         "description": "A bay or a technician, by id and display name."
       },
+      "ScheduledAppointmentResponse": {
+        "required": [
+          "id",
+          "startUtc",
+          "endUtc",
+          "startLocal",
+          "endLocal",
+          "status",
+          "serviceType",
+          "technician",
+          "vin",
+          "registration",
+          "customerName"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The appointment's id; `GET /api/v1/appointments/{id}` has the whole record (contact details, make and model, notes).",
+            "format": "uuid"
+          },
+          "startUtc": {
+            "type": "string",
+            "description": "Start (inclusive), UTC.",
+            "format": "date-time"
+          },
+          "endUtc": {
+            "type": "string",
+            "description": "End (exclusive), UTC.",
+            "format": "date-time"
+          },
+          "startLocal": {
+            "type": "string",
+            "description": "Start as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display."
+          },
+          "endLocal": {
+            "type": "string",
+            "description": "End as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for display."
+          },
+          "status": {
+            "description": "Lifecycle state: `Confirmed`, `CheckedIn` or `InProgress`, which hold the bay and the technician, or `Completed`\nor `NoShow`. Cancelled appointments are not on the board.",
+            "$ref": "#/components/schemas/AppointmentStatus"
+          },
+          "serviceType": {
+            "description": "The booked service.",
+            "$ref": "#/components/schemas/ServiceTypeSummary"
+          },
+          "technician": {
+            "description": "The technician reserved for it, one of the schedule's `technicians`.",
+            "$ref": "#/components/schemas/ResourceSummary"
+          },
+          "vin": {
+            "type": "string",
+            "description": "The vehicle's 17-character VIN, upper case."
+          },
+          "registration": {
+            "type": "string",
+            "description": "The vehicle's registration plate, upper case."
+          },
+          "customerName": {
+            "type": "string",
+            "description": "The customer's full name."
+          }
+        },
+        "description": "An appointment on the board: when it runs, what it is, who works on it, and for which vehicle and customer."
+      },
       "ServiceTypeResponse": {
         "required": [
           "id",
@@ -1166,6 +1380,43 @@
         },
         "description": "The booked service, as the catalogue lists it."
       },
+      "TechnicianResponse": {
+        "required": [
+          "id",
+          "name",
+          "employeeNumber",
+          "certifications",
+          "isActive"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The technician's id (usable as `preferredTechnicianId` on a booking); appointments name it in `technician.id`.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "employeeNumber": {
+            "type": "string",
+            "description": "The dealership's employee number for the technician, unique within the dealership."
+          },
+          "certifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Certification"
+            },
+            "description": "What the technician is certified to perform, in the enumeration's declared order."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "False when the technician takes no new bookings; appointments made before still name them."
+          }
+        },
+        "description": "A technician on the dealership's roster: a lane of the board when it is viewed by technician."
+      },
       "VehicleRequest": {
         "required": [
           "vin",
@@ -1233,6 +1484,59 @@
           }
         },
         "description": "The vehicle as booked."
+      },
+      "WorkshopScheduleResponse": {
+        "required": [
+          "dealership",
+          "date",
+          "operatingWindow",
+          "slotGranularityMinutes",
+          "bays",
+          "technicians"
+        ],
+        "type": "object",
+        "properties": {
+          "dealership": {
+            "description": "The dealership, with the time zone every `…Local` value is expressed in.",
+            "$ref": "#/components/schemas/DealershipSummary"
+          },
+          "date": {
+            "type": "string",
+            "description": "The local calendar date asked for, in the dealership's time zone.",
+            "format": "date"
+          },
+          "operatingWindow": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Opening to closing time that day; null when the dealership is closed on that weekday, and every bay's `appointments` is then empty.",
+                "$ref": "#/components/schemas/OperatingWindowResponse"
+              }
+            ]
+          },
+          "slotGranularityMinutes": {
+            "type": "integer",
+            "description": "Bookable start times fall on this grid, counted from the opening time: the natural column width of a timeline.",
+            "format": "int32"
+          },
+          "bays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BayScheduleResponse"
+            },
+            "description": "Every bay of the dealership, active or not, ordered by name, each with its appointments that day."
+          },
+          "technicians": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TechnicianResponse"
+            },
+            "description": "Every technician of the dealership, active or not, ordered by name. Each appointment's `technician.id` is one of them."
+          }
+        },
+        "description": "The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.\nA projection over the day's appointments (SYSTEM_DESIGN §5.3); it is a snapshot, and booking checks again."
       }
     }
   },

@@ -321,6 +321,82 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         Example(reason.Value).ShouldNotBeNull("an <example> on the property").GetValue<string>().ShouldBe("Customer called to reschedule.");
     }
 
+    [Fact]
+    public async Task Schedule_operation_documents_its_parameters_and_a_described_board()
+    {
+        using var document = JsonDocument.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct));
+        var root = document.RootElement;
+        var schedule = root.GetProperty("paths").GetProperty("/api/v1/dealerships/{dealershipId}/schedule").GetProperty("get");
+
+        ShouldBeDocumented(schedule, "GetWorkshopSchedule", "Schedule");
+        var responses = schedule.GetProperty("responses");
+        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["200", "400", "404", "429"], ignoreOrder: true);
+        foreach (var (status, mediaType, schema, reasonPhrase) in new[]
+                 {
+                     ("200", "application/json", "WorkshopScheduleResponse", "OK"),
+                     ("400", "application/problem+json", "HttpValidationProblemDetails", "Bad Request"),
+                     ("404", "application/problem+json", "ProblemDetails", "Not Found"),
+                 })
+        {
+            var response = responses.GetProperty(status);
+            response.GetProperty("description").GetString().ShouldNotBe(reasonPhrase, $"the <response code=\"{status}\"> comment");
+            response.GetProperty("content").GetProperty(mediaType).GetProperty("schema").GetProperty("$ref").GetString()
+                .ShouldBe($"#/components/schemas/{schema}", status);
+        }
+
+        // As availability's: the route id and a strict date, required, typed, described, with examples that work on a seeded database.
+        var parameters = schedule.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
+        parameters.Keys.ShouldBe(["dealershipId", "date"], ignoreOrder: true);
+        foreach (var (name, location, format, example) in new[]
+                 {
+                     ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),
+                     ("date", "query", "date", "2026-10-13"),
+                 })
+        {
+            var parameter = parameters[name];
+            parameter.GetProperty("in").GetString().ShouldBe(location, name);
+            parameter.GetProperty("required").GetBoolean().ShouldBeTrue(name);
+            parameter.GetProperty("description").GetString().ShouldNotBeNullOrWhiteSpace(name);
+            parameter.GetProperty("example").GetString().ShouldBe(example, name);
+            var parameterSchema = parameter.GetProperty("schema");
+            parameterSchema.GetProperty("type").GetString().ShouldBe("string", name);
+            parameterSchema.GetProperty("format").GetString().ShouldBe(format, name);
+        }
+
+        // Every member of the board is described (Addendum B §B2); the date is a full-date and the lists are arrays of their records.
+        var schemas = root.GetProperty("components").GetProperty("schemas");
+        foreach (var (schema, properties) in new (string, string[])[]
+                 {
+                     ("WorkshopScheduleResponse", ["dealership", "date", "operatingWindow", "slotGranularityMinutes", "bays", "technicians"]),
+                     ("DealershipSummary", ["id", "name", "timeZoneId"]),
+                     ("BayScheduleResponse", ["id", "name", "capabilities", "isActive", "appointments"]),
+                     ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive"]),
+                     ("ScheduledAppointmentResponse",
+                     [
+                         "id", "startUtc", "endUtc", "startLocal", "endLocal", "status", "serviceType", "technician", "vin", "registration", "customerName",
+                     ]),
+                 })
+        {
+            var described = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject()
+                .Select(p => (p.Name, Described: HasDescription(p.Value)
+                    || (p.Value.TryGetProperty("oneOf", out var branches) && branches.EnumerateArray().Any(HasDescription))))
+                .ToList();
+            described.Select(p => p.Name).ShouldBe(properties, schema);
+            described.Where(p => !p.Described).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
+        }
+
+        var board = schemas.GetProperty("WorkshopScheduleResponse").GetProperty("properties");
+        board.GetProperty("date").GetProperty("type").GetString().ShouldBe("string");
+        board.GetProperty("date").GetProperty("format").GetString().ShouldBe("date");
+        board.GetProperty("bays").GetProperty("items").GetProperty("$ref").GetString().ShouldBe("#/components/schemas/BayScheduleResponse");
+        board.GetProperty("technicians").GetProperty("items").GetProperty("$ref").GetString().ShouldBe("#/components/schemas/TechnicianResponse");
+        schemas.GetProperty("BayScheduleResponse").GetProperty("properties").GetProperty("appointments").GetProperty("items").GetProperty("$ref").GetString()
+            .ShouldBe("#/components/schemas/ScheduledAppointmentResponse");
+
+        static bool HasDescription(JsonElement schema) =>
+            schema.TryGetProperty("description", out var description) && !string.IsNullOrWhiteSpace(description.GetString());
+    }
+
     /// <summary>A property schema's example: the first of its JSON Schema <c>examples</c>, or its OpenAPI <c>example</c>; null when it has none.</summary>
     private static JsonNode? Example(JsonElement schema) =>
         schema.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0

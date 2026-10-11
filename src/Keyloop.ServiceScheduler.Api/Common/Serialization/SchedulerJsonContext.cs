@@ -10,6 +10,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
+using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 
@@ -74,5 +75,17 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(VehicleResponse))]
 // Task 11: cancellation (GetAppointment and CancelAppointment answer with AppointmentResponse, registered above)
 [JsonSerializable(typeof(CancelAppointmentRequest))]
-// Tasks 12+: every request, response and extension payload type, including top-level collections.
+// Task 12: the workshop schedule. Nested records and lists are discovered from the response; they are listed so every wire type
+// is visible here (OperatingWindowResponse, ServiceTypeSummary, ResourceSummary and DateOnly are registered above).
+[JsonSerializable(typeof(WorkshopScheduleResponse))]
+[JsonSerializable(typeof(DealershipSummary))]
+[JsonSerializable(typeof(BayScheduleResponse))]
+[JsonSerializable(typeof(IReadOnlyList<BayScheduleResponse>))]
+[JsonSerializable(typeof(ScheduledAppointmentResponse))]
+[JsonSerializable(typeof(IReadOnlyList<ScheduledAppointmentResponse>))]
+[JsonSerializable(typeof(TechnicianResponse))]
+[JsonSerializable(typeof(IReadOnlyList<TechnicianResponse>))]
+[JsonSerializable(typeof(IReadOnlyList<BayCapability>))]
+[JsonSerializable(typeof(IReadOnlyList<Certification>))]
+// Tasks 13+: every request, response and extension payload type, including top-level collections.
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;
