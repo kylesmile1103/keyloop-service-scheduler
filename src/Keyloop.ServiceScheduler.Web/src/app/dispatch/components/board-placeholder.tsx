@@ -48,10 +48,14 @@ export function BoardPlaceholder({
 
   return (
     <Frame
-      className="relative gap-0 overflow-hidden py-0 [--lane-width:10rem] xl:[--lane-width:13.75rem]"
+      className={cn(
+        "relative gap-0 overflow-hidden py-0 [--lane-width:10rem] xl:[--lane-width:13.75rem]",
+        // With a message on it, the frame grows to the message; the empty grid stays behind as the board's shape.
+        children && "min-h-64"
+      )}
       aria-busy={loading || undefined}
     >
-      <div aria-hidden="true" className="pointer-events-none select-none">
+      <div aria-hidden="true" className={cn("pointer-events-none select-none", children && "absolute inset-0 overflow-hidden")}>
         <div className="grid border-b text-xs text-muted-foreground tabular-nums" style={columns}>
           <div className="px-3 py-2.5">{laneLabel}</div>
           {hours.map((hour) => (
@@ -60,7 +64,7 @@ export function BoardPlaceholder({
             </div>
           ))}
         </div>
-        {Array.from({ length: lanes }, (_, lane) => (
+        {Array.from({ length: children ? lanes * 2 : lanes }, (_, lane) => (
           <div key={lane} className="grid h-14 border-b last:border-b-0" style={columns}>
             <div className="flex items-center px-3" style={cell(1)}>
               {loading && <Skeleton className="h-3 w-24" />}
@@ -73,7 +77,7 @@ export function BoardPlaceholder({
               />
             ))}
             {loading &&
-              shimmer[lane]
+              shimmer[lane % lanes]
                 .filter(([start]) => start < hours.length)
                 .map(([start, span]) => (
                   <Skeleton
@@ -85,9 +89,14 @@ export function BoardPlaceholder({
           </div>
         ))}
       </div>
-      {children && <div className="absolute inset-0 flex items-center justify-center p-6">{children}</div>}
+      {children && <div className="relative flex items-center justify-center px-4 pt-14 pb-6 md:px-6">{children}</div>}
     </Frame>
   )
+}
+
+/** A panel that lifts a message off the empty frame behind it. */
+export function BoardPanel({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("w-full max-w-md rounded-xl bg-card/95 px-6 shadow-sm ring-1 ring-foreground/10", className)}>{children}</div>
 }
 
 interface BoardMessageProps {
@@ -103,11 +112,11 @@ interface BoardMessageProps {
 export function BoardMessage({ icon: Icon, title, level = 2, children, action }: BoardMessageProps) {
   const Heading = level === 2 ? "h2" : "h3"
   return (
-    <div className="flex max-w-sm flex-col items-center gap-2 rounded-xl bg-card/95 px-6 py-5 text-center ring-1 ring-foreground/5">
-      <div className="mb-1 flex size-10 items-center justify-center rounded-lg border bg-background">
-        <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
+    <div className="flex max-w-sm flex-col items-center gap-2 rounded-xl bg-card/95 px-6 py-5 text-center shadow-sm ring-1 ring-foreground/10">
+      <div className="mb-1 flex size-9 items-center justify-center rounded-chip bg-secondary text-secondary-foreground">
+        <Icon className="size-5" aria-hidden="true" />
       </div>
-      <Heading className="text-base font-semibold text-balance">{title}</Heading>
+      <Heading className="font-heading text-lg font-semibold text-balance">{title}</Heading>
       <div className="flex flex-col gap-1 text-sm text-pretty text-muted-foreground">{children}</div>
       {action && <div className="mt-2">{action}</div>}
     </div>

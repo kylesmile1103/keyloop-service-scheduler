@@ -1,4 +1,4 @@
-import { Ban, CalendarCheck, CircleCheck, LogIn, type LucideIcon, UserX, Wrench } from "lucide-react"
+import { Ban, CalendarCheck, CircleCheck, KeyRound, type LucideIcon, UserX, Wrench } from "lucide-react"
 
 import type { AppointmentStatus } from "@/api/types.gen"
 
@@ -8,7 +8,7 @@ export type StatusTone = "confirmed" | "checked-in" | "in-progress" | "completed
 export interface StatusMeta {
   /** Plain words, as on the legend and in the details sheet. */
   label: string
-  /** A distinct shape per status: colour is never the only signal (Addendum B §B4). */
+  /** A distinct shape per status, from DESIGN_SYSTEM 4.3: colour is never the only signal (Addendum B §B4). */
   icon: LucideIcon
   tone: StatusTone
   /** Full class strings (Tailwind only sees literal class names). */
@@ -21,6 +21,8 @@ export interface StatusMeta {
     dot: string
     /** The solid left bar of a card on a neutral surface (the phone agenda). */
     bar: string
+    /** A status icon tile (DESIGN_SYSTEM 11.10): Service Hub's tinted square, the icon in the status ink. */
+    tile: string
   }
 }
 
@@ -34,17 +36,19 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
       badge: "bg-status-confirmed-bg text-status-confirmed-fg ring-status-confirmed-border/40",
       dot: "bg-status-confirmed-border",
       bar: "border-status-confirmed-border",
+      tile: "bg-status-confirmed-bg text-status-confirmed-fg rounded-chip",
     },
   },
   CheckedIn: {
     label: "Checked in",
-    icon: LogIn,
+    icon: KeyRound,
     tone: "checked-in",
     classes: {
       block: "bg-status-checked-in-bg border-status-checked-in-border text-status-checked-in-fg",
       badge: "bg-status-checked-in-bg text-status-checked-in-fg ring-status-checked-in-border/40",
       dot: "bg-status-checked-in-border",
       bar: "border-status-checked-in-border",
+      tile: "bg-status-checked-in-bg text-status-checked-in-fg rounded-chip",
     },
   },
   InProgress: {
@@ -56,6 +60,7 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
       badge: "bg-status-in-progress-bg text-status-in-progress-fg ring-status-in-progress-border/40",
       dot: "bg-status-in-progress-border",
       bar: "border-status-in-progress-border",
+      tile: "bg-status-in-progress-bg text-status-in-progress-fg rounded-chip",
     },
   },
   Completed: {
@@ -67,6 +72,7 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
       badge: "bg-status-completed-bg text-status-completed-fg ring-status-completed-border/40",
       dot: "bg-status-completed-border",
       bar: "border-status-completed-border",
+      tile: "bg-status-completed-bg text-status-completed-fg rounded-chip",
     },
   },
   Cancelled: {
@@ -78,6 +84,7 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
       badge: "bg-status-cancelled-bg text-status-cancelled-fg ring-status-cancelled-border/40",
       dot: "bg-status-cancelled-border",
       bar: "border-status-cancelled-border",
+      tile: "bg-status-cancelled-bg text-status-cancelled-fg rounded-chip",
     },
   },
   NoShow: {
@@ -89,6 +96,7 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
       badge: "bg-status-no-show-bg text-status-no-show-fg ring-status-no-show-border/40",
       dot: "bg-status-no-show-border",
       bar: "border-status-no-show-border",
+      tile: "bg-status-no-show-bg text-status-no-show-fg rounded-chip",
     },
   },
 }

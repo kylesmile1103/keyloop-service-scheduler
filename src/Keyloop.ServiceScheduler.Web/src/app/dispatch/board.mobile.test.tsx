@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { mockBoardApi } from "@/test/board-api"
-import { reading } from "@/test/dealerships"
+import { munich, reading } from "@/test/dealerships"
 import { renderBoard, phoneViewport } from "@/test/render-board"
 
 // The phone presentation (< 768 px): the same schedule as an agenda of job cards grouped by lane, details in a bottom sheet,
@@ -13,7 +13,8 @@ beforeAll(async () => {
 })
 
 const readingBoard = `/dispatch?dealership=${reading.id}`
-const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed"
+// A job card names the customer as well as the technician, as its visible text does (DESIGN_SYSTEM 11.13).
+const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed"
 const section = (name: string) => screen.findByRole("region", { name: new RegExp(`^${name}`) })
 
 beforeEach(() => {
@@ -34,13 +35,16 @@ describe("dispatch board on a phone", () => {
     const bay1 = await section("Bay 1 - Standard")
     expect(within(bay1).getAllByRole("button", { name: /, Confirmed$/ }).map((card) => card.getAttribute("aria-label"))).toEqual([
       interimLabel,
-      "Brake Pads & Discs, Bay 1 - Standard, 10:30 to 12:00, Chloe Nguyen, Confirmed",
-      "Full Service, Bay 1 - Standard, 13:00 to 15:00, Daniel Moss, Confirmed",
+      "Brake Pads & Discs, Bay 1 - Standard, 10:30 to 12:00, Emily Clarkson, Chloe Nguyen, Confirmed",
+      "Full Service, Bay 1 - Standard, 13:00 to 15:00, Olivia Bennett, Daniel Moss, Confirmed",
     ])
     const card = within(bay1).getByRole("button", { name: interimLabel })
     expect(card).toHaveTextContent("08:00–09:00")
-    expect(card).toHaveTextContent("RF20 BCJ")
     expect(card).toHaveTextContent("Sophie Turner")
+    expect(card).toHaveTextContent("RF20 BCJ")
+    expect(card).toHaveTextContent("JTDKN3DU0A0123460")
+    // In the bay view the card names the technician; the lane already names the bay.
+    expect(card).toHaveTextContent("Interim Service · Amelia Clarke")
     expect(screen.queryByRole("group", { name: /^Bay 1/ })).not.toBeInTheDocument()
     expect(within(await section("Bay 3 - Heavy duty")).getByText("No appointments")).toBeInTheDocument()
   })
@@ -111,6 +115,15 @@ describe("dispatch board on a phone", () => {
     expect(within(filters).getByText("In progress")).toBeInTheDocument()
     fireEvent.click(within(filters).getByRole("checkbox", { name: "Bay 3 - Heavy duty" }))
     await waitFor(() => expect(screen.queryByRole("region", { name: /^Bay 3/ })).not.toBeInTheDocument())
+  })
+
+  it("says when nothing is booked on an open day, instead of a list of empty lanes", async () => {
+    mockBoardApi()
+    renderBoard(`/dispatch?dealership=${munich.id}`)
+
+    expect(await screen.findByRole("heading", { level: 3, name: "No appointments today" })).toBeInTheDocument()
+    expect(document.querySelector('img[src*="empty-schedule"]')).toHaveAttribute("alt", "")
+    expect(screen.queryByRole("region", { name: /^Halle 1/ })).not.toBeInTheDocument()
   })
 
   it("explains a closed day on a phone too", async () => {

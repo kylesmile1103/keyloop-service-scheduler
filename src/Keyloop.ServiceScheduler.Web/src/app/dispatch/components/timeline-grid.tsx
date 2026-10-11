@@ -17,6 +17,8 @@ interface TimelineGridProps {
   /** The current instant; the "now" line shows only while it falls inside the drawn day. */
   now: Date
   selectedId: string | null
+  /** A booking just made: its block draws the booked halo. */
+  bookedId?: string | null
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
 }
 
@@ -30,7 +32,17 @@ const width = (from: number, to: number, grid: GridSpec) => `${Math.round(((to -
  * timeline scrolls inside its card; hour lines, faint slot lines and alternating hour bands give the rhythm; closed time is
  * hatched; on today's board a "now" line marks the moment. Blocks are buttons in DOM order (lane, then time).
  */
-export function TimelineGrid({ lanes, mode, operatingWindow, granularityMinutes, timeZone, now, selectedId, onSelect }: TimelineGridProps) {
+export function TimelineGrid({
+  lanes,
+  mode,
+  operatingWindow,
+  granularityMinutes,
+  timeZone,
+  now,
+  selectedId,
+  bookedId = null,
+  onSelect,
+}: TimelineGridProps) {
   const grid = buildGrid(boardWindow(operatingWindow, granularityMinutes), granularityMinutes)
   const hours = hourLines(grid, timeZone)
   const open = spanFor(operatingWindow.startUtc, operatingWindow.endUtc, grid)
@@ -81,7 +93,7 @@ export function TimelineGrid({ lanes, mode, operatingWindow, granularityMinutes,
           <div aria-hidden="true" className="pointer-events-none sticky top-0 z-[21] row-start-1" style={timeColumns}>
             <span
               data-slot="now-label"
-              className="absolute bottom-1 -translate-x-1/2 rounded-full bg-card px-1.5 text-[11px] leading-4 font-semibold text-destructive tabular-nums ring-1 ring-destructive"
+              className="absolute bottom-1 -translate-x-1/2 rounded-full bg-destructive px-1.5 text-2xs font-semibold text-destructive-foreground tabular-nums"
               style={{ left: nowLeft }}
             >
               {formatLocalTime(now.toISOString(), timeZone)}
@@ -138,6 +150,7 @@ export function TimelineGrid({ lanes, mode, operatingWindow, granularityMinutes,
             mode={mode}
             timeZone={timeZone}
             selectedId={selectedId}
+            bookedId={bookedId}
             onSelect={onSelect}
           />
         ))}
@@ -153,13 +166,14 @@ interface TimelineLaneProps {
   mode: LaneMode
   timeZone: string
   selectedId: string | null
+  bookedId: string | null
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
 }
 
 const inactiveWords: Record<LaneMode, string> = { bays: "Out of service", technicians: "Inactive" }
 
 /** One lane: its sticky label (name, equipment or certifications) and its appointments, stacked when they overlap. */
-function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, onSelect }: TimelineLaneProps) {
+function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, bookedId, onSelect }: TimelineLaneProps) {
   const { rows, placed } = stackRows(lane.appointments)
   const name = lane.isActive ? lane.name : `${lane.name}, ${inactiveWords[mode].toLowerCase()}`
 
@@ -182,11 +196,11 @@ function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, onSelect }:
         </span>
         <span className="flex min-w-0 items-center gap-1.5">
           {/* The employee number needs the wide lane column; the details sheet and lane filter name the technician anyway. */}
-          {lane.detail && <span className="hidden shrink-0 font-mono text-[11px] text-muted-foreground xl:inline">{lane.detail}</span>}
+          {lane.detail && <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground xl:inline">{lane.detail}</span>}
           {lane.isActive ? (
             <CapabilityBadges capabilities={lane.capabilities} certifications={lane.certifications} max={1} />
           ) : (
-            <span className="w-fit shrink-0 rounded-full border border-dashed px-2 text-[11px] leading-5 font-medium">
+            <span className="w-fit shrink-0 rounded-full border border-dashed border-input px-2 text-2xs leading-5 font-medium">
               {inactiveWords[mode]}
             </span>
           )}
@@ -203,6 +217,7 @@ function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, onSelect }:
             mode={mode}
             timeZone={timeZone}
             selected={item.id === selectedId}
+            booked={item.id === bookedId}
             onSelect={onSelect}
             style={{ gridColumn: `${span.start + 1} / ${span.end + 1}`, gridRow: stackRow + 1 }}
           />

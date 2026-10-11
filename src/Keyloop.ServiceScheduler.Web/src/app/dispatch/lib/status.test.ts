@@ -1,3 +1,4 @@
+import { Ban, CalendarCheck, CircleCheck, KeyRound, UserX, Wrench } from "lucide-react"
 import { describe, expect, it } from "vitest"
 
 import type { AppointmentStatus } from "@/api/types.gen"
@@ -22,6 +23,10 @@ describe("appointment status presentation", () => {
     expect(new Set(every.map((status) => statusMeta[status].icon)).size).toBe(every.length)
   })
 
+  it("uses the design system's icons (DESIGN_SYSTEM 4.3): keys handed over for a check-in", () => {
+    expect(every.map((status) => statusMeta[status].icon)).toEqual([CalendarCheck, KeyRound, Wrench, CircleCheck, Ban, UserX])
+  })
+
   it("styles every status with its own tokens (src/index.css --status-*)", () => {
     expect(statusMeta.CheckedIn.tone).toBe("checked-in")
     for (const status of every) {
@@ -31,6 +36,10 @@ describe("appointment status presentation", () => {
       expect(classes.block).toContain(`text-status-${tone}-fg`)
       expect(classes.dot).toContain(`bg-status-${tone}-border`)
       expect(classes.bar).toContain(`border-status-${tone}-border`)
+      // The status icon tile (DESIGN_SYSTEM 11.10): the tint and the ink, on the 8 px chip radius.
+      expect(classes.tile).toContain(`bg-status-${tone}-bg`)
+      expect(classes.tile).toContain(`text-status-${tone}-fg`)
+      expect(classes.tile).toContain("rounded-chip")
     }
   })
 

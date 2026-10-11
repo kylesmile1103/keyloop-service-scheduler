@@ -30,7 +30,7 @@ describe("leaving the dispatch board", () => {
     // rewrite of the address, made while the link's navigation is pending, would cancel it.
     const router = createMemoryRouter(appRoutes, { initialEntries: ["/dispatch?date=2026-02-30"] })
     render(<App router={router} queryClient={createQueryClient()} />)
-    await screen.findByRole("heading", { level: 1, name: "Dispatch Board" })
+    await screen.findByRole("heading", { level: 1, name: "Dispatch board" })
 
     fireEvent.click(screen.getByRole("link", { name: "Appointments" }))
     await waitFor(() => expect(router.state.navigation.state).toBe("loading"))

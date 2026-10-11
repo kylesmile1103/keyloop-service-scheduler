@@ -49,6 +49,15 @@ export function otelDefines(command: "serve" | "build", mode: string, env: Env =
   )
 }
 
+/**
+ * Vite's `build.assetsInlineLimit`: never inline a font. Vite inlines assets under 4 KB as `data:` URIs, and one Plus
+ * Jakarta Sans subset is that small, but the production CSP (nginx/security-headers.conf, `font-src 'self'`) blocks a
+ * `data:` font. `undefined` keeps Vite's 4 KB rule for everything else (`true` would inline every illustration too).
+ */
+export function inlineAsset(file: string): boolean | undefined {
+  return /\.woff2?$/.test(file) ? false : undefined
+}
+
 function apiProxy(target: string): Record<string, ProxyOptions> {
   return Object.fromEntries(["/api", "/openapi", "/scalar"].map((prefix) => [prefix, { target, changeOrigin: true }]))
 }
@@ -65,6 +74,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     define: otelDefines(command, mode),
+    build: { assetsInlineLimit: inlineAsset },
     server: {
       host: true,
       ...devServerPort(),

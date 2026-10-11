@@ -35,7 +35,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "group/calendar bg-background p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
+        "group/calendar bg-background p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] pointer-coarse:[--cell-size:--spacing(11)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -122,8 +122,9 @@ function Calendar({
           "relative isolate z-0 rounded-r-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-muted",
           defaultClassNames.range_end
         ),
+        // Today is a signal ring, so it never reads as the selected day (DESIGN_SYSTEM 11.4).
         today: cn(
-          "rounded-(--cell-radius) bg-muted text-foreground data-[selected=true]:rounded-none",
+          "rounded-(--cell-radius) text-foreground ring-1 ring-signal ring-inset data-[selected=true]:rounded-none",
           defaultClassNames.today
         ),
         outside: cn(

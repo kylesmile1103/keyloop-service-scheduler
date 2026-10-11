@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { apiProxyTarget, devServerPort, otelDefines } from "./vite.config"
+import viteConfig, { apiProxyTarget, devServerPort, inlineAsset, otelDefines } from "./vite.config"
 
 const aspireOtel = {
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://localhost:21268",
@@ -71,5 +71,22 @@ describe("otelDefines", () => {
 
   it("disables telemetry in test runs", () => {
     expect(Object.values(otelDefines("serve", "test", aspireOtel))).toEqual(['""', '""', '""', '""'])
+  })
+})
+
+describe("inlineAsset", () => {
+  it("never inlines a font, which the production CSP (font-src 'self') would block as a data: URI", () => {
+    expect(inlineAsset("node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-cyrillic-ext-wght-normal.woff2")).toBe(false)
+    expect(inlineAsset("/fonts/ibm-plex-mono-latin-400-normal.woff")).toBe(false)
+  })
+
+  it("leaves every other asset to Vite's own 4 KB rule, so the illustrations stay files", () => {
+    expect(inlineAsset("src/assets/illustrations/empty-schedule.webp")).toBeUndefined()
+    expect(inlineAsset("src/assets/icon.svg")).toBeUndefined()
+  })
+
+  it("is the build's inline rule", () => {
+    const config = typeof viteConfig === "function" ? viteConfig({ command: "build", mode: "production" }) : viteConfig
+    expect((config as { build?: { assetsInlineLimit?: unknown } }).build?.assetsInlineLimit).toBe(inlineAsset)
   })
 })

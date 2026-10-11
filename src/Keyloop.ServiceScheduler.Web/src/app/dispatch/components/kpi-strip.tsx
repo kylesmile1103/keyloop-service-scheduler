@@ -5,7 +5,7 @@ import { useId, type ReactNode } from "react"
 
 import { getAvailabilityOptions, getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentStatus, WorkshopScheduleResponse } from "@/api/types.gen"
-import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 
@@ -45,10 +45,9 @@ export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed
   const dayWords = isToday ? "Today" : formatDay(date, "long")
 
   return (
-    <section
-      aria-label="Day summary"
-      className="grid grid-cols-2 gap-3 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs md:gap-4 lg:grid-cols-4 dark:*:data-[slot=card]:bg-card"
-    >
+    // The template's section cards without their gradient wash or trend badges: the API has no history, so a trend would be
+    // invented (DESIGN_SYSTEM 11.11, 11.19).
+    <section aria-label="Day summary" className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
       <KpiCard
         label="Appointments"
         icon={ClipboardList}
@@ -61,6 +60,7 @@ export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed
         label="Bay utilisation"
         icon={Gauge}
         value={kpis ? (kpis.utilisation ? percent(kpis.utilisation) : NO_FIGURE) : undefined}
+        meter={kpis?.utilisation && kpis.utilisation.capacityMinutes > 0 ? kpis.utilisation.bookedMinutes / kpis.utilisation.capacityMinutes : undefined}
         failed={failed}
         footer={
           kpis
@@ -106,20 +106,26 @@ interface KpiCardProps {
   icon: LucideIcon
   /** `undefined` while loading. */
   value: string | undefined
+  /** A share from 0 to 1, drawn as a thin meter under the figure (bay utilisation). */
+  meter?: number
   failed: boolean
   footer: ReactNode
   detail: ReactNode
 }
 
-function KpiCard({ label, icon: Icon, value, failed, footer, detail }: KpiCardProps) {
+/**
+ * One figure of the day (DESIGN_SYSTEM 11.11): the label, the figure in the display face, a context line, and a neutral icon
+ * tile. None of the four is a single status, so no tile takes a status hue.
+ */
+function KpiCard({ label, icon: Icon, value, meter, failed, footer, detail }: KpiCardProps) {
   const labelId = useId()
   const loading = value === undefined && !failed
 
   return (
-    <Card role="group" aria-labelledby={labelId} aria-busy={loading || undefined} className="@container/card max-md:[--card-spacing:--spacing(3)]">
+    <Card size="sm" role="group" aria-labelledby={labelId} aria-busy={loading || undefined} className="@container/card shadow-xs">
       <CardHeader>
         <CardDescription id={labelId}>{label}</CardDescription>
-        <CardTitle className="text-2xl font-semibold tracking-tight tabular-nums @[250px]/card:text-3xl">
+        <div className="font-heading text-2xl font-bold tracking-tight tabular-nums md:text-3xl">
           {loading ? (
             <Skeleton className="my-1 h-7 w-16" />
           ) : value === undefined || value === NO_FIGURE ? (
@@ -130,18 +136,23 @@ function KpiCard({ label, icon: Icon, value, failed, footer, detail }: KpiCardPr
           ) : (
             value
           )}
-        </CardTitle>
+        </div>
         <CardAction>
-          <span className="flex size-8 items-center justify-center rounded-lg border bg-background text-muted-foreground max-md:size-7">
-            <Icon aria-hidden="true" className="size-4" />
+          <span className="flex size-9 items-center justify-center rounded-chip bg-secondary text-secondary-foreground max-md:size-8">
+            <Icon aria-hidden="true" className="size-5 max-md:size-4" />
           </span>
         </CardAction>
       </CardHeader>
-      <CardFooter className="flex-col items-start gap-1 border-t-0 bg-transparent pt-0 text-sm">
+      <CardFooter className="flex-col items-start gap-1 border-t-0 bg-transparent pt-0">
+        {meter !== undefined && (
+          <span aria-hidden="true" className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <span className="block h-full rounded-full bg-chart-1" style={{ width: `${Math.min(Math.max(meter, 0), 1) * 100}%` }} />
+          </span>
+        )}
         {loading ? (
           <Skeleton className="h-4 w-3/4" />
         ) : (
-          <div className="line-clamp-2 font-medium text-pretty">{failed && !footer ? "Unavailable" : footer}</div>
+          <div className="line-clamp-2 text-xs text-pretty text-muted-foreground">{failed && !footer ? "Unavailable" : footer}</div>
         )}
         <div className="line-clamp-1 text-xs text-muted-foreground max-md:hidden">{detail}</div>
       </CardFooter>

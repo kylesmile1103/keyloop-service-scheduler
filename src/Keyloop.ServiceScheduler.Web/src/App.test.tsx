@@ -32,27 +32,43 @@ describe("app shell", () => {
   it("opens on the dispatch board", async () => {
     const { router } = renderAt("/")
 
-    expect(await pageHeading("Dispatch Board")).toBeInTheDocument()
+    expect(await pageHeading("Dispatch board")).toBeInTheDocument()
     expect(router.state.location.pathname).toBe("/dispatch")
     expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
-    expect(document.title).toBe("Dispatch Board – Keyloop Service Scheduler")
+    expect(document.title).toBe("Dispatch board – Keyloop Service Scheduler")
   })
 
-  it("brands the sidebar with the Keyloop text wordmark and no logo images", async () => {
+  it("names the product in the header: the Ownership domain tag, Service Scheduler and the Keyloop wordmark in plain text", async () => {
     const { container } = renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
-    const home = screen.getByRole("link", { name: /Keyloop.*Service Scheduler/ })
-    expect(home).toHaveAttribute("href", "/dispatch")
-    expect(container.querySelector("img")).toBeNull()
+    // The header sits inside the work surface's <main>, so it is not a banner landmark.
+    const header = document.querySelector<HTMLElement>("header")!
+    // Written in sentence case and upper-cased by CSS, so screen readers say the word, not its letters.
+    expect(within(header).getByText("Ownership")).toHaveClass("domain-tag", "domain-tag-ownership")
+    expect(within(header).getByText("Service Scheduler")).toBeInTheDocument()
+    expect(within(header).getByText("Keyloop").tagName).toBe("SPAN")
+    // The wordmark is never a link (to keyloop.com or anywhere), and no image is a logo: every image is decorative.
+    expect(screen.queryByRole("link", { name: /Keyloop/ })).not.toBeInTheDocument()
+    const images = [...container.querySelectorAll("img")]
+    expect(images.length).toBeGreaterThan(0)
+    for (const image of images) expect(image).toHaveAttribute("alt", "")
+  })
+
+  it("says in the sidebar that this is a take-home demo, not an official Keyloop product", async () => {
+    renderAt("/dispatch")
+    await pageHeading("Dispatch board")
+
+    const sidebar = document.querySelector<HTMLElement>('[data-slot="sidebar"]')!
+    expect(within(sidebar).getByText(/^Take-home demo .* not an official Keyloop product$/)).toBeInTheDocument()
   })
 
   it("lists the Workshop pages and marks the current one", async () => {
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     const workshop = screen.getByRole("navigation", { name: "Workshop" })
-    const board = within(workshop).getByRole("link", { name: "Dispatch Board" })
+    const board = within(workshop).getByRole("link", { name: "Dispatch board" })
     const appointments = within(workshop).getByRole("link", { name: "Appointments" })
     expect(board).toHaveAttribute("href", "/dispatch")
     expect(board).toHaveAttribute("aria-current", "page")
@@ -62,7 +78,7 @@ describe("app shell", () => {
 
   it("moves between pages from the sidebar", async () => {
     const { router } = renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     fireEvent.click(screen.getByRole("link", { name: "Appointments" }))
 
@@ -73,7 +89,7 @@ describe("app shell", () => {
 
   it("opens the API reference (Scalar) in a new tab", async () => {
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     const reference = screen.getByRole("link", { name: /API reference/ })
     expect(reference).toHaveAttribute("href", "/scalar/v1")
@@ -84,14 +100,14 @@ describe("app shell", () => {
 
   it("says plainly that sign-in is not enabled", async () => {
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     expect(screen.getByText("Anonymous mode")).toBeInTheDocument()
   })
 
   it("offers a skip link to the page content", async () => {
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     const skip = screen.getByRole("link", { name: "Skip to content" })
     const target = document.querySelector(skip.getAttribute("href") ?? "#missing")
@@ -101,7 +117,7 @@ describe("app shell", () => {
 
   it("switches between light and dark themes and remembers the choice", async () => {
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }))
 
@@ -110,11 +126,14 @@ describe("app shell", () => {
     expect(localStorage.getItem("keyloop-scheduler-theme")).toBe("dark")
   })
 
-  it("shows a not-found page with a way back for an unknown address", async () => {
-    renderAt("/no-such-page")
+  it("shows a not-found page with the address, an illustration and a way back", async () => {
+    const { container } = renderAt("/no-such-page")
 
     expect(await pageHeading("Page not found")).toBeInTheDocument()
+    expect(screen.getByText("/no-such-page")).toBeInTheDocument()
+    expect(container.querySelector('img[src*="empty-schedule"]')).toHaveAttribute("alt", "")
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
+    expect(document.title).toBe("Page not found – Keyloop Service Scheduler")
   })
 })
 
@@ -125,7 +144,7 @@ describe("app shell across widths", () => {
   it("shows the sidebar expanded on a wide screen", async () => {
     viewportOf(1440)
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     expect(sidebar()).toHaveAttribute("data-state", "expanded")
     expect(sidebarPanel()).not.toHaveAttribute("inert")
@@ -134,7 +153,7 @@ describe("app shell across widths", () => {
   it("keeps the sidebar off-canvas on a tablet until the header's button opens it", async () => {
     viewportOf(1024)
     renderAt("/dispatch")
-    await pageHeading("Dispatch Board")
+    await pageHeading("Dispatch board")
 
     // Collapsed off-canvas, its links are out of the tab order as well as out of sight.
     expect(sidebar()).toHaveAttribute("data-state", "collapsed")

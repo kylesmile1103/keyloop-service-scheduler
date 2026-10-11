@@ -19,6 +19,23 @@ export function appointmentLabel(appointment: BoardAppointment, timeZone: string
   )
 }
 
+/**
+ * What a job card says to assistive technology (DESIGN_SYSTEM 11.13): the block's words plus the customer, whom the card
+ * shows: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed".
+ */
+export function jobCardLabel(appointment: BoardAppointment, timeZone: string): string {
+  const start = formatLocalTime(appointment.startUtc, timeZone)
+  const end = formatLocalTime(appointment.endUtc, timeZone)
+  return [
+    appointment.serviceType.name,
+    appointment.bay.name,
+    `${start} to ${end}`,
+    appointment.customerName,
+    appointment.technician.name,
+    statusMeta[appointment.status].label,
+  ].join(", ")
+}
+
 /** Initials for an avatar: first and last name ("Amelia Clarke" → "AC"). */
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean)

@@ -21,8 +21,9 @@ describe("a page that fails", () => {
     render(<App router={router} />)
 
     const alert = await screen.findByRole("alert")
-    expect(within(alert).getByText("This page could not be loaded")).toBeInTheDocument()
+    expect(within(alert).getByRole("heading", { level: 1, name: "Something went wrong" })).toBeInTheDocument()
     expect(within(alert).getByText("Appointments page failed: unexpected response shape")).toBeInTheDocument()
-    expect(within(alert).getByRole("button", { name: "Reload the page" })).toBeInTheDocument()
+    expect(within(alert).getByRole("button", { name: "Try again" })).toBeInTheDocument()
+    expect(document.querySelector('img[src*="error-connection"]')).toHaveAttribute("alt", "")
   })
 })

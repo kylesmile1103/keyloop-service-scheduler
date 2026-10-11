@@ -1,18 +1,21 @@
 import { useQuery } from "@tanstack/react-query"
-import { Building2, RotateCw } from "lucide-react"
+import { RotateCw } from "lucide-react"
 import { type ReactNode, useMemo, useRef, useState } from "react"
 
 import { getDealershipsOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse } from "@/api/types.gen"
+import { IllustratedState } from "@/components/illustrated-state"
 import { BaseLayout } from "@/components/layouts/base-layout"
-import { ProblemAlert } from "@/components/problem-alert"
+import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { describeFailure } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { AppointmentSheet } from "./components/appointment-sheet"
-import { BoardMessage, BoardPlaceholder } from "./components/board-placeholder"
+import { BoardPlaceholder } from "./components/board-placeholder"
 import { type DealershipListStatus, DealershipSelect } from "./components/dealership-select"
 import { DispatchToolbar } from "./components/dispatch-toolbar"
 import { KpiStrip } from "./components/kpi-strip"
@@ -52,45 +55,33 @@ export default function DispatchPage() {
   )
 
   return (
-    <BaseLayout title="Dispatch Board" description="Bays, technicians and booked work for one workshop day.">
-      <div className="flex min-w-0 flex-col gap-4 px-4 md:gap-5 lg:px-6">
+    <BaseLayout title="Dispatch board" description="Bays, technicians and booked work for one workshop day." band>
+      <div className="flex min-w-0 flex-col gap-4 px-4 md:gap-5 md:px-6 xl:px-8">
         {selected ? (
           <DealershipDay dealership={selected} dealershipSelect={dealershipSelect} agenda={isMobile} />
         ) : (
           <>
             <DispatchToolbar dealershipSelect={dealershipSelect} />
             {dealerships.data ? (
-              <BoardPlaceholder>
-                <BoardMessage
-                  icon={Building2}
+              <Card className="py-0">
+                <IllustratedState
+                  illustration="empty-schedule"
+                  level={2}
                   title="No dealerships yet"
                   action={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={retry}
-                      disabled={dealerships.isFetching}
-                      className="pointer-coarse:h-11"
-                    >
+                    <Button type="button" onClick={retry} disabled={dealerships.isFetching}>
                       <RotateCw aria-hidden="true" className={cn(dealerships.isFetching && "animate-spin")} />
                       Check again
                     </Button>
                   }
                 >
                   <p>There are no dealerships to schedule. Once one is set up, it appears here.</p>
-                </BoardMessage>
-              </BoardPlaceholder>
+                </IllustratedState>
+              </Card>
             ) : dealerships.isError ? (
-              <BoardPlaceholder>
-                <ProblemAlert
-                  title="Couldn’t load dealerships"
-                  error={dealerships.error}
-                  onRetry={retry}
-                  retrying={dealerships.isFetching}
-                  className="max-w-xl"
-                />
-              </BoardPlaceholder>
+              <Card className="py-0">
+                <FailedState title="Couldn’t load dealerships" error={dealerships.error} onRetry={retry} retrying={dealerships.isFetching} />
+              </Card>
             ) : (
               <>
                 <p role="status" className="sr-only">
@@ -103,6 +94,29 @@ export default function DispatchPage() {
         )}
       </div>
     </BaseLayout>
+  )
+}
+
+/** A whole view that failed to load (DESIGN_SYSTEM 12.1): the error-connection state with the API's words and trace id. */
+function FailedState({ title, error, onRetry, retrying }: { title: string; error: unknown; onRetry: () => void; retrying: boolean }) {
+  const { summary, traceId } = describeFailure(error)
+  return (
+    <IllustratedState
+      role="alert"
+      illustration="error-connection"
+      level={2}
+      title={title}
+      action={
+        <Button type="button" onClick={onRetry} disabled={retrying}>
+          <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
+          Try again
+        </Button>
+      }
+      className="px-4"
+    >
+      <p className="wrap-break-word">{summary}</p>
+      {traceId && <TraceIdRow traceId={traceId} className="max-w-full" />}
+    </IllustratedState>
   )
 }
 

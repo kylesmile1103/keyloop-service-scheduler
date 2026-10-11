@@ -1,19 +1,21 @@
 import type { UseQueryResult } from "@tanstack/react-query"
-import { CalendarArrowUp, CalendarOff, EyeOff, RefreshCw, Warehouse } from "lucide-react"
+import { ChevronRight, EyeOff, RefreshCw, RotateCw, Warehouse } from "lucide-react"
 import { type ReactNode, type Ref, useId } from "react"
 
-import type { DealershipResponse, GetWorkshopScheduleError, WorkshopScheduleResponse } from "@/api/types.gen"
-import { ProblemAlert } from "@/components/problem-alert"
+import type { DealershipResponse, GetWorkshopScheduleError, OperatingWindowResponse, WorkshopScheduleResponse } from "@/api/types.gen"
+import { IllustratedState } from "@/components/illustrated-state"
+import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { describeFailure } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { formatDay, weekdayOf } from "../lib/calendar-date"
 import { hourMarks, nextOpenDate, openingHoursOn } from "../lib/opening-hours"
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { formatLocalTime } from "../lib/time-grid"
-import { BoardMessage, BoardPlaceholder } from "./board-placeholder"
+import { BoardMessage, BoardPanel, BoardPlaceholder } from "./board-placeholder"
 import { ScheduleAgenda } from "./schedule-agenda"
 import { StatusLegend } from "./status-legend"
 import { TimelineGrid } from "./timeline-grid"
@@ -36,11 +38,17 @@ interface ScheduleBoardProps {
   agenda: boolean
   now: Date
   selectedId: string | null
+  /** A booking just made, whose block or card draws the booked halo. */
+  bookedId?: string | null
+  /** The empty day's one action (Book appointment, once booking is wired). */
+  emptyAction?: ReactNode
   onSelect: (appointment: BoardAppointment, element: HTMLElement) => void
 }
 
-/** Phones and touch screens get 44 px targets (task 16 mobile addendum). */
-const touch = "max-md:h-11 pointer-coarse:h-11"
+/** The whole local hours a window covers, as the timeline draws them ("08:00" … "17:00"). */
+function windowHours(window: OperatingWindowResponse): string[] {
+  return hourMarks({ opensAt: window.opensAtLocal.slice(11, 16), closesAt: window.closesAtLocal.slice(11, 16) })
+}
 
 /** "Open today 08:00–18:00 (Europe/London).", from the schedule's window once it arrives, the weekly hours until then. */
 function daySentence(dealership: DealershipResponse, date: string, today: string, schedule: WorkshopScheduleResponse | undefined) {
@@ -74,6 +82,8 @@ export function ScheduleBoard({
   agenda,
   now,
   selectedId,
+  bookedId = null,
+  emptyAction,
   onSelect,
 }: ScheduleBoardProps) {
   const headingId = useId()
@@ -82,57 +92,62 @@ export function ScheduleBoard({
   const appointments = lanes.reduce((total, lane) => total + lane.appointments.length, 0)
   const laneLabel = mode === "bays" ? "Bay" : "Technician"
 
+  const weekly = openingHoursOn(dealership, weekdayOf(date))
+  const hours = data?.operatingWindow ? windowHours(data.operatingWindow) : weekly ? hourMarks(weekly) : undefined
+  const dayName = (day: string) => formatDay(day, "long").replace(/ \d{4}$/, "")
+
   let body: ReactNode
   if (!data && schedule.isError) {
+    const { summary, traceId } = describeFailure(schedule.error)
     body = (
-      <div className="p-4">
-        <ProblemAlert
-          title="Couldn’t load the schedule"
-          error={schedule.error}
-          onRetry={() => void schedule.refetch()}
-          retrying={schedule.isFetching}
-          className="max-w-xl"
-        />
-      </div>
+      <IllustratedState
+        role="alert"
+        illustration="error-connection"
+        title="Couldn’t load the schedule"
+        action={
+          <Button type="button" onClick={() => void schedule.refetch()} disabled={schedule.isFetching}>
+            <RotateCw aria-hidden="true" className={cn(schedule.isFetching && "animate-spin")} />
+            Try again
+          </Button>
+        }
+        className="px-4"
+      >
+        <p className="wrap-break-word">{summary}</p>
+        {traceId && <TraceIdRow traceId={traceId} className="max-w-full" />}
+      </IllustratedState>
     )
   } else if (!data) {
-    const weekly = openingHoursOn(dealership, weekdayOf(date))
     body = (
       <>
         <p role="status" className="sr-only">
           Loading the schedule…
         </p>
-        {agenda ? (
-          <AgendaSkeleton />
-        ) : (
-          <BoardPlaceholder framed={false} loading laneLabel={laneLabel} hours={weekly ? hourMarks(weekly) : undefined} />
-        )}
+        {agenda ? <AgendaSkeleton /> : <BoardPlaceholder framed={false} loading laneLabel={laneLabel} hours={hours} />}
       </>
     )
   } else if (data.operatingWindow === null) {
     const next = nextOpenDate(dealership, date)
     const message = (
-      <BoardMessage
-        icon={CalendarOff}
-        level={3}
-        title={isToday ? "Closed today" : `Closed on ${formatDay(date, "long").replace(/ \d{4}$/, "")}`}
+      <IllustratedState
+        illustration="closed-day"
+        title={isToday ? "Closed today" : `Closed on ${dayName(date)}`}
         action={
           next && (
-            <Button type="button" variant="outline" className={cn("cursor-pointer", touch)} onClick={() => onDateChange(next)}>
-              <CalendarArrowUp aria-hidden="true" />
-              {`Go to ${formatDay(next, "long").replace(/ \d{4}$/, "")}`}
+            <Button type="button" variant="signal" className="cursor-pointer" onClick={() => onDateChange(next)}>
+              {`Go to ${dayName(next)}`}
+              <ChevronRight aria-hidden="true" className="transition-transform duration-150 group-hover/button:translate-x-0.5" />
             </Button>
           )
         }
       >
-        <p>The workshop does not open that day, so nothing can be booked.</p>
-      </BoardMessage>
+        <p>{next ? `The workshop opens again on ${dayName(next)}.` : "The workshop does not open that day, so nothing can be booked."}</p>
+      </IllustratedState>
     )
     body = agenda ? (
-      <div className="flex justify-center rounded-xl bg-muted/40 p-4">{message}</div>
+      message
     ) : (
-      <BoardPlaceholder framed={false} closed laneLabel={laneLabel}>
-        {message}
+      <BoardPlaceholder framed={false} closed laneLabel={laneLabel} hours={weekly ? hourMarks(weekly) : undefined}>
+        <BoardPanel>{message}</BoardPanel>
       </BoardPlaceholder>
     )
   } else if (laneCount === 0) {
@@ -151,7 +166,7 @@ export function ScheduleBoard({
           level={3}
           title="Every lane is hidden"
           action={
-            <Button type="button" variant="outline" className={cn("cursor-pointer", touch)} onClick={onShowAllLanes}>
+            <Button type="button" variant="outline" className="cursor-pointer" onClick={onShowAllLanes}>
               Show all lanes
             </Button>
           }
@@ -159,6 +174,35 @@ export function ScheduleBoard({
           <p>The lane filter leaves nothing to show.</p>
         </BoardMessage>
       </div>
+    )
+  } else if (appointments === 0) {
+    const message = (
+      <IllustratedState
+        illustration="empty-schedule"
+        title={isToday ? "No appointments today" : `No appointments on ${dayName(date)}`}
+        action={emptyAction}
+      >
+        <p>{mode === "bays" ? "Every bay is free all day." : "Every technician is free all day."}</p>
+      </IllustratedState>
+    )
+    // On a phone the message replaces a list of empty lanes; on wider screens it follows the real, empty timeline, which
+    // still shows the day's hours, closed time and now line.
+    body = agenda ? (
+      message
+    ) : (
+      <>
+        <TimelineGrid
+          lanes={lanes}
+          mode={mode}
+          operatingWindow={data.operatingWindow}
+          granularityMinutes={data.slotGranularityMinutes}
+          timeZone={dealership.timeZoneId}
+          now={now}
+          selectedId={selectedId}
+          onSelect={onSelect}
+        />
+        <div className="border-t">{message}</div>
+      </>
     )
   } else if (agenda) {
     body = (
@@ -168,6 +212,7 @@ export function ScheduleBoard({
         timeZone={dealership.timeZoneId}
         now={isToday ? now : null}
         selectedId={selectedId}
+        bookedId={bookedId}
         onSelect={onSelect}
       />
     )
@@ -181,6 +226,7 @@ export function ScheduleBoard({
         timeZone={dealership.timeZoneId}
         now={now}
         selectedId={selectedId}
+        bookedId={bookedId}
         onSelect={onSelect}
       />
     )
@@ -189,13 +235,10 @@ export function ScheduleBoard({
   const header = (
     <div className={cn("flex flex-wrap items-end justify-between gap-x-4 gap-y-1", agenda ? "px-1" : "border-b px-4 py-3")}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <h2 id={headingId} className="truncate text-base font-semibold">
+        <h2 id={headingId} className="truncate font-heading text-lg font-semibold">
           {dealership.name}
         </h2>
-        <p className="text-sm text-muted-foreground tabular-nums">
-          {daySentence(dealership, date, today, data)}
-          {data?.operatingWindow && appointments === 0 && <span>{" Nothing booked yet."}</span>}
-        </p>
+        <p className="text-sm text-muted-foreground tabular-nums">{daySentence(dealership, date, today, data)}</p>
       </div>
       {data && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">

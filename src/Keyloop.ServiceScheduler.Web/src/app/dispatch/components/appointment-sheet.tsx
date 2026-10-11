@@ -10,9 +10,9 @@ import {
   getWorkshopScheduleQueryKey,
 } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
+import vehiclePlaceholder from "@/assets/illustrations/vehicle-placeholder.webp"
 import { CopyButton } from "@/components/copy-button"
 import { ProblemAlert } from "@/components/problem-alert"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -22,12 +22,13 @@ import { toast } from "@/components/ui/toast"
 import { fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
-import { initials, timeRange } from "../lib/appointment-text"
+import { timeRange } from "../lib/appointment-text"
 import { formatDay, todayIn } from "../lib/calendar-date"
 import type { BoardAppointment } from "../lib/schedule"
 import { canCancel, statusMeta } from "../lib/status"
 import { formatLocalTime } from "../lib/time-grid"
 import { PlateChip } from "./appointment-block"
+import { InitialsAvatar } from "./initials-avatar"
 import { StatusBadge } from "./status-badge"
 
 const REASON_LIMIT = 500
@@ -75,7 +76,7 @@ export function AppointmentSheet({
         finalFocus={() => returnFocus() ?? true}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
-          side === "right" ? "w-full sm:max-w-md" : "max-h-[90dvh] rounded-t-2xl"
+          side === "right" && "w-full"
         )}
       >
         {appointment && (
@@ -132,11 +133,11 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
       {side === "bottom" && <div aria-hidden="true" className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/40" />}
       <SheetHeader className="gap-3 border-b pr-12">
         <div className="flex items-start gap-3">
-          <span aria-hidden="true" className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", classes.badge)}>
+          <span aria-hidden="true" className={cn("inline-flex size-9 shrink-0 items-center justify-center", classes.tile)}>
             <StatusIcon className="size-5" />
           </span>
           <div className="flex min-w-0 flex-col gap-0.5">
-            <SheetTitle ref={titleRef} tabIndex={-1} className="text-lg font-semibold outline-none">
+            <SheetTitle ref={titleRef} tabIndex={-1} className="font-heading text-lg font-semibold outline-none">
               {appointment.serviceType.name}
             </SheetTitle>
             <SheetDescription className="tabular-nums">
@@ -153,11 +154,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
           <Row term="Bay">{appointment.bay.name}</Row>
           <Row term="Technician">
             <span className="flex items-center gap-2">
-              <Avatar className="size-6 after:hidden">
-                <AvatarFallback className="bg-secondary text-[10px] font-semibold text-secondary-foreground">
-                  {initials(appointment.technician.name)}
-                </AvatarFallback>
-              </Avatar>
+              <InitialsAvatar name={appointment.technician.name} />
               <span>{appointment.technician.name}</span>
             </span>
           </Row>
@@ -179,9 +176,22 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
           <Row term="Vehicle">
-            <span className="flex flex-col items-start gap-1">
-              <Pending loading={details.isPending}>{record && <span>{`${record.vehicle.make} ${record.vehicle.model}`}</span>}</Pending>
-              <PlateChip registration={appointment.registration} labelled={false} className="text-xs" />
+            {/* A generic car, never captioned as the customer's own (DESIGN_SYSTEM 12.2). */}
+            <span className="flex items-start gap-3">
+              <img
+                src={vehiclePlaceholder}
+                alt=""
+                width={960}
+                height={640}
+                draggable={false}
+                className="pointer-events-none h-auto w-20 shrink-0 select-none sm:w-28"
+              />
+              <span className="flex min-w-0 flex-col items-start gap-1">
+                <Pending loading={details.isPending}>
+                  {record && <span className="font-heading font-semibold">{`${record.vehicle.make} ${record.vehicle.model}`}</span>}
+                </Pending>
+                <PlateChip registration={appointment.registration} labelled={false} />
+              </span>
             </span>
           </Row>
           <Row term="VIN">
@@ -230,7 +240,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
 
 /** A contact link: underlined, and 44 px tall on a touch screen, where calling or writing is one tap. */
 const contactLink =
-  "w-fit text-primary underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-current pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
+  "w-fit rounded-sm text-signal underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
 
 function Row({ term, children }: { term: string; children: ReactNode }) {
   return (
@@ -336,7 +346,7 @@ function CancelForm({ appointment, status, timeZone, onCancelled, onConflict }: 
             type="submit"
             variant="destructive"
             disabled={cancel.isPending}
-            className="h-9 self-stretch sm:self-end max-md:h-11 pointer-coarse:h-11"
+            className="self-stretch sm:self-end max-md:h-11"
           >
             {cancel.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
             {cancel.isPending ? "Cancelling…" : "Cancel appointment"}

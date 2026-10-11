@@ -237,12 +237,24 @@ describe("dispatch board: day, lanes and refresh", () => {
     const { router } = renderBoard(`${readingBoard}&date=2026-10-18`)
 
     expect(await screen.findByRole("heading", { level: 3, name: "Closed on Sunday 18 October" })).toBeInTheDocument()
+    expect(screen.getByText("The workshop opens again on Monday 19 October.")).toBeInTheDocument()
+    // The headline says what the picture shows, so the illustration is decorative.
+    expect(document.querySelector('img[src*="closed-day"]')).toHaveAttribute("alt", "")
     expect(screen.getByText("Closed on Sunday 18 October 2026 (Europe/London).")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Go to Monday 19 October" }))
 
     await waitFor(() => expect(search(router).date).toBe("2026-10-19"))
     expect(await lane("Bay 1 - Standard")).toBeInTheDocument()
+  })
+
+  it("says when nothing is booked on an open day", async () => {
+    mockBoardApi()
+    renderBoard(`/dispatch?dealership=${munich.id}&date=2026-10-14`)
+
+    expect(await screen.findByRole("heading", { level: 3, name: "No appointments on Wednesday 14 October" })).toBeInTheDocument()
+    expect(screen.getByText("Every bay is free all day.")).toBeInTheDocument()
+    expect(document.querySelector('img[src*="empty-schedule"]')).toHaveAttribute("alt", "")
   })
 
   it("hides and shows lanes from the lane filter", async () => {
@@ -588,8 +600,9 @@ describe("dispatch board: loading and failures", () => {
     renderBoard(readingBoard)
 
     const alert = await screen.findByRole("alert")
-    expect(within(alert).getByText("Couldn’t load the schedule")).toBeInTheDocument()
+    expect(within(alert).getByRole("heading", { level: 3, name: "Couldn’t load the schedule" })).toBeInTheDocument()
     expect(within(alert).getByText("Too many requests from this client. Retry after 3 seconds.")).toBeInTheDocument()
+    expect(alert.querySelector('img[src*="error-connection"]')).toHaveAttribute("alt", "")
     expect(within(alert).getByText("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")).toBeInTheDocument()
 
     failing = false

@@ -50,8 +50,20 @@ SOFTWARE.
 Source: https://github.com/shadcn-ui/ui - the `components/ui/*` primitives in the template above originate from
 shadcn/ui (Base UI variant). MIT License, Copyright (c) 2023 shadcn. The licence text is identical to the one above.
 
-## Inter typeface
+## Plus Jakarta Sans typeface
 
-Source: https://github.com/rsms/inter, packaged as `@fontsource-variable/inter`; the font files are served from the
-build output. SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors. The full licence ships with the
-package (`node_modules/@fontsource-variable/inter/LICENSE`).
+Source: https://github.com/tokotype/PlusJakartaSans, packaged as `@fontsource-variable/plus-jakarta-sans`; the font
+files are served from the build output. SIL Open Font License 1.1, Copyright 2020 The Plus Jakarta Sans Project
+Authors. The full licence ships with the package (`node_modules/@fontsource-variable/plus-jakarta-sans/LICENSE`).
+
+## IBM Plex Sans typeface
+
+Source: https://github.com/IBM/plex, packaged as `@fontsource-variable/ibm-plex-sans`; the font files are served from
+the build output. SIL Open Font License 1.1, Copyright 2019 IBM Corp. The full licence ships with the package
+(`node_modules/@fontsource-variable/ibm-plex-sans/LICENSE`).
+
+## IBM Plex Mono typeface
+
+Source: https://github.com/IBM/plex, packaged as `@fontsource/ibm-plex-mono`; the font files are served from the build
+output. SIL Open Font License 1.1, Copyright 2017 IBM Corp. The full licence ships with the package
+(`node_modules/@fontsource/ibm-plex-mono/LICENSE`).
