@@ -49,7 +49,7 @@ public class AppointmentTests
             Guid.NewGuid(), "Keyloop Motors Reading", "Europe/London", OperatingHours.MondayToFriday(new TimeOnly(8, 0), new TimeOnly(18, 0)), Now);
         _interim = ServiceType.Create(
             Guid.NewGuid(), "INTERIM-SERVICE", "Interim Service", ServiceDuration.Create(60), [BayCapability.StandardLift], [Certification.GeneralService]);
-        _bay = ServiceBay.Create(Guid.NewGuid(), _reading.Id, "Bay 1 — Standard", [BayCapability.StandardLift]);
+        _bay = ServiceBay.Create(Guid.NewGuid(), _reading.Id, "Bay 1 - Standard", [BayCapability.StandardLift]);
         _technician = Technician.Create(Guid.NewGuid(), _reading.Id, "Amelia Clarke", "T-1001", [Certification.GeneralService, Certification.Brakes]);
         _window = _reading.ResolveOperatingWindow(BookingDay).ShouldNotBeNull();
     }
@@ -215,7 +215,7 @@ public class AppointmentTests
     [Fact]
     public void Book_rejects_incompatible_bay()
     {
-        var evBay = ServiceBay.Create(Guid.NewGuid(), _reading.Id, "Bay 7 — EV only", [BayCapability.EvHighVoltage]);
+        var evBay = ServiceBay.Create(Guid.NewGuid(), _reading.Id, "Bay 7 - EV only", [BayCapability.EvHighVoltage]);
 
         var ex = Should.Throw<DomainRuleViolationException>(() => Book(bay: evBay));
 

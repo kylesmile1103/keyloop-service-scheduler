@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Resuming this project in a fresh session? Read `docs/HANDOFF.md` first** — current state, process, remaining tasks with binding carry-overs, rulings and gotchas.
+> **Resuming this project in a fresh session? Read `docs/HANDOFF.md` first** - current state, process, remaining tasks with binding carry-overs, rulings and gotchas.
 
 ## What this repository is
 
 The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). Two documents are the source of truth and must stay consistent with the code:
 
-- `docs/SYSTEM_DESIGN.md` — domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
-- `docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md` — the task-by-task implementation plan with exact type names and test lists.
+- `docs/SYSTEM_DESIGN.md` - domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
+- `docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md` - the task-by-task implementation plan with exact type names and test lists.
 
 ## Commands
 
@@ -33,7 +33,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "
 dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests                         # whole-stack smoke (Category=Aspire): boots the AppHost; one AppHost per machine at a time
 
 # OpenAPI contract: every `dotnet build` of the API rewrites contracts/openapi/v1.json (build-time generation, no database needed);
-# the script forces a regeneration even when the API assembly is unchanged and prints `git status` for contracts/ — commit the file
+# the script forces a regeneration even when the API assembly is unchanged and prints `git status` for contracts/ - commit the file
 scripts/export-openapi.sh
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "Category=Contract"   # runtime document == committed file, contract rules
 
@@ -44,7 +44,7 @@ docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler
 dotnet tool restore && dotnet ef migrations add <Name> --project src/Keyloop.ServiceScheduler.Api -o Infrastructure/Persistence/Migrations
 
 # frontend (run inside src/Keyloop.ServiceScheduler.Web)
-pnpm install && pnpm generate:api      # regenerates src/api/*.gen.ts from contracts/openapi/v1.json — never hand-edit generated files
+pnpm install && pnpm generate:api      # regenerates src/api/*.gen.ts from contracts/openapi/v1.json - never hand-edit generated files
 pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 ```
 
@@ -56,10 +56,10 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 - **Time:** UTC `DateTime` everywhere in code and DB; dealership `TimeZoneId` (IANA) drives operating hours via `LocalTimeConverter` (DST gap → first valid instant, ambiguity → earlier instant). Half-open intervals. Inject `TimeProvider`; never call `DateTime.UtcNow`.
 - **Errors:** RFC 9457 ProblemDetails with types under `https://api.keyloop.example/problems/<slug>`; 400 = malformed, 422 = business rule, 409 = state conflict (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`, `concurrency-conflict`). `GlobalExceptionHandler` is the only mapper.
 - **Audit/events:** aggregates raise domain events; `DomainEventInterceptor` writes `appointment_history` rows in the same transaction and notifies `IDomainEventObserver`s after commit.
-- **Telemetry:** `SchedulerTelemetry` owns the `ActivitySource`/`Meter` named `Keyloop.ServiceScheduler`; ServiceDefaults wires OTLP to the Aspire dashboard. Metric names are part of the design (§12) — do not rename.
+- **Telemetry:** `SchedulerTelemetry` owns the `ActivitySource`/`Meter` named `Keyloop.ServiceScheduler`; ServiceDefaults wires OTLP to the Aspire dashboard. Metric names are part of the design (§12) - do not rename.
 - **Contract sync:** `dotnet build` of the API writes `contracts/openapi/v1.json` (commit it); `OpenApiContractTests` asserts the runtime document equals that file; HeyAPI (`openapi-ts.config.ts`) generates `src/api/*.gen.ts` including TanStack `queryOptions`/`mutationOptions`. Operation ids (`BookAppointment`, `GetAvailability`, …) are stable API.
 - **Environments:** `Development` (migrate + seed on startup, Scalar on), `SystemTest` (integration tests; rate limiting off), `UAT`/`Production` (migration bundles, no seed, Scalar off in Production), and `Demo` (only for the Aspire-published compose bundle: UAT posture plus migrate/seed at startup).
-- **Aspire (ADR-019):** the AppHost owns secrets (generated `postgres-password` parameter persisted to user secrets — never put credentials in appsettings), persistent PostgreSQL + pgweb, health-gated startup, `pnpm install` for the web app, `API_HTTP` service discovery for the Vite proxy, browser OTLP to the dashboard (dev only), and the *Reseed demo data* dashboard command (`POST /api/v1/admin/demo/reseed`, key-protected, excluded from OpenAPI). Behaviour differs only via `appsettings.{Env}.json` and options classes validated on start.
+- **Aspire (ADR-019):** the AppHost owns secrets (generated `postgres-password` parameter persisted to user secrets - never put credentials in appsettings), persistent PostgreSQL + pgweb, health-gated startup, `pnpm install` for the web app, `API_HTTP` service discovery for the Vite proxy, browser OTLP to the dashboard (dev only), and the *Reseed demo data* dashboard command (`POST /api/v1/admin/demo/reseed`, key-protected, excluded from OpenAPI). Behaviour differs only via `appsettings.{Env}.json` and options classes validated on start.
 - **OpenAPI (ADR-008/017/018):** the document is generated at build time into `contracts/openapi/v1.json` (while `BuildTimeOpenApi.IsActive`, `Program.cs` runs in Development with a placeholder connection string and skips database work); summaries, response docs and request examples come from XML comments on static handler methods and DTOs; Scalar at `/scalar/v1` is the API test UI (not mapped in Production). Endpoint rules the contract tests enforce: `.WithName("<OperationId>")` (append new ids to `OpenApiContractTests.OperationIds`); every endpoint declares `.ProducesRateLimitedProblem()` plus a `<response code="429">` comment (the global limiter covers every route); a request body is described by `[Description]` on its parameter, not by `<param>` (the 10.0 XML generator copies every unmatched `<param>` onto the body; `SchedulerOpenApi.DescribeRequestBody` restores the attribute's text and fails generation without one); every response type is listed in `OpenApiContractTests.ResponseTypes`.
 - **Reflection budget (ADR-016):** no assembly scanning or reflection-based discovery; endpoints are listed in `EndpointRegistry`, handlers and validators are registered explicitly; every HTTP DTO (and top-level `IReadOnlyList<T>`) is listed in `Common/Serialization/SchedulerJsonContext.cs` because reflection-based JSON is disabled; mappers are Mapperly-generated (`RequiredMappingStrategy.Target`); options are validated by `[OptionsValidator]`; logs go through `[LoggerMessage]` methods in `SchedulerLog`; the Request Delegate Generator is on, so an endpoint it cannot intercept fails the build. Residual reflection (EF Core, FluentValidation) is measured by `scripts/aot-readiness.sh`.
 - **Frontend conventions** follow the shadcn dashboard template (Vite variant): Base UI primitives, `cn` from the `cn` package inside `components/ui`, `@/` alias, Tailwind v4 tokens in `src/index.css`. Vite proxies `/api`, `/openapi`, `/scalar` to the API (no CORS in dev). Aspire sets `PORT` and the API's address as `API_HTTP` (via `WithReference(api)`), which `vite.config.ts` uses as the proxy target.
@@ -69,6 +69,6 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 - Keep `docs/SYSTEM_DESIGN.md` and the code in agreement; if a design decision changes, update the ADR table in the same commit.
 - Test names describe behaviour (`Rejects_off_grid_start_422`); domain tests use `FakeTimeProvider` at `2026-10-12T08:00:00Z` and book on `2026-10-13`.
 - The AppHost smoke test lives in `tests/Keyloop.ServiceScheduler.AspireTests`, not in the integration tests: Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016). It supplies the database password and strips persistence, so it never touches the developer's user secrets or `keyloop-scheduler-pgdata`.
-- Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened — a failure is a design defect.
+- Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened - a failure is a design defect.
 - `references/` holds provenance notes only; the reference clones live outside the repo and the AGPL one (MiroTalk) must never be copied.
 - Commit messages: Conventional Commits, ending with the `Co-Authored-By`/`Claude-Session` trailers used in the existing history.

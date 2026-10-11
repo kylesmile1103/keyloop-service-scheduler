@@ -1,4 +1,4 @@
-# Addendum C — Aspire as the whole development platform (frontend and backend)
+# Addendum C - Aspire as the whole development platform (frontend and backend)
 
 Applies to Tasks 7, 14, 14b, 15 and 18 of `2026-10-11-keyloop-service-scheduler.md`. Design authority: `docs/SYSTEM_DESIGN.md` §8.6, §10, §11, §12 and ADR-007, ADR-019. Each affected task's brief names the sections below that it must apply.
 
@@ -8,7 +8,7 @@ Applies to Tasks 7, 14, 14b, 15 and 18 of `2026-10-11-keyloop-service-scheduler.
 
 ## C1. Secrets and parameters (Task 14b, AppHost)
 
-- `var pgUser = builder.AddParameter("postgres-user", "scheduler");` and a **secret, generated, persisted** password: `var pgPassword = builder.AddParameter("postgres-password", new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);` — verify the exact overload against the Aspire 13.6 docs (Context7 `/microsoft/aspire.dev`, "external parameters"). In run mode the value is generated once and stored in the AppHost's user secrets, so the persistent container keeps a stable password; nobody types a secret to start the stack.
+- `var pgUser = builder.AddParameter("postgres-user", "scheduler");` and a **secret, generated, persisted** password: `var pgPassword = builder.AddParameter("postgres-password", new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);` - verify the exact overload against the Aspire 13.6 docs (Context7 `/microsoft/aspire.dev`, "external parameters"). In run mode the value is generated once and stored in the AppHost's user secrets, so the persistent container keeps a stable password; nobody types a secret to start the stack.
 - `builder.AddPostgres("postgres", pgUser, pgPassword)`.
 - No secret ever appears in `appsettings*.json`, `launchSettings.json` or source. The API receives its connection string only as the `ConnectionStrings__schedulerdb` environment variable injected by `WithReference(db)`.
 - Publish mode: parameters become deployment inputs (for Docker Compose, `${POSTGRES_PASSWORD}` entries in the generated `.env`); for UAT/Production the platform injects them from its secret store. Document this mapping in the README.

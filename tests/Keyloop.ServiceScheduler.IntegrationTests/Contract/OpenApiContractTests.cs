@@ -82,7 +82,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         var committed = JsonNode.Parse(await File.ReadAllTextAsync(ContractPath, Ct))!;
 
         // Normalised JSON (formatting aside), compared in order: the build-time generator and the runtime document come from the same
-        // composition root, so any difference — a value, a member, or the order of members — is drift or non-determinism.
+        // composition root, so any difference - a value, a member, or the order of members - is drift or non-determinism.
         if (committed.ToJsonString(Canonical) != served.ToJsonString(Canonical))
         {
             var differences = Differences(committed, served, "$").Take(15).ToList();
@@ -97,7 +97,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
         var operations = Operations(document).ToList();
         operations.Where(o => string.IsNullOrWhiteSpace(o.Operation["operationId"]?.GetValue<string>())).Select(o => o.Name)
-            .ShouldBeEmpty("operations without an operationId (.WithName) — the generated client would invent a name");
+            .ShouldBeEmpty("operations without an operationId (.WithName) - the generated client would invent a name");
         operations.Select(o => o.Operation["operationId"]!.GetValue<string>()).ShouldBe(OperationIds);
     }
 

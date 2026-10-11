@@ -1,4 +1,4 @@
-# Keyloop Unified Service Scheduler — Implementation Plan
+# Keyloop Unified Service Scheduler - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -17,7 +17,7 @@
 - Central Package Management: every version lives in `Directory.Packages.props`; `.csproj` files carry `PackageReference` without `Version`.
 - Root namespace `Keyloop.ServiceScheduler.Api`; folders `Domain/`, `Features/`, `Infrastructure/`, `Common/` as in spec §8.4. `Domain/` must not reference EF Core, ASP.NET Core, or `Common/`.
 - No MediatR or other mediator. Endpoints call handlers directly (spec ADR-001).
-- All instants are `DateTime` with `Kind == Utc`; database columns `timestamp with time zone`; JSON ISO-8601 with `Z`. Never call `DateTime.UtcNow`/`DateTime.Now` in product code — inject `TimeProvider`.
+- All instants are `DateTime` with `Kind == Utc`; database columns `timestamp with time zone`; JSON ISO-8601 with `Z`. Never call `DateTime.UtcNow`/`DateTime.Now` in product code - inject `TimeProvider`.
 - Half-open intervals `[start, end)` everywhere; overlap test is `a.Start < b.End && b.Start < a.End`.
 - Database naming: snake_case via `UseSnakeCaseNamingConvention()`; connection name `schedulerdb`.
 - Problem types use base URI `https://api.keyloop.example/problems/` and the slug catalogue in spec §8.7; every ProblemDetails carries `traceId`.
@@ -98,7 +98,7 @@ README.md  docs/VIDEO_WALKTHROUGH.md  CLAUDE.md
 
 ---
 
-## Phase 0 — Solution scaffolding
+## Phase 0 - Solution scaffolding
 
 ### Task 1: Solution, shared build props, ServiceDefaults, API skeleton, test skeletons
 
@@ -298,7 +298,7 @@ git add -A && git commit -m "build: scaffold solution with central package manag
 
 ---
 
-## Phase 1 — Domain (pure, TDD; no database)
+## Phase 1 - Domain (pure, TDD; no database)
 
 ### Task 2: Domain primitives and value objects
 
@@ -363,9 +363,9 @@ namespace Keyloop.ServiceScheduler.Api.Domain.Resources;
 public enum BayCapability { StandardLift, HeavyDutyLift, EvHighVoltage, WheelAlignment, Diagnostics, MotTesting, AirConditioning }
 public enum Certification { GeneralService, Brakes, HighVoltageElectrical, Diagnostics, MotTester, WheelAlignment, AirConditioning, HeavyVehicle }
 ```
-`OperatingWindow` is defined in Task 3; declare `TimeSlot.IsWithin` in Task 3 if you prefer strict ordering — but both tasks ship before any consumer, so defining the stub now is acceptable.
+`OperatingWindow` is defined in Task 3; declare `TimeSlot.IsWithin` in Task 3 if you prefer strict ordering - but both tasks ship before any consumer, so defining the stub now is acceptable.
 
-- [ ] **Step 1: Write failing tests** — `TimeSlotTests`: `Create_rejects_end_before_start`, `Create_rejects_non_utc_kind`, `Overlaps_is_true_for_partial_overlap`, `Overlaps_is_false_for_adjacent_slots` (09:00–10:00 vs 10:00–11:00), `Overlaps_is_true_when_one_contains_the_other`, `FromStart_uses_duration`. `VinTests`: `Valid_vin_is_normalised_to_uppercase` (" wvwzzz1kzaw123456 " → "WVWZZZ1KZAW123456"), `Rejects_16_characters`, `Rejects_letters_I_O_Q` (Theory), `Masked_shows_last_six`. `ServiceDurationTests`: `Rejects_zero`, `Rejects_negative`, `Rejects_non_multiple_of_five` (7), `Rejects_over_eight_hours` (485), `Accepts_60`. `DeterministicGuidTests`: `Same_name_same_guid`, `Different_names_differ`.
+- [ ] **Step 1: Write failing tests** - `TimeSlotTests`: `Create_rejects_end_before_start`, `Create_rejects_non_utc_kind`, `Overlaps_is_true_for_partial_overlap`, `Overlaps_is_false_for_adjacent_slots` (09:00–10:00 vs 10:00–11:00), `Overlaps_is_true_when_one_contains_the_other`, `FromStart_uses_duration`. `VinTests`: `Valid_vin_is_normalised_to_uppercase` (" wvwzzz1kzaw123456 " → "WVWZZZ1KZAW123456"), `Rejects_16_characters`, `Rejects_letters_I_O_Q` (Theory), `Masked_shows_last_six`. `ServiceDurationTests`: `Rejects_zero`, `Rejects_negative`, `Rejects_non_multiple_of_five` (7), `Rejects_over_eight_hours` (485), `Accepts_60`. `DeterministicGuidTests`: `Same_name_same_guid`, `Different_names_differ`.
 - [ ] **Step 2: Run** `dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests` → FAIL (types missing).
 - [ ] **Step 3: Implement** the types exactly as the interface block above.
 - [ ] **Step 4: Run tests** → PASS; `dotnet build -warnaserror` → 0 warnings.
@@ -415,7 +415,7 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
     public static void EnsureAligned(DateTime startUtc, OperatingWindow window, int granularityMinutes); // throws ("slot-not-aligned", ..., {slotGranularityMinutes})
 }
 ```
-EF Core needs a parameterless private constructor on `Dealership` and `OperatingHours` is persisted as an owned collection (`Days`) — keep `Days` a `List<DayOperatingHours>` internally with a private setter for EF.
+EF Core needs a parameterless private constructor on `Dealership` and `OperatingHours` is persisted as an owned collection (`Days`) - keep `Days` a `List<DayOperatingHours>` internally with a private setter for EF.
 
 - [ ] **Step 1: Write failing tests**
   - `OperatingHoursTests`: `Create_requires_all_seven_days`, `Closed_day_has_null_times`, `Rejects_closes_before_opens`, `ResolveOperatingWindow_returns_null_on_closed_day` (Sunday), `ResolveOperatingWindow_converts_london_bst` (2026-07-01 08:00–18:00 Europe/London → 07:00Z–17:00Z), `ResolveOperatingWindow_converts_london_gmt` (2026-01-15 → 08:00Z–18:00Z).
@@ -506,7 +506,7 @@ public sealed record AppointmentStarted(Guid AppointmentId, DateTime OccurredAtU
 public sealed record AppointmentCompleted(Guid AppointmentId, DateTime OccurredAtUtc) : IDomainEvent { public string EventType => "Completed"; }
 public sealed record AppointmentNoShow(Guid AppointmentId, DateTime OccurredAtUtc) : IDomainEvent { public string EventType => "NoShow"; }
 ```
-- [ ] **Step 1: Write failing tests** — `ServiceBayTests`: `Supports_when_capabilities_superset`, `Does_not_support_when_missing_capability`, `Surplus_counts_extra_capabilities`. `TechnicianTests`: mirror. `AppointmentTests` (build a Dealership Mon–Fri 08:00–18:00 Europe/London, a 60-min service requiring `StandardLift` + `GeneralService`): `Book_creates_confirmed_appointment_and_raises_event`, `Book_rejects_bay_from_other_dealership`, `Book_rejects_inactive_technician`, `Book_rejects_incompatible_bay`, `Book_rejects_uncertified_technician`, `Book_rejects_slot_outside_window` (17:30–18:30 local), `Book_accepts_slot_ending_exactly_at_close` (17:00–18:00), `Cancel_from_confirmed_sets_reason_and_raises_event`, `Cancel_twice_throws_invalid_state_transition`, `Cancel_requires_reason`, `Full_happy_lifecycle` (CheckIn→Start→Complete), `Start_from_confirmed_is_invalid`, `MarkNoShow_before_slot_end_is_rule_violation`, `Events_are_raised_once_and_cleared`.
+- [ ] **Step 1: Write failing tests** - `ServiceBayTests`: `Supports_when_capabilities_superset`, `Does_not_support_when_missing_capability`, `Surplus_counts_extra_capabilities`. `TechnicianTests`: mirror. `AppointmentTests` (build a Dealership Mon–Fri 08:00–18:00 Europe/London, a 60-min service requiring `StandardLift` + `GeneralService`): `Book_creates_confirmed_appointment_and_raises_event`, `Book_rejects_bay_from_other_dealership`, `Book_rejects_inactive_technician`, `Book_rejects_incompatible_bay`, `Book_rejects_uncertified_technician`, `Book_rejects_slot_outside_window` (17:30–18:30 local), `Book_accepts_slot_ending_exactly_at_close` (17:00–18:00), `Cancel_from_confirmed_sets_reason_and_raises_event`, `Cancel_twice_throws_invalid_state_transition`, `Cancel_requires_reason`, `Full_happy_lifecycle` (CheckIn→Start→Complete), `Start_from_confirmed_is_invalid`, `MarkNoShow_before_slot_end_is_rule_violation`, `Events_are_raised_once_and_cleared`.
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** → PASS, build 0 warnings.
 - [ ] **Step 5: Commit** `feat(domain): add bays, technicians, service catalogue and the Appointment aggregate`
 
@@ -558,7 +558,7 @@ public static class AllocationPolicy
 
 ---
 
-## Phase 2 — Persistence
+## Phase 2 - Persistence
 
 ### Task 6: DbContext, configurations, interceptor, migration with exclusion constraints, seeding, integration fixture
 
@@ -633,12 +633,12 @@ b.ComplexProperty(a => a.Vehicle, v => { v.Property(x => x.Vin).HasColumnName("v
 b.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
 b.Property<NpgsqlRange<DateTime>>("TimeRange").HasColumnName("time_range").HasComputedColumnSql("tstzrange(start_utc, end_utc, '[)')", stored: true);
 b.Property(a => a.RowVersion).HasColumnName("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
-b.HasIndex(a => new { a.DealershipId, a.Slot.StartUtc })... // if complex-property indexing is unsupported, index via shadow: b.HasIndex("DealershipId", "start_utc") after mapping names — verify with `dotnet ef migrations add`
+b.HasIndex(a => new { a.DealershipId, a.Slot.StartUtc })... // if complex-property indexing is unsupported, index via shadow: b.HasIndex("DealershipId", "start_utc") after mapping names - verify with `dotnet ef migrations add`
 b.HasOne<Dealership>().WithMany().HasForeignKey(a => a.DealershipId); // same for ServiceType, ServiceBay, Technician (no navigation properties)
 b.Ignore(a => a.DomainEvents);
 ```
 If EF Core 10 rejects `ComplexProperty` for the `sealed record` value objects in any way (e.g. `Vin` conversion inside a complex type), fall back to `OwnsOne` with the same column names; either is acceptable, but `Slot.StartUtc`/`EndUtc` must be queryable in LINQ.
-`ServiceBay`/`Technician`/`ServiceType` arrays: `b.Property(x => x.Capabilities).HasColumnName("capabilities").HasColumnType("text[]").HasConversion(v => v.Select(c => c.ToString()).OrderBy(s => s).ToArray(), v => v.Select(Enum.Parse<BayCapability>).ToHashSet(), new ValueComparer<IReadOnlySet<BayCapability>>((a, b) => a!.SetEquals(b!), v => v.Aggregate(0, (h, c) => HashCode.Combine(h, c)), v => v.ToHashSet()))` and `b.HasIndex(x => x.Capabilities).HasMethod("gin")`. Technician `employee_number` unique per dealership. ServiceType `code` unique. Dealership `OwnsMany(d => d.Hours.Days)` → table `dealership_operating_hours` keyed by `(dealership_id, day)` — if owning through `OperatingHours` proves awkward, map `OperatingHours` as an owned type with `OwnsMany(h => h.Days)`; both are fine as long as the table shape in spec §8.8 results.
+`ServiceBay`/`Technician`/`ServiceType` arrays: `b.Property(x => x.Capabilities).HasColumnName("capabilities").HasColumnType("text[]").HasConversion(v => v.Select(c => c.ToString()).OrderBy(s => s).ToArray(), v => v.Select(Enum.Parse<BayCapability>).ToHashSet(), new ValueComparer<IReadOnlySet<BayCapability>>((a, b) => a!.SetEquals(b!), v => v.Aggregate(0, (h, c) => HashCode.Combine(h, c)), v => v.ToHashSet()))` and `b.HasIndex(x => x.Capabilities).HasMethod("gin")`. Technician `employee_number` unique per dealership. ServiceType `code` unique. Dealership `OwnsMany(d => d.Hours.Days)` → table `dealership_operating_hours` keyed by `(dealership_id, day)` - if owning through `OperatingHours` proves awkward, map `OperatingHours` as an owned type with `OwnsMany(h => h.Days)`; both are fine as long as the table shape in spec §8.8 results.
 
 Migration: run `dotnet ef migrations add InitialCreate -o Infrastructure/Persistence/Migrations` (needs `SchedulerDbContextDesignTimeFactory` returning `UseNpgsql("Host=localhost;Database=design").UseSnakeCaseNamingConvention()`), then **edit** the generated `Up()` to append after the table creation:
 ```csharp
@@ -651,15 +651,15 @@ migrationBuilder.Sql("""
         WHERE (status IN ('Confirmed', 'CheckedIn', 'InProgress'));
     """);
 ```
-and the matching `DROP CONSTRAINT` statements in `Down()`. Confirm the migration also contains the `btree_gist` extension annotation and the stored generated column. The `idempotency_keys` primary key constraint must be named `pk_idempotency_keys` (snake-case convention default) — assert in `MigrationTests`.
+and the matching `DROP CONSTRAINT` statements in `Down()`. Confirm the migration also contains the `btree_gist` extension annotation and the stored generated column. The `idempotency_keys` primary key constraint must be named `pk_idempotency_keys` (snake-case convention default) - assert in `MigrationTests`.
 
 Seed data (`ReferenceDataSeed`), deterministic ids via `DeterministicGuid.Create("<kind>:<slug>")`:
 - Dealerships: **Keyloop Motors Reading** (`Europe/London`, Mon–Fri 08:00–18:00, Sat 08:00–13:00, Sun closed); **Keyloop Autohaus München** (`Europe/Berlin`, Mon–Fri 07:30–18:30, Sat closed, Sun closed).
-- Reading bays: `Bay 1 — Standard` {StandardLift}; `Bay 2 — Alignment` {StandardLift, WheelAlignment}; `Bay 3 — Heavy duty` {HeavyDutyLift, StandardLift}; `Bay 4 — EV` {EvHighVoltage, StandardLift}; `Bay 5 — Diagnostics` {StandardLift, Diagnostics, AirConditioning}; `Bay 6 — MOT` {StandardLift, MotTesting}.
+- Reading bays: `Bay 1 - Standard` {StandardLift}; `Bay 2 - Alignment` {StandardLift, WheelAlignment}; `Bay 3 - Heavy duty` {HeavyDutyLift, StandardLift}; `Bay 4 - EV` {EvHighVoltage, StandardLift}; `Bay 5 - Diagnostics` {StandardLift, Diagnostics, AirConditioning}; `Bay 6 - MOT` {StandardLift, MotTesting}.
 - Reading technicians: Amelia Clarke `T-1001` {GeneralService, Brakes, MotTester}; Ben Okafor `T-1002` {GeneralService, HighVoltageElectrical, Diagnostics}; Chloe Nguyen `T-1003` {GeneralService, WheelAlignment, Brakes}; Daniel Moss `T-1004` {GeneralService, HeavyVehicle, Brakes}; Eva Lindqvist `T-1005` {GeneralService, AirConditioning, Diagnostics}; Farid Haddad `T-1006` {GeneralService, MotTester, Diagnostics}.
 - Munich: 3 bays (`Halle 1` {StandardLift}, `Halle 2` {StandardLift, EvHighVoltage}, `Halle 3` {HeavyDutyLift, StandardLift}) and 3 technicians (Greta Vogel `M-2001` {GeneralService, Brakes}; Hans Richter `M-2002` {GeneralService, HighVoltageElectrical}; Ingrid Bauer `M-2003` {GeneralService, HeavyVehicle, Diagnostics}).
-- Service types (code, name, minutes, bay caps, certs): `INTERIM-SERVICE` Interim Service 60 {StandardLift} {GeneralService}; `FULL-SERVICE` Full Service 120 {StandardLift} {GeneralService}; `MOT-TEST` MOT Test 45 {MotTesting} {MotTester}; `BRAKES-PADS-DISCS` Brake Pads & Discs 90 {StandardLift} {Brakes}; `EV-BATTERY-CHECK` EV Battery Health Check 60 {EvHighVoltage} {HighVoltageElectrical}; `EV-CHARGING-FAULT` EV Charging Fault Diagnosis 90 {EvHighVoltage, Diagnostics}? — Reading has no bay with both; use {EvHighVoltage} {HighVoltageElectrical, Diagnostics}; `WHEEL-ALIGNMENT` Four-Wheel Alignment 45 {WheelAlignment} {WheelAlignment}; `HEAVY-VAN-SERVICE` Heavy Van Service 180 {HeavyDutyLift} {HeavyVehicle}; `AIRCON-REGAS` Air-Con Regas 60 {AirConditioning} {AirConditioning}; `DIAG-FAULT-FINDING` Diagnostic Fault Finding 60 {Diagnostics} {Diagnostics}.
-`DemoAppointmentSeeder.EnsureUpcomingWeekAsync`: for each of the next 7 local dates at Reading on which the dealership is open, if no non-cancelled appointment exists on that date, create 4–6 appointments by walking a fixed pattern of (service code, local start) pairs — `INTERIM-SERVICE 08:00`, `EV-BATTERY-CHECK 09:00`, `BRAKES-PADS-DISCS 10:30`, `MOT-TEST 11:00`, `FULL-SERVICE 13:00`, `WHEEL-ALIGNMENT 15:00` — allocating through `AvailabilityCalculator.FreeResourcesAt` + `AllocationPolicy` and skipping any that are infeasible; ids `DeterministicGuid.Create($"appointment:{date:yyyy-MM-dd}:{code}")`; customers/vehicles from a fixed table of 8 realistic entries with valid VINs (e.g. `WVWZZZ1KZAW123456`, `SB1KZ3JE60E123457`, `WBA3A5C58DF123458`, `VF1RFB00X59123459`, `JTDKN3DU0A0123460`, `WF0XXXGCDXDA12346`, `TMBJF9NE9N0123462`, `KMHD35LE2EU123463`).
+- Service types (code, name, minutes, bay caps, certs): `INTERIM-SERVICE` Interim Service 60 {StandardLift} {GeneralService}; `FULL-SERVICE` Full Service 120 {StandardLift} {GeneralService}; `MOT-TEST` MOT Test 45 {MotTesting} {MotTester}; `BRAKES-PADS-DISCS` Brake Pads & Discs 90 {StandardLift} {Brakes}; `EV-BATTERY-CHECK` EV Battery Health Check 60 {EvHighVoltage} {HighVoltageElectrical}; `EV-CHARGING-FAULT` EV Charging Fault Diagnosis 90 {EvHighVoltage, Diagnostics}? - Reading has no bay with both; use {EvHighVoltage} {HighVoltageElectrical, Diagnostics}; `WHEEL-ALIGNMENT` Four-Wheel Alignment 45 {WheelAlignment} {WheelAlignment}; `HEAVY-VAN-SERVICE` Heavy Van Service 180 {HeavyDutyLift} {HeavyVehicle}; `AIRCON-REGAS` Air-Con Regas 60 {AirConditioning} {AirConditioning}; `DIAG-FAULT-FINDING` Diagnostic Fault Finding 60 {Diagnostics} {Diagnostics}.
+`DemoAppointmentSeeder.EnsureUpcomingWeekAsync`: for each of the next 7 local dates at Reading on which the dealership is open, if no non-cancelled appointment exists on that date, create 4–6 appointments by walking a fixed pattern of (service code, local start) pairs - `INTERIM-SERVICE 08:00`, `EV-BATTERY-CHECK 09:00`, `BRAKES-PADS-DISCS 10:30`, `MOT-TEST 11:00`, `FULL-SERVICE 13:00`, `WHEEL-ALIGNMENT 15:00` - allocating through `AvailabilityCalculator.FreeResourcesAt` + `AllocationPolicy` and skipping any that are infeasible; ids `DeterministicGuid.Create($"appointment:{date:yyyy-MM-dd}:{code}")`; customers/vehicles from a fixed table of 8 realistic entries with valid VINs (e.g. `WVWZZZ1KZAW123456`, `SB1KZ3JE60E123457`, `WBA3A5C58DF123458`, `VF1RFB00X59123459`, `JTDKN3DU0A0123460`, `WF0XXXGCDXDA12346`, `TMBJF9NE9N0123462`, `KMHD35LE2EU123463`).
 
 - [ ] **Step 1: Write the integration fixture**
 ```csharp
@@ -688,7 +688,7 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
 }
 ```
 The default `FakeTimeProvider` instant for tests is **2026-10-12T08:00:00Z (Monday)**; the standard booking day is **2026-10-13 (Tuesday)**. `TestData` exposes builders: `NewDealership(name, tz, hours)`, `NewBay(dealershipId, name, caps)`, `NewTechnician(...)`, `NewServiceType(code, minutes, caps, certs)`, `Vehicle(vin)`, `Customer(n)`, and `ContentionDealershipAsync(db)` = one bay {EvHighVoltage} + one technician {HighVoltageElectrical} + `EV-BATTERY-CHECK` 60 min, Mon–Sat 08:00–18:00 Europe/London.
-- [ ] **Step 2: Write failing tests** — `MigrationTests`: `Migrations_apply_from_empty_database` (no pending migrations after `MigrateAsync`), `Exclusion_constraints_and_extension_exist` (query `pg_constraint` for both names with `contype = 'x'`; `pg_extension` has `btree_gist`), `Generated_time_range_matches_start_end` (insert via EF, read `time_range::text`). `ExclusionConstraintTests`: `Direct_sql_overlapping_bay_insert_is_rejected_with_23P01` (insert appointment via EF, then `ExecuteSqlRawAsync` a second row same bay overlapping → `PostgresException.SqlState == "23P01"` and `PostgresErrorClassifier.Classify(ex) == BayOverlap`), `Technician_overlap_rejected`, `Cancelled_row_does_not_block` (status Cancelled → second insert succeeds), `Adjacent_rows_do_not_conflict`. `SeedingTests`: `Reference_seed_is_idempotent` (run twice → counts unchanged; 2 dealerships, 9 bays, 9 technicians, 10 service types), `Demo_seeder_populates_upcoming_week_without_overlaps` (no two active rows overlap per bay/technician — assert by LINQ), `Demo_seeder_is_idempotent`. `DomainEventInterceptorTests`: `Booking_writes_history_row_in_same_transaction` (one `Booked` row, actor = "system" when no HTTP context), `Failed_save_writes_no_history` (force 23P01 → zero history rows for that id).
+- [ ] **Step 2: Write failing tests** - `MigrationTests`: `Migrations_apply_from_empty_database` (no pending migrations after `MigrateAsync`), `Exclusion_constraints_and_extension_exist` (query `pg_constraint` for both names with `contype = 'x'`; `pg_extension` has `btree_gist`), `Generated_time_range_matches_start_end` (insert via EF, read `time_range::text`). `ExclusionConstraintTests`: `Direct_sql_overlapping_bay_insert_is_rejected_with_23P01` (insert appointment via EF, then `ExecuteSqlRawAsync` a second row same bay overlapping → `PostgresException.SqlState == "23P01"` and `PostgresErrorClassifier.Classify(ex) == BayOverlap`), `Technician_overlap_rejected`, `Cancelled_row_does_not_block` (status Cancelled → second insert succeeds), `Adjacent_rows_do_not_conflict`. `SeedingTests`: `Reference_seed_is_idempotent` (run twice → counts unchanged; 2 dealerships, 9 bays, 9 technicians, 10 service types), `Demo_seeder_populates_upcoming_week_without_overlaps` (no two active rows overlap per bay/technician - assert by LINQ), `Demo_seeder_is_idempotent`. `DomainEventInterceptorTests`: `Booking_writes_history_row_in_same_transaction` (one `Booked` row, actor = "system" when no HTTP context), `Failed_save_writes_no_history` (force 23P01 → zero history rows for that id).
 - [ ] **Step 3: Run** → FAIL. **Step 4: Implement** everything in Files. Register in `Program.cs`:
 ```csharp
 builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName);
@@ -708,7 +708,7 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 
 ---
 
-## Phase 3 — API cross-cutting and slices
+## Phase 3 - API cross-cutting and slices
 
 ### Task 7: Cross-cutting API infrastructure (endpoints, validation, problems, telemetry, options, security)
 
@@ -716,7 +716,7 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 
 **Addendum B (OpenAPI/UI):** apply §B1 guard (`BuildTimeOpenApi.IsActive`, placeholder connection string, skip `DatabaseInitializer`; `__throw` endpoint `.ExcludeFromDescription()`), §B2 conventions (static handler methods, XML comments, fixed tags, document transformer for info/tags, clear `servers`), §B3 Scalar configuration. Register the domain `OperatingWindow`, `BayCapability[]` and `Certification[]` in `SchedulerJsonContext` (Task 4 uses `OperatingWindow` as the `operatingWindow` problem extension, so the planned `OperatingWindowExtension` record is not needed).
 
-**Addendum A (reflection/AOT):** apply §A1 (csproj switches, Mapperly package), §A2 (register `SchedulerJsonContext` first in the resolver chain, register ProblemDetails extension records, no `JsonStringEnumConverter`), §A3 (`EndpointRegistry`, explicit validator/handler registration — `AddValidatorsFromAssemblyContaining` is forbidden), §A4 (`[OptionsValidator]` validators replacing `ValidateDataAnnotations()`), §A5 (all log calls through `SchedulerLog`). Replace the anonymous `operatingWindow` extension object with a named record `OperatingWindowExtension(DateTime StartUtc, DateTime EndUtc)` registered in the context. Read the addendum first.
+**Addendum A (reflection/AOT):** apply §A1 (csproj switches, Mapperly package), §A2 (register `SchedulerJsonContext` first in the resolver chain, register ProblemDetails extension records, no `JsonStringEnumConverter`), §A3 (`EndpointRegistry`, explicit validator/handler registration - `AddValidatorsFromAssemblyContaining` is forbidden), §A4 (`[OptionsValidator]` validators replacing `ValidateDataAnnotations()`), §A5 (all log calls through `SchedulerLog`). Replace the anonymous `operatingWindow` extension object with a named record `OperatingWindowExtension(DateTime StartUtc, DateTime EndUtc)` registered in the context. Read the addendum first.
 
 **Files:**
 - Create: `Common/Endpoints/IEndpoint.cs`, `EndpointExtensions.cs`; `Common/Validation/ValidationFilter.cs`; `Common/Problems/ProblemTypes.cs`, `ApiExceptions.cs`, `GlobalExceptionHandler.cs`, `SuggestedSlot.cs`; `Common/Telemetry/SchedulerTelemetry.cs`, `TelemetryDomainEventObserver.cs`; `Common/Options/SchedulingOptions.cs`, `SecurityOptions.cs`; `Common/Http/SecurityHeadersMiddleware.cs`, `CurrentActorMiddleware.cs`
@@ -726,7 +726,7 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 **Interfaces (produced):**
 ```csharp
 public interface IEndpoint { static abstract void Map(IEndpointRouteBuilder app); }
-public static class EndpointExtensions { public static IEndpointRouteBuilder MapSchedulerEndpoints(this WebApplication app); } // RouteGroup "/api/v1" .WithOpenApi? no — .WithGroupName("v1"); reflects over assembly for IEndpoint implementers and calls Map(group)
+public static class EndpointExtensions { public static IEndpointRouteBuilder MapSchedulerEndpoints(this WebApplication app); } // RouteGroup "/api/v1" .WithOpenApi? no - .WithGroupName("v1"); reflects over assembly for IEndpoint implementers and calls Map(group)
 public sealed class ValidationFilter<T> : IEndpointFilter where T : class { /* resolves IValidator<T>; on failure returns Problems.Validation(errors) */ }
 public static class ProblemTypes
 {
@@ -802,7 +802,7 @@ public partial class Program;
 `SecurityHeadersMiddleware`: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Cache-Control: no-store` for `/api/*`, `X-Frame-Options: DENY`.
 `CurrentActorMiddleware`: `actor.Name = $"anonymous:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}"`.
 
-- [ ] **Step 1: Write failing tests** — `PostgresErrorClassifierTests` (construct `PostgresException` instances with `SqlState`/`ConstraintName` via the public ctor: `23P01` + bay constraint → `BayOverlap`; technician → `TechnicianOverlap`; `23505` + `pk_idempotency_keys` → `IdempotencyKeyDuplicate`; `40P01` → `Deadlock`; wrapped in `DbUpdateException` → same; unrelated → `Other`). `ProblemDetailsTests` (WAF): `Unknown_route_returns_404_problem_with_traceId`, `Unhandled_exception_returns_500_problem_without_details` (add a `SystemTest`-only endpoint `/api/v1/__throw` mapped when `app.Environment.IsEnvironment("SystemTest")`), `Security_headers_present_on_api_responses`, `Enums_serialise_as_strings` (via `/openapi/v1.json` schema for `AppointmentStatus` shows `enum: [...]` strings).
+- [ ] **Step 1: Write failing tests** - `PostgresErrorClassifierTests` (construct `PostgresException` instances with `SqlState`/`ConstraintName` via the public ctor: `23P01` + bay constraint → `BayOverlap`; technician → `TechnicianOverlap`; `23505` + `pk_idempotency_keys` → `IdempotencyKeyDuplicate`; `40P01` → `Deadlock`; wrapped in `DbUpdateException` → same; unrelated → `Other`). `ProblemDetailsTests` (WAF): `Unknown_route_returns_404_problem_with_traceId`, `Unhandled_exception_returns_500_problem_without_details` (add a `SystemTest`-only endpoint `/api/v1/__throw` mapped when `app.Environment.IsEnvironment("SystemTest")`), `Security_headers_present_on_api_responses`, `Enums_serialise_as_strings` (via `/openapi/v1.json` schema for `AppointmentStatus` shows `enum: [...]` strings).
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** → PASS; build 0 warnings.
 - [ ] **Step 5: Commit** `feat(api): add endpoint discovery, validation filter, problem catalogue, telemetry, options and security middleware`
 
@@ -978,7 +978,7 @@ finally
   - `Returns_409_slot_unavailable_with_suggestions_when_all_busy` (book both bays at 10:00, third request → 409, `suggestedSlots` non-empty and none overlapping 10:00–11:00).
   - `Returns_400_validation_for_bad_vin_and_email` (errors dictionary has `Vehicle.Vin` and `Customer.Email`).
   - `Returns_404_for_unknown_dealership_and_service_type`.
-  - `Constraint_backstop_maps_to_409_slot_conflict_for_out_of_band_row` **[Review Focus 4]**: the handler's pre-check only inspects rows whose `dealership_id` equals the route dealership, so an out-of-band writer that references the same bay and technician under a *different* dealership id is invisible to the pre-check but still covered by the exclusion constraints. Create dealership B (any hours), then insert by raw SQL an active row with `dealership_id = B`, `bay_id = X`, `technician_id = Y` (X and Y belong to dealership A), `start_utc/end_utc` = 10:00Z–11:00Z, status `Confirmed`, plus required columns. Call the API for dealership A at 10:00Z with `PreferredBayId = X`. Expect `409` with `type == slot-conflict`, `conflictingResource` present, `suggestedSlots` present, `scheduler.booking.constraint_backstop` metric incremented by 1 (use `MetricsCollector` from Task 13 — move it into `Fixtures/` in this task), exactly zero new rows in `appointments` for dealership A, and zero orphaned history rows.
+  - `Constraint_backstop_maps_to_409_slot_conflict_for_out_of_band_row` **[Review Focus 4]**: the handler's pre-check only inspects rows whose `dealership_id` equals the route dealership, so an out-of-band writer that references the same bay and technician under a *different* dealership id is invisible to the pre-check but still covered by the exclusion constraints. Create dealership B (any hours), then insert by raw SQL an active row with `dealership_id = B`, `bay_id = X`, `technician_id = Y` (X and Y belong to dealership A), `start_utc/end_utc` = 10:00Z–11:00Z, status `Confirmed`, plus required columns. Call the API for dealership A at 10:00Z with `PreferredBayId = X`. Expect `409` with `type == slot-conflict`, `conflictingResource` present, `suggestedSlots` present, `scheduler.booking.constraint_backstop` metric incremented by 1 (use `MetricsCollector` from Task 13 - move it into `Fixtures/` in this task), exactly zero new rows in `appointments` for dealership A, and zero orphaned history rows.
   - `Slot_conflict_exception_maps_to_409_problem`: the `SystemTest`-only endpoint `/api/v1/__throw?kind=conflict` throws `SlotConflictException("bay", [])` → `409` with the catalogue title and `traceId`.
   - `IdempotencyTests` **[Review Focus 5]**: `Same_key_same_body_replays_201_without_second_row` (two sequential POSTs; second has header `Idempotent-Replayed: true`, bodies equal, `Appointments.Count == 1`), `Same_key_different_body_422_idempotency_key_reuse`, `Invalid_key_format_400`, `Failed_booking_does_not_store_key` (409 then a different valid request with the same key succeeds).
   - `BookAppointmentValidatorTests` (unit): one `Theory` per rule.
@@ -1081,15 +1081,15 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
     }
 }
 ```
-Plus `Thirty_bookings_for_different_slots_all_succeed` (30 requests, each at a distinct start on a dealership with one bay/technician and a 15-minute service → 30 × 201, proving the lock serialises without rejecting legitimate work) and `Two_dealerships_do_not_contend` (lock wait histogram for dealership B stays below 50 ms while A is hammered — assert via `MetricsCollector` max with tag filter).
-- [ ] **Step 2: Run** `dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~Concurrency"` → PASS (5 rounds). If any round fails, this is a real design defect: do not loosen the assertion — investigate with the `scheduler.booking.lock_wait` histogram and PostgreSQL logs.
+Plus `Thirty_bookings_for_different_slots_all_succeed` (30 requests, each at a distinct start on a dealership with one bay/technician and a 15-minute service → 30 × 201, proving the lock serialises without rejecting legitimate work) and `Two_dealerships_do_not_contend` (lock wait histogram for dealership B stays below 50 ms while A is hammered - assert via `MetricsCollector` max with tag filter).
+- [ ] **Step 2: Run** `dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~Concurrency"` → PASS (5 rounds). If any round fails, this is a real design defect: do not loosen the assertion - investigate with the `scheduler.booking.lock_wait` histogram and PostgreSQL logs.
 - [ ] **Step 3: Commit** `test: add adversarial 30-way concurrent booking proof with orphan and deadlock assertions`
 
 ### Task 14: OpenAPI contract export, AppHost orchestration, Dockerfile
 
 **Scope note:** with Addendum C, this task delivers the build-time OpenAPI wiring and parity test (Addendum B §B1), the API Dockerfile, and a minimal AppHost (PostgreSQL + API) sufficient for Step 4's manual run; the full Aspire platform work moves to **Task 14b**.
 
-**Addendum B (OpenAPI/UI):** apply §B1 wiring — build-time generation replaces the `UPDATE_CONTRACT` export described below; `scripts/export-openapi.sh` runs `dotnet build`; the contract test becomes the parity test described in §B1; the AppHost link opens `/scalar/v1`.
+**Addendum B (OpenAPI/UI):** apply §B1 wiring - build-time generation replaces the `UPDATE_CONTRACT` export described below; `scripts/export-openapi.sh` runs `dotnet build`; the contract test becomes the parity test described in §B1; the AppHost link opens `/scalar/v1`.
 
 **Addendum A (reflection/AOT):** the contract test also asserts that `/openapi/v1.json` renders every enum as string values and every response schema is present (a type missing from `SchedulerJsonContext` surfaces here as a failing request). No other change.
 
@@ -1150,28 +1150,28 @@ builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
 
 builder.Build().Run();
 ```
-If `WithUrlForEndpoint` has a different shape in 13.6.1, use `WithUrls(ctx => ctx.Urls.Add(new() { Url = ..., DisplayText = "Scalar" }))` — check `aspire` docs; the goal is a dashboard link to Scalar. Until Task 15 creates the Web project, guard the `AddViteApp` block with `if (Directory.Exists(Path.Combine(builder.AppHostDirectory, "../Keyloop.ServiceScheduler.Web")))` and remove the guard in Task 15.
+If `WithUrlForEndpoint` has a different shape in 13.6.1, use `WithUrls(ctx => ctx.Urls.Add(new() { Url = ..., DisplayText = "Scalar" }))` - check `aspire` docs; the goal is a dashboard link to Scalar. Until Task 15 creates the Web project, guard the `AddViteApp` block with `if (Directory.Exists(Path.Combine(builder.AppHostDirectory, "../Keyloop.ServiceScheduler.Web")))` and remove the guard in Task 15.
 - [ ] **Step 3: Dockerfile** (API): multi-stage `mcr.microsoft.com/dotnet/sdk:10.0` build with `dotnet publish -c Release -o /app`, runtime `mcr.microsoft.com/dotnet/aspnet:10.0`, `USER app`, `ENV ASPNETCORE_HTTP_PORTS=8080`, `EXPOSE 8080`, `HEALTHCHECK CMD curl -f http://localhost:8080/alive || exit 1` (install curl or use `dotnet` based check), `ENTRYPOINT ["dotnet", "Keyloop.ServiceScheduler.Api.dll"]`. Verify `docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile .` succeeds.
 - [ ] **Step 4: Run the stack** `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (Colima running) in the background; wait until the dashboard reports `postgres` and `api` healthy; `curl -k https://localhost:<api-port>/api/v1/dealerships` returns two dealerships; `curl .../schedule?date=<tomorrow>` shows seeded appointments. Stop the AppHost.
 - [ ] **Step 5: Commit** `feat(aspire): add AppHost orchestration, API Dockerfile and exported OpenAPI contract`
 
 ---
 
-### Task 14b: Aspire platform — secrets, resources, dashboard command, whole-stack smoke test
+### Task 14b: Aspire platform - secrets, resources, dashboard command, whole-stack smoke test
 
 Apply Addendum C §C1 (secret parameters, generated and persisted), §C2 (full AppHost: persistent PostgreSQL + pgweb, health-gated API with Scalar link, `compose` environment, guarded `AddViteApp` block with `WithPnpm`, `WithReference(api)`, `WithOtlpExporter(OtlpProtocol.HttpProtobuf)`, health check, `PublishAsDockerFile`; launch settings with `ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL`), §C3 (reseed endpoint + `WithHttpCommand`, integration tests for wrong/right key), §C7 (create `Aspire/AppHostSmokeTests.cs` for postgres + api). Add `Aspire.Hosting.Docker` and `Aspire.Hosting.Testing` (13.6.1) to `Directory.Packages.props`; reference `Aspire.Hosting.Testing` and the AppHost project from the integration tests. Verify every Aspire API against the 13.6.1 docs before use and record deviations. Manual check: on a fresh `docker volume rm keyloop-scheduler-pgdata` + cleared AppHost user secrets, one `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` reaches all-healthy, and the dashboard shows the Scalar link and the *Reseed demo data* command (run it once and confirm the board data is recreated via `GET /api/v1/dealerships/{id}/schedule`). Commit: `feat(aspire): add secret parameters, persistent resources, reseed command and whole-stack smoke test`.
 
-## Phase 4 — Dispatch board (UI harness)
+## Phase 4 - Dispatch board (UI harness)
 
 ### Task 15: Web project scaffold from the template, HeyAPI contract sync, app shell
 
 **Addendum C (Aspire):** apply §C5 (proxy target from `API_HTTP`, Aspire-owned `PORT`, `predev: openapi-ts`, browser OpenTelemetry with dev-only OTLP exposure and `ui.*` spans, web Dockerfile with nginx `/api` proxy) and extend §C7's smoke test to the `web` resource; remove the AppHost directory guard. The inline `vite.config.ts` in Step 2 below is superseded where it differs.
 
-**Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (status tokens in `src/index.css` for both themes, typography, shell with sidebar footer "API reference" link to `/scalar/v1`, Keyloop wordmark as text only — no third-party logos).
+**Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (status tokens in `src/index.css` for both themes, typography, shell with sidebar footer "API reference" link to `/scalar/v1`, Keyloop wordmark as text only - no third-party logos).
 
 **Files:** `src/Keyloop.ServiceScheduler.Web/{package.json,pnpm-lock.yaml,vite.config.ts,tsconfig*.json,components.json,eslint.config.js,index.html,openapi-ts.config.ts,vitest.config.ts,.gitignore}`; `src/{main.tsx,App.tsx,index.css,vite-env.d.ts}`; `src/api/{client.gen.ts,sdk.gen.ts,types.gen.ts,@tanstack/react-query.gen.ts}` (generated), `src/api/runtime.ts`; `src/lib/{utils.ts,query-client.ts}`; vendored `src/components/ui/*` (only those used: button, badge, card, dialog, sheet, select, input, label, field, textarea, tooltip, skeleton, toast, separator, scroll-area, sidebar, avatar, alert, tabs, kbd, dropdown-menu, loading-spinner, popover, calendar), `src/components/{app-sidebar,site-header,logo,mode-toggle,theme-provider,nav-main,nav-user}.tsx`, `src/components/layouts/base-layout.tsx`, `src/components/router/root-layout.tsx`, `src/hooks/use-mobile.ts`, `src/config/routes.tsx`, `src/app/dispatch/page.tsx` (placeholder page reading `GET /dealerships`); modify AppHost (remove the directory guard).
 
-- [ ] **Step 1: Scaffold** — copy from `../references/shadcn-dashboard-landing-template/vite-version`: `package.json` (rename to `keyloop-service-scheduler-web`, keep dependency versions, **remove** `@dnd-kit/*`, `@tanstack/react-table`, `recharts`, `react-day-picker` if unused, `cmdk`, `react-resizable-panels`; **add** `@tanstack/react-query@^5.104.1`; devDependencies add `@hey-api/openapi-ts@^0.99.0`, `vitest@^5.0.3`, `jsdom@^26`, `@testing-library/react@^16.3.3`, `@testing-library/jest-dom@^6`), `vite.config.ts`, `tsconfig*.json`, `components.json`, `eslint.config.js`, `.prettierrc`, `index.html`, `src/index.css` (keep the theme tokens), `src/lib/utils.ts`, `src/hooks/use-mobile.ts`, the ui components listed above, the shell components, `router/root-layout.tsx`. Remove theme-customizer, landing, auth, mail, chat, tasks, users, pricing, faqs, dashboard pages and the `upgrade-to-pro-button`, GTM analytics and `sidebar-notification`. `app-sidebar.tsx` nav: group "Workshop" → `Dispatch Board` (`/dispatch`, icon `CalendarRange`), `Appointments` (`/appointments`, icon `ClipboardList`, placeholder page). Brand block: "Keyloop" / "Service Scheduler".
+- [ ] **Step 1: Scaffold** - copy from `../references/shadcn-dashboard-landing-template/vite-version`: `package.json` (rename to `keyloop-service-scheduler-web`, keep dependency versions, **remove** `@dnd-kit/*`, `@tanstack/react-table`, `recharts`, `react-day-picker` if unused, `cmdk`, `react-resizable-panels`; **add** `@tanstack/react-query@^5.104.1`; devDependencies add `@hey-api/openapi-ts@^0.99.0`, `vitest@^5.0.3`, `jsdom@^26`, `@testing-library/react@^16.3.3`, `@testing-library/jest-dom@^6`), `vite.config.ts`, `tsconfig*.json`, `components.json`, `eslint.config.js`, `.prettierrc`, `index.html`, `src/index.css` (keep the theme tokens), `src/lib/utils.ts`, `src/hooks/use-mobile.ts`, the ui components listed above, the shell components, `router/root-layout.tsx`. Remove theme-customizer, landing, auth, mail, chat, tasks, users, pricing, faqs, dashboard pages and the `upgrade-to-pro-button`, GTM analytics and `sidebar-notification`. `app-sidebar.tsx` nav: group "Workshop" → `Dispatch Board` (`/dispatch`, icon `CalendarRange`), `Appointments` (`/appointments`, icon `ClipboardList`, placeholder page). Brand block: "Keyloop" / "Service Scheduler".
 - [ ] **Step 2: Vite config**
 ```ts
 import path from "path"
@@ -1196,7 +1196,7 @@ export default defineConfig({
   test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"] },
 })
 ```
-- [ ] **Step 3: HeyAPI** — `openapi-ts.config.ts`:
+- [ ] **Step 3: HeyAPI** - `openapi-ts.config.ts`:
 ```ts
 import { defineConfig } from "@hey-api/openapi-ts"
 export default defineConfig({
@@ -1220,7 +1220,7 @@ export const createClientConfig: CreateClientConfig = (config) => ({
 })
 ```
 `package.json` scripts: `"generate:api": "openapi-ts"`, `"dev": "vite"`, `"build": "pnpm generate:api && tsc -b && vite build"`, `"lint": "eslint ."`, `"typecheck": "tsc -b --noEmit"`, `"test": "vitest run"`, `"preview": "vite preview"`. Run `pnpm install && pnpm generate:api` and confirm `src/api/@tanstack/react-query.gen.ts` exports `getDealershipsOptions`, `getWorkshopScheduleOptions`, `getAvailabilityOptions`, `bookAppointmentMutation`, `cancelAppointmentMutation` (names derive from the operationIds; record the real names in the task notes for Tasks 16–17).
-- [ ] **Step 4: App shell** — `App.tsx` wraps `QueryClientProvider` (from `lib/query-client.ts`: `defaultOptions.queries.staleTime = 2000, retry = 1; mutations.retry = 0`) + `ThemeProvider` + `Toaster` + router; routes `/` → `/dispatch`, `/dispatch`, `/appointments`. `app/dispatch/page.tsx` renders `BaseLayout` title "Dispatch Board" and a dealership `Select` fed by `useQuery(getDealershipsOptions())`.
+- [ ] **Step 4: App shell** - `App.tsx` wraps `QueryClientProvider` (from `lib/query-client.ts`: `defaultOptions.queries.staleTime = 2000, retry = 1; mutations.retry = 0`) + `ThemeProvider` + `Toaster` + router; routes `/` → `/dispatch`, `/dispatch`, `/appointments`. `app/dispatch/page.tsx` renders `BaseLayout` title "Dispatch Board" and a dealership `Select` fed by `useQuery(getDealershipsOptions())`.
 - [ ] **Step 5: Verify** `pnpm lint && pnpm typecheck && pnpm build` pass; `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` shows `web` healthy and the page lists both dealerships through the proxy. Remove the directory guard in `AppHost.cs`.
 - [ ] **Step 6: Commit** `feat(web): scaffold dispatch board shell from template with HeyAPI contract sync`
 
@@ -1244,7 +1244,7 @@ export function parseProblem(error: unknown): ProblemDetails | null             
 export function problemSlug(p: ProblemDetails): string                            // last path segment of type
 export function fieldErrors(p: ProblemDetails): Record<string, string>            // "Vehicle.Vin" -> "vehicle.vin"
 ```
-- [ ] **Step 1: Failing vitest tests** — `time-grid.test.ts`: `buildGrid_for_10h_window_at_15m_has_40_columns`, `columnFor_start_is_1`, `spanFor_09_00_10_00_in_08_00_window_is_5_to_9`, `clamps_instants_outside_window`, `formatLocalTime_uses_zone` (`2026-10-13T09:00:00Z` in `Europe/London` → `10:00`), `fall_back_day_window_has_44_columns` (2026-10-25 07:00Z–17:00Z is 10h... use a real 11-hour UTC window). `problem-details.test.ts`: `parses_hey_api_error_shape`, `slug_from_type`, `fieldErrors_lowercases_paths`.
+- [ ] **Step 1: Failing vitest tests** - `time-grid.test.ts`: `buildGrid_for_10h_window_at_15m_has_40_columns`, `columnFor_start_is_1`, `spanFor_09_00_10_00_in_08_00_window_is_5_to_9`, `clamps_instants_outside_window`, `formatLocalTime_uses_zone` (`2026-10-13T09:00:00Z` in `Europe/London` → `10:00`), `fall_back_day_window_has_44_columns` (2026-10-25 07:00Z–17:00Z is 10h... use a real 11-hour UTC window). `problem-details.test.ts`: `parses_hey_api_error_shape`, `slug_from_type`, `fieldErrors_lowercases_paths`.
 - [ ] **Step 2: Run** `pnpm test` → FAIL. **Step 3: Implement** the libs, then the components:
   - `DispatchToolbar`: dealership `Select`, date `Popover`+`Calendar` (default today in dealership zone), `Book appointment` button (opens dialog, Task 17), auto-refresh `Switch` (5 s `refetchInterval` when on), lane toggle (`Bays` / `Technicians`) using `Tabs`.
   - `TimelineGrid`: CSS grid `grid-template-columns: 220px repeat(${columns}, minmax(28px, 1fr))`; header row of local times (every 4th column labelled); one row per bay (sticky first cell with name + `CapabilityBadges`, inactive bays muted); appointment blocks positioned with `gridColumn: start / end`, `gridRow` = row index; a "now" vertical marker when the date is today; closed day → empty state card.
@@ -1274,7 +1274,7 @@ export type StressOutcome = { index: number; status: number; slug: string | null
 export function tally(outcomes: StressOutcome[]): Array<{ label: string; count: number }>   // e.g. "201 Created" 1, "409 slot-unavailable" 29, "5xx" 0 (always present)
 export async function fireParallelBookings(n: number, build: (i: number) => BookingForm, dealershipId: string): Promise<StressOutcome[]>  // uses the generated sdk `bookAppointment` directly, Promise.all, distinct VIN/customer per i
 ```
-- [ ] **Step 1: Failing tests** — `stress.test.ts`: `tally_counts_by_status_and_slug`, `tally_always_includes_5xx_row`. `booking-schema.test.ts`: `rejects_vin_with_I`, `uppercases_vin`, `requires_start`.
+- [ ] **Step 1: Failing tests** - `stress.test.ts`: `tally_counts_by_status_and_slug`, `tally_always_includes_5xx_row`. `booking-schema.test.ts`: `rejects_vin_with_I`, `uppercases_vin`, `requires_start`.
 - [ ] **Step 2: Run** → FAIL. **Step 3: Implement**:
   - `BookingDialog` (Dialog, `react-hook-form` + `zodResolver(bookingSchema)`): step 1 service `Select` (shows duration, required capabilities/certifications as badges, disabled when `bookable=false` with reason); date picker; `AvailabilityChips` = `useQuery(getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId, date } }))` rendering a chip per slot (`startLocal` + "N bays · M techs"), empty state uses `unavailableReason`; step 2 customer + vehicle fields using `Field`/`Input`; optional preferred bay/technician selects from the schedule's resources; submit → `useMutation(bookAppointmentMutation())`.
   - Success: close dialog, `toast.success("Booked Bay 4 · Ben Okafor at 10:00")`, invalidate schedule + availability, pass the new id to the board which pulses the block (`animate-pulse` for 3 s).
@@ -1289,7 +1289,7 @@ export async function fireParallelBookings(n: number, build: (i: number) => Book
 
 Apply Addendum B §B5 exactly: the controller drives the running app with the `claude-in-chrome` tools, captures the screenshots and GIFs into `docs/media/`, checks console and network logs, scores every screen against §B4, records findings in the ledger, dispatches ONE implementer (Opus, `frontend-design` skill) for Blocker/Major findings, and re-validates the changed screens. Commit `docs/media/*` with `docs: add dispatch board screenshots and demo recordings`.
 
-## Phase 5 — CI, documentation, final verification
+## Phase 5 - CI, documentation, final verification
 
 ### Task 18: CI workflow, README, video guide, CLAUDE.md, final gate
 
@@ -1301,11 +1301,11 @@ Apply Addendum B §B5 exactly: the controller drives the running app with the `c
 
 **Files:** `.github/workflows/ci.yml`; `README.md`; `docs/VIDEO_WALKTHROUGH.md`; `CLAUDE.md` (update); `.github/dependabot.yml`.
 
-- [ ] **Step 1: CI** — `ci.yml` with jobs `backend` (ubuntu-latest: `actions/setup-dotnet@v4` 10.0.x, `dotnet restore`, `dotnet build -c Release -warnaserror --no-restore`, `dotnet test -c Release --no-build --collect:"XPlat Code Coverage"` with Docker available for Testcontainers, `dotnet list package --vulnerable --include-transitive` failing on findings) and `frontend` (`pnpm/action-setup@v4` + `actions/setup-node@v4` 22, `pnpm install --frozen-lockfile`, `pnpm generate:api`, `git diff --exit-code src/Keyloop.ServiceScheduler.Web/src/api`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`). Upload `TestResults/**` as artefacts. `dependabot.yml` for nuget, npm and github-actions weekly.
-- [ ] **Step 2: README.md** sections, in this order: title + one-paragraph pitch; **Prerequisites** (.NET SDK 10.0.100, Docker runtime — note Colima on macOS: `colima start`, Node 22 + pnpm 12, Aspire workload none required / `aspire` CLI optional); **Run everything** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost` → dashboard URL, web URL, Scalar link; what the seed contains; environments table pointer); **Run the tests** (unit: `dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests`; integration: `dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests`; concurrency only: `--filter "FullyQualifiedName~Concurrency"`; contract export script; frontend `pnpm test`); **Try it with curl** (book, book again → 409 with suggestions, cancel, availability); **Project layout**; **Design** (link to `docs/SYSTEM_DESIGN.md`, 10-line summary of the concurrency model); **Environments & configuration** (table from spec §10); **Observability** (what to open in the dashboard); **AI Collaboration Narrative** — written by the author from the session record: strategy (design-first with Fable 5.1, implementation by Opus subagents from a written plan, review by Fable), prompts used (link to `docs/superpowers/plans/...`), verification (tests, mermaid validation, warnings-as-errors, manual AppHost run), defects caught during review (fill with the real list gathered during execution), what was rejected and why; **Video** (link to `docs/VIDEO_WALKTHROUGH.md`); **Licence/attribution** (template MIT).
-- [ ] **Step 3: `docs/VIDEO_WALKTHROUGH.md`** — 5–10 minute outline with timings: 0:00 intro + scenario (0:45); 0:45 architecture (C4 container, slices, DB invariant) (2:00); 2:45 implementation highlights (exclusion constraint migration, lock transaction, availability calculator, problem catalogue) (2:00); 4:45 live demo (board, book, 409 with suggestions, cancel + rebook, stress panel 30-way, dashboard trace + metrics) (2:30); 7:15 adversarial test run in terminal (0:45); 8:00 AI collaboration story (1:30); 9:30 lessons + challenges (0:30). Include the exact commands and clicks per segment and a pre-flight checklist (Colima up, AppHost warm, data seeded for today, dashboard open).
-- [ ] **Step 4: CLAUDE.md** — update the commands and architecture summary to match what shipped (keep it short; link to the design and plan).
-- [ ] **Step 5: Final gate** — from a clean clone (`git clone` into a temp dir): `dotnet build -warnaserror` (0 warnings), `dotnet test` (all green, concurrency 5/5), `pnpm install --frozen-lockfile && pnpm generate:api && git diff --exit-code && pnpm lint && pnpm typecheck && pnpm test && pnpm build`, `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` reaches healthy and the board renders. Record the real numbers (test counts, durations) in the README.
+- [ ] **Step 1: CI** - `ci.yml` with jobs `backend` (ubuntu-latest: `actions/setup-dotnet@v4` 10.0.x, `dotnet restore`, `dotnet build -c Release -warnaserror --no-restore`, `dotnet test -c Release --no-build --collect:"XPlat Code Coverage"` with Docker available for Testcontainers, `dotnet list package --vulnerable --include-transitive` failing on findings) and `frontend` (`pnpm/action-setup@v4` + `actions/setup-node@v4` 22, `pnpm install --frozen-lockfile`, `pnpm generate:api`, `git diff --exit-code src/Keyloop.ServiceScheduler.Web/src/api`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`). Upload `TestResults/**` as artefacts. `dependabot.yml` for nuget, npm and github-actions weekly.
+- [ ] **Step 2: README.md** sections, in this order: title + one-paragraph pitch; **Prerequisites** (.NET SDK 10.0.100, Docker runtime - note Colima on macOS: `colima start`, Node 22 + pnpm 12, Aspire workload none required / `aspire` CLI optional); **Run everything** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost` → dashboard URL, web URL, Scalar link; what the seed contains; environments table pointer); **Run the tests** (unit: `dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests`; integration: `dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests`; concurrency only: `--filter "FullyQualifiedName~Concurrency"`; contract export script; frontend `pnpm test`); **Try it with curl** (book, book again → 409 with suggestions, cancel, availability); **Project layout**; **Design** (link to `docs/SYSTEM_DESIGN.md`, 10-line summary of the concurrency model); **Environments & configuration** (table from spec §10); **Observability** (what to open in the dashboard); **AI Collaboration Narrative** - written by the author from the session record: strategy (design-first with Fable 5.1, implementation by Opus subagents from a written plan, review by Fable), prompts used (link to `docs/superpowers/plans/...`), verification (tests, mermaid validation, warnings-as-errors, manual AppHost run), defects caught during review (fill with the real list gathered during execution), what was rejected and why; **Video** (link to `docs/VIDEO_WALKTHROUGH.md`); **Licence/attribution** (template MIT).
+- [ ] **Step 3: `docs/VIDEO_WALKTHROUGH.md`** - 5–10 minute outline with timings: 0:00 intro + scenario (0:45); 0:45 architecture (C4 container, slices, DB invariant) (2:00); 2:45 implementation highlights (exclusion constraint migration, lock transaction, availability calculator, problem catalogue) (2:00); 4:45 live demo (board, book, 409 with suggestions, cancel + rebook, stress panel 30-way, dashboard trace + metrics) (2:30); 7:15 adversarial test run in terminal (0:45); 8:00 AI collaboration story (1:30); 9:30 lessons + challenges (0:30). Include the exact commands and clicks per segment and a pre-flight checklist (Colima up, AppHost warm, data seeded for today, dashboard open).
+- [ ] **Step 4: CLAUDE.md** - update the commands and architecture summary to match what shipped (keep it short; link to the design and plan).
+- [ ] **Step 5: Final gate** - from a clean clone (`git clone` into a temp dir): `dotnet build -warnaserror` (0 warnings), `dotnet test` (all green, concurrency 5/5), `pnpm install --frozen-lockfile && pnpm generate:api && git diff --exit-code && pnpm lint && pnpm typecheck && pnpm test && pnpm build`, `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` reaches healthy and the board renders. Record the real numbers (test counts, durations) in the README.
 - [ ] **Step 6: Commit** `docs: add README with AI collaboration narrative, video guide, CI workflow`
 
 ---

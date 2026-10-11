@@ -1,4 +1,4 @@
-# Addendum B — Build-time OpenAPI, API test UI, UI/UX quality bar, visual QA in Chrome
+# Addendum B - Build-time OpenAPI, API test UI, UI/UX quality bar, visual QA in Chrome
 
 Applies to Tasks 7–12, 14, 15–17, the new Task 17b, and Task 18 of `2026-10-11-keyloop-service-scheduler.md`. Design authority: `docs/SYSTEM_DESIGN.md` §8.6, §9.1, §15 and ADR-008, ADR-017, ADR-018. Each affected task's brief names the sections below that it must apply.
 
@@ -8,7 +8,7 @@ Applies to Tasks 7–12, 14, 15–17, the new Task 17b, and Task 18 of `2026-10-
 
 **What "source-generated OpenAPI" means in .NET 10.** Two build-time mechanisms exist and both are adopted:
 
-1. **XML documentation comments are compiled into OpenAPI metadata by a Roslyn source generator** shipped in `Microsoft.AspNetCore.OpenApi` (active whenever `GenerateDocumentationFile` is on — already true for the API). Zero runtime cost. See §B2.
+1. **XML documentation comments are compiled into OpenAPI metadata by a Roslyn source generator** shipped in `Microsoft.AspNetCore.OpenApi` (active whenever `GenerateDocumentationFile` is on - already true for the API). Zero runtime cost. See §B2.
 2. **The document itself is emitted during `dotnet build`** by `Microsoft.Extensions.ApiDescription.Server`, which launches the app's entry point with a mock server (entry assembly name `GetDocument.Insider`) and serialises the document. This is build-time generation rather than a Roslyn generator, because parts of the document (route groups, filters, typed results) are only known after the composition root runs.
 
 Runtime generation (`MapOpenApi()`) stays for Development/SystemTest/UAT so Scalar can render live changes; Production never generates documents at runtime and does not map `/openapi`.
@@ -46,7 +46,7 @@ When `BuildTimeOpenApi.IsActive`: use the placeholder connection string `Host=bu
 - Every endpoint declares `.WithTags(...)` from the fixed list `Dealerships`, `Catalog`, `Availability`, `Appointments`, `Schedule`; a document transformer adds one-line tag descriptions in that order and sets `info.description` (markdown: what the API does, the 400/422/409 split, link to the problem catalogue section of the design).
 - `CS1591` stays suppressed project-wide; the convention above is enforced by review, not by the compiler.
 
-## B3. API test UI — Scalar (Task 7)
+## B3. API test UI - Scalar (Task 7)
 
 **Decision.** `Scalar.AspNetCore` 2.17.14 (already referenced since Task 1), served at `/scalar/v1` in Development, SystemTest and UAT; not mapped in Production.
 
@@ -57,7 +57,7 @@ When `BuildTimeOpenApi.IsActive`: use the placeholder connection string `Host=bu
 | ReDoc | Read-only documentation; no interactive requests. Rejected for "quick API test". |
 | `Scalar.Aspire` 0.11.30 | Pre-1.0, adds a separate container resource to the AppHost; unnecessary while the API hosts Scalar itself. |
 
-**Configuration** (verify method names against the Scalar .NET docs — Context7 `/scalar/scalar` — before use):
+**Configuration** (verify method names against the Scalar .NET docs - Context7 `/scalar/scalar` - before use):
 
 ```csharp
 app.MapScalarApiReference(options => options
@@ -71,7 +71,7 @@ The AppHost dashboard exposes a "Scalar API reference" link to `/scalar/v1` (Tas
 
 ## B4. UI/UX quality bar (Tasks 15, 16, 17)
 
-**Process.** Implementers load the `frontend-design:frontend-design` skill before writing UI code and stay inside the template's design system (Base UI primitives, Tailwind v4 tokens in `src/index.css`, `cn`). Visual direction: **"calm control room"** — neutral surfaces, one accent (the template primary), colour reserved for appointment state, dense information on an 8 px rhythm.
+**Process.** Implementers load the `frontend-design:frontend-design` skill before writing UI code and stay inside the template's design system (Base UI primitives, Tailwind v4 tokens in `src/index.css`, `cn`). Visual direction: **"calm control room"** - neutral surfaces, one accent (the template primary), colour reserved for appointment state, dense information on an 8 px rhythm.
 
 **Status tokens** (add to `src/index.css` for light and dark; text on tint must reach WCAG AA 4.5:1 in both themes):
 
@@ -112,9 +112,9 @@ Each status has `-bg` (≈12 % tint), `-border` (solid), `-fg`. Colour is never 
 
 **Booking dialog.** `sm:max-w-2xl`, two steps with a stepper header (1 Service & time → 2 Customer & vehicle). Slot chips grouped *Morning* / *Afternoon*, each showing the local time and capacity ("3 bays · 2 techs"); only available slots render; the selected chip uses the primary colour. Step 2 shows a summary panel (service, local time, duration, requirement badges). On success: a toast "Booked · Bay 4 · Ben Okafor · 10:00" with a *View on board* action that scrolls to and highlights the block.
 
-**Conflict UX.** A warning `Alert` with the problem title and detail, the `traceId` in mono with a copy button, and the `suggestedSlots` as chips — one click re-submits at that slot. `422` shows the rule title and, for `no-qualified-resources`, the missing capabilities/certifications as badges. `400` maps field errors onto the form.
+**Conflict UX.** A warning `Alert` with the problem title and detail, the `traceId` in mono with a copy button, and the `suggestedSlots` as chips - one click re-submits at that slot. `422` shows the rule title and, for `no-qualified-resources`, the missing capabilities/certifications as badges. `400` maps field errors onto the form.
 
-**Stress panel.** Large tallies (201 green, 409 amber, 5xx red — the 5xx tile is always shown, ideally reading 0), a stacked bar, latency p50/p95/max, and a table of the N requests with status pill, problem slug, duration and copyable `traceId`.
+**Stress panel.** Large tallies (201 green, 409 amber, 5xx red - the 5xx tile is always shown, ideally reading 0), a stacked bar, latency p50/p95/max, and a table of the N requests with status pill, problem slug, duration and copyable `traceId`.
 
 **States.** Loading: skeleton grid (rows × shimmer). Empty/closed day: icon, message, and a *Go to next open day* button. Error: `Alert` with retry and `traceId`.
 
@@ -122,9 +122,9 @@ Each status has `-bg` (≈12 % tint), `-border` (solid), `-fg`. Colour is never 
 
 **Responsiveness.** ≥ 1440 px full layout; 1024–1439 px the grid scrolls horizontally inside its card with the first column sticky; < 768 px the template sidebar collapses and KPI cards stack 2 × 2. Dark mode has full parity.
 
-**Copy.** Plain workshop vocabulary: "Bay", "Technician", "Book appointment", "Slot just taken — pick another time".
+**Copy.** Plain workshop vocabulary: "Bay", "Technician", "Book appointment", "Slot just taken - pick another time".
 
-## B5. Visual QA in Chrome (new Task 17b — controller-run)
+## B5. Visual QA in Chrome (new Task 17b - controller-run)
 
 Run by the controller with the `claude-in-chrome` browser tools after Task 17; findings are fixed by one implementer dispatch and then re-validated.
 

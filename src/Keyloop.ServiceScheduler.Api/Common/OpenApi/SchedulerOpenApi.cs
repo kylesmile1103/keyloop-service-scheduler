@@ -38,12 +38,12 @@ internal static class SchedulerOpenApi
         Every error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under
         `https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:
 
-        - **400** — the request is malformed (`validation-error`).
-        - **422** — the request is well-formed but breaks a business rule given current reference data (for example
+        - **400** - the request is malformed (`validation-error`).
+        - **422** - the request is well-formed but breaks a business rule given current reference data (for example
           `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).
-        - **409** — the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,
+        - **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,
           `concurrency-conflict`).
-        - **429** — rate limited (`rate-limited`, with `Retry-After`).
+        - **429** - rate limited (`rate-limited`, with `Retry-After`).
 
         The full problem catalogue is in `docs/SYSTEM_DESIGN.md`, section 8.7 (API contract).
         """;
@@ -98,8 +98,8 @@ internal static class SchedulerOpenApi
 
     /// <summary>
     /// Puts back the request body's own description. Microsoft.AspNetCore.OpenApi 10.0's XML-comment transformer copies the text of
-    /// every <c>&lt;param&gt;</c> that names no operation parameter — the body, but also injected services, the cancellation token and a
-    /// header bound under another name — onto the request body, so whichever such tag comes last describes it. The description comes
+    /// every <c>&lt;param&gt;</c> that names no operation parameter - the body, but also injected services, the cancellation token and a
+    /// header bound under another name - onto the request body, so whichever such tag comes last describes it. The description comes
     /// from the body parameter's <c>[Description]</c> attribute instead; a body without one fails document generation, and so the build.
     /// </summary>
     internal static Task DescribeRequestBody(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
