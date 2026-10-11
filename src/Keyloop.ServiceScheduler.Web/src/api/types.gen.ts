@@ -191,7 +191,7 @@ export type BookAppointmentRequest = {
     vehicle: VehicleRequest;
     /**
      * Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy
-     * chooses (the example is the seeded Reading Bay 1 — Standard).
+     * chooses (the example is the seeded Reading Bay 1 - Standard).
      */
     preferredBayId?: null | string;
     /**

@@ -35,7 +35,7 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         snapshot.ShouldNotBeNull();
         snapshot.Dealership.Id.ShouldBe(_workshop.Dealership.Id);
         snapshot.Dealership.Hours.ForDay(DayOfWeek.Tuesday).OpensAt.ShouldBe(new TimeOnly(8, 0));
-        snapshot.Bays.Select(b => b.Name).ShouldBe(["Bay 1", "Bay 2", "Bay 9 — Inactive"]); // all bays, ordered by name
+        snapshot.Bays.Select(b => b.Name).ShouldBe(["Bay 1", "Bay 2", "Bay 9 - Inactive"]); // all bays, ordered by name
         snapshot.Technicians.Select(t => t.Name).ShouldBe(["Amelia Clarke", "Ben Okafor"]);
         snapshot.Appointments.Select(a => a.Id).ShouldBe([early.Id, cancelled.Id, late.Id]); // ordered by start; next day excluded
 
@@ -93,7 +93,7 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         var (bays, technicians) = await reader.ReadResourcesAsync(_workshop.Dealership.Id, Ct);
         var unknown = await reader.ReadResourcesAsync(Guid.NewGuid(), Ct);
 
-        bays.Select(b => (b.Name, b.IsActive)).ShouldBe([("Bay 1", true), ("Bay 2", true), ("Bay 9 — Inactive", false)]);
+        bays.Select(b => (b.Name, b.IsActive)).ShouldBe([("Bay 1", true), ("Bay 2", true), ("Bay 9 - Inactive", false)]);
         technicians.Select(t => t.Name).ShouldBe(["Amelia Clarke", "Ben Okafor"]);
         unknown.Bays.ShouldBeEmpty();
         unknown.Technicians.ShouldBeEmpty();
@@ -125,7 +125,7 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         var late = _workshop.Book(TestData.LondonTime(17), _workshop.Bay2, _workshop.Technician2, customer: 3);
         var nextDay = TestData.NewAppointment(
             _workshop.Dealership, _workshop.Interim, _workshop.Bay1, _workshop.Technician1, TestData.LondonTime(8).AddDays(1), customer: 4);
-        var inactiveBay = ServiceBay.Create(Guid.NewGuid(), _workshop.Dealership.Id, "Bay 9 — Inactive", [BayCapability.StandardLift], isActive: false);
+        var inactiveBay = ServiceBay.Create(Guid.NewGuid(), _workshop.Dealership.Id, "Bay 9 - Inactive", [BayCapability.StandardLift], isActive: false);
         var otherDealership = TestData.NewDealership("Elsewhere Motors");
         var otherBay = TestData.NewBay(otherDealership.Id, "Bay 0", BayCapability.StandardLift);
 

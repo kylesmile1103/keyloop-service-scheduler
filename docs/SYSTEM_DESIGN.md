@@ -1,12 +1,12 @@
-# Keyloop Unified Service Scheduler — System Design
+# Keyloop Unified Service Scheduler - System Design
 
 | Field | Value |
 |-------|-------|
 | Scenario | Keyloop Technical Assessment, **Scenario A: The Unified Service Scheduler** (Domain: Ownership) |
-| Implemented layer | **Backend** (.NET 10 Web API, PostgreSQL) — fully implemented and tested. Frontend is a high-fidelity dispatch-board harness that exercises the real API. |
-| Status | v1.0 — approved for implementation |
+| Implemented layer | **Backend** (.NET 10 Web API, PostgreSQL) - fully implemented and tested. Frontend is a high-fidelity dispatch-board harness that exercises the real API. |
+| Status | v1.0 - approved for implementation |
 | Date | 2026-10-11 |
-| Author | Khai Pham (design directed by the author, co-produced with GenAI — see §16) |
+| Author | Khai Pham (design directed by the author, co-produced with GenAI - see §16) |
 
 **How to read this document.** §1–§4 frame the problem and the assumptions that resolve the brief's ambiguities. §5–§7 are the heart of the design: the domain model, the availability algorithm, and the concurrency strategy that guarantees zero double-bookings. §8–§9 are the architecture (C4 diagrams, slices, API contract, data model) and technology choices. §10–§14 cover environments, security, observability, reliability, and testing. §15 covers the UI harness, §16 records how GenAI was used, and §17–§18 close with risks and the Architecture Decision Record (ADR) log.
 
@@ -14,12 +14,12 @@
 
 ## 1. Executive summary
 
-Dealership service lanes lose money two ways: **overbooking** (a bay or technician is promised twice) and **idle capacity** (a booking is refused when a compatible bay and a certified technician were actually free). Manual diaries and naive schedulers fail because a booking is a *multi-resource* decision — the right **ServiceBay** (EV-capable lift, heavy-duty bay, alignment rig) and a **Technician** holding the right **certifications** must both be free for the **entire** service duration, and many desks and online channels book concurrently.
+Dealership service lanes lose money two ways: **overbooking** (a bay or technician is promised twice) and **idle capacity** (a booking is refused when a compatible bay and a certified technician were actually free). Manual diaries and naive schedulers fail because a booking is a *multi-resource* decision - the right **ServiceBay** (EV-capable lift, heavy-duty bay, alignment rig) and a **Technician** holding the right **certifications** must both be free for the **entire** service duration, and many desks and online channels book concurrently.
 
 This design delivers a booking engine whose correctness does not depend on application code being right:
 
 1. **The database is the invariant of record.** Two PostgreSQL *exclusion constraints* (`EXCLUDE USING gist`) make it physically impossible to commit two active appointments that overlap on the same bay or the same technician.
-2. **A per-dealership transaction-scoped advisory lock** serialises the check-then-insert window, so under peak contention requests queue for milliseconds and receive a clean, explainable `409 Conflict` instead of racing into the constraint — and, critically, instead of tripping PostgreSQL's deadlock detector (§7.3).
+2. **A per-dealership transaction-scoped advisory lock** serialises the check-then-insert window, so under peak contention requests queue for milliseconds and receive a clean, explainable `409 Conflict` instead of racing into the constraint - and, critically, instead of tripping PostgreSQL's deadlock detector (§7.3).
 3. **An availability engine** computes feasible start times as a set intersection over per-resource free intervals, so the UI and the booking path share one definition of "available".
 4. **Vertical slices + DDD**: each capability (`BookAppointment`, `GetAvailability`, `GetWorkshopSchedule`, `CancelAppointment`, …) is a self-contained folder holding its endpoint, request validation, handler, and persistence; the `Appointment` aggregate owns its state machine and emits domain events that are persisted as an audit trail in the same transaction.
 5. **.NET Aspire 13** orchestrates PostgreSQL, the API, and the Vite frontend with one command, and OpenTelemetry carries traces, metrics (booking latency, contention rate, lock wait) and correlated logs into the Aspire dashboard.
@@ -45,7 +45,7 @@ This design delivers a booking engine whose correctness does not depend on appli
 |----|-----------|-------------------|
 | **I-1** | Resource-constrained booking | An appointment is for one `Dealership`, one `ServiceType`, one `Vehicle` (VIN), and one half-open time slot `[start, end)` where `end − start = ServiceType.Duration`. |
 | **I-2** | Multi-resource availability | An appointment can only be confirmed if it is assigned exactly one `ServiceBay` whose capabilities ⊇ `ServiceType.RequiredBayCapabilities` **and** exactly one `Technician` whose certifications ⊇ `ServiceType.RequiredCertifications`, and neither resource has any other *active* appointment overlapping `[start, end)`. |
-| **I-3** | Zero double-booking under contention | For any bay `b` and any technician `t`, at any instant the set of active appointments assigned to `b` (resp. `t`) is pairwise non-overlapping — regardless of how many API instances or desks are writing, and without deadlocks. |
+| **I-3** | Zero double-booking under contention | For any bay `b` and any technician `t`, at any instant the set of active appointments assigned to `b` (resp. `t`) is pairwise non-overlapping - regardless of how many API instances or desks are writing, and without deadlocks. |
 | **I-4** | Confirmed, persistent, auditable record | A confirmed appointment durably ties Customer, Vehicle VIN, Bay, Technician, ServiceType, and Timeslot together, and every state change is recorded. |
 | **I-5** | Operating hours | An appointment must lie entirely within the dealership's operating window for that local date (and the dealership must be open that day). |
 
@@ -93,7 +93,7 @@ The brief invites reasonable assumptions for ambiguous requirements. Each one be
 | FR-6 | Support an optional `Idempotency-Key` header so client retries of a successful booking replay the original `201` instead of creating a duplicate or returning a confusing `409`. | `BookAppointment` |
 | FR-7 | Retrieve an appointment by id. | `GetAppointment` |
 | FR-8 | Cancel an appointment with a reason; cancelled slots become bookable again; invalid transitions are rejected with `409`. | `CancelAppointment` |
-| FR-9 | Return the workshop schedule for a dealership and local date: bays × appointments (with technician, vehicle, service, status) plus the technician roster — the dispatch-board read model. | `GetWorkshopSchedule` |
+| FR-9 | Return the workshop schedule for a dealership and local date: bays × appointments (with technician, vehicle, service, status) plus the technician roster - the dispatch-board read model. | `GetWorkshopSchedule` |
 | FR-10 | Expose a versioned OpenAPI 3 document (`/openapi/v1.json`) and an interactive reference (Scalar) in non-production environments. | cross-cutting |
 | FR-11 | Apply migrations and deterministic seed data automatically in Development/SystemTest. | infrastructure |
 
@@ -101,7 +101,7 @@ The brief invites reasonable assumptions for ambiguous requirements. Each one be
 
 | Attribute | Target | How the design meets it |
 |-----------|--------|-------------------------|
-| **Consistency** | Zero double-bookings, ever, across any number of API replicas | DB exclusion constraints (§7.3) — correctness does not rely on application locks being honoured |
+| **Consistency** | Zero double-bookings, ever, across any number of API replicas | DB exclusion constraints (§7.3) - correctness does not rely on application locks being honoured |
 | **Contention behaviour** | 30 simultaneous requests for one slot → exactly 1 success, 29 `409`, 0 `5xx`, 0 deadlocks | Advisory lock serialises check-then-insert; constraint is the backstop; adversarial test (§14.4) |
 | **Latency** | Booking p95 < 150 ms, availability p95 < 100 ms at single-dealership daily volumes (≈ 10–60 appointments/day) | One lock, two or three indexed queries, one insert; availability is O(A log A) in-memory over one indexed read |
 | **Availability** | Stateless API; horizontally scalable; DB is the only serialisation point | No in-process state; locks are transaction-scoped in PostgreSQL |
@@ -263,7 +263,7 @@ The brief lists `DealershipSchedule` as a candidate aggregate. We evaluated maki
 | **Schedule as aggregate** (owns appointments; booking = `schedule.Book(...)` with an optimistic version) | Every booking loads and version-bumps the same row ⇒ all desks contend on one optimistic token; under 30 concurrent requests, 29 retry and most fail again; the aggregate grows unboundedly. Correctness still depends on the application re-checking overlaps correctly. |
 | **Appointment as aggregate + DB invariant** (chosen) | The overlap invariant is per *(resource, time range)*, which PostgreSQL enforces natively. Appointments are independent rows; contention is confined to the ~ms lock window. The schedule is a *projection* (`GetWorkshopSchedule`) over appointments. |
 
-The dealership-day *is* still a meaningful unit — it is the key of the advisory lock (§7.3) — but it does not need to be an object we load and save.
+The dealership-day *is* still a meaningful unit - it is the key of the advisory lock (§7.3) - but it does not need to be an object we load and save.
 
 ### 5.4 Invariants and where each is enforced
 
@@ -314,11 +314,11 @@ Transition rules live in `Appointment` as explicit methods; an illegal call thro
 
 | Event | Raised by | Persisted as | After-commit reaction |
 |-------|-----------|--------------|------------------------|
-| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, masked VIN — events carry no customer PII) | metrics `scheduler.booking.requests{outcome=confirmed}`; log |
+| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, masked VIN - events carry no customer PII) | metrics `scheduler.booking.requests{outcome=confirmed}`; log |
 | `AppointmentCancelled` | `Appointment.Cancel` | row (`Cancelled`, payload: reason, previous status) | metrics; log |
 | `AppointmentCheckedIn` / `Started` / `Completed` / `NoShow` | respective methods | row | log |
 
-Mechanism: aggregates collect events in a private list; a `SaveChangesInterceptor` drains them *before* the insert statements are flushed and materialises them as `AppointmentHistoryEntry` rows **inside the same transaction** (a lightweight transactional outbox). After a successful commit the interceptor dispatches the same events in-process to telemetry handlers. If a future requirement needs cross-service integration events, the history table already has the shape of an outbox (unprocessed flag + relay) — no new transactional surface is needed.
+Mechanism: aggregates collect events in a private list; a `SaveChangesInterceptor` drains them *before* the insert statements are flushed and materialises them as `AppointmentHistoryEntry` rows **inside the same transaction** (a lightweight transactional outbox). After a successful commit the interceptor dispatches the same events in-process to telemetry handlers. If a future requirement needs cross-service integration events, the history table already has the shape of an outbox (unprocessed flag + relay) - no new transactional surface is needed.
 
 ---
 
@@ -336,7 +336,7 @@ For a dealership `d`, service type `s`, and local date `D`:
 - **Feasible start set** of `r`: `Φ(r) = { t : [t, t+Δ) ⊆ Free(r) }`. For each free interval `[a, b)` with `b − a ≥ Δ`, this contributes the *closed* interval `[a, b − Δ]` (the start `b − Δ` is valid because the slot ends exactly at `b`).
 - **Availability**: `Avail = S ∩ ( ⋃_{b ∈ B*} Φ(b) ) ∩ ( ⋃_{t ∈ T*} Φ(t) )`.
 
-The subtle point — and the reason a naive implementation is wrong — is that the union must be taken over *feasible-start sets*, not over free sets. A slot can be covered by the union of two bays' free time while neither bay is free for the whole duration. Shrinking each resource's free intervals by `Δ` *before* taking the union makes the intersection exact.
+The subtle point - and the reason a naive implementation is wrong - is that the union must be taken over *feasible-start sets*, not over free sets. A slot can be covered by the union of two bays' free time while neither bay is free for the whole duration. Shrinking each resource's free intervals by `Δ` *before* taking the union makes the intersection exact.
 
 ### 6.2 Algorithm
 
@@ -382,7 +382,7 @@ This is a greedy heuristic, not an optimiser; it is cheap, explainable to a work
 - **Operating hours** are wall-clock `TimeOnly` values per weekday. `ResolveOperatingWindow(date)` converts `(date, opensAt)` and `(date, closesAt)` with `TimeZoneInfo.FindSystemTimeZoneById(ianaId)`:
   - a wall-clock time that **does not exist** (spring-forward gap, e.g. Europe/London 2026-03-29 01:00–02:00) is advanced to the first valid instant (01:30 → 02:00 BST = 01:00Z);
   - an **ambiguous** wall-clock time (autumn fall-back, 2026-10-25) resolves to the *earlier* instant (first occurrence, which carries the larger daylight-saving offset: 01:30 → 01:30 BST = 00:30Z, not 01:30 GMT = 01:30Z), matching the reference implementation reviewed during design.
-  - Candidate start times are generated in UTC from `O`, so a DST day simply has an operating window that is one hour shorter or longer in absolute terms — slots are never duplicated or skipped.
+  - Candidate start times are generated in UTC from `O`, so a DST day simply has an operating window that is one hour shorter or longer in absolute terms - slots are never duplicated or skipped.
 - **Half-open intervals** everywhere (`[start, end)`), so 09:00–10:00 and 10:00–11:00 are adjacent, not overlapping. This is mirrored in the database range (`tstzrange(start_utc, end_utc, '[)')`).
 - **Clock**: `TimeProvider` is injected (never `DateTime.UtcNow` inline), enabling deterministic tests of lead time, horizon and no-show logic with `FakeTimeProvider`.
 
@@ -414,22 +414,22 @@ This is a greedy heuristic, not an optimiser; it is cheap, explainable to a work
 
 ### 7.1 The hazard
 
-Booking is *check-then-act*: read the schedule, decide a bay and technician are free, insert. Under `READ COMMITTED` two transactions can both pass the check and both insert — the classic **write skew / phantom** anomaly. Every strategy below is a way of closing that window.
+Booking is *check-then-act*: read the schedule, decide a bay and technician are free, insert. Under `READ COMMITTED` two transactions can both pass the check and both insert - the classic **write skew / phantom** anomaly. Every strategy below is a way of closing that window.
 
 ### 7.2 Options evaluated
 
 | Strategy | Mechanism | Correctness | Behaviour at 30 concurrent | Deadlock risk | Scale-out | Verdict |
 |----------|-----------|-------------|-----------------------------|---------------|-----------|---------|
-| **PostgreSQL exclusion constraint** (`EXCLUDE USING gist`, `tstzrange && `, `btree_gist`) | Index-enforced "no two rows overlap on the same key" | **Absolute** — holds for every writer, every replica, every bug | 1 commits; others fail at the index. *But* two inserters can each insert their index entry before checking and then wait on each other; PostgreSQL resolves this with its deadlock detector after `deadlock_timeout` (1 s) — the loser sees `40P01 deadlock_detected`, not `23P01` | Yes, when used **alone** under true simultaneity (§7.3) | Perfect | **Invariant of record** |
+| **PostgreSQL exclusion constraint** (`EXCLUDE USING gist`, `tstzrange && `, `btree_gist`) | Index-enforced "no two rows overlap on the same key" | **Absolute** - holds for every writer, every replica, every bug | 1 commits; others fail at the index. *But* two inserters can each insert their index entry before checking and then wait on each other; PostgreSQL resolves this with its deadlock detector after `deadlock_timeout` (1 s) - the loser sees `40P01 deadlock_detected`, not `23P01` | Yes, when used **alone** under true simultaneity (§7.3) | Perfect | **Invariant of record** |
 | **Pessimistic row locks** (`SELECT … FOR UPDATE` on bay and technician rows) | Serialise on parent rows | Correct only if **every** writer takes the same locks in the same order | 1 commits; 29 block then fail the re-check | Yes if lock order differs (bay→tech vs tech→bay); must be disciplined | Good | Rejected as *primary*: correctness depends on application discipline |
-| **Optimistic concurrency token** (version on a schedule/day aggregate) | Compare-and-swap on a row version | Correct, but the "row" must cover the whole conflict set (dealership-day) | 1 commits; 29 retry; each retry re-reads and most fail again — retry storms, wasted work | None | Poor under hot spots | Rejected for booking; **adopted for state transitions** (`xmin` on `appointments`) where contention is per-row |
+| **Optimistic concurrency token** (version on a schedule/day aggregate) | Compare-and-swap on a row version | Correct, but the "row" must cover the whole conflict set (dealership-day) | 1 commits; 29 retry; each retry re-reads and most fail again - retry storms, wasted work | None | Poor under hot spots | Rejected for booking; **adopted for state transitions** (`xmin` on `appointments`) where contention is per-row |
 | **`SERIALIZABLE` isolation (SSI)** | Predicate-lock tracking, abort on dangerous structures | Correct | Many `40001 serialization_failure`; retry loops; false positives on hot pages | None (aborts instead) | Medium | Rejected: retry storms and unpredictable aborts under exactly the peak we must handle |
-| **Transaction-scoped advisory lock per dealership** (`pg_advisory_xact_lock(key)`) | Application-chosen mutex inside the DB | Correct *for writers that take it*; cheap; released on commit/rollback automatically | 1 commits; 29 queue in FIFO order for ~ms each, each re-checks and returns `409` cleanly | **None** — a single lock per transaction cannot form a cycle | Good (per-dealership partitioning; refine to per-resource with sorted keys if ever needed) | **Serialisation mechanism** |
+| **Transaction-scoped advisory lock per dealership** (`pg_advisory_xact_lock(key)`) | Application-chosen mutex inside the DB | Correct *for writers that take it*; cheap; released on commit/rollback automatically | 1 commits; 29 queue in FIFO order for ~ms each, each re-checks and returns `409` cleanly | **None** - a single lock per transaction cannot form a cycle | Good (per-dealership partitioning; refine to per-resource with sorted keys if ever needed) | **Serialisation mechanism** |
 | **Single-writer queue** (actor/queue per dealership) | Move serialisation into the app | Correct if single instance; needs leader election for HA | Good | None | Complex | Rejected: reinvents what the DB lock gives for free |
 
 ### 7.3 Decision: exclusion constraints + advisory lock + optimistic token (each where it fits)
 
-**Layer 1 — the invariant (always on).** Two partial exclusion constraints on `appointments`, over a *stored generated column* so the range can never drift from `start_utc`/`end_utc`:
+**Layer 1 - the invariant (always on).** Two partial exclusion constraints on `appointments`, over a *stored generated column* so the range can never drift from `start_utc`/`end_utc`:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
@@ -451,7 +451,7 @@ ALTER TABLE appointments
 
 `btree_gist` lets the GiST index combine the equality on the uuid with the overlap on the range. The partial `WHERE` means cancelled/completed/no-show rows neither block new bookings nor need to be deleted. These constraints are created in the EF Core migration via `migrationBuilder.Sql` (EF has no first-class exclusion-constraint API).
 
-**Layer 2 — serialisation (the normal path).** `BookAppointment` runs this transaction, at the default `READ COMMITTED` isolation, after the lock-free checks (the idempotency-key lookup of §7.5 and the 404/422 rules) and after minting the appointment id once for the request:
+**Layer 2 - serialisation (the normal path).** `BookAppointment` runs this transaction, at the default `READ COMMITTED` isolation, after the lock-free checks (the idempotency-key lookup of §7.5 and the 404/422 rules) and after minting the appointment id once for the request:
 
 ```sql
 BEGIN;
@@ -470,17 +470,17 @@ COMMIT;                                                       -- lock released
 
 The retrying execution strategy re-runs the whole transaction after a transient failure. A failure *during* `COMMIT` may be a lost acknowledgement of a commit that happened, so the strategy first asks whether the minted appointment exists (EF Core's `verifySucceeded`) and, if it does, answers with it instead of booking again; the existence check at the top of each run is a second guard behind that. Because the id is minted once per request, not once per run, a committed run is always recognisable. The run's audit events (§5.6) are then *in doubt* and reach the observers exactly once: when the verification finds the appointment, or else when the next run's check under the lock does. A verification that finds nothing settles nothing, since it takes no lock and may read before the commit is visible; the check under the lock is conclusive, because the earlier run held that lock until its transaction ended. One exception holds for booking and cancellation alike: if the strategy runs out of retries before any read settles the doubt, the request answers `500 internal-error` (logged at Error) and the in-doubt events are never notified. A change that did commit then lacks its log line (`1001`/`1010`) and its counter; its `appointment_history` row, written in the same transaction, remains the record of it.
 
-Why this combination and not the constraint alone: PostgreSQL implements exclusion checks as *insert the index entry, then scan for conflicts, then wait for any in-progress conflicting transaction*. Two truly simultaneous inserters can each insert before either scans, then each waits on the other; the deadlock detector breaks the tie after `deadlock_timeout`, so one request stalls for a second and fails with `40P01` rather than `23P01`. The outcome is still exactly one winner — the invariant is never at risk — but it is slow and the error is semantically wrong. Taking the dealership lock first means at most one transaction is inside the check-then-insert window at a time, so the constraint is never contended in practice and remains a pure backstop.
+Why this combination and not the constraint alone: PostgreSQL implements exclusion checks as *insert the index entry, then scan for conflicts, then wait for any in-progress conflicting transaction*. Two truly simultaneous inserters can each insert before either scans, then each waits on the other; the deadlock detector breaks the tie after `deadlock_timeout`, so one request stalls for a second and fails with `40P01` rather than `23P01`. The outcome is still exactly one winner - the invariant is never at risk - but it is slow and the error is semantically wrong. Taking the dealership lock first means at most one transaction is inside the check-then-insert window at a time, so the constraint is never contended in practice and remains a pure backstop.
 
-Why `READ COMMITTED` matters: under `REPEATABLE READ` the snapshot is taken at the first statement — which is the lock acquisition itself — so a transaction that waited for the lock would still *read the pre-lock snapshot* and miss the previous holder's commit. `READ COMMITTED` takes a fresh snapshot per statement, which is exactly what check-then-act under a lock requires. This is asserted in code (the transaction is opened explicitly with `IsolationLevel.ReadCommitted`) and documented in ADR-004.
+Why `READ COMMITTED` matters: under `REPEATABLE READ` the snapshot is taken at the first statement - which is the lock acquisition itself - so a transaction that waited for the lock would still *read the pre-lock snapshot* and miss the previous holder's commit. `READ COMMITTED` takes a fresh snapshot per statement, which is exactly what check-then-act under a lock requires. This is asserted in code (the transaction is opened explicitly with `IsolationLevel.ReadCommitted`) and documented in ADR-004.
 
 Why there can be no deadlock: each booking transaction acquires exactly one lock it waits for while holding nothing else (the dealership key), *before* any write, and the appointment insert is its only insert contended on the resources. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking reads, inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships interact only through the idempotency-key row, the scoped exception in ADR-003: the expired-key `DELETE` and the key `INSERT` can wait, but only on the *same key* being used at *another* dealership at the same moment. The waiter then holds only its own dealership's lock, which the transaction it waits for never requests, and a transaction inserts its key only after its own appointment insert has succeeded, after which it waits for nothing. So the wait cannot close a cycle either. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second lock or perform a second contended insert, except on its own idempotency-key row*.
 
 Lock key: a stable 64-bit value derived from the dealership id (`BitConverter.ToInt64(id.ToByteArray(), 0)`). The two-argument form `pg_advisory_xact_lock(namespace, hashtext(id::text))` would also work; the single `bigint` form is used for simplicity.
 
-Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a site. A busy site books tens to low hundreds of appointments per day; a critical section of ~2–5 ms yields capacity of hundreds of bookings per second per dealership — three orders of magnitude above demand. If a future multi-site tenant ever needed more, the refinement is two locks keyed on `(bay_id)` and `(technician_id)` acquired in *sorted key order* (which again cannot cycle). Noted in §17.
+Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a site. A busy site books tens to low hundreds of appointments per day; a critical section of ~2–5 ms yields capacity of hundreds of bookings per second per dealership - three orders of magnitude above demand. If a future multi-site tenant ever needed more, the refinement is two locks keyed on `(bay_id)` and `(technician_id)` acquired in *sorted key order* (which again cannot cycle). Noted in §17.
 
-**Layer 3 — optimistic concurrency for state transitions.** `Cancel`, `CheckIn`, etc. update an existing row. PostgreSQL's system column `xmin` is mapped as the EF concurrency token (a `uint` property configured with `IsRowVersion()`, which Npgsql maps to `xmin` without creating a column), so two concurrent transitions on the same appointment resolve as first-writer-wins and `409 concurrency-conflict` for the loser. No lock is required because the conflict set is a single row.
+**Layer 3 - optimistic concurrency for state transitions.** `Cancel`, `CheckIn`, etc. update an existing row. PostgreSQL's system column `xmin` is mapped as the EF concurrency token (a `uint` property configured with `IsRowVersion()`, which Npgsql maps to `xmin` without creating a column), so two concurrent transitions on the same appointment resolve as first-writer-wins and `409 concurrency-conflict` for the loser. No lock is required because the conflict set is a single row.
 
 `CancelAppointment` runs one `READ COMMITTED` transaction (read the row, `Appointment.Cancel`, `UPDATE … WHERE xmin = <the version read>` with the history row) under the retrying execution strategy, and guards a lost commit acknowledgement the way booking does. A run that reaches its commit first records the `xmin` its `UPDATE` wrote (EF Core reads it back). An `xmin` identifies the transaction that wrote that row version, so a row carrying it proves that run's commit happened. From then on the commit is in doubt for the rest of the request, not only for the next run. After each later failure the strategy's verification compares the row with that version: a match gives the client its `200`; no match settles nothing (the read takes no lock, so it may come before the commit is visible). Every later run therefore first takes the row lock (`SELECT … FOR UPDATE`, which waits until the earlier run's transaction has ended) and then decides conclusively: the written version means the earlier run committed and is answered as such; any other version means it never committed, and the run cancels afresh. A run that fails before deciding (its row lock timing out behind that transaction, say) hands the doubt to the next run instead of dropping it. The run's in-doubt audit events are released or dropped by the same answers (§5.6), so `1010` and the cancellations counter count each cancellation once, with the exception above when the retries run out. That row lock is taken only after an in-doubt commit and is the transaction's first and only lock: while it waits, the transaction holds nothing another transaction could be waiting for, so the wait cannot close a cycle.
 
@@ -491,7 +491,7 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 | SQLSTATE | Meaning | Mapped to | Expected frequency |
 |----------|---------|-----------|--------------------|
 | `23P01` `exclusion_violation` (constraint name tells bay vs technician) | Overlap backstop fired | `409 slot-conflict` + suggestions; metric `scheduler.booking.constraint_backstop` | ≈ 0 (only out-of-band writers) |
-| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict` (`conflictingResource: unknown`), when raised by the booking `SaveChanges` it is answered by the handler and **not** retried, although Npgsql calls it transient (a 40P01 from the lock acquisition, the expired-key `DELETE` or a read would reach the execution strategy and be retried; ADR-003 argues none can occur); **Warning** log (1004) + `scheduler.booking.deadlocks` so it is visible | 0 — asserted by the adversarial test |
+| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict` (`conflictingResource: unknown`), when raised by the booking `SaveChanges` it is answered by the handler and **not** retried, although Npgsql calls it transient (a 40P01 from the lock acquisition, the expired-key `DELETE` or a read would reach the execution strategy and be retried; ADR-003 argues none can occur); **Warning** log (1004) + `scheduler.booking.deadlocks` so it is visible | 0 - asserted by the adversarial test |
 | `40001` `serialization_failure` | Not used (READ COMMITTED) | transient → execution-strategy retry | 0 |
 | `23505` `unique_violation` on `idempotency_keys` | Duplicate idempotency key | load stored response → replay `201` if same fingerprint, else `422 idempotency-key-reuse` | rare |
 | `23514` `check_violation` | Domain guard bypassed | `500` (bug) with trace id | 0 |
@@ -517,11 +517,11 @@ Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17. A retr
 
 ## 8. Architecture
 
-### 8.1 C4 — System context
+### 8.1 C4 - System context
 
 ```mermaid
 C4Context
-    title System Context — Unified Service Scheduler
+    title System Context - Unified Service Scheduler
 
     Person(advisor, "Service Advisor", "Books and cancels appointments from the dealership desk")
     Person(controller, "Workshop Controller", "Monitors the bay plan for the day")
@@ -547,11 +547,11 @@ C4Context
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
-### 8.2 C4 — Containers (with Aspire orchestration)
+### 8.2 C4 - Containers (with Aspire orchestration)
 
 ```mermaid
 C4Container
-    title Container diagram — Unified Service Scheduler (local run under Aspire)
+    title Container diagram - Unified Service Scheduler (local run under Aspire)
 
     Person(advisor, "Service Advisor / Controller")
 
@@ -575,11 +575,11 @@ C4Container
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
-### 8.3 C4 — Components inside the Scheduler API
+### 8.3 C4 - Components inside the Scheduler API
 
 ```mermaid
 C4Component
-    title Component diagram — Scheduler API
+    title Component diagram - Scheduler API
 
     Container(web, "Dispatch Board", "React 19", "UI harness")
     ContainerDb(db, "PostgreSQL 17", "btree_gist", "Appointments and reference data")
@@ -666,7 +666,7 @@ Conventions:
 - **Requests are records, validated by FluentValidation**; domain rules are enforced by the domain and surfaced as typed exceptions (`DomainRuleViolation` → `422`, `ResourceConflict` → `409`).
 - **Responses are explicit DTO records** with `TypedResults` so the OpenAPI document is exact.
 
-### 8.5 Data flow — sequence diagrams
+### 8.5 Data flow - sequence diagrams
 
 **Booking, happy path**
 
@@ -780,7 +780,7 @@ flowchart LR
 ```
 
 - **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`, or `aspire run`): Aspire generates the PostgreSQL credentials once (secret parameters persisted to the AppHost's user secrets), starts PostgreSQL as a persistent container with a named data volume (plus pgweb), waits for it, starts the API (which migrates and seeds in Development) and gates readiness on `/health`, installs the web dependencies (`pnpm install` as an installer child resource), regenerates the typed client from the committed contract (`predev`), and starts the Vite dev server with the API discovered through Aspire's `API_HTTP` variable; Vite proxies `/api/*`, `/openapi/*` and `/scalar/*` so the browser is same-origin (no CORS in development, ADR-012). The browser sends its own spans to the dashboard over OTLP/HTTP, so one trace runs from the click in the browser through the API to PostgreSQL. The dashboard exposes a *Reseed demo data* command on the API resource and links to Scalar and pgweb (ADR-019).
-- **Publish mode** (`aspire publish`): produces deployment artefacts — API image from its Dockerfile, web image from its Dockerfile (unprivileged nginx serving the static build with the headers of §11.2 and proxying `/api`, `/openapi` and `/scalar` to the API with the request URI unchanged; the API host is resolved per request, so the web container starts, and `/api` answers `502`, before the API is reachable), EF migration bundles for UAT/Production pipelines, and a Docker Compose definition (`docker-compose.yaml` + `.env` with the secret parameters as inputs) from the `compose` environment. The compose output runs the **Demo** environment (§10) so `docker compose up` works without the .NET SDK.
+- **Publish mode** (`aspire publish`): produces deployment artefacts - API image from its Dockerfile, web image from its Dockerfile (unprivileged nginx serving the static build with the headers of §11.2 and proxying `/api`, `/openapi` and `/scalar` to the API with the request URI unchanged; the API host is resolved per request, so the web container starts, and `/api` answers `502`, before the API is reachable), EF migration bundles for UAT/Production pipelines, and a Docker Compose definition (`docker-compose.yaml` + `.env` with the secret parameters as inputs) from the `compose` environment. The compose output runs the **Demo** environment (§10) so `docker compose up` works without the .NET SDK.
 - **Contract sync**: `dotnet build` of the API emits the OpenAPI document into `contracts/openapi/v1.json` (committed) through build-time generation (`Microsoft.Extensions.ApiDescription.Server` runs the composition root against a mock server; a `GetDocument.Insider` guard pins the run to the Development environment, which needs no secrets or ingress addresses, uses a placeholder connection string that is never opened and skips database work, so the build needs no database; `scripts/export-openapi.sh` forces a regeneration and shows whether the file changed). XML documentation comments become OpenAPI summaries, descriptions, response docs and request examples through the source generator built into `Microsoft.AspNetCore.OpenApi`. The Web project's `openapi-ts.config.ts` reads the committed file and generates `types.gen.ts`, `sdk.gen.ts`, `client.gen.ts` and `@tanstack/react-query.gen.ts` (`queryOptions`/`mutationOptions` per operation). CI builds, then fails on `git diff --exit-code contracts/` and on client drift; a parity test asserts the runtime document served in SystemTest equals the build-time file. Production never generates documents at runtime (ADR-008, ADR-017).
 
 ### 8.7 API contract
@@ -796,8 +796,8 @@ Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never
 | `POST /dealerships/{dealershipId}/appointments` | Book `{ serviceTypeId, startUtc, customer{name,email,phone}, vehicle{vin,registration,make,model}, preferredBayId?, preferredTechnicianId?, notes? }` (headers: optional `Idempotency-Key`, 1–64 `[A-Za-z0-9_-]`); request bodies are limited to 64 KB (`413`) | `201` + `Location: /api/v1/appointments/{id}`, body `{ id, dealershipId, serviceType{id,code,name,durationMinutes}, bay{id,name}, technician{id,name}, startUtc, endUtc, startLocal, endLocal, status, customer, vehicle, notes, cancellationReason, createdAtUtc, updatedAtUtc }`; an idempotent replay returns the stored `201` plus `Idempotent-Replayed: true` (§7.5) | `400 validation-error` (body fields by JSON path, or `Idempotency-Key`), `404 not-found`, `422 outside-operating-hours / lead-time-not-met / beyond-booking-horizon / slot-not-aligned / no-qualified-resources / idempotency-key-reuse`, `409 slot-unavailable / slot-conflict`, `429` |
 | `GET /appointments/{appointmentId}` | Read one appointment in any status (a booking's `Location` points here) | `200`, the appointment (the booking's body shape) | `404 not-found`, `429` |
 | `POST /appointments/{appointmentId}/cancel` | Cancel a `Confirmed` or `CheckedIn` appointment with `{ reason }` (1–500 characters after trimming; stored and audited, never logged); its slot is re-bookable at once; rate-limited by the stricter write policy like booking | `200`, the appointment as read back after the commit (`status: Cancelled`, `cancellationReason`, `updatedAtUtc`) | `400 validation-error` (`reason`), `404 not-found`, `409 invalid-state-transition` (`currentStatus`, `attempted: cancel`) / `concurrency-conflict`, `429` |
-| `GET /openapi/v1.json` · `GET /scalar/v1` | Contract and interactive reference (not in Production) | `200` | — |
-| `GET /health` · `GET /alive` | Readiness (includes DB) and liveness | `200/503` | — |
+| `GET /openapi/v1.json` · `GET /scalar/v1` | Contract and interactive reference (not in Production) | `200` | - |
+| `GET /health` · `GET /alive` | Readiness (includes DB) and liveness | `200/503` | - |
 
 **Problem type catalogue** (`type` is `https://api.keyloop.example/problems/{slug}`; the `.example` TLD is reserved for documentation):
 
@@ -810,14 +810,14 @@ Base path `/api/v1`. JSON only; enums as strings; numbers as JSON numbers (never
 | `beyond-booking-horizon` | 422 | Start later than now + horizon | `latestStartUtc` |
 | `slot-not-aligned` | 422 | Start not on the granularity grid | `slotGranularityMinutes` |
 | `no-qualified-resources` | 422 | Dealership has no active bay/technician that could ever serve this service | `missingCapabilities`, `missingCertifications`: what no active bay / technician has (empty on a side that qualifies); the `detail` text never names individual staff |
-| `idempotency-key-reuse` | 422 | Same key, different request | — |
+| `idempotency-key-reuse` | 422 | Same key, different request | - |
 | `slot-unavailable` | 409 | All qualified resources busy at that time (pre-check) | `suggestedSlots[]`: up to `Scheduling:SuggestedSlotCount` bookable starts that day nearest the requested one, from active qualified resources, never the requested start |
 | `slot-conflict` | 409 | Database overlap constraint fired (backstop) | `suggestedSlots[]`, `conflictingResource` (`bay`, `technician`, or `unknown` for a deadlock, which ADR-003 rules out) |
 | `invalid-state-transition` | 409 | e.g. cancel a cancelled appointment | `currentStatus`, `attempted` (machine token: `cancel`, `check-in`, `start`, `complete`, `mark-no-show`) |
-| `no-show-before-slot-end` | 422 | Marking a no-show before the slot has ended (domain rule; no endpoint in this slice) | — |
-| `concurrency-conflict` | 409 | Row changed since read (`xmin`) | — |
+| `no-show-before-slot-end` | 422 | Marking a no-show before the slot has ended (domain rule; no endpoint in this slice) | - |
+| `concurrency-conflict` | 409 | Row changed since read (`xmin`) | - |
 | `rate-limited` | 429 | Policy exceeded | `retryAfterSeconds` |
-| `internal-error` | 500 | Unhandled | `traceId` only — never exception details |
+| `internal-error` | 500 | Unhandled | `traceId` only - never exception details |
 
 Framework-generated responses that never reach application code (an unknown route `404`, `405`, `413` request too large, `415`) keep the RFC 9110 `type` links that ASP.NET Core assigns; every problem raised by the application uses the catalogue base above.
 
@@ -933,10 +933,10 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 | API test UI | **Scalar.AspNetCore 2.17** at `/scalar/v1` | Modern interactive client (request history, editable bodies prefilled from XML `<example>`s, code snippets), OpenAPI 3.1, dark mode; off in Production (ADR-018) | Swagger UI via `Swashbuckle.AspNetCore.SwaggerUI` 10.3 (familiar, older UX); ReDoc (read-only); `Scalar.Aspire` 0.11 (pre-1.0, extra container) |
 | Telemetry | **OpenTelemetry 1.19** via ServiceDefaults + custom `ActivitySource`/`Meter`; `Npgsql.OpenTelemetry` | Vendor-neutral; Aspire dashboard locally, any OTLP backend in UAT/Prod | Application Insights SDK (vendor lock-in) |
 | Resilience | `Microsoft.Extensions.Http.Resilience`; Npgsql execution strategy | Standard handlers; DB transient retries re-run the whole lock+check+insert unit | Polly direct |
-| Testing | **xunit.v3 4.0**, **Shouldly 4.3**, **Testcontainers.PostgreSql 4.16**, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.Extensions.TimeProvider.Testing` | Real PostgreSQL semantics for the concurrency proof; `FakeTimeProvider` for time rules | `Aspire.Hosting.Testing` (boots the whole AppHost — slower, used optionally for a smoke test) |
-| Frontend | **React 19.3, Vite 8, TypeScript 6, Tailwind 4, shadcn/ui (Base UI), react-router-dom 7, react-hook-form + zod 4, TanStack Query 5.104** | Brief-mandated; matches the provided template's conventions exactly | — |
+| Testing | **xunit.v3 4.0**, **Shouldly 4.3**, **Testcontainers.PostgreSql 4.16**, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.Extensions.TimeProvider.Testing` | Real PostgreSQL semantics for the concurrency proof; `FakeTimeProvider` for time rules | `Aspire.Hosting.Testing` (boots the whole AppHost - slower, used optionally for a smoke test) |
+| Frontend | **React 19.3, Vite 8, TypeScript 6, Tailwind 4, shadcn/ui (Base UI), react-router-dom 7, react-hook-form + zod 4, TanStack Query 5.104** | Brief-mandated; matches the provided template's conventions exactly | - |
 | Contract sync | **Build-time OpenAPI** (`Microsoft.Extensions.ApiDescription.Server` 10.0) + **XML-comment source generator** (`Microsoft.AspNetCore.OpenApi`) → **@hey-api/openapi-ts 0.99** with `@hey-api/client-fetch` and `@tanstack/react-query` plugins | Document produced by `dotnet build`, descriptions/examples compiled from XML comments, typed SDK and `queryOptions`/`mutationOptions` generated from the committed file; drift caught in CI | openapi-typescript + hand-written hooks; exporting the document from a test (earlier draft, replaced) |
-| Package management | pnpm 12 (web), NuGet Central Package Management (`Directory.Packages.props`) | Single source of truth for versions; reproducible installs | — |
+| Package management | pnpm 12 (web), NuGet Central Package Management (`Directory.Packages.props`) | Single source of truth for versions; reproducible installs | - |
 
 ### 9.1 Runtime reflection budget and NativeAOT readiness
 
@@ -953,11 +953,11 @@ Direction added on 2026-10-11 (stakeholder request): prefer build-time source ge
 | Options validation | **`[OptionsValidator]` source generator** | No | Replaces `ValidateDataAnnotations()` reflection. |
 | Logging | **`[LoggerMessage]` source generator**, stable event ids | No | No interpolated log calls in product code. |
 | Regex | **`[GeneratedRegex]`** | No | VIN rule. |
-| DI container | `Microsoft.Extensions.DependencyInjection`, explicit registrations only | Constructor discovery at startup (AOT-compatible) | Microsoft ships no source-generated container; third-party generators (Jab, Pure.DI) would replace the container under ASP.NET Core hosting — rejected as high risk for negligible gain. |
+| DI container | `Microsoft.Extensions.DependencyInjection`, explicit registrations only | Constructor discovery at startup (AOT-compatible) | Microsoft ships no source-generated container; third-party generators (Jab, Pure.DI) would replace the container under ASP.NET Core hosting - rejected as high risk for negligible gain. |
 | Input validation | FluentValidation, validators registered explicitly | Expression trees compiled at first use (interpreted under AOT) | Mandated by the brief; no assembly scanning. Residual item in the budget. |
-| ORM | EF Core 10 + Npgsql (AOT-compatible driver) | Model building and LINQ translation | Residual item. Next steps when needed: `dotnet ef dbcontext optimize` (compiled model; documented with its silent-drift caveat — not adopted for a 7-entity model) and precompiled queries once they leave preview. |
+| ORM | EF Core 10 + Npgsql (AOT-compatible driver) | Model building and LINQ translation | Residual item. Next steps when needed: `dotnet ef dbcontext optimize` (compiled model; documented with its silent-drift caveat - not adopted for a 7-entity model) and precompiled queries once they leave preview. |
 | OpenAPI document | **Build-time generation** (`OpenApiGenerateDocumentsOnBuild`) + **XML-comment source generator** | Production: none (no runtime document). Non-production: runtime `MapOpenApi()` for live Scalar; document transformers read parameter attributes (`[DataType]`, `[Description]`) while a document is generated, never on request paths | `Microsoft.AspNetCore.OpenApi` is NativeAOT-compatible; Scalar (non-production only) serves static assets. |
-| Telemetry | OpenTelemetry .NET (AOT-compatible) | No | — |
+| Telemetry | OpenTelemetry .NET (AOT-compatible) | No | - |
 
 See ADR-016.
 
@@ -974,7 +974,7 @@ Four environments share one codebase; behaviour differs only by configuration, n
 | Migrations | Applied by the API on startup (`Database:MigrateOnStartup=true`) | Applied by the test fixture | **EF migration bundle** executed by the pipeline before rollout (`aspire publish` → `efmigrations/`) | Same; never at app startup |
 | Seed data | Reference data + sample appointments for the coming week (`Database:SeedDemoData=true`) | Tests seed their own fixtures | Reference data only (via DMS sync later) | None |
 | Scalar / OpenAPI UI | On | On | On, behind network policy | **Off** (`/openapi/v1.json` still served to internal CI only via ingress rule) |
-| Error detail | Developer exception page off; ProblemDetails with `traceId` only (same as prod — no surprises later) | Same | Same | Same |
+| Error detail | Developer exception page off; ProblemDetails with `traceId` only (same as prod - no surprises later) | Same | Same | Same |
 | Rate limiting | Permissive (`Booking: 120/min/IP`) | **Disabled** (tests must not trip it) | Production values | `Booking: 30/min/IP`, `Global: 300/min/IP` |
 | Lead time / horizon | 0 min / 90 days | 0 / 90 | 60 min / 90 days | 60 min / 90 days |
 | HTTPS / HSTS | Dev certificate; HSTS off | Off | TLS at ingress; HSTS on | TLS at ingress; HSTS on |
@@ -1003,18 +1003,18 @@ flowchart LR
 | Threat | Vector | Mitigation in this slice | Residual / deferred |
 |--------|--------|---------------------------|---------------------|
 | **Spoofing** | Unauthenticated callers book/cancel | Deferred (A-10): OIDC bearer auth seam (§11.3) | Must be wired before any non-demo deployment |
-| **Tampering** | Malformed payloads, type confusion, oversized bodies | FluentValidation; strict JSON (`System.Text.Json`, unknown enum values rejected); 64 KB request body limit; all SQL via parameterised EF/Npgsql (no interpolation) | — |
+| **Tampering** | Malformed payloads, type confusion, oversized bodies | FluentValidation; strict JSON (`System.Text.Json`, unknown enum values rejected); 64 KB request body limit; all SQL via parameterised EF/Npgsql (no interpolation) | - |
 | **Repudiation** | "I never cancelled that" | `appointment_history` with `actor`, timestamp, payload, in the same transaction | `actor` becomes the authenticated principal once auth is wired |
-| **Information disclosure** | Stack traces, connection strings in errors; PII in logs | ProblemDetails never carries exception details; `traceId` only; customer PII (name, email, phone) is never logged — logs use appointment id and a masked VIN (last 6) | PII encryption at rest is a platform concern (TDE) |
+| **Information disclosure** | Stack traces, connection strings in errors; PII in logs | ProblemDetails never carries exception details; `traceId` only; customer PII (name, email, phone) is never logged - logs use appointment id and a masked VIN (last 6) | PII encryption at rest is a platform concern (TDE) |
 | **Denial of service** | Booking floods, availability scraping | ASP.NET rate limiter (sliding window per client IP; stricter policy on `POST`); bounded availability window (one day per call); advisory lock critical section is ms-scale | WAF / per-tenant quotas at the edge |
-| **Elevation of privilege** | Cross-dealership access | All queries are scoped by `dealershipId` in the route; once auth is wired, a policy asserts the token's dealership claims contain the route id | — |
-| **Supply chain** | Vulnerable packages | Central Package Management with pinned versions; `dotnet list package --vulnerable` and `pnpm audit` in CI; Dependabot config | — |
-| **Secrets in source** | Connection strings committed | Aspire parameters marked `secret: true`; user-secrets; `.gitignore` guards; no secrets in `appsettings*.json` | — |
+| **Elevation of privilege** | Cross-dealership access | All queries are scoped by `dealershipId` in the route; once auth is wired, a policy asserts the token's dealership claims contain the route id | - |
+| **Supply chain** | Vulnerable packages | Central Package Management with pinned versions; `dotnet list package --vulnerable` and `pnpm audit` in CI; Dependabot config | - |
+| **Secrets in source** | Connection strings committed | Aspire parameters marked `secret: true`; user-secrets; `.gitignore` guards; no secrets in `appsettings*.json` | - |
 
 ### 11.2 Controls implemented
 
 - Security headers middleware: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on API responses, `Permissions-Policy` minimal; HSTS outside Development.
-- CORS: default-deny; allowed origins come from configuration (`Security:AllowedOrigins`, exact http(s) origins only — `*` fails startup) and are empty in Development because the Vite proxy keeps the browser same-origin.
+- CORS: default-deny; allowed origins come from configuration (`Security:AllowedOrigins`, exact http(s) origins only - `*` fails startup) and are empty in Development because the Vite proxy keeps the browser same-origin.
 - Rate limiting: named policies `global` and `booking`, partitioned per client IP (`booking` is the stricter write policy, applied on top of `global` to both state-changing routes: booking and cancellation), `429` with `rate-limited` problem and `Retry-After` (also for clients that do not accept JSON); health probes are exempt.
 - Forwarded headers: behind the TLS-terminating ingress (UAT/Production, `Security:ForwardedHeaders`), `X-Forwarded-For`/`X-Forwarded-Proto` are honoured as the first middleware, from configured `KnownProxies`/`KnownNetworks` only and for the last hop only, so rate-limit partitions, the audit actor and HTTPS redirection see the client. Enabling it without a trusted proxy or network fails startup (the framework would otherwise trust any peer). UAT and Production enable it but ship both lists empty, so startup fails until the platform supplies the ingress addresses (e.g. `Security__ForwardedHeaders__KnownNetworks__0=10.0.0.0/24`): a shipped default would be unsafe to override, because configuration arrays merge by index and an override of entry 0 keeps the remaining entries trusted.
 - Input hardening: VIN, email, phone, name length limits; GUID route constraints; date parsing restricted to `yyyy-MM-dd`.
@@ -1028,7 +1028,7 @@ flowchart LR
 The seam is three lines in `Program.cs` and one attribute per endpoint group:
 
 ```csharp
-// Program.cs — only when Security:Authority is configured (UAT/Production)
+// Program.cs - only when Security:Authority is configured (UAT/Production)
 builder.Services.AddAuthentication().AddJwtBearer(o => { o.Authority = cfg.Authority; o.Audience = "scheduler-api"; });
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("Scheduler.Read", p => p.RequireAuthenticatedUser())
@@ -1063,15 +1063,15 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 | `scheduler.booking.duration` | histogram | `ms` | `outcome` | booking latency SLO (p95 < 150 ms); real elapsed time (`Stopwatch`), like every latency here, never the injected business clock |
 | `scheduler.booking.lock_wait` | histogram | `ms` | `dealership.id` | queueing depth; a rising p95 means a hot dealership |
 | `scheduler.booking.constraint_backstop` | counter | `{event}` | `constraint` | should stay at 0; non-zero means an out-of-band writer |
-| `scheduler.booking.deadlocks` | counter | `{event}` | — | must stay at 0 (asserted by test; alert if > 0) |
+| `scheduler.booking.deadlocks` | counter | `{event}` | - | must stay at 0 (asserted by test; alert if > 0) |
 | `scheduler.availability.duration` | histogram | `ms` | `dealership.id` | read-path latency |
-| `scheduler.availability.slots_returned` | histogram | `{slot}` | — | capacity signal for the business |
+| `scheduler.availability.slots_returned` | histogram | `{slot}` | - | capacity signal for the business |
 | `scheduler.appointments.cancellations` | counter | `{appointment}` | `previous_status` | business metric |
-| Runtime, ASP.NET Core, HTTP client, Npgsql pool | built-in | — | — | via ServiceDefaults |
+| Runtime, ASP.NET Core, HTTP client, Npgsql pool | built-in | - | - | via ServiceDefaults |
 
 A request the framework cannot bind at all (a body that is not JSON, a `413`) never reaches the booking endpoint's filters or handler, so it has no booking outcome: it is visible as `http.server.request.duration` with `http.response.status_code` 400 (or 413) on the booking route, and `GlobalExceptionHandler` answers it.
 
-**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` — written after the commit, with the previous status and never the reason, …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
+**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` - written after the commit, with the previous status and never the reason, …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
 
 ### 12.2 Correlation
 
@@ -1103,7 +1103,7 @@ A request the framework cannot bind at all (a body that is not JSON, a `413`) ne
 ## 13. Reliability and scalability
 
 - **Stateless API**: any number of replicas; no sticky sessions; no in-memory locks. The database is the single serialisation point by design, and it is the one component that already has to be highly available.
-- **Hot-spot analysis**: contention is per dealership. With a ~2–5 ms critical section, one dealership sustains hundreds of bookings/s — far above the tens/day of real demand. Cross-dealership requests do not interact.
+- **Hot-spot analysis**: contention is per dealership. With a ~2–5 ms critical section, one dealership sustains hundreds of bookings/s - far above the tens/day of real demand. Cross-dealership requests do not interact.
 - **Read path**: availability and schedule are read-only, cheap, and can be served from a read replica (they tolerate replica lag because booking re-validates under the lock on the primary). `Cache-Control: no-store` today; a short (5 s) per-dealership-day response cache with invalidation on booking is a documented optimisation.
 - **Connection pooling**: Npgsql pool (default 100) with `MaxPoolSize` tuned per replica count in UAT/Prod; the pool is observed via the Npgsql metrics.
 - **Graceful shutdown**: ASP.NET host drains in-flight requests; transaction-scoped locks are released by the server on connection close, so a crash mid-booking cannot leave a stuck lock.
@@ -1125,7 +1125,7 @@ flowchart TB
 
 ### 14.1 Domain unit tests (no database)
 
-`TimeSlot` overlap/adjacency, half-open semantics; `ServiceDuration` rejects zero/negative/non-multiple-of-5/over 8 h; `Vin` format (valid, 16 chars, contains `I`/`O`/`Q`, lowercase normalised); `OperatingHours.ResolveOperatingWindow` incl. closed day, DST spring-forward (Europe/London 2026-03-29) and fall-back (2026-10-25); `BookingWindowPolicy` lead time and horizon with `FakeTimeProvider`; `AvailabilityCalculator` — empty day, fully booked, back-to-back, the §6.2 worked example, the "union of free sets is wrong" counter-example, duration longer than any gap, per-slot counts; `AllocationPolicy` — preferred hint honoured/ignored, surplus-capability preference, load tie-break, determinism; `ServiceBay.Supports` / `Technician.IsCertifiedFor` — mismatch and superset cases; `Appointment` state machine — every legal transition, every illegal one, `Cancel` reason required, events raised exactly once; validators for every request.
+`TimeSlot` overlap/adjacency, half-open semantics; `ServiceDuration` rejects zero/negative/non-multiple-of-5/over 8 h; `Vin` format (valid, 16 chars, contains `I`/`O`/`Q`, lowercase normalised); `OperatingHours.ResolveOperatingWindow` incl. closed day, DST spring-forward (Europe/London 2026-03-29) and fall-back (2026-10-25); `BookingWindowPolicy` lead time and horizon with `FakeTimeProvider`; `AvailabilityCalculator` - empty day, fully booked, back-to-back, the §6.2 worked example, the "union of free sets is wrong" counter-example, duration longer than any gap, per-slot counts; `AllocationPolicy` - preferred hint honoured/ignored, surplus-capability preference, load tie-break, determinism; `ServiceBay.Supports` / `Technician.IsCertifiedFor` - mismatch and superset cases; `Appointment` state machine - every legal transition, every illegal one, `Cancel` reason required, events raised exactly once; validators for every request.
 
 ### 14.2 Integration tests (Testcontainers PostgreSQL 17)
 
@@ -1146,7 +1146,7 @@ Assertions:
 4. Database: exactly one active appointment overlaps the slot for that bay and for that technician; `COUNT(appointment_history) == 1` for that appointment; no history rows reference a missing appointment; no idempotency rows reference a missing appointment.
 5. Repeat the whole scenario 5× in a loop to catch flakiness (the lock makes it deterministic; the repeat guards the claim).
 
-A second variant removes the advisory lock (via a test-only option) to *demonstrate* why it exists: the invariant still holds (one `201`), but the loser set may now include `slot-conflict` and the test records whether any `40P01` surfaced — this variant is informational and documents the design trade-off rather than gating the build.
+A second variant removes the advisory lock (via a test-only option) to *demonstrate* why it exists: the invariant still holds (one `201`), but the loser set may now include `slot-conflict` and the test records whether any `40P01` surfaced - this variant is informational and documents the design trade-off rather than gating the build.
 
 ### 14.5 Frontend harness checks
 
@@ -1170,9 +1170,9 @@ Purpose: demonstrate end-to-end booking, schedule visualisation and conflict han
 - **Details sheet**: opens from a block with the board's snapshot at once and the whole record from `GET /appointments/{id}` (contact details, vehicle, notes, cancellation reason) as soon as it answers; a side sheet on wide screens, a bottom sheet on phones; focus moves to its title and returns to the block on close (to the board when the block has left it). For a confirmed or checked-in appointment it holds the *Cancel appointment* form: a reason (required, 1-500 characters, checked before sending); on `200` a toast names the freed bay and technician and the schedule and availability queries are invalidated through the generated query keys, so the block leaves on the refetch; on `409` (`invalid-state-transition` or `concurrency-conflict`) a warning alert shows the problem's title, detail and `traceId` and the board is read again; on `400` the `errors.reason` message goes under the field. Other statuses say why they cannot be cancelled.
 - **Responsive**: at 1280 px and wider the sidebar is expanded and the toolbar is one row; from 768 to 1279 px the sidebar starts off-canvas (opened from the header) and the toolbar wraps onto two rows, KPI cards 2 x 2 then 4-up from 1024 px, the lane column narrows to 160 px; below 768 px the sidebar is the template's sheet, the toolbar is the dealership select at full width, the day control and the lane view with a *Filters* bottom sheet (auto-refresh, lane filter, legend), and **the board is an agenda**: collapsible lane sections of time-ordered job cards (time range in the dealership's zone, counterpart, service, plate and VIN, status badge, customer) with a *Now* divider in today's lists and the same closed, loading and error states. Touch layouts get 44 px targets; no width scrolls the page sideways.
 - **Booking dialog**: service type (shows duration, required capabilities/certifications and `bookable`), date, then available start times fetched from `GET /availability` rendered as chips with free-bay/technician counts; customer and vehicle fields (VIN validated client-side with the same rule as the server); optional preferred bay/technician. On `201` the dialog closes, the new block pulses on the board and a toast shows the allocated bay/technician. On `409` an inline alert shows the problem title/detail, `traceId`, and `suggestedSlots` as one-click chips; on `400/422` field errors map onto the form from `errors`/`type`.
-- **Stress panel** (the video's proof moment): fire N (default 30) parallel bookings for one chosen slot from the browser and tally responses by status/type live — "1 × 201 · 29 × 409 slot-unavailable · 0 × 5xx" — with each row linking its `traceId`.
+- **Stress panel** (the video's proof moment): fire N (default 30) parallel bookings for one chosen slot from the browser and tally responses by status/type live - "1 × 201 · 29 × 409 slot-unavailable · 0 × 5xx" - with each row linking its `traceId`.
 - **Error surfaces**: every non-2xx is parsed as ProblemDetails by one helper (`lib/problem-details.ts`); unknown shapes fall back to a message naming the status code, or saying that the server could not be reached. A view whose data failed to load shows `ProblemAlert`: what failed, the API's detail, its `traceId` with a copy button, and *Try again*. A failed background refresh keeps the data already shown.
-- **Design direction and quality bar**: "calm control room" — neutral surfaces, one accent, colour reserved for appointment state (dedicated status tokens, AA contrast in both themes, never colour-only), Inter with tabular numbers, monospace VINs; a KPI strip (appointments today, bay utilisation, technicians busy now, next free slot); hatched out-of-hours time and a live "now" line; loading, empty and error states for every view; keyboard-reachable blocks with descriptive labels; reduced-motion support. The full checklist is in Addendum B §B4 of the implementation plan.
+- **Design direction and quality bar**: "calm control room" - neutral surfaces, one accent, colour reserved for appointment state (dedicated status tokens, AA contrast in both themes, never colour-only), Inter with tabular numbers, monospace VINs; a KPI strip (appointments today, bay utilisation, technicians busy now, next free slot); hatched out-of-hours time and a live "now" line; loading, empty and error states for every view; keyboard-reachable blocks with descriptive labels; reduced-motion support. The full checklist is in Addendum B §B4 of the implementation plan.
 - **Visual QA**: after the harness is built, it is driven in Chrome (light/dark, 1440 and 1024 px) through every flow; console and network logs must be clean; findings are fixed and re-validated; screenshots and GIFs are committed under `docs/media/` for the README and the video.
 
 ---
@@ -1183,7 +1183,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 
 **Tooling and roles.** Design, architecture and planning were produced in a single Claude Code session with **Claude Fable 5.1** acting as principal architect under my direction; implementation is delegated to **Claude Opus / Sonnet** subagents working from the written plan, with Fable reviewing their output. Documentation for current library APIs was pulled live through the Context7 MCP server (Aspire 13 `AddViteApp`/`AddEFMigrations`, HeyAPI plugin configuration, Npgsql range mapping) so the design cites real signatures, not training-data memories. An `Explore` subagent mined the reference repositories and reported a digest with file:line evidence rather than pasting code into the design context.
 
-**How the model was steered.** I supplied the business framing, the mandated stack, the folder structure, and the success criteria (including the 30-request adversarial test), and asked for a design *before* any code. The session began by reading the official brief (PDF), inventorying the template's actual conventions (Base UI, Tailwind v4, TS 6, Vite 8), and pinning every package version from NuGet/npm — a deliberate guard against the model inventing APIs.
+**How the model was steered.** I supplied the business framing, the mandated stack, the folder structure, and the success criteria (including the 30-request adversarial test), and asked for a design *before* any code. The session began by reading the official brief (PDF), inventorying the template's actual conventions (Base UI, Tailwind v4, TS 6, Vite 8), and pinning every package version from NuGet/npm - a deliberate guard against the model inventing APIs.
 
 **Alternatives the model generated and how they were decided.**
 
@@ -1195,7 +1195,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | Mediator | MediatR vs hand-rolled vs none | None: minimal API endpoints call handlers directly; MediatR's licence change removed the "free convention" argument. |
 | Migrations | Aspire `AddEFMigrations` + `RunDatabaseUpdateOnStart`, separate MigrationService project, API-startup migrate | API-startup in Dev/ST (fewest moving parts for `dotnet run`), **migration bundles** in UAT/Prod; the prescribed solution layout is preserved. `Aspire.Hosting.EntityFrameworkCore` was additionally found to be preview-only on NuGet at design time (13.6.1-preview), which rules it out for a production-grade submission. |
 | 400 vs 422 | Everything-is-400 vs semantic split | Split (ADR-011) so clients branch on `type`. |
-| Contract sync | Generate from the live URL at dev time vs exporting from a contract test vs build-time generation | Build-time generation into the committed `contracts/openapi/v1.json` with a `GetDocument.Insider` guard, plus a runtime-parity test; the first draft exported from a test because MSBuild-time emission starts the host — the stakeholder's prompt to look for source generation led to re-checking the .NET 10 docs, which document the guard for exactly this case. |
+| Contract sync | Generate from the live URL at dev time vs exporting from a contract test vs build-time generation | Build-time generation into the committed `contracts/openapi/v1.json` with a `GetDocument.Insider` guard, plus a runtime-parity test; the first draft exported from a test because MSBuild-time emission starts the host - the stakeholder's prompt to look for source generation led to re-checking the .NET 10 docs, which document the guard for exactly this case. |
 | API test UI and UI quality | Scalar vs Swagger UI vs ReDoc; visual QA by screenshots only vs driving the real UI in a browser | Scalar (interactive client, 3.1, examples from XML comments). The UI is validated by driving it in Chrome (claude-in-chrome): flows, both themes, two viewports, console/network checks, recorded GIFs for the video (§15). |
 | CORS vs proxy in dev | Allow-list the Vite origin vs Vite proxy | Proxy (same-origin), CORS default-deny with configurable origins for other deployments. |
 | Reflection reduction / AOT readiness (added mid-implementation at the stakeholder's request) | Source-generated DI containers (Jab, Pure.DI) vs explicit MEDI registrations; EF compiled models now vs later; Mapperly vs hand mappers; mediator source generators | Explicit MEDI registrations (Microsoft ships no DI generator; MEDI is AOT-compatible); compiled models deferred with the drift caveat; Mapperly adopted; no mediator exists to replace. The model inventoried every reflection site in the design and produced the budget table in §9.1. |
@@ -1210,7 +1210,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 
 | Item | Impact | Plan |
 |------|--------|------|
-| Technician shifts, breaks and leave (A-4) | Availability over-promises technicians who are off | Add `technician_shifts` (per date/day-of-week windows); seed `Free(t)` from the shift window instead of the dealership window — a one-function change in the calculator. |
+| Technician shifts, breaks and leave (A-4) | Availability over-promises technicians who are off | Add `technician_shifts` (per date/day-of-week windows); seed `Free(t)` from the shift window instead of the dealership window - a one-function change in the calculator. |
 | Public holidays / closures (A-5) | Bookings on closed days | `dealership_closures` override table checked in `ResolveOperatingWindow`. |
 | Bay turnaround buffers | Back-to-back jobs with no clean-up gap | Second generated range `bay_range = tstzrange(start, end + buffer)` with its own exclusion constraint. |
 | Per-dealership lock becomes hot (multi-site tenants) | Latency under extreme load | Two advisory locks keyed by bay and technician, acquired in sorted key order (cycle-free). |

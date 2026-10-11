@@ -56,7 +56,7 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
                 new DateTime(2026, 10, 13, 5, 30, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 16, 30, 0, DateTimeKind.Utc)));
             munich.Hours.ForDay(DayOfWeek.Saturday).IsClosed.ShouldBeTrue();
 
-            var heavyDuty = await db.ServiceBays.AsNoTracking().SingleAsync(b => b.Name == "Bay 3 — Heavy duty", Ct);
+            var heavyDuty = await db.ServiceBays.AsNoTracking().SingleAsync(b => b.Name == "Bay 3 - Heavy duty", Ct);
             heavyDuty.DealershipId.ShouldBe(ReferenceDataSeed.ReadingDealershipId);
             heavyDuty.Capabilities.ShouldBe([BayCapability.HeavyDutyLift, BayCapability.StandardLift], ignoreOrder: true);
 

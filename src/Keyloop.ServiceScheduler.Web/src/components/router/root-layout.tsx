@@ -38,7 +38,7 @@ export function RootFallback() {
 }
 
 /**
- * Shown when a page fails to load or render — most often a code chunk that no longer exists after a new deployment.
+ * Shown when a page fails to load or render - most often a code chunk that no longer exists after a new deployment.
  * Says what failed and offers the one action that fixes it.
  */
 export function RootErrorBoundary() {

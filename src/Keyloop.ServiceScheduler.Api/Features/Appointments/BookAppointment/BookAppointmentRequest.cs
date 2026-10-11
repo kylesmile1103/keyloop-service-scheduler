@@ -39,7 +39,7 @@ public sealed record BookAppointmentRequest(
 
     /// <summary>
     /// Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy
-    /// chooses (the example is the seeded Reading Bay 1 — Standard).
+    /// chooses (the example is the seeded Reading Bay 1 - Standard).
     /// </summary>
     /// <example>29c9f970-e13d-879e-a949-a553839cf25e</example>
     public Guid? PreferredBayId { get; init; } = PreferredBayId;

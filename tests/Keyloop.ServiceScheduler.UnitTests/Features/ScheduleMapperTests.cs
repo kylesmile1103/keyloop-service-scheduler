@@ -41,13 +41,13 @@ public class ScheduleMapperTests
     {
         // Given out of order: the domain holds a set, and the board must not depend on hash-set iteration order.
         var bay = ServiceBay.Create(
-            Guid.NewGuid(), Reading.Id, "Bay 4 — EV", [BayCapability.WheelAlignment, BayCapability.EvHighVoltage, BayCapability.StandardLift]);
+            Guid.NewGuid(), Reading.Id, "Bay 4 - EV", [BayCapability.WheelAlignment, BayCapability.EvHighVoltage, BayCapability.StandardLift]);
         bay.Deactivate();
         ScheduledAppointmentResponse[] appointments = [Appointment(new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc))];
 
         var response = ScheduleMapper.ToResponse(bay, appointments);
 
-        (response.Id, response.Name, response.IsActive).ShouldBe((bay.Id, "Bay 4 — EV", false));
+        (response.Id, response.Name, response.IsActive).ShouldBe((bay.Id, "Bay 4 - EV", false));
         response.Capabilities.ShouldBe([BayCapability.StandardLift, BayCapability.EvHighVoltage, BayCapability.WheelAlignment]);
         response.Appointments.ShouldBe(appointments);
     }

@@ -6,7 +6,7 @@ project or shipped in its build output.
 
 ## shadcn-dashboard-landing-template (Vite version)
 
-Source: https://github.com/shadcnstore/shadcn-dashboard-landing-template — used for the project layout and
+Source: https://github.com/shadcnstore/shadcn-dashboard-landing-template - used for the project layout and
 configuration (Vite, TypeScript, ESLint, `components.json`), the app shell (`components/app-sidebar.tsx`,
 `site-header.tsx`, `nav-main.tsx`, `nav-user.tsx`, `mode-toggle.tsx`, `theme-provider.tsx`, `layouts/base-layout.tsx`,
 `router/root-layout.tsx`, `hooks/*`), the vendored `components/ui/*` primitives and the Tailwind v4 theme tokens in
@@ -47,7 +47,7 @@ SOFTWARE.
 
 ## shadcn/ui
 
-Source: https://github.com/shadcn-ui/ui — the `components/ui/*` primitives in the template above originate from
+Source: https://github.com/shadcn-ui/ui - the `components/ui/*` primitives in the template above originate from
 shadcn/ui (Base UI variant). MIT License, Copyright (c) 2023 shadcn. The licence text is identical to the one above.
 
 ## Inter typeface

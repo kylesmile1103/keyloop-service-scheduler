@@ -114,7 +114,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Ignores_a_preferred_bay_that_cannot_host_the_service()
     {
-        var motBay = TestData.NewBay(_workshop.Dealership.Id, "Bay 0 — MOT", BayCapability.MotTesting);
+        var motBay = TestData.NewBay(_workshop.Dealership.Id, "Bay 0 - MOT", BayCapability.MotTesting);
         await SaveAsync(motBay);
 
         var appointment = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten, preferredBayId: motBay.Id));
@@ -126,7 +126,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Prefers_bay_with_fewest_surplus_capabilities()
     {
         // The EV bay sorts first by name and can host a standard service too, but taking it would waste specialised capacity.
-        var evBay = TestData.NewBay(_workshop.Dealership.Id, "Bay 0 — EV", BayCapability.StandardLift, BayCapability.EvHighVoltage);
+        var evBay = TestData.NewBay(_workshop.Dealership.Id, "Bay 0 - EV", BayCapability.StandardLift, BayCapability.EvHighVoltage);
         await SaveAsync(evBay);
 
         var appointment = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten));
@@ -270,8 +270,8 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         object[] scarceSideExtras = side == "bay"
             ?
             [
-                ServiceBay.Create(Guid.NewGuid(), dealership.Id, "Bay 2 — Dormant", [BayCapability.StandardLift], isActive: false),
-                TestData.NewBay(dealership.Id, "Bay 3 — MOT", BayCapability.MotTesting),
+                ServiceBay.Create(Guid.NewGuid(), dealership.Id, "Bay 2 - Dormant", [BayCapability.StandardLift], isActive: false),
+                TestData.NewBay(dealership.Id, "Bay 3 - MOT", BayCapability.MotTesting),
                 TestData.NewTechnician(dealership.Id, "Chloe Nguyen", "S-1002", Certification.GeneralService),
             ]
             :

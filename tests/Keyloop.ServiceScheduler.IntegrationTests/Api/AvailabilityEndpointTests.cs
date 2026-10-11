@@ -165,8 +165,8 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         await SaveAsync(
             dealership,
             TestData.NewBay(dealership.Id, "Bay 1", BayCapability.StandardLift),
-            ServiceBay.Create(Guid.NewGuid(), dealership.Id, "Bay 2 — Dormant", [BayCapability.StandardLift], isActive: false),
-            TestData.NewBay(dealership.Id, "Bay 3 — MOT", BayCapability.MotTesting),
+            ServiceBay.Create(Guid.NewGuid(), dealership.Id, "Bay 2 - Dormant", [BayCapability.StandardLift], isActive: false),
+            TestData.NewBay(dealership.Id, "Bay 3 - MOT", BayCapability.MotTesting),
             TestData.NewTechnician(dealership.Id, "Amelia Clarke", "T-1001", Certification.GeneralService),
             Technician.Create(Guid.NewGuid(), dealership.Id, "Ben Okafor", "T-1002", [Certification.GeneralService], isActive: false),
             TestData.NewTechnician(dealership.Id, "Farid Haddad", "T-1006", Certification.MotTester),

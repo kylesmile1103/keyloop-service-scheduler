@@ -42,11 +42,11 @@ public class ServiceBayTests
     {
         var id = Guid.NewGuid();
 
-        var bay = ServiceBay.Create(id, DealershipId, "  Bay 4 — EV  ", [EvHighVoltage, StandardLift, EvHighVoltage]);
+        var bay = ServiceBay.Create(id, DealershipId, "  Bay 4 - EV  ", [EvHighVoltage, StandardLift, EvHighVoltage]);
 
         bay.Id.ShouldBe(id);
         bay.DealershipId.ShouldBe(DealershipId);
-        bay.Name.ShouldBe("Bay 4 — EV");
+        bay.Name.ShouldBe("Bay 4 - EV");
         bay.Capabilities.Count.ShouldBe(2);
         bay.Capabilities.SetEquals([StandardLift, EvHighVoltage]).ShouldBeTrue();
         bay.IsActive.ShouldBeTrue();

@@ -45,12 +45,12 @@ public static class ReferenceDataSeed
 
         ServiceBay[] bays =
         [
-            Bay(reading, "reading", 1, "Bay 1 — Standard", StandardLift),
-            Bay(reading, "reading", 2, "Bay 2 — Alignment", StandardLift, BayCapability.WheelAlignment),
-            Bay(reading, "reading", 3, "Bay 3 — Heavy duty", HeavyDutyLift, StandardLift),
-            Bay(reading, "reading", 4, "Bay 4 — EV", EvHighVoltage, StandardLift),
-            Bay(reading, "reading", 5, "Bay 5 — Diagnostics", StandardLift, BayCapability.Diagnostics, BayCapability.AirConditioning),
-            Bay(reading, "reading", 6, "Bay 6 — MOT", StandardLift, MotTesting),
+            Bay(reading, "reading", 1, "Bay 1 - Standard", StandardLift),
+            Bay(reading, "reading", 2, "Bay 2 - Alignment", StandardLift, BayCapability.WheelAlignment),
+            Bay(reading, "reading", 3, "Bay 3 - Heavy duty", HeavyDutyLift, StandardLift),
+            Bay(reading, "reading", 4, "Bay 4 - EV", EvHighVoltage, StandardLift),
+            Bay(reading, "reading", 5, "Bay 5 - Diagnostics", StandardLift, BayCapability.Diagnostics, BayCapability.AirConditioning),
+            Bay(reading, "reading", 6, "Bay 6 - MOT", StandardLift, MotTesting),
             Bay(munich, "munich", 1, "Halle 1", StandardLift),
             Bay(munich, "munich", 2, "Halle 2", StandardLift, EvHighVoltage),
             Bay(munich, "munich", 3, "Halle 3", HeavyDutyLift, StandardLift),
