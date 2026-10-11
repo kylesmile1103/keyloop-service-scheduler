@@ -19,19 +19,23 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Retries (§7.4): the transaction runs under the retrying execution strategy with commit verification, like booking. A run that reached
-/// its commit remembers the row version its <c>UPDATE</c> wrote (the new <c>xmin</c>, which EF Core reads back); after a failed commit the
+/// Retries (§7.4): the transaction runs under the retrying execution strategy with commit verification, like booking. A run that reaches
+/// its commit first records the row version its <c>UPDATE</c> wrote (the new <c>xmin</c>, which EF Core reads back). The strategy runs
+/// again only after a failure, so from then on that commit is in doubt for the rest of the request. After each later failure the
 /// verification answers "committed" when the row carries that version. Any other answer is inconclusive, because the read takes no lock
-/// and may come before a commit that did happen is visible. So the next run first locks the row (<c>SELECT … FOR UPDATE</c> waits until
-/// the earlier run's transaction has ended), then reads it: carrying the written version, the earlier run committed and is answered as
-/// such; otherwise it never committed and this run cancels afresh. A lost commit acknowledgement is therefore a 200, never a 409 for the
-/// client's own cancellation.
+/// and may come before a commit that did happen is visible. Every later run therefore first locks the row (<c>SELECT … FOR UPDATE</c>
+/// waits until the earlier run's transaction has ended), then reads it: carrying the written version, the earlier run committed and is
+/// answered as such; otherwise it never committed and this run cancels afresh. The doubt belongs to the request, not to the run that
+/// inherits it: a run that fails before settling it (its row lock timing out behind the earlier transaction, say) hands it to the next.
+/// Comparing again after an answer is harmless, since a version found stays found (a cancelled appointment cannot change) and a version
+/// proved absent never appears. A lost commit acknowledgement is therefore a 200, never a 409 for the client's own cancellation.
 /// </para>
 /// <para>
 /// The aggregate's <c>AppointmentCancelled</c> becomes the history row inside the transaction and is logged (1010) and counted
 /// (<c>scheduler.appointments.cancellations</c>) by <see cref="TelemetryDomainEventObserver"/> after the commit; a commit in doubt is
-/// settled with the audit interceptor exactly as above, so each cancellation is logged and counted once. The response is read back after
-/// the commit (<see cref="AppointmentResponseQuery"/>), so it is what the database holds.
+/// settled with the audit interceptor exactly as above, so each cancellation is logged and counted once (unless the strategy runs out of
+/// retries before a read settles the doubt: the request is then a 500 and the history row is the only record, §7.3). The response is read
+/// back after the commit (<see cref="AppointmentResponseQuery"/>), so it is what the database holds.
 /// </para>
 /// </remarks>
 public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider clock)
@@ -52,16 +56,16 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
             ?? throw new NotFoundException(ProblemResources.Appointment, appointmentId);
     }
 
-    /// <summary>One run of the cancellation; see the remarks for why a run after an in-doubt commit locks the row first.</summary>
+    /// <summary>One run of the cancellation; see the remarks for why every run after an in-doubt commit locks the row first.</summary>
     private async Task<bool> AttemptAsync(CancelRun run, CancellationToken ct)
     {
-        // A retried run starts from nothing. It is in doubt when the run before it failed at its commit and the verification could not tell.
-        var inDoubt = run.Committing;
-        run.Committing = false;
+        // A retried run starts from nothing, except the doubt a failed commit left: the version that commit wrote, kept in the request's
+        // state so that a run which fails before settling it hands it on instead of forgetting it.
         db.ChangeTracker.Clear();
+        var inDoubt = run.WrittenVersion;
 
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-        if (inDoubt)
+        if (inDoubt is not null)
         {
             // The earlier run's UPDATE holds this row's lock until its transaction ends; waiting for it makes the read below conclusive.
             await db.Database.ExecuteSqlAsync($"SELECT 1 FROM appointments WHERE id = {run.AppointmentId} FOR UPDATE", ct);
@@ -70,9 +74,10 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
         var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == run.AppointmentId, ct)
             ?? throw new NotFoundException(ProblemResources.Appointment, run.AppointmentId);
 
-        if (inDoubt)
+        if (inDoubt is { } written)
         {
-            var committed = appointment.RowVersion == run.WrittenVersion;
+            // Carrying the written version, the earlier run committed: answer it. Otherwise it never did: drop its events, cancel afresh.
+            var committed = appointment.RowVersion == written;
             await ResolveInDoubtAsync(committed, ct);
             if (committed)
             {
@@ -87,27 +92,27 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
         // since, and EF Core throws DbUpdateConcurrencyException (not transient, so never retried). The interceptor adds the history row.
         await db.SaveChangesAsync(ct);
 
-        // From here a failure may be a lost acknowledgement of a commit that happened: VerifyCommittedAsync, or the next run, finds out.
+        // From here a failure may be a lost acknowledgement of a commit that happened: VerifyCommittedAsync, or a later run, finds out.
         run.WrittenVersion = appointment.RowVersion;
-        run.Committing = true;
         await transaction.CommitAsync(ct);
         return true;
     }
 
     /// <summary>
-    /// Whether a run whose commit reported a failure committed anyway: the row carries the version that run wrote. Only a failure after
-    /// the run reached its commit can be a lost acknowledgement; an earlier one is simply retried. "Committed" releases the in-doubt
-    /// events; anything else settles nothing (see the remarks) and leaves it to the next run.
+    /// Whether the cancellation committed although a run failed: the row carries the version written by the last run that reached its
+    /// commit. Before any run did, nothing can have committed and the failure is simply retried. After one did, every failure is checked,
+    /// including one that struck a later run before it could settle the doubt. "Committed" releases the in-doubt events; anything else
+    /// settles nothing (see the remarks) and leaves it to the next run's locked read.
     /// </summary>
     private async Task<ExecutionResult<bool>> VerifyCommittedAsync(CancelRun run, CancellationToken ct)
     {
-        if (!run.Committing)
+        if (run.WrittenVersion is not { } written)
         {
             return new ExecutionResult<bool>(false, false);
         }
 
         var version = await db.Appointments.AsNoTracking().Where(a => a.Id == run.AppointmentId).Select(a => (uint?)a.RowVersion).FirstOrDefaultAsync(ct);
-        if (version != run.WrittenVersion)
+        if (version != written)
         {
             return new ExecutionResult<bool>(false, false);
         }
@@ -128,10 +133,10 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
 
         public DateTime NowUtc { get; } = nowUtc;
 
-        /// <summary>Whether the current run had reached its commit when it failed.</summary>
-        public bool Committing { get; set; }
-
-        /// <summary>The row version (<c>xmin</c>) the last run to reach its commit wrote; null before any did.</summary>
+        /// <summary>
+        /// The row version (<c>xmin</c>) written by the last run that reached its commit; null before any did. It is set just before the
+        /// commit, and a later run exists only because a failure followed, so a non-null value means that commit is in doubt.
+        /// </summary>
         public uint? WrittenVersion { get; set; }
     }
 }

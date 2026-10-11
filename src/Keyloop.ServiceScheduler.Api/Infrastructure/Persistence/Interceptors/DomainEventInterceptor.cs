@@ -20,8 +20,10 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 /// the caller must not see a failure, and a retrying execution strategy must not re-run the unit of work.
 /// <para>
 /// A commit that reports a failure may still have committed (a lost acknowledgement). Its events are then held <em>in doubt</em>:
-/// never notified unless the caller establishes that the commit happened, with <see cref="ResolveInDoubtCommitAsync"/> (the booking
-/// handler does, when it verifies a failed commit), so observers hear about every committed change once and about nothing else.
+/// never notified unless the caller establishes that the commit happened, with <see cref="ResolveInDoubtCommitAsync"/> (the write
+/// handlers, booking and cancellation, do when they verify a failed commit or re-check under a lock), so observers hear about every
+/// committed change once and about nothing else. Events still in doubt when the caller gives up (its retries exhausted) are never
+/// notified; the history row committed with the change remains its record (SYSTEM_DESIGN §7.3).
 /// </para>
 /// </remarks>
 public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger)

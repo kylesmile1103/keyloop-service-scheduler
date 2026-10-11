@@ -19,8 +19,8 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 /// A commit that succeeded on the server but whose acknowledgement was lost (SYSTEM_DESIGN §7.4, transient row): the retrying execution
 /// strategy runs the unit of work again, and that must not book a second appointment or turn a cancellation that happened into a 409.
 /// Booking: the appointment id is minted once per request, the strategy verifies a failed commit by looking for it, and each run looks
-/// for it again after taking the lock. Cancellation: the strategy verifies by the row version the cancel wrote (its <c>xmin</c>), and a
-/// run after an in-doubt commit locks the row before reading it, so that read is conclusive.
+/// for it again after taking the lock. Cancellation: the strategy verifies by the row version the cancel wrote (its <c>xmin</c>), and
+/// every run after an in-doubt commit locks the row before reading it, so that read is conclusive.
 /// </summary>
 /// <remarks>
 /// The fault is raised after the commit, from a transaction interceptor. Placed after the audit interceptor, the audit's post-commit
@@ -35,6 +35,7 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
 
     private readonly CommitAcknowledgementLoss _commitLoss = new();
     private readonly InconclusiveVerification _verification = new();
+    private readonly TransientCommandFault _rowLockFault = new("FOR UPDATE");
     private readonly CapturingLoggerProvider _logs = new();
     private SchedulerApiFactory _base = null!;
     private WebApplicationFactory<Program>? _factory;
@@ -213,6 +214,33 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
         await earlierRun.DisposeAsync();
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task Lost_commit_acknowledgement_of_a_cancel_stays_in_doubt_when_the_next_run_fails_before_settling_it(int verificationsHidden)
+    {
+        // Run 1 commits, its acknowledgement is lost and the verification after it sees nothing. Run 2 then fails transiently at its
+        // first statement, the row lock (as when it times out behind run 1's transaction, still open on the server), so it settles
+        // nothing. Run 1's commit is still in doubt: the verification after run 2 finds it when it can see the row (1 hidden), and
+        // otherwise run 3 locks the row and finds it (2 hidden). Forgetting the doubt would answer the client's own cancellation with
+        // a 409 and lose its 1010.
+        var appointment = await SaveBookedAsync();
+        Start(faultBeforeAudit: true);
+        _commitLoss.Arm();
+        _verification.Arm(times: verificationsHidden);
+        _rowLockFault.Arm();
+
+        using var response = await CancelAsync(appointment.Id);
+
+        (_commitLoss.Fired, _rowLockFault.Fired).ShouldBe((1, 1), "a lost acknowledgement, then a transient fault on the in-doubt run's row lock");
+        await ShouldBeCancelledOnceAsync(response, appointment.Id);
+        _verification.Fired.ShouldBe(verificationsHidden, "every armed verification read was hidden");
+
+        // The only error is EF Core's report of the failed commit, not an unhandled exception (the failed row lock is EF Core's
+        // CommandError, which Program.cs logs at Information).
+        _logs.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => e.EventId.Name).ShouldBe(["Microsoft.EntityFrameworkCore.Database.Transaction.TransactionError"]);
+    }
+
     [Fact]
     public async Task A_cancel_whose_commit_really_failed_is_retried_and_cancels_once()
     {
@@ -274,7 +302,7 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
             }
 
             // Inert until armed.
-            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_verification));
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_verification, _rowLockFault));
         }));
         _client = _factory.CreateClient();
     }
