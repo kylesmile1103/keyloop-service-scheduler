@@ -82,6 +82,52 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Unkeyed_client_retry_with_spare_capacity_creates_two_distinct_allocations()
+    {
+        var request = TestData.BookingRequest(_workshop.Interim.Id, Ten);
+        using var first = await PostAsync(_workshop.Dealership.Id, request, null);
+        using var retry = await PostAsync(_workshop.Dealership.Id, request, null);
+
+        first.StatusCode.ShouldBe(HttpStatusCode.Created);
+        retry.StatusCode.ShouldBe(HttpStatusCode.Created, "each unkeyed HTTP request is a new booking when capacity remains");
+        retry.Headers.Contains("Idempotent-Replayed").ShouldBeFalse();
+        var original = await first.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        var duplicate = await retry.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        duplicate.Id.ShouldNotBe(original.Id);
+        duplicate.Bay.Id.ShouldNotBe(original.Bay.Id);
+        duplicate.Technician.Id.ShouldNotBe(original.Technician.Id);
+        (duplicate.Customer, duplicate.Vehicle, duplicate.StartUtc).ShouldBe((original.Customer, original.Vehicle, original.StartUtc));
+        await _factory.WithDbAsync(async db =>
+        {
+            (await db.Appointments.CountAsync(Ct)).ShouldBe(2);
+            (await db.AppointmentHistory.CountAsync(Ct)).ShouldBe(2);
+            (await db.IdempotencyKeys.CountAsync(Ct)).ShouldBe(0);
+        });
+        using var third = await PostAsync(_workshop.Dealership.Id, request, null);
+        await third.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
+    }
+
+    [Fact]
+    public async Task Stable_key_client_retry_with_spare_capacity_replays_one_appointment()
+    {
+        var request = TestData.BookingRequest(_workshop.Interim.Id, Ten);
+        using var first = await PostAsync(_workshop.Dealership.Id, request, "one-booking-intention");
+        using var retry = await PostAsync(_workshop.Dealership.Id, request, "one-booking-intention");
+
+        first.StatusCode.ShouldBe(HttpStatusCode.Created);
+        retry.StatusCode.ShouldBe(HttpStatusCode.Created);
+        retry.Headers.GetValues("Idempotent-Replayed").ShouldBe(["true"]);
+        (await retry.Content.ReadAsStringAsync(Ct)).ShouldBe(await first.Content.ReadAsStringAsync(Ct));
+        retry.Headers.Location.ShouldBe(first.Headers.Location);
+        await _factory.WithDbAsync(async db =>
+        {
+            (await db.Appointments.CountAsync(Ct)).ShouldBe(1);
+            (await db.AppointmentHistory.CountAsync(Ct)).ShouldBe(1);
+            (await db.IdempotencyKeys.CountAsync(Ct)).ShouldBe(1);
+        });
+    }
+
+    [Fact]
     public async Task Concurrent_requests_with_the_same_key_and_body_book_once_and_both_get_201()
     {
         // Hold the dealership's booking lock so both requests pass the lock-free lookup (no key yet) and queue on the lock. Whichever

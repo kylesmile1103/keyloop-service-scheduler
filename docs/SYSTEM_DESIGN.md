@@ -408,7 +408,7 @@ This is a greedy heuristic, not an optimiser; it is cheap, explainable to a work
 | Preferred bay supplied but incompatible | Hint ignored; allocation proceeds; response shows the chosen bay. |
 | Cancel an already cancelled/completed appointment | `409 invalid-state-transition`. |
 | Two advisors cancel the same appointment simultaneously | First wins; second gets `409 concurrency-conflict` (`xmin`). |
-| Client retries a `POST` after a network timeout | With `Idempotency-Key`: replay `201` with `Idempotent-Replayed: true`. Without: the second attempt sees `409 slot-unavailable` (no duplicate is possible either way). |
+| Client retries a `POST` after a network timeout | With `Idempotency-Key`: replay `201` with `Idempotent-Replayed: true`. Without: each retry is a new booking; it may create a second appointment on distinct resources when capacity remains, or return `409 slot-unavailable` when it does not. No VIN/body deduplication is implied. |
 
 ---
 
@@ -504,7 +504,7 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 
 ### 7.5 Idempotent booking
 
-`POST` is not idempotent by default; a client that times out after the server committed will retry and, without help, receive `409 slot-unavailable` for a booking it actually owns. The optional `Idempotency-Key` header (1–64 characters of `[A-Za-z0-9_-]`, e.g. a UUID; anything else is `400 validation-error` keyed `Idempotency-Key`) fixes this:
+`POST` is not idempotent by default; a client retry after a lost response may create another appointment when capacity remains, or receive `409 slot-unavailable` when it does not. The per-request minted id handles server execution-strategy retries only; it cannot identify a new HTTP request as the same booking intention. The client-retry mechanism is the optional `Idempotency-Key` header (1–64 characters of `[A-Za-z0-9_-]`, e.g. a UUID; anything else is `400 validation-error` keyed `Idempotency-Key`). It works as follows:
 
 1. Compute `fingerprint = SHA-256(dealershipId + "\n" + canonical JSON body)` (the body re-serialised through the source-generated context, so formatting does not matter).
 2. **Before any rule or availability check, without a lock**, read the key's row. Unexpired with the same fingerprint → replay the stored `201` body with `Location` and `Idempotent-Replayed: true`; unexpired with another fingerprint → `422 idempotency-key-reuse`; expired or missing → continue. This is what makes a sequential retry safe: it never reaches the availability check, where its own committed appointment would make the slot look busy, nor the lead-time rule, which time may since have broken.
@@ -513,9 +513,9 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 5. **Backstop**: a `23505` on `idempotency_keys` can now only mean the same key was used concurrently at *another* dealership (whose lock does not serialise with ours); the handler rolls back, re-reads the committed row and applies the rules of step 2 (the fingerprint includes the dealership, so the answer is `422`). A row that is already expired by this instance's clock (only possible when instances' clocks are a day apart) is not replayed: the key is free, so the booking runs once more and step 3 deletes the row.
 6. **Only successful (`2xx`) outcomes are memoised**: any `4xx` booking rolled back its transaction (including the key row), so a failed booking may be retried with the same key. This keeps the design to one transaction and avoids memoising transient conflicts.
 
-Why this cannot double-book or answer a retry with a wrong `409`: every request for a dealership checks the key and then availability *after* taking the dealership's lock, and each statement sees everything the previous lock holder committed. A same-key request therefore finds the earlier request's row before it can look at availability; a server-side retry of a run whose commit acknowledgement was lost finds its own minted appointment (with or without a key, §7.3); the exclusion constraints still forbid any overlap whatever the application does. The expired-key `DELETE` (step 3) takes a row lock on that key only, contended solely by the same key used at another dealership at the same moment; such a transaction waits holding only its own dealership's lock, which the holder never requests, so the wait cannot form a cycle (ADR-003).
+Why resources cannot be double-booked and keyed client retries or server execution-strategy retries avoid a wrong `409`: every request for a dealership checks the key and then availability *after* taking the dealership's lock, and each statement sees everything the previous lock holder committed. A same-key request therefore finds the earlier request's row before it can look at availability; a server-side retry of a run whose commit acknowledgement was lost finds its own minted appointment (with or without a key, §7.3); the exclusion constraints still forbid any overlap whatever the application does. The expired-key `DELETE` (step 3) takes a row lock on that key only, contended solely by the same key used at another dealership at the same moment; such a transaction waits holding only its own dealership's lock, which the holder never requests, so the wait cannot form a cycle (ADR-003).
 
-Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17. A retry after the 24 hours is a new booking.
+Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17. A retry after the 24 hours is a new booking. The UI generates one UUID key per booking intention and reuses it for transport retries of that intention; editing the intention or starting a new booking uses a new key. The API key remains optional and deliberately does not deduplicate by VIN or body.
 
 ---
 
@@ -1239,7 +1239,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |
 | **ADR-007** | Migrations run at API startup only in Development, SystemTest and the compose-only Demo environment; UAT/Production use EF migration bundles produced by `aspire publish` | Preserves the prescribed solution layout; production never migrates at boot. |
 | **ADR-008** | OpenAPI document generated at build time into `contracts/openapi/v1.json` (committed); HeyAPI generates the client from the file; CI fails on drift; a parity test checks runtime == build-time; the build-time run uses the Development environment and no database | Deterministic contract sync reviewable in PRs; production needs no runtime document generation. |
-| **ADR-009** | `Idempotency-Key` memoises successful bookings only, inside the booking transaction | One transaction; failures are safe to retry. |
+| **ADR-009** | Optional `Idempotency-Key` memoises successful bookings only, inside the booking transaction; the UI uses one key per booking intention and retains it for transport retries | One transaction; failures are safe to retry. Unkeyed requests are independent bookings and may allocate spare capacity again; no VIN/body deduplication. |
 | **ADR-010** | Authentication/authorisation deferred with an explicit seam and anonymous-mode logging | Keeps the evaluated engine in focus; production posture documented. |
 | **ADR-011** | Problem type catalogue: 400 malformed, 422 business rule, 409 state conflict; RFC 9457 | Clients branch on `type`; no text parsing. |
 | **ADR-012** | Vite dev proxy for same-origin API access; CORS default-deny with configured origins | No CORS complexity in development; production via ingress. |
