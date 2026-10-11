@@ -1,6 +1,10 @@
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -18,7 +22,9 @@ public static class ApiTags
 
 /// <summary>
 /// The <c>v1</c> OpenAPI document: fixed info, tags in a fixed order with descriptions, no <c>servers</c> (Scalar uses the
-/// current origin, and the build-time document must not depend on the host), and <c>format: date</c> on date parameters bound as text.
+/// current origin, and the build-time document must not depend on the host), <c>format: date</c> on date parameters bound as text,
+/// string-typed enums, the <c>traceId</c> every problem carries, documented response headers, and request bodies described by their
+/// own parameter. The same document is written at build time to <c>contracts/openapi/v1.json</c>, from which the web client is generated.
 /// </summary>
 internal static class SchedulerOpenApi
 {
@@ -51,11 +57,22 @@ internal static class SchedulerOpenApi
         (ApiTags.Schedule, "The dispatch board: a dealership's bays, technicians and appointments for one day."),
     ];
 
+    private const string TraceIdProperty = "traceId";
+
+    private const string TraceIdDescription =
+        "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it "
+        + "when reporting a problem: it finds the request's trace and logs.";
+
+    // The XML-comment generator's transformers are registered before these (it intercepts AddOpenApi and adds its own first), so
+    // these run after them and can correct what they write (DescribeRequestBody).
     public static IServiceCollection AddSchedulerOpenApi(this IServiceCollection services) =>
         services.AddOpenApi(DocumentName, options => options
             .AddDocumentTransformer(TransformDocument)
             .AddSchemaTransformer(TransformParameterSchema)
-            .AddOperationTransformer(AddResponseHeaders));
+            .AddSchemaTransformer(TypeStringEnums)
+            .AddSchemaTransformer(DocumentProblemTraceId)
+            .AddOperationTransformer(AddResponseHeaders)
+            .AddOperationTransformer(DescribeRequestBody));
 
     /// <summary>Adds the response headers endpoints declare with <see cref="ResponseHeaderExtensions.WithResponseHeader"/> (e.g. <c>Location</c> on a 201).</summary>
     internal static Task AddResponseHeaders(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
@@ -72,8 +89,62 @@ internal static class SchedulerOpenApi
             response.Headers[header.Name] = new OpenApiHeader
             {
                 Description = header.Description,
-                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = header.Format },
+                Schema = new OpenApiSchema { Type = header.Type, Format = header.Format },
             };
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Puts back the request body's own description. Microsoft.AspNetCore.OpenApi 10.0's XML-comment transformer copies the text of
+    /// every <c>&lt;param&gt;</c> that names no operation parameter — the body, but also injected services, the cancellation token and a
+    /// header bound under another name — onto the request body, so whichever such tag comes last describes it. The description comes
+    /// from the body parameter's <c>[Description]</c> attribute instead; a body without one fails document generation, and so the build.
+    /// </summary>
+    internal static Task DescribeRequestBody(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        if (operation.RequestBody is not { } requestBody)
+        {
+            return Task.CompletedTask;
+        }
+
+        var body = context.Description.ParameterDescriptions.SingleOrDefault(p => p.Source == BindingSource.Body);
+        var description = (body?.ParameterDescriptor as IParameterInfoParameterDescriptor)?.ParameterInfo
+            .GetCustomAttributes(typeof(DescriptionAttribute), inherit: false).OfType<DescriptionAttribute>().SingleOrDefault()?.Description;
+        requestBody.Description = description ?? throw new InvalidOperationException(
+            $"Operation '{operation.OperationId}' has a request body: describe it with [Description] on the body parameter (see SchedulerOpenApi.DescribeRequestBody).");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Adds <c>type: string</c> to enum schemas. Enums are written by name (<c>UseStringEnumConverter</c> on <c>SchedulerJsonContext</c>)
+    /// and their schemas list the names, but Microsoft.AspNetCore.OpenApi leaves out the type; a schema whose values are not all
+    /// strings (an enum written as a number) is left alone.
+    /// </summary>
+    internal static Task TypeStringEnums(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
+    {
+        if (context.JsonTypeInfo.Type.IsEnum && schema.Enum is { Count: > 0 } values && values.All(v => v?.GetValueKind() == JsonValueKind.String))
+        {
+            schema.Type = JsonSchemaType.String;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Documents <c>traceId</c>, as required, on <c>ProblemDetails</c> and <c>HttpValidationProblemDetails</c>: every problem this API
+    /// writes carries it (SYSTEM_DESIGN §8.7; the problem-details service adds it), but the framework's schemas list only the RFC 9457
+    /// members, so a generated client would not know it is there.
+    /// </summary>
+    internal static Task DocumentProblemTraceId(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
+    {
+        if (typeof(ProblemDetails).IsAssignableFrom(context.JsonTypeInfo.Type))
+        {
+            schema.Properties ??= new Dictionary<string, IOpenApiSchema>();
+            schema.Properties[TraceIdProperty] = new OpenApiSchema { Type = JsonSchemaType.String, Description = TraceIdDescription };
+            schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
+            schema.Required.Add(TraceIdProperty);
         }
 
         return Task.CompletedTask;

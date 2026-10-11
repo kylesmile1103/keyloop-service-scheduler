@@ -14,6 +14,10 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 /// <summary><c>POST /api/v1/dealerships/{dealershipId}/appointments</c> (optional header <c>Idempotency-Key</c>).</summary>
 public sealed class BookAppointmentEndpoint : IEndpoint
 {
+    /// <summary>The request body's description in the OpenAPI document.</summary>
+    internal const string RequestDescription =
+        "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes.";
+
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapPost("/dealerships/{dealershipId:guid}/appointments", HandleAsync)
             .WithName("BookAppointment")
@@ -26,7 +30,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
-            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesRateLimitedProblem()
             .WithResponseHeader(StatusCodes.Status201Created, "Location", "The new appointment's path, /api/v1/appointments/{id} (the same id on a replay).", "uri-reference")
             .WithResponseHeader(
                 StatusCodes.Status201Created,
@@ -42,7 +46,10 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// with the same key and body returns the stored 201 with <c>Idempotent-Replayed: true</c> and books nothing; only successes are stored.
     /// </remarks>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership to book at (the example is the seeded Reading dealership).</param>
-    /// <param name="request">The service, start time, customer and vehicle, with optional preferred bay, technician and notes.</param>
+    /// <param name="request">
+    /// The booking. Its OpenAPI description is <see cref="RequestDescription"/>, given by the <c>[Description]</c> attribute: the
+    /// XML-comment generator also copies the other parameters' tags here, so <c>SchedulerOpenApi</c> puts the attribute's text back.
+    /// </param>
     /// <param name="idempotencyKey">
     /// The optional <c>Idempotency-Key</c> header. Its OpenAPI description is <see cref="IdempotencyKeyHeader.Description"/>, given by the
     /// <c>[Description]</c> attribute: the XML-comment generator matches this tag by the C# name, not the header name.
@@ -58,7 +65,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// <response code="429">Too many bookings from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Results<Created<AppointmentResponse>, ValidationProblem>> HandleAsync(
         Guid dealershipId,
-        BookAppointmentRequest request,
+        [Description(RequestDescription)] BookAppointmentRequest request,
         [FromHeader(Name = IdempotencyKeyHeader.Name)]
         [Description(IdempotencyKeyHeader.Description)]
         [StringLength(IdempotencyKeyHeader.MaxLength, MinimumLength = 1)]

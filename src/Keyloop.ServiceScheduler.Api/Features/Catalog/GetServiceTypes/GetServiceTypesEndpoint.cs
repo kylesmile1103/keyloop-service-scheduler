@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
+using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +14,8 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
             .WithName("GetServiceTypes")
             .WithTags(ApiTags.Catalog)
             .Produces<IReadOnlyList<ServiceTypeResponse>>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesRateLimitedProblem();
 
     /// <summary>List the service catalogue for a dealership</summary>
     /// <remarks>
@@ -26,6 +28,7 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="200">The catalogue, ordered by name, with <c>bookable</c> for this dealership.</response>
     /// <response code="404">No dealership has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> and the <c>id</c>).</response>
+    /// <response code="429">Too many requests from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Ok<IReadOnlyList<ServiceTypeResponse>>> HandleAsync(
         Guid dealershipId, [FromServices] GetServiceTypesHandler handler, CancellationToken cancellationToken) =>
         TypedResults.Ok(await handler.HandleAsync(dealershipId, cancellationToken));

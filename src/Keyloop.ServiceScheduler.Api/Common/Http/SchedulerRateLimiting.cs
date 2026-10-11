@@ -1,10 +1,13 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
+using Keyloop.ServiceScheduler.Api.Common.OpenApi;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
+using Microsoft.OpenApi;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
@@ -40,6 +43,18 @@ public static class SchedulerRateLimiting
         options.AddPolicy(BookingPolicy, http => BookingPartition(http, settings));
         options.OnRejected = WriteRejectionAsync;
     }
+
+    /// <summary>
+    /// Documents the 429 <c>rate-limited</c> problem and its <c>Retry-After</c> header on an endpoint. The global limiter covers every
+    /// route, so every endpoint declares it, with a <c>&lt;response code="429"&gt;</c> comment on its handler (Addendum B §B2).
+    /// </summary>
+    public static RouteHandlerBuilder ProducesRateLimitedProblem(this RouteHandlerBuilder builder) =>
+        builder.ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .WithResponseHeader(
+                StatusCodes.Status429TooManyRequests,
+                HeaderNames.RetryAfter,
+                "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                type: JsonSchemaType.Integer);
 
     internal static RateLimitPartition<string> GlobalPartition(HttpContext http, SecurityOptions.RateLimitingOptions settings)
     {
