@@ -22,11 +22,15 @@ public sealed class Appointment : AggregateRoot
     private const string OutsideOperatingHours = "outside-operating-hours";
     private const string NoShowBeforeSlotEnd = "no-show-before-slot-end";
 
+    // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (SYSTEM_DESIGN §8.7).
+    private const string NoQualifiedResourcesDetail = "The selected bay or technician cannot perform this service at this dealership.";
+
+    // Machine tokens: they reach clients as the 409 invalid-state-transition "attempted" extension (SYSTEM_DESIGN §8.7).
     private const string CancelAction = "cancel";
-    private const string CheckInAction = "check in";
+    private const string CheckInAction = "check-in";
     private const string StartAction = "start";
     private const string CompleteAction = "complete";
-    private const string MarkNoShowAction = "mark as no-show";
+    private const string MarkNoShowAction = "mark-no-show";
 
     // EF Core materialisation.
     private Appointment()
@@ -135,21 +139,16 @@ public sealed class Appointment : AggregateRoot
                 nameof(slot));
         }
 
-        if (bay.DealershipId != dealership.Id || !bay.IsActive)
+        if (bay.DealershipId != dealership.Id || !bay.IsActive || technician.DealershipId != dealership.Id || !technician.IsActive)
         {
-            throw new DomainRuleViolationException(NoQualifiedResources, $"Bay '{bay.Name}' is not an active bay at {dealership.Name}.");
-        }
-
-        if (technician.DealershipId != dealership.Id || !technician.IsActive)
-        {
-            throw new DomainRuleViolationException(NoQualifiedResources, $"Technician '{technician.Name}' is not an active technician at {dealership.Name}.");
+            throw new DomainRuleViolationException(NoQualifiedResources, NoQualifiedResourcesDetail);
         }
 
         if (!bay.Supports(serviceType) || !technician.IsCertifiedFor(serviceType))
         {
             throw new DomainRuleViolationException(
                 NoQualifiedResources,
-                $"Bay '{bay.Name}' and technician '{technician.Name}' are not both qualified for {serviceType.Name}.",
+                NoQualifiedResourcesDetail,
                 new Dictionary<string, object?>
                 {
                     ["missingCapabilities"] = serviceType.RequiredBayCapabilities.Except(bay.Capabilities).Order().ToArray(),

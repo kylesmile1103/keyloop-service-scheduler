@@ -12,20 +12,23 @@ public class AppointmentTests
 {
     private static readonly DateOnly BookingDay = new(2026, 10, 13); // Tuesday; Europe/London is on BST (UTC+1)
 
+    // The 422 detail reaches clients verbatim, so it must not name individual bays or technicians.
+    private const string NoQualifiedResourcesDetail = "The selected bay or technician cannot perform this service at this dealership.";
+
     private static readonly Dictionary<string, Action<Appointment, DateTime>> Actions = new()
     {
         ["cancel"] = (appointment, nowUtc) => appointment.Cancel("Customer rescheduled", nowUtc),
-        ["check in"] = (appointment, nowUtc) => appointment.CheckIn(nowUtc),
+        ["check-in"] = (appointment, nowUtc) => appointment.CheckIn(nowUtc),
         ["start"] = (appointment, nowUtc) => appointment.Start(nowUtc),
         ["complete"] = (appointment, nowUtc) => appointment.Complete(nowUtc),
-        ["mark as no-show"] = (appointment, nowUtc) => appointment.MarkNoShow(nowUtc),
+        ["mark-no-show"] = (appointment, nowUtc) => appointment.MarkNoShow(nowUtc),
     };
 
     private static readonly HashSet<(AppointmentStatus, string)> LegalTransitions =
     [
         (Confirmed, "cancel"),
-        (Confirmed, "check in"),
-        (Confirmed, "mark as no-show"),
+        (Confirmed, "check-in"),
+        (Confirmed, "mark-no-show"),
         (CheckedIn, "cancel"),
         (CheckedIn, "start"),
         (InProgress, "complete"),
@@ -168,7 +171,10 @@ public class AppointmentTests
     {
         var foreignBay = ServiceBay.Create(Guid.NewGuid(), Guid.NewGuid(), "Halle 1", [BayCapability.StandardLift]);
 
-        Should.Throw<DomainRuleViolationException>(() => Book(bay: foreignBay)).RuleCode.ShouldBe("no-qualified-resources");
+        var ex = Should.Throw<DomainRuleViolationException>(() => Book(bay: foreignBay));
+
+        ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
     }
 
     [Fact]
@@ -176,7 +182,10 @@ public class AppointmentTests
     {
         var foreignTechnician = Technician.Create(Guid.NewGuid(), Guid.NewGuid(), "Greta Vogel", "M-2001", [Certification.GeneralService]);
 
-        Should.Throw<DomainRuleViolationException>(() => Book(technician: foreignTechnician)).RuleCode.ShouldBe("no-qualified-resources");
+        var ex = Should.Throw<DomainRuleViolationException>(() => Book(technician: foreignTechnician));
+
+        ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
     }
 
     [Fact]
@@ -184,7 +193,9 @@ public class AppointmentTests
     {
         _bay.Deactivate();
 
-        Should.Throw<DomainRuleViolationException>(() => Book()).RuleCode.ShouldBe("no-qualified-resources");
+        var ex = Should.Throw<DomainRuleViolationException>(() => Book());
+        ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
 
         _bay.Activate();
         Should.NotThrow(() => Book());
@@ -195,7 +206,10 @@ public class AppointmentTests
     {
         var offDuty = Technician.Create(Guid.NewGuid(), _reading.Id, "Off Duty", "T-1999", [Certification.GeneralService], isActive: false);
 
-        Should.Throw<DomainRuleViolationException>(() => Book(technician: offDuty)).RuleCode.ShouldBe("no-qualified-resources");
+        var ex = Should.Throw<DomainRuleViolationException>(() => Book(technician: offDuty));
+
+        ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
     }
 
     [Fact]
@@ -206,6 +220,9 @@ public class AppointmentTests
         var ex = Should.Throw<DomainRuleViolationException>(() => Book(bay: evBay));
 
         ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
+        ex.Message.ShouldNotContain(evBay.Name);
+        ex.Message.ShouldNotContain(_technician.Name);
         ex.Extensions["missingCapabilities"].ShouldBe(new[] { BayCapability.StandardLift });
         ex.Extensions["missingCertifications"].ShouldBe(Array.Empty<Certification>());
     }
@@ -218,6 +235,9 @@ public class AppointmentTests
         var ex = Should.Throw<DomainRuleViolationException>(() => Book(technician: evSpecialist));
 
         ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
+        ex.Message.ShouldNotContain(_bay.Name);
+        ex.Message.ShouldNotContain(evSpecialist.Name);
         ex.Extensions["missingCapabilities"].ShouldBe(Array.Empty<BayCapability>());
         ex.Extensions["missingCertifications"].ShouldBe(new[] { Certification.GeneralService });
     }
@@ -261,13 +281,36 @@ public class AppointmentTests
         Should.Throw<ArgumentException>(() => Book(nowUtc: DateTime.SpecifyKind(Now, DateTimeKind.Unspecified))).ParamName.ShouldBe("nowUtc");
         Should.Throw<ArgumentException>(() => Book(window: default(OperatingWindow))).ParamName.ShouldBe("window");
         Should.Throw<ArgumentException>(() => Book(notes: new string('n', 1001))).ParamName.ShouldBe("notes");
-        Should.Throw<ArgumentNullException>(() =>
-            Appointment.Book(Guid.NewGuid(), _reading, _interim, _bay, _technician, LocalSlot(9), _window, null!, _vehicle, null, Now))
-            .ParamName.ShouldBe("customer");
 
         Book(notes: "   ").Notes.ShouldBeNull();
         Book(notes: null).Notes.ShouldBeNull();
         Book(notes: new string('n', 1000)).Notes!.Length.ShouldBe(1000);
+    }
+
+    [Theory]
+    [InlineData("dealership")]
+    [InlineData("serviceType")]
+    [InlineData("bay")]
+    [InlineData("technician")]
+    [InlineData("slot")]
+    [InlineData("customer")]
+    [InlineData("vehicle")]
+    public void Book_rejects_null_arguments(string nullArgument)
+    {
+        var ex = Should.Throw<ArgumentNullException>(() => Appointment.Book(
+            Guid.NewGuid(),
+            nullArgument == "dealership" ? null! : _reading,
+            nullArgument == "serviceType" ? null! : _interim,
+            nullArgument == "bay" ? null! : _bay,
+            nullArgument == "technician" ? null! : _technician,
+            nullArgument == "slot" ? null! : LocalSlot(9),
+            _window,
+            nullArgument == "customer" ? null! : _customer,
+            nullArgument == "vehicle" ? null! : _vehicle,
+            null,
+            Now));
+
+        ex.ParamName.ShouldBe(nullArgument);
     }
 
     [Fact]
