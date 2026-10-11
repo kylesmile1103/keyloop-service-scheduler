@@ -1148,7 +1148,7 @@ The concurrency proof must hit a *real* PostgreSQL (exclusion constraints and ad
 Fixture: a dedicated dealership with **exactly one** bay holding `EvHighVoltage` and **exactly one** technician holding `HighVoltageElectrical`; service "EV Battery Health Check" (60 min). Thirty distinct customers/VINs all request 10:00 tomorrow. The test releases all 30 `POST`s simultaneously (`Task.WhenAll` after a `Barrier`/`TaskCompletionSource` gate) through the in-memory test server against the real container.
 
 Assertions:
-1. Exactly one response is `201 Created`; its `Location` resolves to an appointment with the expected bay/technician.
+1. Exactly one response is `201 Created`; its `Location` resolves (a `GET` answers `200` with the same body) to an appointment with the expected bay/technician.
 2. Exactly twenty-nine responses are `409` with `type ∈ { slot-unavailable, slot-conflict }`, valid `application/problem+json`, `traceId` present, and a non-empty `suggestedSlots`.
 3. Zero responses are `5xx`; the test's captured logs contain no unhandled exceptions and **no** `DeadlockDetected` (event 1004) entries; the `scheduler.booking.deadlocks` counter is 0 (read via an in-memory metrics exporter).
 4. Database: exactly one active appointment overlaps the slot for that bay and for that technician; `COUNT(appointment_history) == 1` for that appointment; no history rows reference a missing appointment; no idempotency rows reference a missing appointment.

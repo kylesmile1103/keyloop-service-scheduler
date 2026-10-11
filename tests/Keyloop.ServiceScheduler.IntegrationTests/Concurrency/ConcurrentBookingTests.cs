@@ -99,7 +99,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         var outcomes = await Task.WhenAll(contenders);
         Diagnose($"round {round}", outcomes, dealershipId);
 
-        var winner = ShouldHaveExactlyOneWinner(outcomes, dealershipId, bayId, technicianId, Ten, $"round {round}");
+        var winner = await ShouldHaveExactlyOneWinnerAsync(outcomes, dealershipId, bayId, technicianId, Ten, $"round {round}");
         (winner.IdempotencyKey is not null).ShouldBe(keyed);
 
         // The lock made the pre-check authoritative: every loser was refused by it, none by the constraint or a deadlock.
@@ -193,7 +193,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         Diagnose("queued", outcomes, dealershipId);
 
         completedWhileLocked.ShouldBe(0, "no booking can complete while its dealership's lock is held elsewhere");
-        var winner = ShouldHaveExactlyOneWinner(outcomes, dealershipId, bayId, technicianId, Ten, "queued");
+        var winner = await ShouldHaveExactlyOneWinnerAsync(outcomes, dealershipId, bayId, technicianId, Ten, "queued");
         ShouldHaveNoDeadlockOrBackstop();
         Outcomes(dealershipId).ShouldBe(new Dictionary<string, long> { ["confirmed"] = 1, ["slot_unavailable"] = Contenders - 1 }, ignoreOrder: true);
         var lockWaits = LockWaits(dealershipId);
@@ -265,7 +265,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         lockWaitsAtB.Count.ShouldBe(startsAtB.Length);
         lockWaitsAtB.Max().ShouldBeLessThan(UncontendedLockWaitCeilingMs, "B's lock is not A's: B never queues behind A's thirty");
 
-        var winner = ShouldHaveExactlyOneWinner(outcomesAtA, dealershipA, bayA, technicianA, Ten, "dealership A");
+        var winner = await ShouldHaveExactlyOneWinnerAsync(outcomesAtA, dealershipA, bayA, technicianA, Ten, "dealership A");
         var lockWaitsAtA = LockWaits(dealershipA);
         lockWaitsAtA.Count.ShouldBe(Contenders);
         lockWaitsAtA.ShouldAllBe(wait => wait >= QueuedLockWaitFloorMs);
@@ -280,11 +280,12 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>
     /// SYSTEM_DESIGN §14.4 assertions 1–3 on the responses: one <c>201</c> for the requested slot on the only bay and technician, whose
-    /// <c>Location</c> names the booked id and whose body is the winner's own request; twenty-nine <c>409</c> problems
-    /// (<c>slot-unavailable</c> or <c>slot-conflict</c>), each with its own <c>traceId</c> and a non-empty <c>suggestedSlots</c> that
-    /// never offers the requested start; no <c>5xx</c>; nothing replayed.
+    /// <c>Location</c> names the booked id and resolves (a <c>GET</c> of it, once the contention is over, answers <c>200</c> with the
+    /// same body) and whose body is the winner's own request; twenty-nine <c>409</c> problems (<c>slot-unavailable</c> or
+    /// <c>slot-conflict</c>), each with its own <c>traceId</c> and a non-empty <c>suggestedSlots</c> that never offers the requested
+    /// start; no <c>5xx</c>; nothing replayed.
     /// </summary>
-    private static Outcome ShouldHaveExactlyOneWinner(
+    private async Task<Outcome> ShouldHaveExactlyOneWinnerAsync(
         IReadOnlyList<Outcome> outcomes, Guid dealershipId, Guid bayId, Guid technicianId, DateTime start, string context)
     {
         var tally = $"{context}: {Tally(outcomes)}";
@@ -321,6 +322,11 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
             suggested.ShouldNotContain(start, "the requested slot itself is never suggested");
         }
 
+        // Assertion 1, "Location resolves": followed as a client follows it, it reads back exactly what the 201 answered.
+        using var resolved = await _client.GetAsync(winner.Location, Ct);
+        var resolvedBody = await resolved.Content.ReadAsStringAsync(Ct);
+        resolved.StatusCode.ShouldBe(HttpStatusCode.OK, $"{context}: GET {winner.Location}: {resolvedBody}");
+        resolvedBody.ShouldBe(winner.Body, $"{context}: GET {winner.Location} answers the winner's 201 body");
         return winner;
     }
 
