@@ -18,6 +18,7 @@ using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 
@@ -50,6 +51,9 @@ builder.Services.AddDbContext<SchedulerDbContext>((sp, options) => options
         : sp.GetRequiredService<IConfiguration>().GetConnectionString("schedulerdb")
             ?? throw new InvalidOperationException("Connection string 'schedulerdb' is missing."))
     .UseSnakeCaseNamingConvention()
+    // A failed save or command is often an answered outcome (23P01 → 409 slot-conflict, 23505 on a key → replay or 422), so EF Core's
+    // own reports of them are Information, not Error; an unexpected one still reaches GlobalExceptionHandler and is logged there (1200).
+    .ConfigureWarnings(w => w.Log((CoreEventId.SaveChangesFailed, LogLevel.Information), (RelationalEventId.CommandError, LogLevel.Information)))
     .AddInterceptors(sp.GetRequiredService<DomainEventInterceptor>()));
 builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
 

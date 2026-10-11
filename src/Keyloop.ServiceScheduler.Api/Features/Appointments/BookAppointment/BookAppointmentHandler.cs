@@ -15,22 +15,39 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
 /// Books one appointment (SYSTEM_DESIGN §6.3, §7.3–§7.5). In order: the <c>Idempotency-Key</c> is looked up without a lock (a retry of
-/// a committed booking is replayed before any rule could reject it); the lock-free rules are checked (404s and the 422s); then one
-/// transaction at <c>READ COMMITTED</c> takes the dealership's advisory lock, looks the key up again (a concurrent request with it may
-/// have committed while this one waited), re-checks availability, allocates, and inserts the appointment, its history row and the
-/// memoised response. That transaction takes exactly one lock and makes exactly one contended insert (ADR-003). An overlap the
-/// pre-check could not see (a writer outside this path) is refused by the exclusion constraints: 409 <c>slot-conflict</c>, counted on
-/// <c>scheduler.booking.constraint_backstop</c>. Only successful bookings are memoised: any refusal rolls the key row back with the rest.
+/// a committed booking is replayed before any rule could reject it); the lock-free rules are checked (404s and the 422s); the
+/// appointment id is minted, once per request; then one transaction at <c>READ COMMITTED</c> takes the dealership's advisory lock, looks
+/// for the minted id (an earlier run of this request may have committed although its commit reported a failure), looks the key up again
+/// (a concurrent request with it may have committed while this one waited; an expired row is deleted), re-checks availability,
+/// allocates, and inserts the appointment, its history row and the memoised response.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Locks (ADR-003): the dealership lock is the only lock any booking waits for while holding nothing else. The idempotency-key row is
+/// the scoped exception: the expired-key <c>DELETE</c> and the key <c>INSERT</c> can wait, but only on the same key being used at
+/// another dealership at the same moment, and such a waiter holds nothing its lock holder will ever wait for, so no cycle can form.
+/// An overlap the pre-check could not see (a writer outside this path) is refused by the exclusion constraints: 409
+/// <c>slot-conflict</c>, counted on <c>scheduler.booking.constraint_backstop</c>.
+/// </para>
+/// <para>
+/// Retries: the retrying execution strategy runs the transaction again after a transient failure. When the failure hit the commit,
+/// it first asks whether the minted appointment exists (EF Core's <c>verifySucceeded</c>): a lost acknowledgement is then a success,
+/// not a second booking, and the audit interceptor's in-doubt events are released to the observers once. Only successful bookings
+/// are memoised: any refusal rolls the key row back with the rest.
+/// </para>
+/// <para>
 /// The aggregate's <c>AppointmentBooked</c> event becomes the history row inside the transaction and is logged (1001) by
 /// <see cref="TelemetryDomainEventObserver"/> after the commit; refusals are logged here as 1002, a backstop as 1003, a deadlock as 1004.
+/// Latencies (<c>scheduler.booking.duration</c>, <c>scheduler.booking.lock_wait</c>) are real elapsed time; business time (now, lead
+/// time, horizon, key expiry) is the injected <see cref="TimeProvider"/>.
+/// </para>
 /// </remarks>
 public sealed class BookAppointmentHandler(
     SchedulerDbContext db,
@@ -56,7 +73,7 @@ public sealed class BookAppointmentHandler(
         using var activity = SchedulerTelemetry.Source.StartActivity("scheduler.book_appointment");
         activity?.SetTag("dealership.id", command.DealershipId.ToString());
         activity?.SetTag("booking.requested_start_utc", request.StartUtc.ToString("O", CultureInfo.InvariantCulture));
-        var started = clock.GetTimestamp();
+        var started = Stopwatch.GetTimestamp();
         var outcome = BookingOutcomes.Error;
         string? serviceCode = null;
         try
@@ -86,47 +103,62 @@ public sealed class BookAppointmentHandler(
             windowPolicy.EnsureBookable(slot.StartUtc);
             BookingWindowPolicy.EnsureAligned(slot.StartUtc, window, options.Value.SlotGranularityMinutes);
             var (compatibleBays, certifiedTechnicians) = await QualifiedResourcesAsync(dealership.Id, serviceType, ct);
+
+            // Minted once per request, never per run: it is how a retried run recognises that an earlier run committed.
             var booking = new Booking(
-                command, fingerprint, dealership, serviceType, slot, window, compatibleBays, certifiedTechnicians, ToCustomer(request.Customer), ToVehicle(request.Vehicle));
+                command, fingerprint, Guid.CreateVersion7(clock.GetUtcNow()), dealership, serviceType, slot, window, compatibleBays, certifiedTechnicians,
+                ToCustomer(request.Customer), ToVehicle(request.Vehicle));
 
-            // 3. The transaction, run again from the start by the retrying execution strategy after a transient failure.
-            var attempt = await db.Database.CreateExecutionStrategy().ExecuteAsync(token => AttemptAsync(booking, token), ct);
-
-            switch (attempt)
+            // 3. The transaction (see the remarks). A second pass happens only when a duplicate key's stored row turns out expired.
+            for (var pass = 1; ; pass++)
             {
-                case BookingAttempt.Confirmed confirmed:
-                    activity?.SetTag("booking.bay_id", confirmed.Bay.Id.ToString());
-                    activity?.SetTag("booking.technician_id", confirmed.Technician.Id.ToString());
-                    activity?.SetTag("idempotency.replayed", false);
-                    outcome = BookingOutcomes.Confirmed;
-                    return new BookAppointmentResult(
-                        AppointmentResponseMapper.Map(confirmed.Appointment, dealership.TimeZone, serviceType, confirmed.Bay, confirmed.Technician), Replayed: false);
-
-                case BookingAttempt.Unavailable:
-                    throw new SlotUnavailableException(await SuggestAsync(booking, ct));
-
-                case BookingAttempt.Conflict conflict:
-                    throw new SlotConflictException(conflict.Resource, await SuggestAsync(booking, ct));
-
-                case BookingAttempt.KeyInUse inUse:
+                var attempt = await RunAsync(booking, ct);
+                switch (attempt)
                 {
-                    var replay = Replay(inUse.Stored, fingerprint!, activity);
-                    outcome = BookingOutcomes.Replayed;
-                    return replay;
-                }
+                    case BookingAttempt.Confirmed confirmed:
+                        activity?.SetTag("booking.bay_id", confirmed.Bay.Id.ToString());
+                        activity?.SetTag("booking.technician_id", confirmed.Technician.Id.ToString());
+                        activity?.SetTag("idempotency.replayed", false);
+                        outcome = BookingOutcomes.Confirmed;
+                        return new BookAppointmentResult(
+                            AppointmentResponseMapper.Map(confirmed.Appointment, dealership.TimeZone, serviceType, confirmed.Bay, confirmed.Technician), Replayed: false);
 
-                case BookingAttempt.DuplicateKey:
-                {
-                    // The other request committed its key before this one's insert failed, so the row is there to answer from.
-                    var stored = await db.IdempotencyKeys.AsNoTracking().FirstOrDefaultAsync(k => k.Key == key, ct)
-                        ?? throw new InvalidOperationException("The Idempotency-Key insert failed as a duplicate, yet no row has that key.");
-                    var replay = Replay(stored, fingerprint!, activity);
-                    outcome = BookingOutcomes.Replayed;
-                    return replay;
-                }
+                    case BookingAttempt.Unavailable:
+                        throw new SlotUnavailableException(await SuggestAsync(booking, ct));
 
-                default:
-                    throw new UnreachableException($"Unhandled booking attempt {attempt.GetType().Name}.");
+                    case BookingAttempt.Conflict conflict:
+                        throw new SlotConflictException(conflict.Resource, await SuggestAsync(booking, ct));
+
+                    case BookingAttempt.KeyInUse inUse:
+                    {
+                        var replay = Replay(inUse.Stored, fingerprint!, activity);
+                        outcome = BookingOutcomes.Replayed;
+                        return replay;
+                    }
+
+                    case BookingAttempt.DuplicateKey:
+                    {
+                        // Another request committed this key just before our insert. A live row answers (replay or 422); an expired one
+                        // (only possible when the instances' clocks are a day apart) is no answer: the key is free again, so book once more,
+                        // and the re-check under the lock deletes the row.
+                        if (await db.IdempotencyKeys.AsNoTracking().FirstOrDefaultAsync(k => k.Key == key, ct) is { } stored && IsLive(stored, Now()))
+                        {
+                            var replay = Replay(stored, fingerprint!, activity);
+                            outcome = BookingOutcomes.Replayed;
+                            return replay;
+                        }
+
+                        if (pass == 2)
+                        {
+                            throw new InvalidOperationException("The Idempotency-Key insert failed as a duplicate twice, yet no live row has that key.");
+                        }
+
+                        continue;
+                    }
+
+                    default:
+                        throw new UnreachableException($"Unhandled booking attempt {attempt.GetType().Name}.");
+                }
             }
         }
         catch (NotFoundException)
@@ -159,7 +191,7 @@ public sealed class BookAppointmentHandler(
             activity?.SetTag("booking.outcome", outcome);
             SchedulerTelemetry.BookingRequests.Add(
                 1, new KeyValuePair<string, object?>("outcome", outcome), new KeyValuePair<string, object?>("dealership.id", command.DealershipId.ToString()));
-            SchedulerTelemetry.BookingDuration.Record(clock.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("outcome", outcome));
+            SchedulerTelemetry.BookingDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("outcome", outcome));
             if (BookingOutcomes.IsRejection(outcome))
             {
                 logger.BookingRejected(outcome, command.DealershipId, serviceCode);
@@ -167,13 +199,61 @@ public sealed class BookAppointmentHandler(
         }
     }
 
+    /// <summary>
+    /// The booking transaction under the retrying execution strategy, with EF Core's commit-failure verification
+    /// (<c>verifySucceeded</c>, the hook <c>ExecuteInTransactionAsync</c> is built on): after a transient failure during the commit, the
+    /// strategy asks <see cref="VerifyCommittedAsync"/> before running the transaction again. <c>ExecuteInTransactionAsync</c> itself is
+    /// not used because it commits whatever the operation returns, and the refusals here must roll back.
+    /// </summary>
+    private Task<BookingAttempt> RunAsync(Booking booking, CancellationToken ct) =>
+        db.Database.CreateExecutionStrategy().ExecuteAsync(
+            new BookingRun(booking),
+            (_, run, token) => AttemptAsync(run, token),
+            (_, run, token) => VerifyCommittedAsync(run, token),
+            ct);
+
+    /// <summary>
+    /// Whether a run whose commit reported a failure committed anyway: the minted appointment exists. Only a failure after the run
+    /// reached its commit can be a lost acknowledgement; an earlier one is simply retried. Settles the audit interceptor's in-doubt events.
+    /// </summary>
+    private async Task<ExecutionResult<BookingAttempt>> VerifyCommittedAsync(BookingRun run, CancellationToken ct)
+    {
+        if (!run.Committing)
+        {
+            return new ExecutionResult<BookingAttempt>(false, null!);
+        }
+
+        var committed = await FindCommittedAsync(run.Booking, ct);
+        if (db.DomainEvents is { } events)
+        {
+            await events.ResolveInDoubtCommitAsync(committed is not null, ct);
+        }
+
+        return new ExecutionResult<BookingAttempt>(committed is not null, committed!);
+    }
+
+    /// <summary>The booking if its minted appointment is in the database (with the bay and technician it holds), else null.</summary>
+    private async Task<BookingAttempt.Confirmed?> FindCommittedAsync(Booking booking, CancellationToken ct)
+    {
+        var appointment = await db.Appointments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == booking.AppointmentId, ct);
+        if (appointment is null)
+        {
+            return null;
+        }
+
+        var bay = await db.ServiceBays.AsNoTracking().FirstAsync(b => b.Id == appointment.BayId, ct);
+        var technician = await db.Technicians.AsNoTracking().FirstAsync(t => t.Id == appointment.TechnicianId, ct);
+        return new BookingAttempt.Confirmed(appointment, bay, technician);
+    }
+
     /// <summary>One run of the booking transaction; see the class summary for the order and why it cannot double-book.</summary>
-    private async Task<BookingAttempt> AttemptAsync(Booking booking, CancellationToken ct)
+    private async Task<BookingAttempt> AttemptAsync(BookingRun run, CancellationToken ct)
     {
         // A retried run starts from nothing: what a failed run added must not be saved by this one.
+        run.Committing = false;
+        var booking = run.Booking;
         db.ChangeTracker.Clear();
-        var nowOffset = clock.GetUtcNow();
-        var now = ToMicroseconds(nowOffset.UtcDateTime);
+        var now = Now();
         var dealershipId = booking.Dealership.Id;
         var request = booking.Command.Request;
 
@@ -181,6 +261,21 @@ public sealed class BookAppointmentHandler(
         // holder of the lock committed (a REPEATABLE READ snapshot would date from before the wait). ADR-004.
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
         await AcquireLockAsync(dealershipId, ct);
+
+        // Defence in depth behind the strategy's verification: if an earlier run of this request committed (its acknowledgement lost and
+        // the verification inconclusive), answer with that appointment, before the key re-check would replay it as someone else's and
+        // before availability would call its slot busy. It also settles that run's in-doubt events: released if it committed.
+        var earlier = await FindCommittedAsync(booking, ct);
+        if (db.DomainEvents is { } events)
+        {
+            await events.ResolveInDoubtCommitAsync(earlier is not null, ct);
+        }
+
+        if (earlier is not null)
+        {
+            await transaction.RollbackAsync(ct);
+            return earlier;
+        }
 
         if (booking.Command.IdempotencyKey is { } key)
         {
@@ -218,7 +313,7 @@ public sealed class BookAppointmentHandler(
         var bay = AllocationPolicy.ChooseBay(freeBays, booking.ServiceType, load, request.PreferredBayId)!;
         var technician = AllocationPolicy.ChooseTechnician(freeTechnicians, booking.ServiceType, load, request.PreferredTechnicianId)!;
         var appointment = Appointment.Book(
-            Guid.CreateVersion7(nowOffset), booking.Dealership, booking.ServiceType, bay, technician, booking.Slot, booking.Window, booking.Customer,
+            booking.AppointmentId, booking.Dealership, booking.ServiceType, bay, technician, booking.Slot, booking.Window, booking.Customer,
             booking.Vehicle, request.Notes, now);
         db.Appointments.Add(appointment);
 
@@ -244,54 +339,31 @@ public sealed class BookAppointmentHandler(
             var rows = await db.SaveChangesAsync(ct);
             persist?.SetTag("db.rows_affected", rows);
         }
-        catch (DbUpdateException ex) when (PostgresErrorClassifier.Classify(ex)
-            is PostgresFailure.BayOverlap or PostgresFailure.TechnicianOverlap or PostgresFailure.IdempotencyKeyDuplicate or PostgresFailure.Deadlock)
+        catch (DbUpdateException ex) when (BookingRefusal.For(PostgresErrorClassifier.Classify(ex)) is not null)
         {
+            // Answered here, never handed to the strategy: even a 40P01, which the strategy would retry as transient.
             await transaction.RollbackAsync(ct);
             db.ChangeTracker.Clear();
-            return Refused(PostgresErrorClassifier.Classify(ex), ex, dealershipId);
+            var refusal = BookingRefusal.For(PostgresErrorClassifier.Classify(ex))!;
+            refusal.Record(ex, dealershipId, logger);
+            return refusal.Attempt;
         }
 
+        // From here a failure may be a lost acknowledgement of a commit that happened: VerifyCommittedAsync finds out.
+        run.Committing = true;
         await transaction.CommitAsync(ct);
         return new BookingAttempt.Confirmed(appointment, bay, technician);
     }
 
     private async Task AcquireLockAsync(Guid dealershipId, CancellationToken ct)
     {
-        var started = clock.GetTimestamp();
+        var started = Stopwatch.GetTimestamp();
         using var activity = SchedulerTelemetry.Source.StartActivity("scheduler.acquire_dealership_lock");
         activity?.SetTag("dealership.id", dealershipId.ToString());
         await DealershipLock.AcquireAsync(db, dealershipId, ct);
-        var waitedMs = clock.GetElapsedTime(started).TotalMilliseconds;
+        var waitedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         activity?.SetTag("lock.wait_ms", waitedMs);
         SchedulerTelemetry.LockWait.Record(waitedMs, new KeyValuePair<string, object?>("dealership.id", dealershipId.ToString()));
-    }
-
-    /// <summary>The attempt for a refused insert, with its telemetry: a constraint backstop (1003) or a deadlock (1004) is never expected.</summary>
-    private BookingAttempt Refused(PostgresFailure failure, DbUpdateException exception, Guid dealershipId)
-    {
-        switch (failure)
-        {
-            case PostgresFailure.BayOverlap:
-                return Backstop(ProblemResources.Bay, PostgresErrorClassifier.BayConstraint);
-            case PostgresFailure.TechnicianOverlap:
-                return Backstop(ProblemResources.Technician, PostgresErrorClassifier.TechnicianConstraint);
-            case PostgresFailure.IdempotencyKeyDuplicate:
-                return new BookingAttempt.DuplicateKey();
-            case PostgresFailure.Deadlock:
-                SchedulerTelemetry.Deadlocks.Add(1);
-                logger.DeadlockDetected(exception, dealershipId);
-                return new BookingAttempt.Conflict(ProblemResources.Unknown);
-            default:
-                throw new UnreachableException($"{failure} is not a refusal the booking transaction answers.");
-        }
-
-        BookingAttempt Backstop(string resource, string constraint)
-        {
-            SchedulerTelemetry.ConstraintBackstop.Add(1, new KeyValuePair<string, object?>("constraint", constraint));
-            logger.ConstraintBackstopFired(constraint, dealershipId);
-            return new BookingAttempt.Conflict(resource);
-        }
     }
 
     private async Task<(IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians)> QualifiedResourcesAsync(
@@ -398,6 +470,7 @@ public sealed class BookAppointmentHandler(
     private sealed record Booking(
         BookAppointmentCommand Command,
         string? Fingerprint,
+        Guid AppointmentId,
         Dealership Dealership,
         ServiceType ServiceType,
         TimeSlot Slot,
@@ -406,4 +479,12 @@ public sealed class BookAppointmentHandler(
         IReadOnlyList<Technician> CertifiedTechnicians,
         CustomerDetails Customer,
         VehicleDetails Vehicle);
+
+    /// <summary>The execution strategy's state across runs: whether the current run had reached its commit when it failed.</summary>
+    private sealed class BookingRun(Booking booking)
+    {
+        public Booking Booking { get; } = booking;
+
+        public bool Committing { get; set; }
+    }
 }

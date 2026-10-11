@@ -373,8 +373,12 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         await SaveAsync(elsewhere);
         await InsertOutOfBandAppointmentAsync(elsewhere.Id, _workshop.Bay1.Id, _workshop.Technician1.Id, Ten, Ten.AddHours(1));
         using var metrics = new MetricsCollector();
+        var logs = new CapturingLoggerProvider();
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+        using var client = factory.CreateClient();
 
-        using var response = await PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, preferredBayId: _workshop.Bay1.Id));
+        using var response = await PostAsync(
+            _workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, preferredBayId: _workshop.Bay1.Id), client: client);
 
         var problem = await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-conflict", Ct);
         problem.GetProperty("title").GetString().ShouldBe("Slot conflict");
@@ -388,12 +392,46 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
             PostgresErrorClassifier.BayConstraint, PostgresErrorClassifier.TechnicianConstraint);
         metrics.Sum("scheduler.booking.requests", MetricsCollector.Tag("outcome", "slot_conflict")).ShouldBe(1);
         metrics.Sum("scheduler.booking.deadlocks").ShouldBe(0);
+
+        // A handled refusal is a Warning (1003), not an error: EF Core's own failed-save and command-error logs are lowered to Information.
+        logs.Entries.ShouldNotContain(e => e.Level >= LogLevel.Error, string.Join(Environment.NewLine, logs.Entries.Where(e => e.Level >= LogLevel.Error)));
+        logs.Entries.ShouldContain(e => e.EventId.Id == 1003 && e.Level == LogLevel.Warning);
         await _factory.WithDbAsync(async db =>
         {
             (await db.Appointments.CountAsync(a => a.DealershipId == _workshop.Dealership.Id, Ct)).ShouldBe(0);
             (await db.AppointmentHistory.CountAsync(Ct)).ShouldBe(0, "the rolled-back booking leaves no audit row");
             (await db.AppointmentHistory.CountAsync(h => !db.Appointments.Any(a => a.Id == h.AppointmentId), Ct)).ShouldBe(0);
         });
+    }
+
+    [Fact]
+    public async Task Deadlock_on_the_insert_is_answered_once_as_a_slot_conflict_and_never_retried()
+    {
+        // ADR-003 rules a 40P01 out on this path; if one happened, it must be reported (409, metric, Warning 1004), not retried as the
+        // execution strategy would retry any transient error, which a deadlock is to Npgsql.
+        var deadlock = new SqlStateInjector("INSERT INTO appointments", "40P01");
+        var logs = new CapturingLoggerProvider();
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<ILoggerProvider>(logs);
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(deadlock));
+        }));
+        using var client = factory.CreateClient();
+        using var metrics = new MetricsCollector();
+
+        using var response = await PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten), client: client);
+
+        var problem = await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-conflict", Ct);
+        problem.GetProperty("conflictingResource").GetString().ShouldBe("unknown");
+        problem.GetProperty("suggestedSlots").GetArrayLength().ShouldBeGreaterThan(0);
+        deadlock.Executions.ShouldBe(1, "a deadlock is answered, not handed to the execution strategy to retry");
+        metrics.Sum("scheduler.booking.deadlocks").ShouldBe(1);
+        metrics.Sum("scheduler.booking.constraint_backstop").ShouldBe(0);
+        metrics.Sum("scheduler.booking.requests", MetricsCollector.Tag("outcome", "slot_conflict")).ShouldBe(1);
+        var warning = logs.Entries.Where(e => e.EventId.Id == 1004).ShouldHaveSingleItem();
+        warning.Level.ShouldBe(LogLevel.Warning);
+        warning.Exception.ShouldNotBeNull();
+        await ShouldHaveNoAppointmentsAsync();
     }
 
     [Fact]
@@ -436,6 +474,39 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         logs.Entries.ShouldNotContain(e => e.Message.Contains("Customer 3", StringComparison.Ordinal) || e.Message.Contains("jane-at-example", StringComparison.Ordinal)
             || e.Message.Contains(TestData.VinFor(3), StringComparison.Ordinal));
         logs.Entries.ShouldNotContain(e => e.Level >= LogLevel.Warning && e.Category.StartsWith("Keyloop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Lock_wait_measures_real_time_spent_queued_behind_the_dealership_lock()
+    {
+        // The business clock is frozen (FakeTimeProvider); latencies must still be real elapsed time.
+        using var metrics = new MetricsCollector();
+        HttpResponseMessage response;
+        await using (var connection = new NpgsqlConnection(pg.ConnectionString))
+        {
+            await connection.OpenAsync(Ct);
+            await using var holder = await connection.BeginTransactionAsync(Ct);
+            await using (var take = new NpgsqlCommand("SELECT pg_advisory_xact_lock(@key)", connection, holder))
+            {
+                take.Parameters.AddWithValue("key", DealershipLock.KeyFor(_workshop.Dealership.Id));
+                await take.ExecuteNonQueryAsync(Ct);
+            }
+
+            var inFlight = PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten));
+            await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, 1, Ct);
+            await Task.Delay(TimeSpan.FromMilliseconds(250), Ct);
+            await holder.CommitAsync(Ct);
+            response = await inFlight;
+        }
+
+        using (response)
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        }
+
+        var wait = metrics.Of("scheduler.booking.lock_wait", MetricsCollector.Tag("dealership.id", _workshop.Dealership.Id.ToString())).ShouldHaveSingleItem();
+        wait.Value.ShouldBeGreaterThanOrEqualTo(200, "queued for at least the 250 ms the test held the lock (less scheduling slack)");
+        metrics.Max("scheduler.booking.duration").ShouldBeGreaterThanOrEqualTo(wait.Value);
     }
 
     [Fact]

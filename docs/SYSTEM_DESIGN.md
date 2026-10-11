@@ -451,25 +451,30 @@ ALTER TABLE appointments
 
 `btree_gist` lets the GiST index combine the equality on the uuid with the overlap on the range. The partial `WHERE` means cancelled/completed/no-show rows neither block new bookings nor need to be deleted. These constraints are created in the EF Core migration via `migrationBuilder.Sql` (EF has no first-class exclusion-constraint API).
 
-**Layer 2 — serialisation (the normal path).** `BookAppointment` runs this transaction, at the default `READ COMMITTED` isolation:
+**Layer 2 — serialisation (the normal path).** `BookAppointment` runs this transaction, at the default `READ COMMITTED` isolation, after the lock-free checks (the idempotency-key lookup of §7.5 and the 404/422 rules) and after minting the appointment id once for the request:
 
 ```sql
 BEGIN;
 SELECT pg_advisory_xact_lock(:dealership_lock_key);           -- queue here, ms-scale
 -- fresh snapshot per statement under READ COMMITTED ⇒ sees the previous holder's commit
+SELECT ... FROM appointments WHERE id = :minted_id;           -- an earlier run of THIS request committed? answer with it (lost ack)
+SELECT ... FROM idempotency_keys WHERE key = :key;            -- only with a key: live ⇒ replay or 422; expired ⇒ the DELETE below
+DELETE FROM idempotency_keys WHERE key = :key AND expires_at_utc <= :now;   -- only for an expired row (§7.5)
 SELECT ... active appointments of this dealership overlapping [start, end) ...;
 -- in memory: feasibility + allocation (§6)
-INSERT INTO appointments (...) VALUES (...);                  -- cannot conflict: we hold the lock
-INSERT INTO appointment_history (...) VALUES (...);
+INSERT INTO appointments (id, ...) VALUES (:minted_id, ...);  -- cannot conflict: we hold the lock
 INSERT INTO idempotency_keys (...) VALUES (...);              -- only if a key was supplied
+INSERT INTO appointment_history (...) VALUES (...);           -- (the order EF Core sends them in)
 COMMIT;                                                       -- lock released
 ```
+
+The retrying execution strategy re-runs the whole transaction after a transient failure. A failure *during* `COMMIT` may be a lost acknowledgement of a commit that happened, so the strategy first asks whether the minted appointment exists (EF Core's `verifySucceeded`) and, if it does, answers with it instead of booking again; the existence check at the top of each run is a second guard behind that. Because the id is minted once per request, not once per run, a committed run is always recognisable.
 
 Why this combination and not the constraint alone: PostgreSQL implements exclusion checks as *insert the index entry, then scan for conflicts, then wait for any in-progress conflicting transaction*. Two truly simultaneous inserters can each insert before either scans, then each waits on the other; the deadlock detector breaks the tie after `deadlock_timeout`, so one request stalls for a second and fails with `40P01` rather than `23P01`. The outcome is still exactly one winner — the invariant is never at risk — but it is slow and the error is semantically wrong. Taking the dealership lock first means at most one transaction is inside the check-then-insert window at a time, so the constraint is never contended in practice and remains a pure backstop.
 
 Why `READ COMMITTED` matters: under `REPEATABLE READ` the snapshot is taken at the first statement — which is the lock acquisition itself — so a transaction that waited for the lock would still *read the pre-lock snapshot* and miss the previous holder's commit. `READ COMMITTED` takes a fresh snapshot per statement, which is exactly what check-then-act under a lock requires. This is asserted in code (the transaction is opened explicitly with `IsolationLevel.ReadCommitted`) and documented in ADR-004.
 
-Why there can be no deadlock: each booking transaction acquires exactly one lock (the dealership key) *before* any write, and performs exactly one contended insert. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships never interact. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second lock or perform a second contended insert*.
+Why there can be no deadlock: each booking transaction acquires exactly one lock it waits for while holding nothing else (the dealership key), *before* any write, and the appointment insert is its only insert contended on the resources. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking reads, inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships interact only through the idempotency-key row, the scoped exception in ADR-003: the expired-key `DELETE` and the key `INSERT` can wait, but only on the *same key* being used at *another* dealership at the same moment. The waiter then holds only its own dealership's lock, which the transaction it waits for never requests, and a transaction inserts its key only after its own appointment insert has succeeded, after which it waits for nothing. So the wait cannot close a cycle either. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second lock or perform a second contended insert, except on its own idempotency-key row*.
 
 Lock key: a stable 64-bit value derived from the dealership id (`BitConverter.ToInt64(id.ToByteArray(), 0)`). The two-argument form `pg_advisory_xact_lock(namespace, hashtext(id::text))` would also work; the single `bigint` form is used for simplicity.
 
@@ -484,12 +489,12 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 | SQLSTATE | Meaning | Mapped to | Expected frequency |
 |----------|---------|-----------|--------------------|
 | `23P01` `exclusion_violation` (constraint name tells bay vs technician) | Overlap backstop fired | `409 slot-conflict` + suggestions; metric `scheduler.booking.constraint_backstop` | ≈ 0 (only out-of-band writers) |
-| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict`; **Warning** log + metric so it is visible | 0 — asserted by the adversarial test |
+| `40P01` `deadlock_detected` | Should be impossible on the booking path | `409 slot-conflict` (`conflictingResource: unknown`), answered by the handler and **not** retried, although Npgsql calls it transient; **Warning** log (1004) + `scheduler.booking.deadlocks` so it is visible | 0 — asserted by the adversarial test |
 | `40001` `serialization_failure` | Not used (READ COMMITTED) | transient → execution-strategy retry | 0 |
 | `23505` `unique_violation` on `idempotency_keys` | Duplicate idempotency key | load stored response → replay `201` if same fingerprint, else `422 idempotency-key-reuse` | rare |
 | `23514` `check_violation` | Domain guard bypassed | `500` (bug) with trace id | 0 |
 | `DbUpdateConcurrencyException` (xmin) | Concurrent state transition | `409 concurrency-conflict` | rare |
-| transient (`57P01`, `08xxx`, timeouts) | Infra blip | Npgsql execution strategy retries the whole unit of work (the lock is re-acquired because it is transaction-scoped) | rare |
+| transient (`57P01`, `08xxx`, timeouts) | Infra blip | Npgsql execution strategy retries the whole unit of work (the lock is re-acquired because it is transaction-scoped). A failure during `COMMIT` is first verified (does the minted appointment exist?), so a lost acknowledgement is a success, not a second booking (§7.3) | rare |
 
 ### 7.5 Idempotent booking
 
@@ -497,12 +502,12 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 
 1. Compute `fingerprint = SHA-256(dealershipId + "\n" + canonical JSON body)` (the body re-serialised through the source-generated context, so formatting does not matter).
 2. **Before any rule or availability check, without a lock**, read the key's row. Unexpired with the same fingerprint → replay the stored `201` body with `Location` and `Idempotent-Replayed: true`; unexpired with another fingerprint → `422 idempotency-key-reuse`; expired or missing → continue. This is what makes a sequential retry safe: it never reaches the availability check, where its own committed appointment would make the slot look busy, nor the lead-time rule, which time may since have broken.
-3. **Inside the booking transaction, immediately after the dealership lock**, read the row again with the same rules: a concurrent request with the same key may have committed while this one waited for the lock, and under `READ COMMITTED` this statement sees that commit (§7.3). An expired row is deleted in this transaction, so the new row cannot collide with it.
+3. **Inside the booking transaction, immediately after the dealership lock** (and the check for this request's own minted appointment, §7.3), read the row again with the same rules: a concurrent request with the same key may have committed while this one waited for the lock, and under `READ COMMITTED` this statement sees that commit. An expired row is deleted in this transaction, so the new row cannot collide with it.
 4. Only then the availability re-check, allocation, and the inserts (appointment, history, `(key, fingerprint, 201, body, resource_id, expires_at = now + 24 h)`) and commit.
-5. **Backstop**: a `23505` on `idempotency_keys` can now only mean the same key was used concurrently at *another* dealership (whose lock does not serialise with ours); the handler rolls back, re-reads the committed row and applies the rules of step 2 (the fingerprint includes the dealership, so the answer is `422`).
+5. **Backstop**: a `23505` on `idempotency_keys` can now only mean the same key was used concurrently at *another* dealership (whose lock does not serialise with ours); the handler rolls back, re-reads the committed row and applies the rules of step 2 (the fingerprint includes the dealership, so the answer is `422`). A row that is already expired by this instance's clock (only possible when instances' clocks are a day apart) is not replayed: the key is free, so the booking runs once more and step 3 deletes the row.
 6. **Only successful (`2xx`) outcomes are memoised**: any `4xx` booking rolled back its transaction (including the key row), so a failed booking may be retried with the same key. This keeps the design to one transaction and avoids memoising transient conflicts.
 
-Why this cannot double-book or answer a retry with a wrong `409`: every request for a dealership checks the key and then availability *after* taking the dealership's lock, and each statement sees everything the previous lock holder committed. A same-key request therefore finds the earlier request's row before it can look at availability; the exclusion constraints still forbid any overlap whatever the application does. The expired-key `DELETE` (step 3) takes a row lock on that key only, contended solely by the same key used at another dealership at the same moment; such a transaction waits holding only its own dealership's lock, which the holder never requests, so the wait cannot form a cycle (ADR-003).
+Why this cannot double-book or answer a retry with a wrong `409`: every request for a dealership checks the key and then availability *after* taking the dealership's lock, and each statement sees everything the previous lock holder committed. A same-key request therefore finds the earlier request's row before it can look at availability; a server-side retry of a run whose commit acknowledgement was lost finds its own minted appointment (with or without a key, §7.3); the exclusion constraints still forbid any overlap whatever the application does. The expired-key `DELETE` (step 3) takes a row lock on that key only, contended solely by the same key used at another dealership at the same moment; such a transaction waits holding only its own dealership's lock, which the holder never requests, so the wait cannot form a cycle (ADR-003).
 
 Keys carry `expires_at` (24 h); purging is a scheduled job noted in §17. A retry after the 24 hours is a new booking.
 
@@ -681,6 +686,7 @@ sequenceDiagram
     D-->>H: window / ok (else 422)
     H->>DB: BEGIN (READ COMMITTED), then SELECT pg_advisory_xact_lock(dealershipKey)
     Note over H,DB: queued behind any concurrent booking at this dealership (ms)
+    H->>DB: SELECT appointment with the minted id (an earlier run of this request committed?)
     H->>DB: SELECT idempotency_keys row again (a same-key request may have committed while we waited)
     H->>DB: SELECT active appointments overlapping [start,end) for candidate resources
     H->>D: AvailabilityCalculator.IsFeasible(start) -> candidates, AllocationPolicy.Choose
@@ -1038,7 +1044,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 | Span | Tags | Notes |
 |------|------|-------|
-| `scheduler.book_appointment` | `dealership.id`, `service_type.code`, `booking.requested_start_utc`, `booking.outcome` (`confirmed`, `replayed`, `slot_unavailable`, `slot_conflict`, `rule_violation`, `not_found`, `idempotency_reuse`; `validation_failed` never reaches the handler, so it appears only on the metric), `booking.bay_id`, `booking.technician_id`, `idempotency.replayed` | the business transaction |
+| `scheduler.book_appointment` | `dealership.id`, `service_type.code`, `booking.requested_start_utc`, `booking.outcome` (`confirmed`, `replayed`, `slot_unavailable`, `slot_conflict`, `rule_violation`, `not_found`, `idempotency_reuse`, or `error` for an unexpected failure answered `500 internal-error`; `validation_failed` never reaches the handler, so it appears only on the metric), `booking.bay_id`, `booking.technician_id`, `idempotency.replayed` | the business transaction |
 | `scheduler.acquire_dealership_lock` | `dealership.id`, `lock.wait_ms` | shows queueing under contention |
 | `scheduler.compute_availability` | `availability.candidates_bays`, `availability.candidates_technicians`, `availability.slots_returned` | shared by availability and booking |
 | `scheduler.persist_appointment` | `db.rows_affected` | wraps `SaveChanges` |
@@ -1048,8 +1054,8 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 | Instrument | Type | Unit | Tags | Why |
 |------------|------|------|------|-----|
-| `scheduler.booking.requests` | counter | `{request}` | `outcome` (the span's values plus `validation_failed`, counted by the endpoint's outer filter), `dealership.id` | throughput and **contention failure rate** (`slot_unavailable + slot_conflict` / total) |
-| `scheduler.booking.duration` | histogram | `ms` | `outcome` | booking latency SLO (p95 < 150 ms) |
+| `scheduler.booking.requests` | counter | `{request}` | `outcome` (the span's values plus `validation_failed`, counted by the endpoint's outer filter; `error` for an unexpected failure, a 500), `dealership.id` | throughput and **contention failure rate** (`slot_unavailable + slot_conflict` / total) |
+| `scheduler.booking.duration` | histogram | `ms` | `outcome` | booking latency SLO (p95 < 150 ms); real elapsed time (`Stopwatch`), like every latency here, never the injected business clock |
 | `scheduler.booking.lock_wait` | histogram | `ms` | `dealership.id` | queueing depth; a rising p95 means a hot dealership |
 | `scheduler.booking.constraint_backstop` | counter | `{event}` | `constraint` | should stay at 0; non-zero means an out-of-band writer |
 | `scheduler.booking.deadlocks` | counter | `{event}` | — | must stay at 0 (asserted by test; alert if > 0) |
@@ -1058,7 +1064,9 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 | `scheduler.appointments.cancellations` | counter | `{appointment}` | `previous_status` | business metric |
 | Runtime, ASP.NET Core, HTTP client, Npgsql pool | built-in | — | — | via ServiceDefaults |
 
-**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1).
+A request the framework cannot bind at all (a body that is not JSON, a `413`) never reaches the booking endpoint's filters or handler, so it has no booking outcome: it is visible as `http.server.request.duration` with `http.response.status_code` 400 (or 413) on the booking route, and `GlobalExceptionHandler` answers it.
+
+**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, …). Scopes carry `DealershipId`, `AppointmentId`, `IdempotencyKey`. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
 
 ### 12.2 Correlation
 
@@ -1212,7 +1220,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 |-----|----------|------------------------|
 | **ADR-001** | Vertical slices with direct handler invocation; no mediator | Fewer moving parts; cross-cutting via filters/middleware; MediatR licence change. Consequence: handlers are plain classes, trivially unit-testable. |
 | **ADR-002** | `Appointment` is the transactional aggregate; `DealershipSchedule` is a read model | Consistency boundary is (resource, range), enforced by the DB. Consequence: no hot aggregate; schedule is a projection. |
-| **ADR-003** | Exclusion constraints are the invariant of record; a per-dealership transaction-scoped advisory lock serialises check-then-insert; **a booking transaction must never take a second lock or perform a second contended insert** | Removes the insert-then-check mutual wait (`40P01`); makes the pre-check authoritative. Consequence: `23P01` is a backstop metric that should read 0. |
+| **ADR-003** | Exclusion constraints are the invariant of record; a per-dealership transaction-scoped advisory lock serialises check-then-insert; **a booking transaction must never take a second lock or perform a second contended insert**, with one scoped exception: its own idempotency-key row (the expired-key `DELETE` and the key `INSERT`, §7.5), which can be contended only by the *same* key used at *another* dealership | Removes the insert-then-check mutual wait (`40P01`); makes the pre-check authoritative. The exception cannot form a cycle: a waiter on the key row holds only its own dealership's lock, which the transaction it waits for never requests, and the key insert comes after that transaction's own appointment insert. Consequence: `23P01` is a backstop metric that should read 0; a `40P01` is reported (1004), never retried. |
 | **ADR-004** | Booking transaction runs at `READ COMMITTED`, opened explicitly | Per-statement snapshots are required for check-after-lock correctness. Consequence: never raise isolation for this path; a test asserts behaviour. |
 | **ADR-005** | UTC storage; IANA time zone per dealership; half-open intervals; `TimeProvider` injected | Deterministic DST behaviour; testable time rules. |
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |

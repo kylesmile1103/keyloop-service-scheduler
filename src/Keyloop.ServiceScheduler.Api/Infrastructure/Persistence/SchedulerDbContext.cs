@@ -3,12 +3,21 @@ using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Configurations;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 
 public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> options) : DbContext(options)
 {
+    /// <summary>
+    /// The audit interceptor this context was configured with (null without one): the instance holding this context's pending and
+    /// in-doubt domain events, so a caller that settles an in-doubt commit reaches the right one whatever the DI lifetimes.
+    /// </summary>
+    public DomainEventInterceptor? DomainEvents { get; } =
+        options.FindExtension<CoreOptionsExtension>()?.Interceptors?.OfType<DomainEventInterceptor>().SingleOrDefault();
+
     public DbSet<Dealership> Dealerships => Set<Dealership>();
 
     public DbSet<ServiceBay> ServiceBays => Set<ServiceBay>();

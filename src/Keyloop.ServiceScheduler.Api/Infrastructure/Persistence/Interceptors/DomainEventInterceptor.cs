@@ -18,10 +18,18 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 /// SaveChanges detaches the staged history rows and leaves the aggregates' events in place, so a retry audits them exactly once.
 /// An observer that throws (cancellation included) is logged as event 1005 and never rethrown: the change is already committed, so
 /// the caller must not see a failure, and a retrying execution strategy must not re-run the unit of work.
+/// <para>
+/// A commit that reports a failure may still have committed (a lost acknowledgement). Its events are then held <em>in doubt</em>:
+/// never notified unless the caller establishes that the commit happened, with <see cref="ResolveInDoubtCommitAsync"/> (the booking
+/// handler does, when it verifies a failed commit), so observers hear about every committed change once and about nothing else.
+/// </para>
 /// </remarks>
 public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger)
     : SaveChangesInterceptor, IDbTransactionInterceptor
 {
+    // TransactionErrorEventData.Action for a failed commit (EF Core's RelationalTransaction).
+    private const string CommitAction = "Commit";
+
     private readonly CurrentActor _actor = actor ?? throw new ArgumentNullException(nameof(actor));
     private readonly IDomainEventObserver[] _observers = observers?.ToArray() ?? throw new ArgumentNullException(nameof(observers));
     private readonly ILogger<DomainEventInterceptor> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -29,8 +37,30 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     // Events saved inside an explicit transaction that has not committed yet.
     private readonly List<IDomainEvent> _awaitingCommit = [];
 
+    // Events whose explicit transaction's commit reported a failure: committed or not, the caller has to find out.
+    private readonly List<IDomainEvent> _inDoubt = [];
+
     // The SaveChanges in flight: its aggregates, their events and the history rows staged for them.
     private Staged? _staged;
+
+    /// <summary>
+    /// Settles the events of a commit that reported a failure: notifies the observers when <paramref name="committed"/> (the change is
+    /// in the database after all), drops them otherwise. Does nothing when no commit is in doubt.
+    /// </summary>
+    public async Task ResolveInDoubtCommitAsync(bool committed, CancellationToken cancellationToken)
+    {
+        if (_inDoubt.Count == 0)
+        {
+            return;
+        }
+
+        IDomainEvent[] events = [.. _inDoubt];
+        _inDoubt.Clear();
+        if (committed)
+        {
+            await NotifyAsync(events, cancellationToken);
+        }
+    }
 
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
@@ -119,12 +149,23 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
         return Task.CompletedTask;
     }
 
-    public void TransactionFailed(DbTransaction transaction, TransactionErrorEventData eventData) => _awaitingCommit.Clear();
+    public void TransactionFailed(DbTransaction transaction, TransactionErrorEventData eventData) => OnTransactionFailed(eventData);
 
     public Task TransactionFailedAsync(DbTransaction transaction, TransactionErrorEventData eventData, CancellationToken cancellationToken = default)
     {
-        _awaitingCommit.Clear();
+        OnTransactionFailed(eventData);
         return Task.CompletedTask;
+    }
+
+    // A failed commit may have committed on the server; any other failed transaction operation (a rollback, a savepoint) did not commit.
+    private void OnTransactionFailed(TransactionErrorEventData eventData)
+    {
+        if (string.Equals(eventData.Action, CommitAction, StringComparison.Ordinal))
+        {
+            _inDoubt.AddRange(_awaitingCommit);
+        }
+
+        _awaitingCommit.Clear();
     }
 
     private void Stage(DbContext? context)

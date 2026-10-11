@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
@@ -19,7 +20,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 /// dealership or service type. Records <c>scheduler.availability.duration</c> and <c>scheduler.availability.slots_returned</c>
 /// for every answer, and wraps the calculation in the <c>scheduler.compute_availability</c> span (§12.1).
 /// </summary>
-public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options, TimeProvider timeProvider)
+public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options)
 {
     public async Task<AvailabilityResponse> HandleAsync(GetAvailabilityQuery query, CancellationToken ct)
     {
@@ -29,10 +30,11 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         var serviceTypeId = query.ServiceTypeId ?? throw new ArgumentException("The query has no service type id; validate it first.", nameof(query));
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
 
-        var started = timeProvider.GetTimestamp();
+        // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
+        var started = Stopwatch.GetTimestamp();
         var response = await ComputeAsync(query.DealershipId, serviceTypeId, date, ct);
         SchedulerTelemetry.AvailabilityDuration.Record(
-            timeProvider.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("dealership.id", query.DealershipId.ToString()));
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("dealership.id", query.DealershipId.ToString()));
         SchedulerTelemetry.AvailabilitySlotsReturned.Record(response.Slots.Count);
         return response;
     }

@@ -171,6 +171,54 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         observer.Batches.Count.ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_commit_that_reports_a_failure_holds_its_events_until_resolved(bool committed)
+    {
+        // The fault interceptor runs before the audit one, so the audit's post-commit hook never runs and EF Core reports the commit
+        // as failed although the server committed: exactly what a dropped connection after COMMIT looks like to the application.
+        var observer = new RecordingObserver();
+        var commitLoss = new CommitAcknowledgementLoss();
+        var appointment = _workshop.Book(TestData.LondonTime(9));
+        await using var db = new SchedulerDbContext(new DbContextOptionsBuilder<SchedulerDbContext>()
+            .UseNpgsql(pg.ConnectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(commitLoss, new DomainEventInterceptor(new CurrentActor(), [observer], NullLogger<DomainEventInterceptor>.Instance))
+            .Options);
+        var events = db.DomainEvents.ShouldNotBeNull("the context exposes the interceptor it was configured with");
+
+        await using (var transaction = await db.Database.BeginTransactionAsync(Ct))
+        {
+            db.Appointments.Add(appointment);
+            await db.SaveChangesAsync(Ct);
+            commitLoss.Arm();
+            await Should.ThrowAsync<Npgsql.NpgsqlException>(() => transaction.CommitAsync(Ct));
+        }
+
+        observer.Batches.ShouldBeEmpty("a commit in doubt is not announced");
+        (await HistoryOfAsync(appointment.Id)).Count.ShouldBe(1, "the server did commit");
+
+        // A new transaction does not settle the doubt either way; only the caller, once it knows, does.
+        await using (var other = await db.Database.BeginTransactionAsync(Ct))
+        {
+            await other.RollbackAsync(Ct);
+        }
+
+        observer.Batches.ShouldBeEmpty();
+        await events.ResolveInDoubtCommitAsync(committed, Ct);
+        await events.ResolveInDoubtCommitAsync(committed, Ct); // settled once: a second call has nothing left
+
+        if (committed)
+        {
+            observer.Batches.ShouldHaveSingleItem().ShouldHaveSingleItem().ShouldBeOfType<AppointmentBooked>().AppointmentId.ShouldBe(appointment.Id);
+        }
+        else
+        {
+            observer.Batches.ShouldBeEmpty();
+        }
+    }
+
     [Fact]
     public async Task Synchronous_save_audits_and_notifies_the_same_way()
     {

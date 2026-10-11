@@ -5,7 +5,11 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
@@ -128,6 +132,9 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
             TestData.NewBay(elsewhere.Id, "Bay 1", BayCapability.StandardLift),
             TestData.NewTechnician(elsewhere.Id, "Chloe Dubois", "E-1001", Certification.GeneralService));
         using var metrics = new MetricsCollector();
+        var logs = new CapturingLoggerProvider();
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+        using var client = factory.CreateClient();
         HttpResponseMessage[] responses;
         await using (var connection = new NpgsqlConnection(pg.ConnectionString))
         {
@@ -141,8 +148,8 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
 
             var inFlight = new[]
             {
-                PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "shared-key"),
-                PostAsync(elsewhere.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "shared-key"),
+                PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "shared-key", client),
+                PostAsync(elsewhere.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "shared-key", client),
             };
             await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, 2, Ct);
             await holder.CommitAsync(Ct);
@@ -163,6 +170,8 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
             });
             metrics.Sum("scheduler.booking.requests", MetricsCollector.Tag("outcome", "idempotency_reuse")).ShouldBe(1);
             metrics.Sum("scheduler.booking.constraint_backstop").ShouldBe(0, "a duplicate key is not an overlap");
+            logs.Entries.ShouldNotContain(e => e.Level >= LogLevel.Error, string.Join(Environment.NewLine, logs.Entries.Where(e => e.Level >= LogLevel.Error)));
+            logs.Entries.Count(e => e.EventId.Id == 1002).ShouldBe(1, "the loser is a rejection (idempotency_reuse)");
         }
         finally
         {
@@ -171,6 +180,45 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
                 response.Dispose();
             }
         }
+    }
+
+    [Fact]
+    public async Task A_duplicate_key_whose_stored_row_is_expired_is_not_replayed_but_booked()
+    {
+        // Two API instances whose clocks are 25 hours apart share the database. B books first with the key; by A's clock B's row is
+        // already expired. A was held at its appointment INSERT after its key re-check found nothing, so its key INSERT collides
+        // (23505) with B's committed row: an expired row is no answer, so A books again and its re-check under the lock deletes it.
+        var elsewhere = TestData.NewDealership("Elsewhere Motors");
+        await SaveAsync(
+            elsewhere,
+            TestData.NewBay(elsewhere.Id, "Bay 1", BayCapability.StandardLift),
+            TestData.NewTechnician(elsewhere.Id, "Chloe Dubois", "E-1001", Certification.GeneralService));
+        await using var behind = new SchedulerApiFactory(pg.ConnectionString, new FakeTimeProvider(TestData.DefaultNow.AddHours(-25)));
+        using var behindClient = behind.CreateClient();
+
+        await using var holdA = await HoldDealershipRowAsync(_workshop.Dealership.Id);
+        await using var holdB = await HoldDealershipRowAsync(elsewhere.Id);
+        var aTask = PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "skewed-key");
+        var bTask = PostAsync(elsewhere.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 2), "skewed-key", behindClient);
+        await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, 2, Ct);
+
+        await holdB.CommitAsync(Ct);
+        using var b = await bTask;
+        b.StatusCode.ShouldBe(HttpStatusCode.Created, await b.Content.ReadAsStringAsync(Ct));
+        await holdA.CommitAsync(Ct);
+        using var a = await aTask;
+
+        a.StatusCode.ShouldBe(HttpStatusCode.Created, await a.Content.ReadAsStringAsync(Ct));
+        a.Headers.Contains("Idempotent-Replayed").ShouldBeFalse("B's expired row is not A's booking");
+        var booked = await a.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        booked.DealershipId.ShouldBe(_workshop.Dealership.Id);
+        await _factory.WithDbAsync(async db =>
+        {
+            (await db.Appointments.CountAsync(Ct)).ShouldBe(2);
+            var key = await db.IdempotencyKeys.AsNoTracking().SingleAsync(Ct);
+            key.ResourceId.ShouldBe(booked.Id);
+            key.ExpiresAtUtc.ShouldBe(TestData.Now.AddHours(24));
+        });
     }
 
     [Fact]
@@ -277,8 +325,8 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
 
     private static string Url(Guid dealershipId) => $"/api/v1/dealerships/{dealershipId}/appointments";
 
-    private Task<HttpResponseMessage> PostAsync(Guid dealershipId, BookAppointmentRequest request, string? key) =>
-        _client.PostJsonAsync(
+    private Task<HttpResponseMessage> PostAsync(Guid dealershipId, BookAppointmentRequest request, string? key, HttpClient? client = null) =>
+        (client ?? _client).PostJsonAsync(
             Url(dealershipId), request, SchedulerJsonContext.Default.BookAppointmentRequest, key is null ? null : new Dictionary<string, string> { ["Idempotency-Key"] = key }, Ct);
 
     private async Task<AppointmentResponse> BookAsync(BookAppointmentRequest request, string? key = null)
@@ -293,6 +341,18 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
         db.AddRange(entities);
         await db.SaveChangesAsync(Ct);
     });
+
+    /// <summary>Locks the dealership's row FOR UPDATE, which holds a booking there at its appointment INSERT (the foreign-key check).</summary>
+    private async Task<LockHolder> HoldDealershipRowAsync(Guid dealershipId)
+    {
+        var connection = new NpgsqlConnection(pg.ConnectionString);
+        await connection.OpenAsync(Ct);
+        var transaction = await connection.BeginTransactionAsync(Ct);
+        await using var command = new NpgsqlCommand("SELECT id FROM dealerships WHERE id = @id FOR UPDATE", connection, transaction);
+        command.Parameters.AddWithValue("id", dealershipId);
+        await command.ExecuteNonQueryAsync(Ct);
+        return new LockHolder(connection, transaction);
+    }
 
     /// <summary>Takes the dealership's booking lock in a transaction of the test's own; committing (or disposing) releases it.</summary>
     private async Task<LockHolder> HoldDealershipLockAsync(Guid dealershipId)

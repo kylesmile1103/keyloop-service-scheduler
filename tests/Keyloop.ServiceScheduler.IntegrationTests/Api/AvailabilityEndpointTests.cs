@@ -380,7 +380,9 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         span.GetTagItem("availability.candidates_bays").ShouldBe(2);
         span.GetTagItem("availability.candidates_technicians").ShouldBe(2);
         span.GetTagItem("availability.slots_returned").ShouldBe(availability.Slots.Count);
-        durations.ShouldHaveSingleItem().DealershipId.ShouldBe(dealershipId);
+        var duration = durations.ShouldHaveSingleItem();
+        duration.DealershipId.ShouldBe(dealershipId);
+        duration.Value.ShouldBeGreaterThan(0, "a latency is real elapsed time, not the injected (here frozen) business clock");
         slotCounts.ShouldBe([availability.Slots.Count]);
     }
 

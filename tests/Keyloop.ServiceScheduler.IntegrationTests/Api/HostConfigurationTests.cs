@@ -73,8 +73,8 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("text/plain")]
     public async Task Rate_limited_request_is_429_with_Retry_After_whatever_the_client_accepts(string accept)
     {
-        // Migrate the shared database first: when this host is the first to start, EF's own Migrate logs its probe of the missing
-        // history table at Error (DatabaseInitializer), which is not what the no-errors assertion below is about.
+        // Migrate the shared database first, so this host's log holds only the requests below: when it is the first host to start,
+        // EF's Migrate reports its probe of the missing history table as a command error (Information since Program.cs lowers it).
         _ = _factory.Services;
         var logs = new CapturingLoggerProvider();
         await using var factory = _factory.WithWebHostBuilder(builder => builder

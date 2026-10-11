@@ -29,8 +29,8 @@ public static class DatabaseInitializer
 
         if (options.MigrateOnStartup)
         {
-            // On a fresh database EF logs an error for every query against the missing history table (Migrate itself logs one);
-            // checking for the table first avoids adding another to a first start's log.
+            // On a fresh database every query against the missing history table fails (Migrate itself issues one; EF reports it as a
+            // command error, Information since Program.cs lowers CommandError); checking for the table first avoids adding another.
             var historyExists = await db.Database
                 .SqlQuery<bool>($"""SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL AS "Value" """)
                 .SingleAsync(ct);
