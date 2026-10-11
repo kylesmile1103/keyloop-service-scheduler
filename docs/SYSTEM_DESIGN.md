@@ -314,7 +314,7 @@ Transition rules live in `Appointment` as explicit methods; an illegal call thro
 
 | Event | Raised by | Persisted as | After-commit reaction |
 |-------|-----------|--------------|------------------------|
-| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, VIN) | metrics `scheduler.booking.requests{outcome=confirmed}`; log |
+| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, masked VIN — events carry no customer PII) | metrics `scheduler.booking.requests{outcome=confirmed}`; log |
 | `AppointmentCancelled` | `Appointment.Cancel` | row (`Cancelled`, payload: reason, previous status) | metrics; log |
 | `AppointmentCheckedIn` / `Started` / `Completed` / `NoShow` | respective methods | row | log |
 
