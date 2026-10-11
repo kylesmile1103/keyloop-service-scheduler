@@ -446,6 +446,26 @@ public class AppointmentTests
         appointment.DomainEvents.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData(Cancelled, "cancel", "Cannot cancel this appointment while it is Cancelled.")]
+    [InlineData(CheckedIn, "check-in", "Cannot check in this appointment while it is CheckedIn.")]
+    [InlineData(Confirmed, "start", "Cannot start work on this appointment while it is Confirmed.")]
+    [InlineData(CheckedIn, "complete", "Cannot complete this appointment while it is CheckedIn.")]
+    [InlineData(Cancelled, "mark-no-show", "Cannot mark this appointment as a no-show while it is Cancelled.")]
+    public void Illegal_transition_message_reads_naturally_and_keeps_the_machine_token(AppointmentStatus status, string action, string message)
+    {
+        var appointment = InStatus(status);
+
+        var ex = Should.Throw<InvalidStateTransitionException>(() => Actions[action](appointment, appointment.Slot.EndUtc.AddHours(1)));
+
+        ex.Message.ShouldBe(message);
+        ex.Attempted.ShouldBe(action);
+    }
+
+    [Fact]
+    public void Unknown_transition_token_still_reads_as_a_sentence() =>
+        new InvalidStateTransitionException(Confirmed, "re-open").Message.ShouldBe("Cannot perform 're-open' on this appointment while it is Confirmed.");
+
     [Fact]
     public void Illegal_transition_matrix_covers_every_status_and_action() =>
         IllegalTransitions.Count.ShouldBe((Enum.GetValues<AppointmentStatus>().Length * Actions.Count) - LegalTransitions.Count);

@@ -202,6 +202,21 @@ public class AvailabilityCalculatorTests
     }
 
     [Fact]
+    public void Zero_length_window_yields_no_slots()
+    {
+        // Dealership.ResolveOperatingWindow returns End == Start when opening and closing both fall inside a DST gap.
+        ResourceBusy[] one = [Resource()];
+
+        AvailabilityCalculator.Compute(new OperatingWindow(At(8), At(8)), OneHour, Granularity, one, one).ShouldBeEmpty();
+        AvailabilityCalculator.Compute(new OperatingWindow(At(8), At(8)), OneHour, Granularity, [], []).ShouldBeEmpty();
+
+        // Other arguments are still validated, and a window that ends before it starts is still a programming error.
+        Should.Throw<ArgumentOutOfRangeException>(() => AvailabilityCalculator.Compute(new OperatingWindow(At(8), At(8)), OneHour, 0, one, one));
+        Should.Throw<ArgumentException>(() => AvailabilityCalculator.Compute(new OperatingWindow(At(8), At(8).AddTicks(-1)), OneHour, Granularity, one, one))
+            .ParamName.ShouldBe("window");
+    }
+
+    [Fact]
     public void Compute_validates_arguments()
     {
         ResourceBusy[] one = [Resource()];
@@ -209,8 +224,6 @@ public class AvailabilityCalculatorTests
         Should.Throw<ArgumentOutOfRangeException>(() => AvailabilityCalculator.Compute(Window, OneHour, 0, one, one));
         Should.Throw<ArgumentOutOfRangeException>(() => AvailabilityCalculator.Compute(Window, OneHour, -15, one, one));
         Should.Throw<ArgumentException>(() => AvailabilityCalculator.Compute(new OperatingWindow(At(12), At(8)), OneHour, Granularity, one, one))
-            .ParamName.ShouldBe("window");
-        Should.Throw<ArgumentException>(() => AvailabilityCalculator.Compute(new OperatingWindow(At(8), At(8)), OneHour, Granularity, one, one))
             .ParamName.ShouldBe("window");
         Should.Throw<ArgumentException>(() => AvailabilityCalculator.Compute(
                 new OperatingWindow(DateTime.SpecifyKind(At(8), DateTimeKind.Unspecified), At(12)), OneHour, Granularity, one, one))

@@ -21,6 +21,8 @@ public static class AvailabilityCalculator
     /// <summary>
     /// Feasible start times on the granularity grid where at least one bay and at least one technician are free for the whole duration,
     /// in ascending order. Candidates are <c>window.StartUtc + k × granularity</c> with <c>start + duration ≤ window.EndUtc</c>.
+    /// A zero-length window (which <see cref="Dealership.ResolveOperatingWindow"/> yields when opening and closing both fall in a DST
+    /// gap) has no slots; a window that ends before it starts is a programming error.
     /// </summary>
     public static IReadOnlyList<AvailabilitySlot> Compute(
         OperatingWindow window,
@@ -29,7 +31,7 @@ public static class AvailabilityCalculator
         IReadOnlyList<ResourceBusy> bays,
         IReadOnlyList<ResourceBusy> technicians)
     {
-        ValidateWindow(window);
+        ValidateWindow(window, allowEmpty: true);
 
         // default(ServiceDuration) bypasses ServiceDuration.Create; a zero duration would make every instant feasible.
         if (duration.Minutes <= 0)
@@ -40,6 +42,11 @@ public static class AvailabilityCalculator
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(granularityMinutes);
         ArgumentNullException.ThrowIfNull(bays);
         ArgumentNullException.ThrowIfNull(technicians);
+
+        if (window.EndUtc == window.StartUtc)
+        {
+            return [];
+        }
 
         var length = duration.AsTimeSpan;
         var bayStarts = FeasibleStartsPerResource(window, length, bays, nameof(bays));
@@ -207,11 +214,11 @@ public static class AvailabilityCalculator
         return resource.Busy;
     }
 
-    private static void ValidateWindow(OperatingWindow window)
+    private static void ValidateWindow(OperatingWindow window, bool allowEmpty = false)
     {
         Guard.Utc(window.StartUtc, nameof(window));
         Guard.Utc(window.EndUtc, nameof(window));
-        if (window.EndUtc <= window.StartUtc)
+        if (window.EndUtc < window.StartUtc || (!allowEmpty && window.EndUtc == window.StartUtc))
         {
             throw new ArgumentException("The operating window must end after it starts.", nameof(window));
         }
