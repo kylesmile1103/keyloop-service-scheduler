@@ -82,6 +82,32 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     }
 
     [Fact]
+    public async Task Mailpit_is_healthy_links_its_inbox_and_receives_email_from_the_composed_api()
+    {
+        await appHost.App.ResourceNotifications.WaitForResourceHealthyAsync("mailpit", Ct).WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        using var http = appHost.App.CreateHttpClient("mailpit", "http");
+        using var response = await http.GetAsync("/readyz", Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        appHost.App.ResourceNotifications.TryGetCurrentState("mailpit", out var resource).ShouldBeTrue();
+        resource!.Snapshot.Urls.ShouldContain(u => u.DisplayProperties.DisplayName == "Mailpit inbox");
+
+        // Demo seeding queues bookings before the hosted worker starts. Receiving one proves the composed API's SMTP wiring too.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        while (true)
+        {
+            using var messages = JsonDocument.Parse(await http.GetStringAsync("/api/v1/messages", timeout.Token));
+            if (messages.RootElement.GetProperty("total").GetInt32() > 0)
+            {
+                messages.RootElement.GetProperty("messages")[0].GetProperty("From").GetProperty("Address").GetString()
+                    .ShouldBe("notifications@keyloop.example");
+                break;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token);
+        }
+    }
+
+    [Fact]
     public async Task Reseed_demo_data_command_reseeds_through_the_key_protected_route()
     {
         appHost.App.ResourceNotifications.TryGetCurrentState("api", out var api).ShouldBeTrue();

@@ -41,6 +41,11 @@ public class TelemetryTests
                 ("scheduler.availability.duration", "ms", "Histogram`1"),
                 ("scheduler.availability.slots_returned", "{slot}", "Histogram`1"),
                 ("scheduler.appointments.cancellations", "{appointment}", "Counter`1"),
+                ("scheduler.notifications.sent", "{notification}", "Counter`1"),
+                ("scheduler.notifications.failed", "{notification}", "Counter`1"),
+                ("scheduler.notifications.retried", "{notification}", "Counter`1"),
+                ("scheduler.notifications.dispatch_duration", "ms", "Histogram`1"),
+                ("scheduler.notifications.outbox_age", "s", "Histogram`1"),
             ],
             ignoreOrder: true);
     }

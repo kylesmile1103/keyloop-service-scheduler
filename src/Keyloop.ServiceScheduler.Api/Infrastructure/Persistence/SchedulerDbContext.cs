@@ -2,6 +2,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Catalog;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Configurations;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,8 @@ public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> opti
 
     public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
+    public DbSet<NotificationOutboxEntry> NotificationOutbox => Set<NotificationOutboxEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // btree_gist lets the exclusion constraints' GiST index combine uuid equality with range overlap (SYSTEM_DESIGN §7.3).
@@ -45,5 +48,6 @@ public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> opti
         modelBuilder.ApplyConfiguration(new AppointmentConfiguration());
         modelBuilder.ApplyConfiguration(new AppointmentHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new IdempotencyKeyConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationOutboxConfiguration());
     }
 }

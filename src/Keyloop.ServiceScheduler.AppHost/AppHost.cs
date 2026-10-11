@@ -75,6 +75,23 @@ if (apiEndpoints is [var scalarEndpoint, ..])
     api.WithUrlForEndpoint(scalarEndpoint, _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "Scalar API reference" });
 }
 
+// Mailpit is a local capture inbox only. Publish mode retains Provider=None until the production adapter is available.
+// CommunityToolkit 13.6.0 targets Aspire 13.6 and is compatible with the pinned hosting packages 13.6.1.
+if (builder.ExecutionContext.IsRunMode)
+{
+    var mailpit = builder.AddMailPit("mailpit")
+        .WithImageTag("v1.31.5")
+        .WithLifetime(ContainerLifetime.Session)
+        .WithUrlForEndpoint("http", url => url.DisplayText = "Mailpit inbox");
+    api.WithEnvironment("Notifications__Enabled", "true")
+        .WithEnvironment("Notifications__Provider", "Smtp")
+        .WithEnvironment("Notifications__Smtp__Host", mailpit.Resource.Host)
+        .WithEnvironment("Notifications__Smtp__Port", mailpit.Resource.Port)
+        .WithEnvironment("Notifications__Smtp__Encryption", "None")
+        .WithReference(mailpit)
+        .WaitFor(mailpit);
+}
+
 // The dashboard's "Reseed demo data" command (§C3), in run mode only. Its key is a fresh secret for every run (the API is restarted
 // with the AppHost, so nothing needs to remember it), given to the API as Demo__ReseedKey and sent by the command as X-Reseed-Key;
 // without it the API answers the route like an unknown one. The command uses the plain-HTTP endpoint, like the Vite proxy (§C5), so

@@ -17,6 +17,7 @@ using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Health;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
@@ -43,6 +44,16 @@ builder.Services.AddOptions<SecurityOptions>().BindConfiguration(SecurityOptions
 builder.Services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
 builder.Services.AddOptions<DemoOptions>().BindConfiguration(DemoOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<DemoOptions>, DemoOptionsValidator>();
+
+builder.Services.AddOptions<NotificationOptions>().BindConfiguration(NotificationOptions.SectionName).ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>();
+builder.Services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<IOptions<NotificationOptions>>().Value.Provider switch
+{
+    NotificationProvider.Smtp => new SmtpEmailSender(sp.GetRequiredService<IOptions<NotificationOptions>>(), sp.GetRequiredService<TimeProvider>()),
+    NotificationProvider.None => new DisabledEmailSender(),
+    _ => throw new InvalidOperationException("Notifications:Provider=Cloudflare is reserved; the Cloudflare email adapter is not implemented yet. Select Smtp or None."),
+});
+builder.Services.AddHostedService<NotificationDispatcher>();
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp =>
@@ -129,6 +140,10 @@ var app = builder.Build();
 try
 {
     app.Services.GetRequiredService<IStartupValidator>().Validate();
+    if (app.Services.GetRequiredService<IOptions<NotificationOptions>>().Value.Provider == NotificationProvider.Cloudflare)
+    {
+        throw new InvalidOperationException("Notifications:Provider=Cloudflare is reserved; the Cloudflare email adapter is not implemented yet. Select Smtp or None.");
+    }
 }
 catch (Exception ex)
 {

@@ -53,6 +53,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("proxy", "Security:ForwardedHeaders:KnownProxies:0", "not-an-ip", "SecurityOptions", "KnownProxies")]
     [InlineData("network", "Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/33", "SecurityOptions", "KnownNetworks")]
     [InlineData("trust_all", "Security:ForwardedHeaders:Enabled", "true", "SecurityOptions", "ForwardedHeaders")]
+    [InlineData("notifications", "Notifications:MaxAttempts", "0", "NotificationOptions", "MaxAttempts")]
     [InlineData("reseed_key", "Demo:ReseedKey", "too-short", "DemoOptions", "ReseedKey")]
     public async Task Invalid_configuration_fails_startup_before_any_database_work(string name, string key, string value, string optionsType, string member)
     {
@@ -69,6 +70,22 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         await connection.OpenAsync(Ct);
         await using var historyExists = new NpgsqlCommand("""SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL""", connection);
         ((bool)(await historyExists.ExecuteScalarAsync(Ct))!).ShouldBeFalse("options are validated before migrating or seeding");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Cloudflare_selection_fails_clearly_before_database_work_even_when_disabled(bool enabled)
+    {
+        var connectionString = await pg.CreateEmptyDatabaseAsync($"cloudflare_not_implemented_{enabled}", Ct);
+        using var factory = new SchedulerApiFactory(connectionString, TestData.Clock()).WithWebHostBuilder(builder => builder
+            .UseSetting("Notifications:Provider", "Cloudflare").UseSetting("Notifications:Enabled", enabled.ToString()));
+        var ex = Should.Throw<Exception>(() => factory.CreateClient());
+        ex.ToString().ShouldContain("Cloudflare email adapter is not implemented yet");
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(Ct);
+        await using var command = new NpgsqlCommand("SELECT to_regclass('notification_outbox') IS NOT NULL", connection);
+        ((bool)(await command.ExecuteScalarAsync(Ct))!).ShouldBeFalse();
     }
 
     [Theory]

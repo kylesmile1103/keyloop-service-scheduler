@@ -8,7 +8,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// 1001 BookingConfirmed (written by the post-commit TelemetryDomainEventObserver), 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected,
 /// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
 /// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog), 1105 DemoDataReseeded, 1106 DemoReseedRefused;
-/// 1200 UnhandledException. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
+/// 1200 UnhandledException; 1201 NotificationSent, 1202 NotificationRetried, 1203 NotificationFailed, 1204 NotificationDispatchCycleFailed, 1205 NotificationClaimLost. Never log customer PII: ids and the masked VIN only (SYSTEM_DESIGN §11.1).
 /// </summary>
 internal static partial class SchedulerLog
 {
@@ -104,4 +104,24 @@ internal static partial class SchedulerLog
     [LoggerMessage(EventId = 1200, EventName = "UnhandledException", Level = LogLevel.Error,
         Message = "Unhandled exception for {Method} {Path}; answered 500 internal-error")]
     public static partial void UnhandledException(this ILogger logger, Exception exception, string method, string path);
+
+    [LoggerMessage(EventId = 1201, EventName = "NotificationSent", Level = LogLevel.Information,
+        Message = "Notification {OutboxId} ({Kind}) sent to {MaskedRecipient}")]
+    public static partial void NotificationSent(this ILogger logger, Guid outboxId, string kind, string maskedRecipient);
+
+    [LoggerMessage(EventId = 1202, EventName = "NotificationRetried", Level = LogLevel.Warning,
+        Message = "Notification {OutboxId} ({Kind}) to {MaskedRecipient} failed attempt {Attempt} ({Failure}), next attempt {NextAttemptAt:O}")]
+    public static partial void NotificationRetried(this ILogger logger, Guid outboxId, string kind, string maskedRecipient, int attempt, DateTime nextAttemptAt, string failure);
+
+    [LoggerMessage(EventId = 1203, EventName = "NotificationFailed", Level = LogLevel.Error,
+        Message = "Notification {OutboxId} ({Kind}) to {MaskedRecipient} dead letter after {Attempts} attempts ({Failure})")]
+    public static partial void NotificationFailed(this ILogger logger, Guid outboxId, string kind, string maskedRecipient, int attempts, string failure);
+
+    [LoggerMessage(EventId = 1204, EventName = "NotificationDispatchCycleFailed", Level = LogLevel.Error,
+        Message = "Notification dispatch cycle failed ({FailureType}), outstanding leases will expire")]
+    public static partial void NotificationDispatchCycleFailed(this ILogger logger, string failureType);
+
+    [LoggerMessage(EventId = 1205, EventName = "NotificationClaimLost", Level = LogLevel.Warning,
+        Message = "Notification {OutboxId} ({Kind}) acknowledgement ignored because the claim is no longer owned")]
+    public static partial void NotificationClaimLost(this ILogger logger, Guid outboxId, string kind);
 }

@@ -51,7 +51,7 @@ This design delivers a booking engine whose correctness does not depend on appli
 
 ### 2.3 Non-goals for this vertical slice
 
-Explicitly out of scope (each has a documented seam in §11.3 or §17): customer identity management / CRM, pricing and invoicing, parts availability, technician shift rosters and leave, multi-day jobs, rescheduling (modelled as cancel + re-book), notifications (email/SMS), online-payment holds, and a production identity provider integration.
+Explicitly out of scope (each has a documented seam in §11.3 or §17): customer identity management / CRM, pricing and invoicing, parts availability, technician shift rosters and leave, multi-day jobs, rescheduling (modelled as cancel + re-book), SMS notifications (email is implemented in §8.9), online-payment holds, and a production identity provider integration.
 
 ---
 
@@ -252,7 +252,7 @@ classDiagram
     Appointment "1" --> "*" AppointmentHistoryEntry : audit trail
 ```
 
-**Why `Appointment` references other aggregates by id only.** Aggregates are consistency boundaries; a booking must never load-and-lock the whole dealership graph. The engine reads bays and technicians as snapshots for allocation, and the only transactional writes are the appointment row, its history row, and (optionally) the idempotency row.
+**Why `Appointment` references other aggregates by id only.** Aggregates are consistency boundaries; a booking must never load-and-lock the whole dealership graph. The engine reads bays and technicians as snapshots for allocation, and the only transactional writes are the appointment row, its history row, its notification outbox row, and (optionally) the idempotency row.
 
 ### 5.3 Why `DealershipSchedule` is a read model, not an aggregate
 
@@ -315,11 +315,11 @@ Transition rules live in `Appointment` as explicit methods; an illegal call thro
 
 | Event | Raised by | Persisted as | After-commit reaction |
 |-------|-----------|--------------|------------------------|
-| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, masked VIN - events carry no customer PII) | metrics `scheduler.booking.requests{outcome=confirmed}`; log |
-| `AppointmentCancelled` | `Appointment.Cancel` | row (`Cancelled`, payload: reason, previous status) | metrics; log |
+| `AppointmentBooked` | `Appointment.Book` | `appointment_history` row (`event_type = Booked`, payload: slot, bay, technician, service, masked VIN - events carry no customer PII) | metrics `scheduler.booking.requests{outcome=confirmed}`; log (email is staged before commit) |
+| `AppointmentCancelled` | `Appointment.Cancel` | row (`Cancelled`, payload: reason, previous status) | metrics; log (cancellation email is staged before commit) |
 | `AppointmentCheckedIn` / `Started` / `Completed` / `NoShow` | respective methods | row | log |
 
-Mechanism: aggregates collect events in a private list; a `SaveChangesInterceptor` drains them *before* the insert statements are flushed and materialises them as `AppointmentHistoryEntry` rows **inside the same transaction** (a lightweight transactional outbox). After a successful commit the interceptor dispatches the same events in-process to telemetry handlers. If a future requirement needs cross-service integration events, the history table already has the shape of an outbox (unprocessed flag + relay) - no new transactional surface is needed.
+Mechanism: aggregates collect events in a private list; `DomainEventInterceptor` materialises `AppointmentHistoryEntry` rows and, for booking and cancellation, `NotificationOutboxEntry` rows **inside the same SaveChanges and transaction**. A failed save detaches both staged sets while preserving aggregate events for retry. Snapshot lookup faults are also cleaned up in the saving interceptor, before EF's save-failure callbacks apply. History remains the append-only audit record; the separate notification outbox holds mutable delivery state and a minimal, immutable email snapshot (§8.9). After a successful commit the interceptor dispatches the same events in-process to telemetry handlers, whose failures are isolated from the committed change.
 
 ---
 
@@ -466,7 +466,8 @@ SELECT ... active appointments of this dealership overlapping [start, end) ...;
 -- in memory: feasibility + allocation (§6)
 INSERT INTO appointments (id, ...) VALUES (:minted_id, ...);  -- cannot conflict: we hold the lock
 INSERT INTO idempotency_keys (...) VALUES (...);              -- only if a key was supplied
-INSERT INTO appointment_history (...) VALUES (...);           -- (the order EF Core sends them in)
+INSERT INTO appointment_history (...) VALUES (...);
+INSERT INTO notification_outbox (...) VALUES (...);            -- fresh primary key, unique (appointment_id, kind)
 COMMIT;                                                       -- lock released
 ```
 
@@ -476,7 +477,7 @@ Why this combination and not the constraint alone: PostgreSQL implements exclusi
 
 Why `READ COMMITTED` matters: under `REPEATABLE READ` the snapshot is taken at the first statement - which is the lock acquisition itself - so a transaction that waited for the lock would still *read the pre-lock snapshot* and miss the previous holder's commit. `READ COMMITTED` takes a fresh snapshot per statement, which is exactly what check-then-act under a lock requires. This is asserted in code (the transaction is opened explicitly with `IsolationLevel.ReadCommitted`) and documented in ADR-004.
 
-Why there can be no deadlock: each booking transaction acquires exactly one lock it waits for while holding nothing else (the dealership key), *before* any write, and the appointment insert is its only insert contended on the resources. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking reads, inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships interact only through the idempotency-key row, the scoped exception in ADR-003: the expired-key `DELETE` and the key `INSERT` can wait, but only on the *same key* being used at *another* dealership at the same moment. The waiter then holds only its own dealership's lock, which the transaction it waits for never requests, and a transaction inserts its key only after its own appointment insert has succeeded, after which it waits for nothing. So the wait cannot close a cycle either. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second lock or perform a second contended insert, except on its own idempotency-key row*.
+Why there can be no deadlock: each booking transaction acquires exactly one lock it waits for while holding nothing else (the dealership key), *before* any write, and the appointment insert is its only insert contended on the resources. A transaction waiting for the advisory lock holds no locks the holder could want; the holder's remaining work is non-blocking reads, inserts and a commit. The wait-for graph is a simple queue, not a graph that can contain a cycle. Two booking transactions for *different* dealerships interact only through the idempotency-key row, the scoped exception in ADR-003: the expired-key `DELETE` and the key `INSERT` can wait, but only on the *same key* being used at *another* dealership at the same moment. The waiter then holds only its own dealership's lock, which the transaction it waits for never requests, and a transaction inserts its key only after its own appointment insert has succeeded, after which it waits for nothing. So the wait cannot close a cycle either. Ordinary inserts of new history and notification outbox primary keys do not add a second contended resource. The unique `(appointment_id, kind)` notification key is private to the appointment being booked. The guard that keeps this true is in ADR-003: *a booking transaction must never acquire a second contended lock or perform a second contended insert, except on its own idempotency-key row*.
 
 The Development-only demo reseed (`POST /admin/demo/reseed`, §8.7) is not a booking transaction. It takes both demo dealerships' locks, always in the same order, before it deletes anything, so a booking in flight finishes first and a later one waits and then sees the new week. That cannot close a cycle either: a booking holds one dealership's lock and never waits for another, and two reseeds take the locks in the same order.
 
@@ -701,7 +702,7 @@ sequenceDiagram
     H->>D: AvailabilityCalculator.IsFeasible(start) -> candidates, AllocationPolicy.Choose
     D-->>H: bay B3, technician T2 (else 409 slot-unavailable + suggestions)
     H->>D: Appointment.Book(...) raises AppointmentBooked
-    H->>DB: INSERT appointments, idempotency_keys, appointment_history
+    H->>DB: INSERT appointments, idempotency_keys, appointment_history, notification_outbox
     DB-->>H: ok (exclusion constraints satisfied)
     H->>DB: COMMIT (lock released)
     H-->>EP: AppointmentResponse
@@ -722,7 +723,7 @@ sequenceDiagram
         R2->>DB: BEGIN, then pg_advisory_xact_lock(k)
     end
     Note over DB: R1 holds k, R2..R30 wait in FIFO order
-    R1->>DB: pre-check: slot free -> INSERT appointment (+history +idempotency)
+    R1->>DB: pre-check: slot free -> INSERT appointment (+history +outbox +idempotency)
     R1->>DB: COMMIT (k released)
     DB-->>R1: 201 Created
     loop each of R2..R30 in turn
@@ -764,10 +765,14 @@ flowchart LR
     subgraph AppHost["Keyloop.ServiceScheduler.AppHost (dotnet run)"]
         PARAMS["parameters<br/>postgres-user, postgres-password<br/>(secret, generated, persisted)"]
         PG[("postgres:17<br/>persistent + data volume<br/>+ pgweb (dev)")]
+        MAIL["mailpit (run only)<br/>SMTP 1025, inbox 8025<br/>session lifetime"]
         API["api<br/>(.NET 10)<br/>WaitFor(db), /health check<br/>command: Reseed demo data"]
         WEB["web<br/>AddViteApp + pnpm install<br/>WaitFor(api), API_HTTP discovery<br/>OTLP/HTTP for the browser"]
         DASH["Aspire Dashboard<br/>OTLP + resources"]
         PARAMS --> PG --> API --> WEB
+        MAIL -->|healthy before API| API
+        API -->|SMTP notifications| MAIL
+        MAIL -. inbox link .-> DASH
         WEB -. OTLP/HTTP .-> DASH
         API -. OTLP .-> DASH
         WEB -. stdout .-> DASH
@@ -784,7 +789,7 @@ flowchart LR
     CI["CI: regenerate + git diff --exit-code<br/>(fails on contract drift)"] --> SPEC
 ```
 
-- **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`, or `aspire run`): Aspire generates the PostgreSQL credentials once (secret parameters persisted to the AppHost's user secrets), starts PostgreSQL as a persistent container with a named data volume (plus pgweb), waits for it, starts the API (which migrates and seeds in Development) and gates readiness on `/health` over the HTTP endpoint (independent of local certificate trust), installs the web dependencies (`pnpm install` as an installer child resource), regenerates the typed client from the committed contract (`predev`), and starts the Vite dev server with the API discovered through Aspire's `API_HTTP` variable; Vite proxies `/api/*`, `/openapi/*` and `/scalar/*` so the browser is same-origin (no CORS in development, ADR-012). The browser sends its own spans to the dashboard over OTLP/HTTP, so one trace runs from the click in the browser through the API to PostgreSQL. The dashboard exposes a *Reseed demo data* command on the API resource and links to Scalar and pgweb (ADR-019).
+- **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`, or `aspire run`): Aspire generates the PostgreSQL credentials once (secret parameters persisted to the AppHost's user secrets), starts PostgreSQL as a persistent container with a named data volume (plus pgweb), waits for it, starts the API (which migrates and seeds in Development) and gates readiness on `/health` over the HTTP endpoint (independent of local certificate trust), installs the web dependencies (`pnpm install` as an installer child resource), regenerates the typed client from the committed contract (`predev`), and starts the Vite dev server with the API discovered through Aspire's `API_HTTP` variable; Vite proxies `/api/*`, `/openapi/*` and `/scalar/*` so the browser is same-origin (no CORS in development, ADR-012). The browser sends its own spans to the dashboard over OTLP/HTTP, so one trace runs from the click in the browser through the API to PostgreSQL. The dashboard exposes a *Reseed demo data* command on the API resource and links to Scalar, pgweb and the Mailpit inbox (ADR-019/020).
 - **Publish mode** (`aspire publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose`): generates a Docker Compose definition and `.env` with image and secret inputs. `aspire publish` leaves every input empty in `.env`, so the Compose file itself defaults the nonsecret user name (`${POSTGRES_USER:-scheduler}`). The API selects its committed Dockerfile with the repository-root build context. `aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` builds images, resolves inputs and deploys; a manual Compose run requires those images and inputs first. The API runs in **Demo** (§10), and PostgreSQL creates `schedulerdb` via `POSTGRES_DB` on an empty volume. EF migration bundles for UAT/Production are generated separately with `dotnet ef migrations bundle`, never by this AppHost.
 - **Contract sync**: `dotnet build` of the API emits the OpenAPI document into `contracts/openapi/v1.json` (committed) through build-time generation (`Microsoft.Extensions.ApiDescription.Server` runs the composition root against a mock server; a `GetDocument.Insider` guard pins the run to the Development environment, which needs no secrets or ingress addresses, uses a placeholder connection string that is never opened and skips database work, so the build needs no database; `scripts/export-openapi.sh` forces a regeneration and shows whether the file changed). XML documentation comments become OpenAPI summaries, descriptions, response docs and request examples through the source generator built into `Microsoft.AspNetCore.OpenApi`. The Web project's `openapi-ts.config.ts` reads the committed file and generates `types.gen.ts`, `sdk.gen.ts`, `client.gen.ts` and `@tanstack/react-query.gen.ts` (`queryOptions`/`mutationOptions` per operation). CI builds, then fails on `git diff --exit-code contracts/` and on client drift; a parity test asserts the runtime document served in SystemTest equals the build-time file. Production never generates documents at runtime (ADR-008, ADR-017).
 
@@ -842,6 +847,7 @@ erDiagram
     technicians ||--o{ appointments : "allocated to"
     appointments ||--o{ appointment_history : audits
     appointments |o--o| idempotency_keys : "created by"
+    appointments ||--o{ notification_outbox : notifies
 
     dealerships {
         uuid id PK
@@ -909,6 +915,22 @@ erDiagram
         text actor
         jsonb payload
     }
+    notification_outbox {
+        uuid id PK
+        uuid appointment_id FK "unique with kind"
+        text kind "BookingConfirmation or Cancellation"
+        text recipient
+        text subject
+        text text_body
+        text html_body
+        timestamptz created_at
+        timestamptz next_attempt_at "retry time or claim lease expiry"
+        text status "Pending, Sent, Failed"
+        int attempts
+        uuid claim_token "fences acknowledgement"
+        timestamptz sent_at
+        text last_failure "fixed category only"
+    }
     idempotency_keys {
         text key PK
         text request_fingerprint
@@ -921,6 +943,42 @@ erDiagram
 ```
 
 Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; the two GiST exclusion indexes double as overlap-search indexes (`bay_id = ? AND time_range && ?`); GIN on the capability/certification arrays for `@>` containment; `appointment_history (appointment_id, occurred_at_utc)`; `idempotency_keys (expires_at_utc)` for purging.
+
+---
+
+### 8.9 Notifications
+
+A booking confirmation and a cancellation notice are queued for the appointment's customer email. Both have British English plain text and accessible semantic HTML with inline styles, no images, external assets or tracking. Content includes dealership and service names, start and end in the dealership's IANA time zone with each instant's offset (including DST changes), an eight-character random UUID suffix for display plus the full appointment id, registration, VIN masked to the last four characters, the cancellation reason when relevant, and a line directing the customer to dealership support. The sender display name is **Keyloop Service Scheduler**. From and optional Reply-To addresses are configurable.
+
+```mermaid
+flowchart TD
+    A[AppointmentBooked or AppointmentCancelled] --> B[DomainEventInterceptor stages history and rendered email]
+    B --> C[SaveChanges in appointment transaction]
+    C -->|Rollback| D[No appointment change or notification survives]
+    C -->|Commit| E[(notification_outbox)]
+    E --> F[BackgroundService selects due Pending rows<br/>FOR UPDATE SKIP LOCKED LIMIT batch]
+    F --> G[Increment attempts and set claim token<br/>next_attempt_at becomes lease expiry]
+    G --> H[Commit short claim transaction]
+    H --> I[IEmailSender sends outside database locks]
+    I -->|Accepted| J[Token-guarded update to Sent]
+    I -->|Failure below MaxAttempts| K[Pending with exponential backoff and jitter]
+    K --> E
+    I -->|Attempts exhausted| L[Failed dead letter]
+    H -->|Crash or shutdown| M[Lease expires for recovery]
+    M --> F
+```
+
+**Atomicity and idempotency.** The table has a deferrable `UNIQUE (appointment_id, kind)` constraint, backed by an index, and a partial `(next_attempt_at, id)` index where `status = 'Pending'`. The interceptor writes notification rows even when dispatch is disabled, using the same SaveChanges/transaction as the appointment and history. The appointment's commit-verification and idempotency paths therefore cover the outbox too. No after-commit observer performs a durable email write. The schema is applied explicitly in `SchedulerDbContext`, and the migration's Designer and snapshot are generated with the pinned EF tool. EF models the unique alternate key; appended migration SQL makes its PostgreSQL constraint `DEFERRABLE INITIALLY DEFERRED`. This preserves the existing cancellation concurrency behaviour: EF may insert the cancellation email before updating the appointment, so immediate duplicate checking could supersede `xmin` and cause a 500. Deferral lets a stale writer fail the `xmin` check with 409 first, while a truly duplicate kind still cannot commit. [PostgreSQL uniqueness checks](https://www.postgresql.org/docs/17/index-unique-checks.html) describe this deferred, non-blocking insertion check.
+
+**Delivery semantics.** Delivery is **at least once**, with one stable outbox id used by every provider attempt. SMTP uses `<outbox-id-in-N-format@service-scheduler.keyloop.example>` as `Message-Id`; this is a correlation/idempotency reference, not an SMTP deduplication guarantee. Acceptance followed by a crash or a failed database acknowledgement can produce a duplicate. The future Cloudflare adapter must pass the outbox id as its provider idempotency reference where supported. `Sent` means accepted by the sender, not delivered to the customer's inbox. Ordering between emails is not guaranteed.
+
+**Claims and failure handling.** Several API instances can dispatch safely: each claims due rows using `SELECT ... FOR UPDATE SKIP LOCKED LIMIT n`, sets a new token and lease expiry, and commits before starting parallel, bounded sends. A token-guarded acknowledgement cannot overwrite a newer owner's state. `SendTimeout` uses elapsed time; `ClaimLease` must exceed it by more than five seconds (defaults 30 seconds and two minutes). Business eligibility, leases and retry times use `TimeProvider`; send latency uses `Stopwatch`. Unusual process pauses or loss of connectivity past the lease can still cause duplicates, consistent with at-least-once semantics. A cancelled send leaves its lease for recovery. Failed attempts use `min(MaxBackoff, InitialBackoff * 2^(attempt-1) * (1 + 0.2 * random[0,1]))`. Attempts increment when claimed, so repeated worker crashes cannot retry forever: an expired lease already at `MaxAttempts` becomes `Failed` without another send. Dead letters are never retried automatically. Operators inspect metrics and fixed failure categories, repair configuration, then use a deliberately reviewed database operation to reset attempts/status; there is no public retry endpoint. Database failures leave outstanding leases recoverable and the worker polls again.
+
+**Providers and environments.** `IEmailSender` is provider-independent; `SmtpEmailSender` uses MailKit with a fresh connection per send, configurable required STARTTLS or no TLS, and optional credentials supplied by secrets. A capturing sender is used by integration tests. `None` disables dispatch and never silently accepts/discards email. `Cloudflare` is valid configuration syntax but selecting it fails clearly at startup, before database work, until its adapter is implemented. All notification options use generated `[OptionsValidator]` validation and explicit DI registration. No JSON payload is needed: content is held in typed text columns, so reflection-free JSON and the HTTP contract are unchanged.
+
+Local Aspire run uses the [community Mailpit hosting integration](https://aspire.dev/integrations/devtools/mailpit/mailpit-host/) (CommunityToolkit 13.6.0, compatible with Aspire 13.6.1), pinned `axllent/mailpit:v1.31.5`, SMTP target 1025 and HTTP target 8025. Host ports are assigned by Aspire and passed as `Notifications:Smtp:Host/Port`; open the **Mailpit inbox** link in its dashboard. Mailpit has a session lifetime, no persistent mail volume, health-gates API startup, and is absent in publish mode.
+
+**Privacy.** Outbox content contains the recipient, registration and free-text cancellation reason, which may include PII. It omits customer name, phone, notes and the full VIN; the audit event's existing last-six VIN mask stays unchanged. HTML encodes every dynamic field. Restrict database access and include the outbox in platform encryption/backup controls. Logging uses outbox id, kind, fixed failure categories and a masked recipient such as `j***@example.com`; provider exception messages, SMTP transcripts and email bodies are never logged. Metrics tag only kind. Retention and secure deletion of delivered/dead-letter content require a production policy; this task has no automatic purge. Development reseeding cascades appointment deletion to the outbox. Enabling a sender later drains accumulated pending rows, so deployment must review the pre-existing backlog.
 
 ---
 
@@ -987,11 +1045,14 @@ Four environments share one codebase; behaviour differs only by configuration, n
 | Telemetry export | Aspire dashboard (OTLP injected by AppHost) | None (in-memory exporters in tests) | OTLP collector → vendor | OTLP collector → vendor; sampling 100 % traces at this volume |
 | Secrets | Aspire parameters + user-secrets (`postgres-password` generated once and persisted; the demo reseed key generated for each run) | Testcontainers-generated | Key vault / env vars injected by platform | Key vault; DB auth via managed identity or rotated secrets |
 | Secret source | AppHost user secrets (generated on first run; nothing typed by hand) | Testcontainers credentials per run | Platform secret store → parameters | Platform secret store → parameters (rotated) |
+| `Notifications:Enabled` / `Provider` | `true` / `Smtp` (Mailpit) | `false` / `None`; tests explicitly enable dispatch | `false` / `None` until Cloudflare adapter | `false` / `None` until Cloudflare adapter |
+| Email sender / inbox | Aspire Mailpit, injected host/port, TLS `None`, dashboard inbox link | Capturing sender or Testcontainers Mailpit for SMTP E2E | Platform secrets and future Cloudflare configuration | Same, verified sender domain and retention policy required |
+| Notification defaults | Poll 5 s, batch 10, attempts 5, backoff 10 s to 1 h, send timeout 30 s, claim lease 2 min | Same, fake business clock where applicable | Same | Same |
 | DB role | Single dev role | Single role | `scheduler_app` (DML only); migrations run as owner | Same, least privilege |
 
 Configuration sources (last wins): `appsettings.json` → `appsettings.{Environment}.json` → environment variables (Aspire injects `ConnectionStrings__schedulerdb`, `OTEL_*`) → user-secrets (Development only). All strongly-typed options are validated with `ValidateOnStart()` by `[OptionsValidator]` source-generated validators (§9.1) so a misconfigured deployment fails fast at boot rather than at first request, before any migration or seeding; a validation failure is logged as event `1103 StartupValidationFailed` (Critical: options type and the validators' member-prefixed messages and array indexes, never raw configuration values), any other configuration failure, such as a value the binder cannot convert, as `1104 StartupConfigurationFailed` (Critical: exception type plus only the path and target type of a recognised binder conversion diagnostic; otherwise a fixed safe description, never arbitrary exception or inner-exception text), and the log exporters are flushed before the process exits.
 
-A fifth environment, **Demo**, exists only for the Aspire-published Docker Compose bundle: UAT's security posture (rate limits on, Scalar on, no secrets in files) with migrations and demo seeding at startup and HSTS off because compose serves plain HTTP. The AppHost sets both `ASPNETCORE_ENVIRONMENT` and `DOTNET_ENVIRONMENT` to `Demo` when publishing. Forwarded headers trust only the dedicated Compose subnet `172.30.14.0/24`; the generated network IPAM and `appsettings.Demo.json` must change together if a local subnet conflicts (an AppHost model test fails while they differ). That network includes the bridge gateway, which carries traffic from published host ports, so the API stays unpublished in the bundle (expose only, also tested) and is reached through nginx. Aspire automatic forwarding is disabled in every environment, leaving the API's validated trust policy in control. The initializer creates a missing database before migrating and seeding, and probes for the history table rather than reading it, so a fresh database logs only the one failed history read that Npgsql's `MigrateAsync` makes itself. `POSTGRES_DB` applies only to an empty data directory; existing volumes and their credentials need deliberate repair or restore. Demo is a convenience for evaluators without the .NET SDK, not a deployment target.
+A fifth environment, **Demo**, exists only for the Aspire-published Docker Compose bundle: UAT's security posture (rate limits on, Scalar on, no secrets in files) with migrations and demo seeding at startup and HSTS off because compose serves plain HTTP. The AppHost sets both `ASPNETCORE_ENVIRONMENT` and `DOTNET_ENVIRONMENT` to `Demo` when publishing. Forwarded headers trust only the dedicated Compose subnet `172.30.14.0/24`; the generated network IPAM and `appsettings.Demo.json` must change together if a local subnet conflicts (an AppHost model test fails while they differ). That network includes the bridge gateway, which carries traffic from published host ports, so the API stays unpublished in the bundle (expose only, also tested) and is reached through nginx. Aspire automatic forwarding is disabled in every environment, leaving the API's validated trust policy in control. The initializer creates a missing database before migrating and seeding, and probes for the history table rather than reading it, so a fresh database logs only the one failed history read that Npgsql's `MigrateAsync` makes itself. `POSTGRES_DB` applies only to an empty data directory; existing volumes and their credentials need deliberate repair or restore. Email dispatch defaults to `false` / `None`, and Mailpit is not published. Demo is a convenience for evaluators without the .NET SDK, not a deployment target.
 
 ```mermaid
 flowchart LR
@@ -1011,7 +1072,7 @@ flowchart LR
 | **Spoofing** | Unauthenticated callers book/cancel | Deferred (A-10): OIDC bearer auth seam (§11.3) | Must be wired before any non-demo deployment |
 | **Tampering** | Malformed payloads, type confusion, oversized bodies | FluentValidation; strict JSON (`System.Text.Json`, unknown enum values rejected); 64 KB request body limit; all SQL via parameterised EF/Npgsql (no interpolation) | - |
 | **Repudiation** | "I never cancelled that" | `appointment_history` with `actor`, timestamp, payload, in the same transaction | `actor` becomes the authenticated principal once auth is wired |
-| **Information disclosure** | Stack traces, connection strings in errors; PII in logs | ProblemDetails never carries exception details; `traceId` only; customer PII (name, email, phone) is never logged - logs use appointment id and a masked VIN (last 6) | PII encryption at rest is a platform concern (TDE) |
+| **Information disclosure** | Stack traces, connection strings in errors; PII in logs | ProblemDetails never carries exception details; `traceId` only; customer PII (name, full email, phone) is never logged - booking logs use appointment id and a masked VIN (last 6), notification logs use outbox id and a masked recipient | PII encryption at rest is a platform concern (TDE) |
 | **Denial of service** | Booking floods, availability scraping | ASP.NET rate limiter (sliding window per client IP; stricter policy on `POST`); bounded availability window (one day per call); advisory lock critical section is ms-scale | WAF / per-tenant quotas at the edge |
 | **Elevation of privilege** | Cross-dealership access | All queries are scoped by `dealershipId` in the route; once auth is wired, a policy asserts the token's dealership claims contain the route id | - |
 | **Supply chain** | Vulnerable packages | Central Package Management with pinned versions; `dotnet list package --vulnerable` and `pnpm audit` in CI; Dependabot config | - |
@@ -1073,11 +1134,16 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 | `scheduler.availability.duration` | histogram | `ms` | `dealership.id` | read-path latency |
 | `scheduler.availability.slots_returned` | histogram | `{slot}` | - | capacity signal for the business |
 | `scheduler.appointments.cancellations` | counter | `{appointment}` | `previous_status` | business metric |
+| `scheduler.notifications.sent` | counter | `{notification}` | `kind` | sender-accepted messages |
+| `scheduler.notifications.failed` | counter | `{notification}` | `kind` | terminal dead letters, including exhausted expired leases |
+| `scheduler.notifications.retried` | counter | `{notification}` | `kind` | scheduled retries |
+| `scheduler.notifications.dispatch_duration` | histogram | `ms` | `kind` | SMTP/provider attempt elapsed time, `Stopwatch` |
+| `scheduler.notifications.outbox_age` | histogram | `s` | `kind` | age at each send attempt, `TimeProvider` |
 | Runtime, ASP.NET Core, HTTP client, Npgsql pool | built-in | - | - | via ServiceDefaults |
 
 A request the framework cannot bind at all (a body that is not JSON, a `413`) never reaches the booking endpoint's filters or handler, so it has no booking outcome: it is visible as `http.server.request.duration` with `http.response.status_code` 400 (or 413) on the booking route, and `GlobalExceptionHandler` answers it.
 
-**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` - written after the commit, with the previous status and never the reason, `1105 DemoDataReseeded`, `1106 DemoReseedRefused` (never the key), …). Typed `LoggerMessage.DefineScope` scopes carry `RequestId` for the whole pipeline; booking adds `DealershipId` and `IdempotencyKey` when present, then the once-minted `AppointmentId` around persistence, execution-strategy retries and post-commit observer logging. Cancellation scopes the requested `AppointmentId` and adds `DealershipId` as soon as the appointment is read (including commit verification); it has no idempotency-key scope. Scopes flow to EF logs and are disposed after the work. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
+**Logs**: structured via `ILogger` + OpenTelemetry logging (`IncludeScopes`, `IncludeFormattedMessage`). Source-generated `LoggerMessage` definitions with stable event ids (`1001 BookingConfirmed`, `1002 BookingRejected`, `1003 ConstraintBackstopFired`, `1004 DeadlockDetected`, `1010 AppointmentCancelled` - written after the commit, with the previous status and never the reason, `1105 DemoDataReseeded`, `1106 DemoReseedRefused` (never the key), …). Typed `LoggerMessage.DefineScope` scopes carry `RequestId` for the whole pipeline; booking adds `DealershipId` and `IdempotencyKey` when present, then the once-minted `AppointmentId` around persistence, execution-strategy retries and post-commit observer logging. Cancellation scopes the requested `AppointmentId` and adds `DealershipId` as soon as the appointment is read (including commit verification); it has no idempotency-key scope. Scopes flow to EF logs and are disposed after the work. Notification events `1201 NotificationSent`, `1202 NotificationRetried`, `1203 NotificationFailed`, `1204 NotificationDispatchCycleFailed` and `1205 NotificationClaimLost` use outbox id/kind, masked recipient and fixed categories, never raw provider exceptions. PII is never logged (§11.1). EF Core's own `SaveChangesFailed` and `CommandError` are lowered to Information: a refused insert is usually an answered outcome (a backstop is 1003 at Warning, a reused key a 1002), and an unexpected failure is still logged at Error by `GlobalExceptionHandler` (1200). EF's report of a failed commit (`TransactionError`) stays at Error: that is an infrastructure fault even when the commit is then verified as done.
 
 ### 12.2 Correlation
 
@@ -1095,16 +1161,18 @@ A request the framework cannot bind at all (a body that is not JSON, a `413`) ne
 | `scheduler.booking.duration` p95 | > 300 ms for 5 min | page: check lock wait and DB |
 | `scheduler.booking.deadlocks` | > 0 | page: invariant of ADR-003 violated by a code change |
 | `scheduler.booking.constraint_backstop` | > 0 | investigate out-of-band writer |
+| `scheduler.notifications.failed` | > 0 | investigate dead letters and sender configuration |
+| `scheduler.notifications.outbox_age` p95 | > 300 s | investigate sender availability and dispatcher backlog |
 | `http.server.request.duration{status=5xx}` | > 0.1 % | investigate |
 
 `/alive` selects only the process check tagged `live`; database connectivity and schema checks never participate. The readiness check resolves its own context per probe and does no database work at registration or build-time OpenAPI export. UAT/Production can boot before the migration bundle finishes, but stay out of the load balancer until all migrations are applied.
 
 ### 12.4 What to look at during the demo
 
-1. Resources page: `postgres`, `pgweb`, `api`, `web` (and its pnpm installer) healthy; `api` links to Scalar and offers the *Reseed demo data* command.
+1. Resources page: `postgres`, `pgweb`, `mailpit`, `api`, `web` (and its pnpm installer) healthy; `api` links to Scalar and offers the *Reseed demo data* command.
 2. Traces: one `POST …/appointments` → `scheduler.book_appointment` → `acquire_dealership_lock` → `compute_availability` → `persist_appointment` → Npgsql `INSERT`.
 3. After the stress panel fires 30 bookings: 30 traces, one with `booking.outcome=confirmed`, 29 with `slot_unavailable`, and `lock_wait` rising across them; metrics page shows `scheduler.booking.requests` by outcome and `deadlocks = 0`.
-4. Structured logs filtered by `AppointmentId`.
+4. Structured booking logs filtered by `AppointmentId`; notification logs by `OutboxId`. Open the Mailpit inbox to inspect both message parts.
 
 ---
 
@@ -1133,15 +1201,15 @@ flowchart TB
 
 ### 14.1 Domain unit tests (no database)
 
-`TimeSlot` overlap/adjacency, half-open semantics; `ServiceDuration` rejects zero/negative/non-multiple-of-5/over 8 h; `Vin` format (valid, 16 chars, contains `I`/`O`/`Q`, lowercase normalised); `OperatingHours.ResolveOperatingWindow` incl. closed day, DST spring-forward (Europe/London 2026-03-29) and fall-back (2026-10-25); `BookingWindowPolicy` lead time and horizon with `FakeTimeProvider`; `AvailabilityCalculator` - empty day, fully booked, back-to-back, the §6.2 worked example, the "union of free sets is wrong" counter-example, duration longer than any gap, per-slot counts; `AllocationPolicy` - preferred hint honoured/ignored, surplus-capability preference, load tie-break, determinism; `ServiceBay.Supports` / `Technician.IsCertifiedFor` - mismatch and superset cases; `Appointment` state machine - every legal transition, every illegal one, `Cancel` reason required, events raised exactly once; validators for every request.
+`TimeSlot` overlap/adjacency, half-open semantics; `ServiceDuration` rejects zero/negative/non-multiple-of-5/over 8 h; `Vin` format (valid, 16 chars, contains `I`/`O`/`Q`, lowercase normalised); `OperatingHours.ResolveOperatingWindow` incl. closed day, DST spring-forward (Europe/London 2026-03-29) and fall-back (2026-10-25); `BookingWindowPolicy` lead time and horizon with `FakeTimeProvider`; `AvailabilityCalculator` - empty day, fully booked, back-to-back, the §6.2 worked example, the "union of free sets is wrong" counter-example, duration longer than any gap, per-slot counts; `AllocationPolicy` - preferred hint honoured/ignored, surplus-capability preference, load tie-break, determinism; `ServiceBay.Supports` / `Technician.IsCertifiedFor` - mismatch and superset cases; `Appointment` state machine - every legal transition, every illegal one, `Cancel` reason required, events raised exactly once; validators for every request. Notification templates cover both kinds, DST offsets, VIN/recipient masking and HTML escaping; generated notification options validation and deterministic exponential backoff are unit-tested.
 
 ### 14.2 Integration tests (Testcontainers PostgreSQL 17)
 
-One container per test session; each test class gets a fresh schema via migrations + `Respawn`-style reset. `WebApplicationFactory<Program>` with the connection string overridden, `SystemTest` environment (rate limiting off, seeding off). Coverage: migrations apply cleanly from empty; seed is idempotent; availability endpoint equals the domain calculator for a seeded day; the workshop schedule groups a day's appointments by bay in every status but `Cancelled`, keeps inactive resources and their appointments, and keeps its lanes on a closed day; booking happy path (`201`, `Location`, history row, allocation shown); every problem type in §8.7 is reachable and well-formed; idempotency replay and key reuse; cancel then re-book same slot; `xmin` conflict via two contexts; **constraint backstop**: raw SQL insert of an overlapping row bypassing the lock → `23P01` → classifier → `409 slot-conflict`; OpenAPI document contains all operations and problem responses.
+One container per test session; each test class gets a fresh schema via migrations + `Respawn`-style reset. `WebApplicationFactory<Program>` with the connection string overridden, `SystemTest` environment (rate limiting off, seeding off). Coverage: migrations apply cleanly from empty; seed is idempotent; availability endpoint equals the domain calculator for a seeded day; the workshop schedule groups a day's appointments by bay in every status but `Cancelled`, keeps inactive resources and their appointments, and keeps its lanes on a closed day; booking happy path (`201`, `Location`, history row, allocation shown); every problem type in §8.7 is reachable and well-formed; idempotency replay and key reuse; cancel then re-book same slot; `xmin` conflict via two contexts; **constraint backstop**: raw SQL insert of an overlapping row bypassing the lock → `23P01` → classifier → `409 slot-conflict`; OpenAPI document contains all operations and problem responses. Notifications cover atomic booking/cancellation inserts and rollback, replay and lost commit acknowledgement, dispatcher due-time/batch/lease/fencing rules, parallel workers, dead letters, shutdown and sender outages. A Testcontainers Mailpit SMTP test inspects subject, recipient, text/HTML parts and stable Message-Id through the HTTP API.
 
 ### 14.3 Why Testcontainers + WebApplicationFactory rather than Aspire.Hosting.Testing
 
-The concurrency proof must hit a *real* PostgreSQL (exclusion constraints and advisory locks have no in-memory equivalent), and it must be fast and hermetic in CI. `Aspire.Hosting.Testing` boots the whole AppHost (including the Vite app) which is slower and brings unrelated failure modes; it is kept as a whole-stack smoke test (`[Trait("Category","Aspire")]`) in its own project, `tests/Keyloop.ServiceScheduler.AspireTests`: Aspire.Hosting runs in the test process and deserialises DCP's answers with reflection-based JSON, which the integration test process disables so that it fails where the API would (ADR-016). It asserts that the API becomes healthy on the composed database, serves the seeded dealerships, is linked to Scalar, and that the *Reseed demo data* command works end to end through the key-protected route; model checks pin the Development database's persistence and generated secret credentials, and that the Scalar link follows the AppHost's launch profile (on https with the `https` profile, on http with the `http` one, where the API has no https endpoint). The run itself is hermetic: it supplies the database password (so the generated persisted password default is neither evaluated nor written; configuration can still load user secrets) and runs PostgreSQL and pgweb with session lifetimes and no named volume (so nothing is left behind and the persistent development database is never touched). Create, build, start and health waits share a five-minute cancellation deadline. Setup failure disposes the application or builder; stop has a 30-second deadline and disposal runs even if stop fails. For an isolated manual `dotnet run`, use `--AppHost:UsePersistentResources=false` with an explicit temporary password; the default still preserves Development resources. DCP and the dashboard use the Aspire CLI bundle, resolved through an installed CLI or DNX on first run.
+The concurrency proof must hit a *real* PostgreSQL (exclusion constraints and advisory locks have no in-memory equivalent), and it must be fast and hermetic in CI. `Aspire.Hosting.Testing` boots the whole AppHost (including the Vite app) which is slower and brings unrelated failure modes; it is kept as a whole-stack smoke test (`[Trait("Category","Aspire")]`) in its own project, `tests/Keyloop.ServiceScheduler.AspireTests`: Aspire.Hosting runs in the test process and deserialises DCP's answers with reflection-based JSON, which the integration test process disables so that it fails where the API would (ADR-016). It asserts that the API becomes healthy on the composed database, serves the seeded dealerships, Mailpit is healthy with its inbox dashboard link, is linked to Scalar, and that the *Reseed demo data* command works end to end through the key-protected route; model checks pin the Development database's persistence and generated secret credentials, and that the Scalar link follows the AppHost's launch profile (on https with the `https` profile, on http with the `http` one, where the API has no https endpoint). The run itself is hermetic: it supplies the database password (so the generated persisted password default is neither evaluated nor written; configuration can still load user secrets) and runs PostgreSQL, pgweb and Mailpit with session lifetimes and no named volume (so nothing is left behind and the persistent development database is never touched). Create, build, start and health waits share a five-minute cancellation deadline. Setup failure disposes the application or builder; stop has a 30-second deadline and disposal runs even if stop fails. For an isolated manual `dotnet run`, use `--AppHost:UsePersistentResources=false` with an explicit temporary password; the default still preserves Development resources. DCP and the dashboard use the Aspire CLI bundle, resolved through an installed CLI or DNX on first run.
 
 ### 14.4 Adversarial concurrency test (the brief's acceptance criterion)
 
@@ -1233,7 +1301,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 |-----|----------|------------------------|
 | **ADR-001** | Vertical slices with direct handler invocation; no mediator | Fewer moving parts; cross-cutting via filters/middleware; MediatR licence change. Consequence: handlers are plain classes, trivially unit-testable. |
 | **ADR-002** | `Appointment` is the transactional aggregate; `DealershipSchedule` is a read model | Consistency boundary is (resource, range), enforced by the DB. Consequence: no hot aggregate; schedule is a projection. |
-| **ADR-003** | Exclusion constraints are the invariant of record; a per-dealership transaction-scoped advisory lock serialises check-then-insert; **a booking transaction must never take a second lock or perform a second contended insert**, with one scoped exception: its own idempotency-key row (the expired-key `DELETE` and the key `INSERT`, §7.5), which can be contended only by the *same* key used at *another* dealership | Removes the insert-then-check mutual wait (`40P01`); makes the pre-check authoritative. The exception cannot form a cycle: a waiter on the key row holds only its own dealership's lock, which the transaction it waits for never requests, and the key insert comes after that transaction's own appointment insert. Consequence: `23P01` is a backstop metric that should read 0; a `40P01` is reported (1004), never retried. |
+| **ADR-003** | Exclusion constraints are the invariant of record; a per-dealership transaction-scoped advisory lock serialises check-then-insert; **a booking transaction must never take a second contended lock or perform a second contended insert** (ordinary inserts of new history/outbox ids are allowed), with one scoped exception: its own idempotency-key row (the expired-key `DELETE` and the key `INSERT`, §7.5), which can be contended only by the *same* key used at *another* dealership | Removes the insert-then-check mutual wait (`40P01`); makes the pre-check authoritative. The exception cannot form a cycle: a waiter on the key row holds only its own dealership's lock, which the transaction it waits for never requests, and the key insert comes after that transaction's own appointment insert. Consequence: `23P01` is a backstop metric that should read 0; a `40P01` is reported (1004), never retried. |
 | **ADR-004** | Booking transaction runs at `READ COMMITTED`, opened explicitly | Per-statement snapshots are required for check-after-lock correctness. Consequence: never raise isolation for this path; a test asserts behaviour. |
 | **ADR-005** | UTC storage; IANA time zone per dealership; half-open intervals; `TimeProvider` injected | Deterministic DST behaviour; testable time rules. |
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |
@@ -1245,11 +1313,12 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-012** | Vite dev proxy for same-origin API access; CORS default-deny with configured origins | No CORS complexity in development; production via ingress. |
 | **ADR-013** | Testcontainers + `WebApplicationFactory` for integration/concurrency tests; `Aspire.Hosting.Testing` whole-stack smoke test in its own project (`tests/Keyloop.ServiceScheduler.AspireTests`, Category `Aspire`), because Aspire.Hosting needs reflection-based JSON, which the integration test process disables (ADR-016) | Real PostgreSQL semantics, fast and hermetic. |
 | **ADR-014** | GUID v7 primary keys | Index locality without exposing sequence; generated in the domain. |
-| **ADR-015** | Domain events persisted as `appointment_history` rows in the same transaction (lightweight outbox) | Audit trail is atomic with the change; integration events can relay from the same table later. |
+| **ADR-015** | Domain events persisted as `appointment_history` rows in the same transaction | Audit trail is atomic with the change; mutable email delivery state lives in the separate transactional outbox (ADR-020). |
 | **ADR-016** | Prefer build-time source generation over runtime reflection: RDG, STJ source generation with reflection disabled, Mapperly, configuration-binding and options-validator generators, `[LoggerMessage]`, explicit endpoint/DI/validator registration; keep MEDI as the container; FluentValidation and EF Core are the measured residue | Stakeholder direction (2026-10-11). Consequence: missing JSON registrations and unmapped DTO members are build/test failures; `scripts/aot-readiness.sh` tracks the residue; `PublishAot` is not enabled yet. |
 | **ADR-017** | OpenAPI descriptions come from XML documentation comments (compile-time source generator); handlers are static method groups so comments attach; request properties carry `<example>`s; a request body is described by `[Description]` on its parameter | Docs live next to code with zero runtime cost; Scalar's test requests are prefilled with valid data. The 10.0 generator copies every `<param>` that names no operation parameter onto the request body, so a document transformer restores the body parameter's `[Description]` (and fails generation without one). |
 | **ADR-018** | Scalar is the API test UI (`/scalar/v1`), enabled outside Production | Best interactive client among Scalar/Swagger UI/ReDoc for .NET 10; linked from the Aspire dashboard and the dispatch board. |
 | **ADR-019** | Aspire is the whole development platform: generated secret parameters persisted to user secrets, persistent PostgreSQL + pgweb, health-gated startup, automatic `pnpm install`, Aspire service discovery (`API_HTTP`) for the Vite proxy, browser OTLP to the dashboard, a dashboard *Reseed demo data* HTTP command, `Aspire.Hosting.Testing` whole-stack smoke test, and `aspire publish --apphost` to Demo Docker Compose with an initialized database, application-owned forwarded-header trust, and the repository-root API Dockerfile | One command bootstraps all three tiers with correlated telemetry using the CLI bundle. Publication emits artifacts and inputs; `aspire deploy --apphost` builds and deploys. Isolated checks use session resources and bounded startup/cleanup. |
+| **ADR-020** | Transactional outbox for email notifications: persist immutable content with appointment/history, dispatch through `IEmailSender` using short SKIP LOCKED claims and expiring leases, at-least-once delivery with stable Message-Id | Rejected send in the request path (SMTP outage must not fail a booking), after-commit observer only (crash window loses committed emails), and a message broker (adds infrastructure without removing the atomic DB write requirement). Consequence: SMTP is isolated from requests, several instances share work safely, bounded retries end in manual dead-letter handling; duplicate delivery after ambiguous acceptance is possible. See §8.9. |
 
 ---
 

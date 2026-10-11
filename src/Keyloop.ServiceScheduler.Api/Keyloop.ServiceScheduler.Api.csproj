@@ -36,6 +36,7 @@
     <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" PrivateAssets="all" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="FluentValidation" />
+    <PackageReference Include="MailKit" />
     <!-- Compile-time mapping generator only (Addendum A §A1/§A6). -->
     <PackageReference Include="Riok.Mapperly" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>

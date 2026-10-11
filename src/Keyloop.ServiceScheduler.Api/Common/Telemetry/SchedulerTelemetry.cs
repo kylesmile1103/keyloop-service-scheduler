@@ -37,4 +37,10 @@ public static class SchedulerTelemetry
 
     /// <summary>Tags: <c>previous_status</c>.</summary>
     public static readonly Counter<long> Cancellations = Meter.CreateCounter<long>("scheduler.appointments.cancellations", "{appointment}");
+    /// <summary>Notification instruments are tagged by kind only; no recipient or other PII.</summary>
+    public static readonly Counter<long> NotificationsSent = Meter.CreateCounter<long>("scheduler.notifications.sent", "{notification}");
+    public static readonly Counter<long> NotificationsFailed = Meter.CreateCounter<long>("scheduler.notifications.failed", "{notification}");
+    public static readonly Counter<long> NotificationsRetried = Meter.CreateCounter<long>("scheduler.notifications.retried", "{notification}");
+    public static readonly Histogram<double> NotificationDispatchDuration = Meter.CreateHistogram<double>("scheduler.notifications.dispatch_duration", "ms");
+    public static readonly Histogram<double> NotificationOutboxAge = Meter.CreateHistogram<double>("scheduler.notifications.outbox_age", "s");
 }
