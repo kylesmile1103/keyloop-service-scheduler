@@ -46,13 +46,46 @@ public class StartupFailureLogTests
         entry.Exception.ShouldBeNull();
     }
 
-    [Fact]
-    public void A_message_that_carries_no_value_is_logged_as_it_is()
+    [Theory]
+    [InlineData("AllowedOrigins")]
+    [InlineData("KnownProxies")]
+    [InlineData("KnownNetworks")]
+    public void Invalid_security_settings_do_not_log_raw_values(string member)
+    {
+        const string secret = "Password=review-secret-sentinel";
+        var options = new SecurityOptions
+        {
+            AllowedOrigins = member == "AllowedOrigins" ? ["https://board.example", secret] : [],
+            ForwardedHeaders = new()
+            {
+                KnownProxies = member == "KnownProxies" ? ["127.0.0.1", secret] : [],
+                KnownNetworks = member == "KnownNetworks" ? ["10.0.0.0/8", secret] : [],
+            },
+        };
+        var validation = new SecurityOptionsValidator().Validate(null, options);
+        validation.Failed.ShouldBeTrue();
+        var logger = new CapturingLogger<StartupFailureLogTests>();
+
+        StartupFailureLog.Write(logger, new OptionsValidationException("", typeof(SecurityOptions), validation.Failures));
+
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.Message.ShouldNotContain(secret);
+        entry.Message.ShouldContain($"{member}[1]");
+        entry.Exception.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("Password=review-secret-sentinel")]
+    [InlineData("Password=review-secret-sentinel Failed to convert configuration value 'secret' at 'Scheduling:SlotGranularityMinutes' to type 'System.Int32'.")]
+    [InlineData("Failed to convert configuration value 'secret' at 'Scheduling:SlotGranularityMinutes' to type 'System.Int32'. Password=review-secret-sentinel")]
+    public void Unrecognised_startup_failure_does_not_log_raw_values(string message)
     {
         var logger = new CapturingLogger<StartupFailureLogTests>();
 
-        StartupFailureLog.Write(logger, new InvalidOperationException("Connection string 'schedulerdb' is missing."));
+        StartupFailureLog.Write(logger, new InvalidOperationException(message, new Exception("inner-secret-text")));
 
-        logger.Entries.ShouldHaveSingleItem().Message.ShouldEndWith("System.InvalidOperationException: Connection string 'schedulerdb' is missing.");
+        var entry = logger.Entries.ShouldHaveSingleItem();
+        entry.Message.ShouldBe("Configuration could not be loaded; the API will not start: System.InvalidOperationException: Configuration loading failed; check the deployment settings.");
+        entry.Exception.ShouldBeNull();
     }
 }

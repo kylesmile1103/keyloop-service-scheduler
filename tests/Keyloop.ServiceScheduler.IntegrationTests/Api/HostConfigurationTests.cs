@@ -251,6 +251,35 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         logs.Entries.ShouldNotContain(e => e.EventId.Id == 1103);
     }
 
+    [Theory]
+    [InlineData("Security:AllowedOrigins:0")]
+    [InlineData("Scheduling:SlotGranularityMinutes")]
+    public void Invalid_startup_setting_is_absent_from_structured_log_state_and_exception(string key)
+    {
+        const string secret = "Password=boot-secret-sentinel";
+        var logs = new CapturingLoggerProvider();
+        using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseSetting(key, secret)
+            .ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+
+        var failure = Should.Throw<Exception>(() => factory.CreateClient());
+
+        var entry = logs.Entries.Where(e => e.EventId.Id is 1103 or 1104).ShouldHaveSingleItem();
+        entry.Message.ShouldNotContain(secret);
+        foreach (var property in entry.State)
+        {
+            (property.Value?.ToString() ?? "").ShouldNotContain(secret);
+        }
+        entry.Exception.ShouldBeNull("an inner exception can repeat a configuration value");
+        if (key.StartsWith("Scheduling", StringComparison.Ordinal))
+        {
+            var conversion = Find<InvalidOperationException>(failure).ShouldNotBeNull();
+            var innerText = conversion.InnerException.ShouldNotBeNull().Message;
+            entry.Message.ShouldNotContain(innerText);
+            entry.State.Any(property => property.Value?.ToString()?.Contains(innerText, StringComparison.Ordinal) == true).ShouldBeFalse();
+        }
+    }
+
     private WebApplicationFactory<Program> BehindIngress(bool forwardedHeaders, string knownProxy, int? globalPermitsPerMinute = null) =>
         _factory.WithWebHostBuilder(builder =>
         {

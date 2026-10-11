@@ -26,16 +26,21 @@ internal static partial class StartupFailureLog
             }
             else
             {
-                logger.StartupConfigurationFailed(failure.GetType().FullName ?? failure.GetType().Name, WithoutValues(failure.Message));
+                logger.StartupConfigurationFailed(failure.GetType().FullName ?? failure.GetType().Name, SafeDetail(failure.Message));
             }
         }
     }
 
-    // The binder quotes the value it could not convert, which could be a secret put in the wrong setting; only the path and the
-    // target type are kept. The match is greedy, so a value that itself contains "' at '" is still removed whole.
-    private static string WithoutValues(string message) =>
-        BinderConversionFailure().Replace(message, "Failed to convert the configuration value at '${path}' to type '${type}'.");
+    // Only the exact binder conversion diagnostic is recognised. Arbitrary messages, including text before/after a binder-like
+    // substring, may contain secrets. Never pass them or an exception object to a logging provider.
+    private static string SafeDetail(string message)
+    {
+        var match = BinderConversionFailure().Match(message);
+        return match.Success
+            ? $"Failed to convert the configuration value at '{match.Groups["path"].Value}' to type '{match.Groups["type"].Value}'."
+            : "Configuration loading failed; check the deployment settings.";
+    }
 
-    [GeneratedRegex(@"Failed to convert configuration value '.*' at '(?<path>[^']*)' to type '(?<type>[^']*)'\.", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\AFailed to convert configuration value '.*' at '(?<path>[A-Za-z0-9_:.-]+)' to type '(?<type>[A-Za-z0-9_.]+)'\.\z", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex BinderConversionFailure();
 }

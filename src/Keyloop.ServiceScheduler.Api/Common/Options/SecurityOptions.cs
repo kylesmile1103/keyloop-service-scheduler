@@ -23,12 +23,12 @@ public sealed class SecurityOptions : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        foreach (var origin in AllowedOrigins)
+        for (var index = 0; index < AllowedOrigins.Length; index++)
         {
-            if (!IsExactOrigin(origin))
+            if (!IsExactOrigin(AllowedOrigins[index]))
             {
                 yield return new ValidationResult(
-                    $"{nameof(AllowedOrigins)} entry '{origin}' is not an exact http(s) origin such as https://board.example ('*' is not allowed).",
+                    $"{nameof(AllowedOrigins)}[{index}] is not an exact http(s) origin such as https://board.example ('*' is not allowed).",
                     [nameof(AllowedOrigins)]);
             }
         }
@@ -75,15 +75,21 @@ public sealed class SecurityOptions : IValidatableObject
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
-            foreach (var proxy in KnownProxies.Where(proxy => !IPAddress.TryParse(proxy, out _)))
+            for (var index = 0; index < KnownProxies.Length; index++)
             {
-                yield return new ValidationResult($"{nameof(KnownProxies)} entry '{proxy}' is not an IP address.", [nameof(KnownProxies)]);
+                if (!IPAddress.TryParse(KnownProxies[index], out _))
+                {
+                    yield return new ValidationResult($"{nameof(KnownProxies)}[{index}] is not an IP address.", [nameof(KnownProxies)]);
+                }
             }
 
-            foreach (var network in KnownNetworks.Where(network => !System.Net.IPNetwork.TryParse(network, out _)))
+            for (var index = 0; index < KnownNetworks.Length; index++)
             {
-                yield return new ValidationResult(
-                    $"{nameof(KnownNetworks)} entry '{network}' is not a CIDR network such as 10.0.0.0/8.", [nameof(KnownNetworks)]);
+                if (!System.Net.IPNetwork.TryParse(KnownNetworks[index], out _))
+                {
+                    yield return new ValidationResult(
+                        $"{nameof(KnownNetworks)}[{index}] is not a CIDR network such as 10.0.0.0/8.", [nameof(KnownNetworks)]);
+                }
             }
 
             // With both lists empty the framework skips its peer check and trusts the headers from anyone.

@@ -24,7 +24,7 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
     {
     }
 
-    public sealed record Entry(string Category, LogLevel Level, EventId EventId, string Message, Exception? Exception);
+    public sealed record Entry(string Category, LogLevel Level, EventId EventId, string Message, Exception? Exception, IReadOnlyList<KeyValuePair<string, object?>> State);
 
     private sealed class Logger(CapturingLoggerProvider provider, string category) : ILogger
     {
@@ -36,7 +36,7 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
         {
             lock (provider._entries)
             {
-                provider._entries.Add(new Entry(category, logLevel, eventId, formatter(state, exception), exception));
+                provider._entries.Add(new Entry(category, logLevel, eventId, formatter(state, exception), exception, state is IEnumerable<KeyValuePair<string, object?>> properties ? properties.ToArray() : []));
             }
         }
     }

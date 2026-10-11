@@ -71,7 +71,7 @@ internal static partial class SchedulerLog
 
     /// <summary>
     /// Loading the configuration failed for a reason other than validation (e.g. the binder could not convert a value) and the API
-    /// will not start. <paramref name="detail"/> is the exception's message with any quoted configuration value removed.
+    /// will not start. <paramref name="detail"/> contains only a recognised binder path/type or a fixed safe description.
     /// </summary>
     [LoggerMessage(EventId = 1104, EventName = "StartupConfigurationFailed", Level = LogLevel.Critical,
         Message = "Configuration could not be loaded; the API will not start: {ExceptionType}: {Detail}")]
