@@ -38,6 +38,23 @@ public class OptionsValidatorTests
     public void Minimum_lead_time_cannot_be_negative() =>
         Failure(new SchedulingOptions { MinimumLeadTime = TimeSpan.FromMinutes(-1) }).ShouldContain(nameof(SchedulingOptions.MinimumLeadTime));
 
+    [Theory]
+    [InlineData(-1L)]
+    [InlineData(6048000000001L)] // seven days plus one tick
+    public void Minimum_lead_time_range_failures_are_field_keyed_at_tick_precision(long ticks)
+    {
+        var result = new SchedulingOptionsValidator().Validate(null, new SchedulingOptions { MinimumLeadTime = TimeSpan.FromTicks(ticks) });
+
+        result.Failed.ShouldBeTrue();
+        result.Failures.ShouldHaveSingleItem().ShouldStartWith("MinimumLeadTime:");
+    }
+
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(6048000000000L)] // seven days, inclusive
+    public void Minimum_lead_time_range_accepts_both_inclusive_bounds(long ticks) =>
+        new SchedulingOptionsValidator().Validate(null, new SchedulingOptions { MinimumLeadTime = TimeSpan.FromTicks(ticks) }).Succeeded.ShouldBeTrue();
+
     [Fact]
     public void Minimum_lead_time_must_be_shorter_than_the_booking_horizon() =>
         // BookingWindowPolicy would otherwise throw on the first request instead of at startup.

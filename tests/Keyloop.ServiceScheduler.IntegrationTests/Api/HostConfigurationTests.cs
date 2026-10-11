@@ -45,6 +45,8 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("negative_lead", "Scheduling:MinimumLeadTime", "-00:00:00.0000001", "SchedulingOptions", "MinimumLeadTime")]
+    [InlineData("long_lead", "Scheduling:MinimumLeadTime", "7.00:00:00.0000001", "SchedulingOptions", "MinimumLeadTime")]
     [InlineData("granularity", "Scheduling:SlotGranularityMinutes", "90", "SchedulingOptions", "SlotGranularityMinutes")]
     [InlineData("permits", "Security:RateLimiting:GlobalPermitsPerMinute", "0", "SecurityOptions", "GlobalPermitsPerMinute")]
     [InlineData("wildcard", "Security:AllowedOrigins:0", "*", "SecurityOptions", "AllowedOrigins")]

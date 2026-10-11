@@ -13,7 +13,6 @@ public sealed class SchedulingOptions : IValidatableObject
     public int SlotGranularityMinutes { get; set; } = 15;
 
     /// <summary>The earliest bookable start is now plus this (UAT/Production one hour; Development/SystemTest zero).</summary>
-    [Range(typeof(TimeSpan), "00:00:00", "7.00:00:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public TimeSpan MinimumLeadTime { get; set; } = TimeSpan.Zero;
 
     /// <summary>The latest bookable start is now plus this many days.</summary>
@@ -27,6 +26,14 @@ public sealed class SchedulingOptions : IValidatableObject
     // BookingWindowPolicy requires horizon > lead time; checking here fails the deployment at startup instead of on the first request.
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        // Range(Type, string, string) uses a trim-unsafe TypeConverter even under the options generator. Keep this typed and
+        // field-keyed; [OptionsValidator] invokes IValidatableObject directly without reflection-based discovery.
+        if (MinimumLeadTime < TimeSpan.Zero || MinimumLeadTime > TimeSpan.FromDays(7))
+        {
+            yield return new ValidationResult(
+                $"{nameof(MinimumLeadTime)} must be between zero and seven days (inclusive).", [nameof(MinimumLeadTime)]);
+        }
+
         if (TimeSpan.FromDays(BookingHorizonDays) <= MinimumLeadTime)
         {
             yield return new ValidationResult(

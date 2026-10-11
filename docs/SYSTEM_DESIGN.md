@@ -956,7 +956,7 @@ Direction added on 2026-10-11 (stakeholder request): prefer build-time source ge
 | Object mapping | **Mapperly** (`Riok.Mapperly`, build-time generator, `RequiredMappingStrategy.Target`) | No | Unmapped target members are build errors. |
 | Mediator / handler pipeline | None (ADR-001) | No | Nothing to replace; endpoints call handlers directly. |
 | Configuration binding | **Configuration binding source generator** (`EnableConfigurationBindingGenerator`) | No | `BindConfiguration` calls are intercepted at build time. |
-| Options validation | **`[OptionsValidator]` source generator** | No | Replaces `ValidateDataAnnotations()` reflection. |
+| Options validation | **`[OptionsValidator]` source generator** + typed `IValidatableObject` rules | No | Replaces `ValidateDataAnnotations()` reflection. `MinimumLeadTime` uses typed `TimeSpan` comparisons (zero through seven days, inclusive) with field-keyed errors; no `Range(typeof(TimeSpan), …)` or runtime `TypeConverter`. |
 | Logging | **`[LoggerMessage]` source generator**, stable event ids | No | No interpolated log calls in product code. |
 | Regex | **`[GeneratedRegex]`** | No | VIN rule. |
 | DI container | `Microsoft.Extensions.DependencyInjection`, explicit registrations only | Constructor discovery at startup (AOT-compatible) | Microsoft ships no source-generated container; third-party generators (Jab, Pure.DI) would replace the container under ASP.NET Core hosting - rejected as high risk for negligible gain. |
