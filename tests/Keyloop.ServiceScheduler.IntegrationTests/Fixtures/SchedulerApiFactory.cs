@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 using Respawn;
@@ -11,9 +12,11 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 /// <summary>
 /// The real API host on the shared Testcontainers database, in the <c>SystemTest</c> environment, with migrations applied at
-/// startup, no seeding, and the clock replaced by <paramref name="clock"/>.
+/// startup, no seeding, and the clock replaced by <paramref name="clock"/>. When <paramref name="logs"/> is given it receives every
+/// log entry the host writes, from startup on (the logging configuration's level filters still apply).
 /// </summary>
-public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvider clock) : WebApplicationFactory<Program>
+public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvider clock, CapturingLoggerProvider? logs = null)
+    : WebApplicationFactory<Program>
 {
     private Respawner? _respawner;
 
@@ -25,7 +28,14 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
         builder.UseSetting("ConnectionStrings:schedulerdb", connectionString);
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Database:SeedDemoData", "false");
-        builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Clock));
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<TimeProvider>(Clock);
+            if (logs is not null)
+            {
+                services.AddSingleton<ILoggerProvider>(logs);
+            }
+        });
     }
 
     /// <summary>Starts the host (which applies migrations) and deletes every row in <c>public</c> except the migration history.</summary>
