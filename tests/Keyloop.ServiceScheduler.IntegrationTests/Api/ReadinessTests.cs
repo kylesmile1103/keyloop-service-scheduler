@@ -3,12 +3,28 @@ using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 public sealed class ReadinessTests(PostgresFixture pg)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task Liveness_remains_healthy_when_the_database_cannot_connect()
+    {
+        // A database that does not exist is unreachable, with an immediate non-transient 3D000 instead of a port timeout.
+        var unavailable = new NpgsqlConnectionStringBuilder(pg.ConnectionString) { Database = "readiness_no_database" }.ConnectionString;
+        await using var factory = new SchedulerApiFactory(unavailable, TestData.Clock())
+            .WithWebHostBuilder(builder => builder.UseSetting("Database:MigrateOnStartup", "false"));
+        using var client = factory.CreateClient();
+
+        using var alive = await client.GetAsync("/alive", Ct);
+        alive.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var notReady = await client.GetAsync("/health", Ct);
+        notReady.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+    }
 
     [Theory]
     [InlineData(false)]
