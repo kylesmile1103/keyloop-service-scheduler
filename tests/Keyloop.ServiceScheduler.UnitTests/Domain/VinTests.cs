@@ -39,4 +39,15 @@ public class VinTests
     {
         Vin.Create("WVWZZZ1KZAW123456").Masked.ShouldBe("***********123456");
     }
+
+    [Fact]
+    public void Rejects_18_characters() => Vin.TryCreate("WVWZZZ1KZAW1234567", out _).ShouldBeFalse();
+
+    [Fact]
+    public void ToString_prints_masked_vin()
+    {
+        var vin = Vin.Create("WVWZZZ1KZAW123456");
+        vin.ToString().ShouldBe("***********123456");
+        new VehicleDetails(vin, "ab12 cde", "VW", "Golf").ToString().ShouldBe("***********123456 AB12 CDE VW Golf");
+    }
 }

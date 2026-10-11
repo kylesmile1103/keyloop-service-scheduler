@@ -47,5 +47,5 @@ public sealed record TimeSlot
         return StartUtc < other.EndUtc && other.StartUtc < EndUtc;
     }
 
-    public bool IsWithin(OperatingWindow window) => StartUtc >= window.StartUtc && EndUtc <= window.EndUtc;
+    public bool IsWithin(OperatingWindow window) => window.Contains(this);
 }

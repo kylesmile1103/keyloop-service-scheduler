@@ -19,4 +19,8 @@ public class DeterministicGuidTests
         text[14].ShouldBe('8');
         "89ab".ShouldContain(text[19]);
     }
+
+    [Fact]
+    public void Pinned_vector_for_reading_dealership_is_stable() =>
+        DeterministicGuid.Create("dealership:reading").ShouldBe(Guid.Parse("45fa64a1-baa9-8c61-b11a-ee9d7572ae3e"));
 }

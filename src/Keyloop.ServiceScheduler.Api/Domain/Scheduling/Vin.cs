@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
 namespace Keyloop.ServiceScheduler.Api.Domain.Scheduling;
@@ -10,7 +11,9 @@ public sealed partial record Vin
 
     public string Masked => "***********" + Value[^6..];
 
-    public static bool TryCreate(string? raw, out Vin vin)
+    public override string ToString() => Masked;
+
+    public static bool TryCreate(string? raw, [NotNullWhen(true)] out Vin? vin)
     {
         var normalised = raw?.Trim().ToUpperInvariant();
         if (normalised is not null && VinPattern().IsMatch(normalised))
@@ -19,7 +22,7 @@ public sealed partial record Vin
             return true;
         }
 
-        vin = null!;
+        vin = null;
         return false;
     }
 

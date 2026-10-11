@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Api.Domain.Catalog;
+using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
@@ -58,5 +59,19 @@ public class TimeSlotTests
         slot.StartUtc.ShouldBe(At(9));
         slot.EndUtc.ShouldBe(At(10, 30));
         slot.Duration.ShouldBe(TimeSpan.FromMinutes(90));
+    }
+
+    [Theory]
+    [InlineData(9, 17, true)]
+    [InlineData(8, 10, false)]
+    [InlineData(16, 18, false)]
+    [InlineData(8, 18, false)]
+    [InlineData(10, 12, true)]
+    public void IsWithin_respects_window_bounds(int startHour, int endHour, bool expected)
+    {
+        var window = new OperatingWindow(At(9), At(17));
+        var slot = TimeSlot.Create(At(startHour), At(endHour));
+        slot.IsWithin(window).ShouldBe(expected);
+        window.Contains(slot).ShouldBe(expected);
     }
 }

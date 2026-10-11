@@ -27,4 +27,9 @@ public class ServiceDurationTests
         d.Minutes.ShouldBe(60);
         d.AsTimeSpan.ShouldBe(TimeSpan.FromHours(1));
     }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(480)]
+    public void Accepts_bounds(int minutes) => ServiceDuration.Create(minutes).Minutes.ShouldBe(minutes);
 }

@@ -18,4 +18,6 @@ public sealed record VehicleDetails
     public string Make { get; }
 
     public string Model { get; }
+
+    public override string ToString() => $"{Vin.Masked} {Registration} {Make} {Model}";
 }
