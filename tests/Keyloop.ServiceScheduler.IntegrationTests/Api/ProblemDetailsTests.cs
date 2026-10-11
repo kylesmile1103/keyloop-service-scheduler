@@ -204,7 +204,7 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
     private static async Task<JsonElement> ReadProblemAsync(HttpResponseMessage response, HttpStatusCode status, string? slug = null)
     {
         response.StatusCode.ShouldBe(status);
-        response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
+        response.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/problem+json");
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         var problem = document.RootElement.Clone();
         problem.GetProperty("status").GetInt32().ShouldBe((int)status);

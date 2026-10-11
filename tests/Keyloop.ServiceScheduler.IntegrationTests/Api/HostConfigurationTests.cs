@@ -95,7 +95,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         var body = await limited.Content.ReadAsStringAsync(Ct);
         if (accept == "application/json")
         {
-            limited.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
+            limited.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/problem+json");
             using var document = JsonDocument.Parse(body);
             var problem = document.RootElement;
             problem.GetProperty("type").GetString().ShouldBe("https://api.keyloop.example/problems/rate-limited");
@@ -107,7 +107,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         else
         {
             // No problem body can be written for this client; the status-code pages middleware answers in plain text instead.
-            limited.Content.Headers.ContentType?.MediaType.ShouldBe("text/plain");
+            limited.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("text/plain");
             body.ShouldContain("429");
         }
 
@@ -227,6 +227,27 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         entry.Level.ShouldBe(LogLevel.Critical);
         entry.Message.ShouldContain("SchedulingOptions");
         entry.Message.ShouldContain("SlotGranularityMinutes: The field SchedulingOptions.SlotGranularityMinutes must be between 5 and 60.");
+    }
+
+    [Fact]
+    public void Unconvertible_configuration_value_fails_startup_and_is_logged_as_critical_1104_without_the_value()
+    {
+        // The configuration binder throws InvalidOperationException, not OptionsValidationException, for a value it cannot convert.
+        var logs = new CapturingLoggerProvider();
+        using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseSetting("Scheduling:SlotGranularityMinutes", "abc")
+            .ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+
+        var ex = Should.Throw<Exception>(() => factory.CreateClient());
+
+        Find<InvalidOperationException>(ex).ShouldNotBeNull(ex.ToString()).Message.ShouldContain("Scheduling:SlotGranularityMinutes");
+        var entry = logs.Entries.Where(e => e.EventId.Id == 1104).ShouldHaveSingleItem();
+        entry.EventId.Name.ShouldBe("StartupConfigurationFailed");
+        entry.Level.ShouldBe(LogLevel.Critical);
+        entry.Message.ShouldContain("System.InvalidOperationException");
+        entry.Message.ShouldContain("Failed to convert the configuration value at 'Scheduling:SlotGranularityMinutes' to type 'System.Int32'.");
+        entry.Message.ShouldNotContain("abc", Case.Sensitive, "the unconvertible value could be a misplaced secret");
+        logs.Entries.ShouldNotContain(e => e.EventId.Id == 1103);
     }
 
     private WebApplicationFactory<Program> BehindIngress(bool forwardedHeaders, string knownProxy, int? globalPermitsPerMinute = null) =>

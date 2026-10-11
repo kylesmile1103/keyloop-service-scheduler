@@ -65,6 +65,45 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task GetServiceTypes_ignores_an_inactive_high_voltage_technician()
+    {
+        // The EV bay is active and the only high-voltage technician is not; the general technician shows resources are read at all.
+        var dealership = TestData.NewDealership("Absent Specialist Motors");
+        await SaveAsync(
+            dealership,
+            TestData.NewBay(dealership.Id, "EV Bay", BayCapability.EvHighVoltage, BayCapability.StandardLift),
+            Technician.Create(
+                Guid.NewGuid(), dealership.Id, "Ben Okafor", "T-1002", [Certification.HighVoltageElectrical, Certification.Diagnostics], isActive: false),
+            TestData.NewTechnician(dealership.Id, "Amelia Clarke", "T-1001", Certification.GeneralService),
+            TestData.NewServiceType("EV-BATTERY-CHECK", 60, [BayCapability.EvHighVoltage], [Certification.HighVoltageElectrical]),
+            TestData.NewServiceType("EV-CHARGING-FAULT", 90, [BayCapability.EvHighVoltage], [Certification.HighVoltageElectrical, Certification.Diagnostics]),
+            TestData.NewServiceType("INTERIM-SERVICE", 60, [BayCapability.StandardLift], [Certification.GeneralService]));
+
+        var serviceTypes = await GetServiceTypesAsync(dealership.Id);
+
+        serviceTypes.Select(s => (s.Code, s.Bookable)).ShouldBe([("EV-BATTERY-CHECK", false), ("EV-CHARGING-FAULT", false), ("INTERIM-SERVICE", true)]);
+    }
+
+    [Fact]
+    public async Task GetServiceTypes_lists_requirements_in_declared_enum_order()
+    {
+        // Given in reverse declared order, and stored sorted by name: neither order is the enumeration's declared order.
+        var dealership = TestData.NewDealership("Ordering Motors");
+        await SaveAsync(
+            dealership,
+            TestData.NewServiceType(
+                "MULTI-SKILL-CHECK",
+                60,
+                [BayCapability.AirConditioning, BayCapability.Diagnostics, BayCapability.StandardLift],
+                [Certification.HeavyVehicle, Certification.Brakes, Certification.GeneralService]));
+
+        var serviceType = (await GetServiceTypesAsync(dealership.Id)).ShouldHaveSingleItem();
+
+        serviceType.RequiredBayCapabilities.ShouldBe([BayCapability.StandardLift, BayCapability.Diagnostics, BayCapability.AirConditioning]);
+        serviceType.RequiredCertifications.ShouldBe([Certification.GeneralService, Certification.Brakes, Certification.HeavyVehicle]);
+    }
+
+    [Fact]
     public async Task GetServiceTypes_returns_the_whole_catalogue_by_name_with_bookable_for_the_route_dealership()
     {
         await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));

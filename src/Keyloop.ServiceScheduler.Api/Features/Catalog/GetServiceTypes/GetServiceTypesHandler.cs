@@ -15,7 +15,7 @@ public sealed class GetServiceTypesHandler(SchedulerDbContext db)
     {
         if (!await db.Dealerships.AnyAsync(d => d.Id == dealershipId, ct))
         {
-            throw new NotFoundException("dealership", dealershipId);
+            throw new NotFoundException(ProblemResources.Dealership, dealershipId);
         }
 
         // A fixed number of reads whatever the catalogue's size: the dealership's active resources once, then Bookable in memory

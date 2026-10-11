@@ -120,7 +120,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         using var response = await _client.GetAsync("/scalar/v1", Ct);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        response.Content.Headers.ContentType?.MediaType.ShouldBe("text/html");
+        response.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("text/html");
         var html = await response.Content.ReadAsStringAsync(Ct);
         html.ShouldContain("Keyloop Service Scheduler API");
     }

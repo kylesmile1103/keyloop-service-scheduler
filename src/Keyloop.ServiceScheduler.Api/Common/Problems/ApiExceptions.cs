@@ -4,8 +4,8 @@ namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 // violations and illegal transitions are the domain's own exceptions (Domain/Common).
 
 /// <summary>
-/// 404 <c>not-found</c>. <see cref="Resource"/> names the kind of thing as a lowercase kebab token (<c>dealership</c>,
-/// <c>service-type</c>, <c>appointment</c>), the <c>resource</c> extension clients branch on; <see cref="Id"/> is the id asked for.
+/// 404 <c>not-found</c>. <see cref="Resource"/> is one of the <see cref="ProblemResources"/> tokens (e.g.
+/// <see cref="ProblemResources.Dealership"/>), the <c>resource</c> extension clients branch on; <see cref="Id"/> is the id asked for.
 /// </summary>
 public sealed class NotFoundException(string resource, Guid id) : Exception($"No {resource} with id '{id}' exists.")
 {
@@ -21,7 +21,7 @@ public sealed class SlotUnavailableException(IReadOnlyList<SuggestedSlot> sugges
     public IReadOnlyList<SuggestedSlot> Suggestions { get; } = suggestions;
 }
 
-/// <summary>409 <c>slot-conflict</c>: the database overlap constraint fired (backstop). <see cref="ConflictingResource"/> is <c>bay</c> or <c>technician</c>.</summary>
+/// <summary>409 <c>slot-conflict</c>: the database overlap constraint fired (backstop). <see cref="ConflictingResource"/> is <see cref="ProblemResources.Bay"/> or <see cref="ProblemResources.Technician"/>.</summary>
 public sealed class SlotConflictException(string conflictingResource, IReadOnlyList<SuggestedSlot> suggestions)
     : Exception("The slot was taken by a concurrent booking.")
 {
