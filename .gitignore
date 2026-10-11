@@ -1,0 +1,35 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.binlog
+# Aspire / local secrets
+*.pfx
+appsettings.*.local.json
+.aspire/
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.pnpm-store/
+coverage/
+# Generated API client is committed (contract-sync pipeline); regenerate with `pnpm generate:api`
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.DS_Store
+Thumbs.db
+# Reference clones live outside this repo; this folder only carries provenance notes
+references/*
+!references/README.md
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
