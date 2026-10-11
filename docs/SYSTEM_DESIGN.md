@@ -1091,11 +1091,13 @@ A request the framework cannot bind at all (a body that is not JSON, a `413`) ne
 | Signal | Threshold | Action |
 |--------|-----------|--------|
 | `/alive` | process responsive | restart |
-| `/health` | DbContext can connect (`CanConnect`) + migrations applied | remove from load balancer |
+| `/health` | Isolated scope/context: `CanConnectAsync` + no pending/missing EF migrations, checked on every probe; 503 until the schema is ready (including query failures) | remove from load balancer |
 | `scheduler.booking.duration` p95 | > 300 ms for 5 min | page: check lock wait and DB |
 | `scheduler.booking.deadlocks` | > 0 | page: invariant of ADR-003 violated by a code change |
 | `scheduler.booking.constraint_backstop` | > 0 | investigate out-of-band writer |
 | `http.server.request.duration{status=5xx}` | > 0.1 % | investigate |
+
+`/alive` selects only the process check tagged `live`; database connectivity and schema checks never participate. The readiness check resolves its own context per probe and does no database work at registration or build-time OpenAPI export. UAT/Production can boot before the migration bundle finishes, but stay out of the load balancer until all migrations are applied.
 
 ### 12.4 What to look at during the demo
 

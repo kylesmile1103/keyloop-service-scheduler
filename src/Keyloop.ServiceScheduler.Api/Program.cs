@@ -16,6 +16,7 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Health;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
@@ -67,6 +68,8 @@ builder.Services.AddDbContext<SchedulerDbContext>((sp, options) => options
     .ConfigureWarnings(w => w.Log((CoreEventId.SaveChangesFailed, LogLevel.Information), (RelationalEventId.CommandError, LogLevel.Information)))
     .AddInterceptors(sp.GetRequiredService<DomainEventInterceptor>()));
 builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
+// Readiness only: not tagged live, and resolved in its own scope when probed (never during build-time OpenAPI generation).
+builder.Services.AddHealthChecks().AddCheck<SchedulerReadinessCheck>("scheduler_schema", tags: ["ready"]);
 
 // Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12).
 builder.Services.AddScoped<GetDealershipsHandler>();
