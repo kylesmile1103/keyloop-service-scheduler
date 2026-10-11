@@ -39,8 +39,9 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 /// <para>
 /// Retries: the retrying execution strategy runs the transaction again after a transient failure. When the failure hit the commit,
 /// it first asks whether the minted appointment exists (EF Core's <c>verifySucceeded</c>): a lost acknowledgement is then a success,
-/// not a second booking, and the audit interceptor's in-doubt events are released to the observers once. Only successful bookings
-/// are memoised: any refusal rolls the key row back with the rest.
+/// not a second booking, and the audit interceptor's in-doubt events are released to the observers once (by the verification when it
+/// finds the appointment, otherwise by the next run's check under the lock). Only successful bookings are memoised: any refusal rolls
+/// the key row back with the rest.
 /// </para>
 /// <para>
 /// The aggregate's <c>AppointmentBooked</c> event becomes the history row inside the transaction and is logged (1001) by
@@ -214,7 +215,9 @@ public sealed class BookAppointmentHandler(
 
     /// <summary>
     /// Whether a run whose commit reported a failure committed anyway: the minted appointment exists. Only a failure after the run
-    /// reached its commit can be a lost acknowledgement; an earlier one is simply retried. Settles the audit interceptor's in-doubt events.
+    /// reached its commit can be a lost acknowledgement; an earlier one is simply retried. A found appointment settles the audit
+    /// interceptor's in-doubt events (released). "Not found" settles nothing: this read takes no lock, so it may run before a commit
+    /// that did happen is visible; the events stay in doubt until the next run's check under the dealership lock, which is conclusive.
     /// </summary>
     private async Task<ExecutionResult<BookingAttempt>> VerifyCommittedAsync(BookingRun run, CancellationToken ct)
     {
@@ -223,13 +226,17 @@ public sealed class BookAppointmentHandler(
             return new ExecutionResult<BookingAttempt>(false, null!);
         }
 
-        var committed = await FindCommittedAsync(run.Booking, ct);
-        if (db.DomainEvents is { } events)
+        if (await FindCommittedAsync(run.Booking, ct) is not { } committed)
         {
-            await events.ResolveInDoubtCommitAsync(committed is not null, ct);
+            return new ExecutionResult<BookingAttempt>(false, null!);
         }
 
-        return new ExecutionResult<BookingAttempt>(committed is not null, committed!);
+        if (db.DomainEvents is { } events)
+        {
+            await events.ResolveInDoubtCommitAsync(committed: true, ct);
+        }
+
+        return new ExecutionResult<BookingAttempt>(true, committed);
     }
 
     /// <summary>The booking if its minted appointment is in the database (with the bay and technician it holds), else null.</summary>
@@ -264,7 +271,8 @@ public sealed class BookAppointmentHandler(
 
         // Defence in depth behind the strategy's verification: if an earlier run of this request committed (its acknowledgement lost and
         // the verification inconclusive), answer with that appointment, before the key re-check would replay it as someone else's and
-        // before availability would call its slot busy. It also settles that run's in-doubt events: released if it committed.
+        // before availability would call its slot busy. It also settles that run's in-doubt events, conclusively: the earlier run held
+        // this lock until its transaction ended, so its appointment is visible now if it committed (released) and never will be if not (dropped).
         var earlier = await FindCommittedAsync(booking, ct);
         if (db.DomainEvents is { } events)
         {

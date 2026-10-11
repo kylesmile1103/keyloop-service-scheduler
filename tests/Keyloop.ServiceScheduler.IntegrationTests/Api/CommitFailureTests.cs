@@ -27,6 +27,7 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly DateTime Ten = new(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc);
 
     private readonly CommitAcknowledgementLoss _commitLoss = new();
+    private readonly InconclusiveVerification _verification = new();
     private readonly CapturingLoggerProvider _logs = new();
     private SchedulerApiFactory _base = null!;
     private WebApplicationFactory<Program>? _factory;
@@ -99,6 +100,31 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
         _logs.Entries.Count(e => e.EventId.Id == 1001).ShouldBe(1);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("in-doubt")]
+    public async Task Lost_commit_acknowledgement_the_verification_cannot_see_is_settled_under_the_lock(string? key)
+    {
+        // The commit happened, but the strategy's verification read before it was visible (here: its read answers no rows). That
+        // "not found" is inconclusive, so it must leave the run's events in doubt: the next run takes the lock, finds the minted
+        // appointment and releases them, once.
+        Start(faultBeforeAudit: true);
+        _commitLoss.Arm();
+        _verification.Arm();
+
+        using var response = await PostAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten), key);
+
+        (_commitLoss.Fired, _verification.Fired).ShouldBe((1, 1), "a lost acknowledgement, then a verification that saw nothing");
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
+        var appointment = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        await _base.WithDbAsync(async db =>
+        {
+            (await db.Appointments.Select(a => a.Id).ToListAsync(Ct)).ShouldBe([appointment.Id], "the in-lock check answers with the committed appointment");
+            (await db.AppointmentHistory.CountAsync(Ct)).ShouldBe(1);
+        });
+        _logs.Entries.Count(e => e.EventId.Id == 1001).ShouldBe(1, "the committed booking's events are released by the in-lock check, not dropped by the verification");
+    }
+
     [Fact]
     public async Task A_commit_that_really_failed_is_retried_and_books_once()
     {
@@ -135,6 +161,9 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
             {
                 services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_commitLoss));
             }
+
+            // Inert until armed.
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_verification));
         }));
         _client = _factory.CreateClient();
     }

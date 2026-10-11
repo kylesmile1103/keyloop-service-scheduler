@@ -506,7 +506,8 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
 
         var wait = metrics.Of("scheduler.booking.lock_wait", MetricsCollector.Tag("dealership.id", _workshop.Dealership.Id.ToString())).ShouldHaveSingleItem();
         wait.Value.ShouldBeGreaterThanOrEqualTo(200, "queued for at least the 250 ms the test held the lock (less scheduling slack)");
-        metrics.Max("scheduler.booking.duration").ShouldBeGreaterThanOrEqualTo(wait.Value);
+        // The confirmed booking's own duration (outcome-tagged, so a measurement from any other request cannot satisfy it) includes the wait.
+        metrics.Of("scheduler.booking.duration", MetricsCollector.Tag("outcome", "confirmed")).ShouldHaveSingleItem().Value.ShouldBeGreaterThanOrEqualTo(wait.Value);
     }
 
     [Fact]
