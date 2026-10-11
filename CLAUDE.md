@@ -21,14 +21,14 @@ dotnet run --project src/Keyloop.ServiceScheduler.AppHost
 dotnet build -warnaserror
 
 # tests
-dotnet test tests/Keyloop.ServiceScheduler.UnitTests                               # pure domain, no Docker
-dotnet test tests/Keyloop.ServiceScheduler.IntegrationTests                        # Testcontainers PostgreSQL 17
-dotnet test tests/Keyloop.ServiceScheduler.IntegrationTests --filter FullyQualifiedName~Concurrency   # 30-way contention proof
-dotnet test tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~BookAppointmentTests.Books_and_returns_201"  # single test
+dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests                               # pure domain, no Docker
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests                        # Testcontainers PostgreSQL 17
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~Concurrency"   # 30-way contention proof
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~BookAppointmentTests.Books_and_returns_201"  # single test
 
 # OpenAPI contract: export (rewrites contracts/openapi/v1.json) and check for drift
 scripts/export-openapi.sh
-dotnet test tests/Keyloop.ServiceScheduler.IntegrationTests --filter Category=Contract
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "Category=Contract"
 
 # EF Core migrations (design-time factory needs no database)
 dotnet ef migrations add <Name> --project src/Keyloop.ServiceScheduler.Api -o Infrastructure/Persistence/Migrations
