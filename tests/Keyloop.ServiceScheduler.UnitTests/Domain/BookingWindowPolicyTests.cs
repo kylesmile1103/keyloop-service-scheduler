@@ -63,6 +63,13 @@ public class BookingWindowPolicyTests
     }
 
     [Fact]
+    public void EnsureBookable_rejects_non_utc_start()
+    {
+        var unspecified = DateTime.SpecifyKind(Now.AddHours(2), DateTimeKind.Unspecified);
+        Should.Throw<ArgumentException>(() => Policy().EnsureBookable(unspecified)).ParamName.ShouldBe("startUtc");
+    }
+
+    [Fact]
     public void Rejects_beyond_horizon()
     {
         var ex = Should.Throw<DomainRuleViolationException>(() => Policy().EnsureBookable(Now + Horizon + TimeSpan.FromHours(1)));
@@ -111,6 +118,13 @@ public class BookingWindowPolicyTests
         Should.NotThrow(() => BookingWindowPolicy.EnsureAligned(Utc(7, 30), halfPastWindow, 60));
         Should.Throw<DomainRuleViolationException>(() => BookingWindowPolicy.EnsureAligned(Utc(7, 0), halfPastWindow, 60))
             .Extensions["slotGranularityMinutes"].ShouldBe(60);
+    }
+
+    [Fact]
+    public void EnsureAligned_rejects_non_utc_start()
+    {
+        var local = DateTime.SpecifyKind(Utc(7, 0), DateTimeKind.Local);
+        Should.Throw<ArgumentException>(() => BookingWindowPolicy.EnsureAligned(local, Window, 15)).ParamName.ShouldBe("startUtc");
     }
 
     [Fact]

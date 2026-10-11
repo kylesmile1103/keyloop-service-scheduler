@@ -1,4 +1,5 @@
 using System.Globalization;
+using Keyloop.ServiceScheduler.Api.Domain.Common;
 
 namespace Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 
@@ -38,8 +39,8 @@ public static class LocalTimeConverter
     }
 
     public static DateOnly ToLocalDate(DateTime utc, TimeZoneInfo zone) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utc, zone));
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(Guard.Utc(utc, nameof(utc)), zone));
 
     public static string FormatLocal(DateTime utc, TimeZoneInfo zone) =>
-        TimeZoneInfo.ConvertTimeFromUtc(utc, zone).ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture);
+        TimeZoneInfo.ConvertTimeFromUtc(Guard.Utc(utc, nameof(utc)), zone).ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture);
 }

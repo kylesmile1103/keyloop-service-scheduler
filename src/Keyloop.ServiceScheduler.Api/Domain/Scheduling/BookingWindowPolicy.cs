@@ -20,6 +20,7 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
     /// <summary>Throws <c>lead-time-not-met</c> (also covers starts in the past) or <c>beyond-booking-horizon</c>.</summary>
     public void EnsureBookable(DateTime startUtc)
     {
+        Guard.Utc(startUtc, nameof(startUtc));
         var nowUtc = _clock.GetUtcNow().UtcDateTime;
 
         var earliestStartUtc = nowUtc + _minimumLeadTime;
@@ -44,6 +45,7 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
     /// <summary>Throws <c>slot-not-aligned</c> unless <paramref name="startUtc"/> is a whole number of granularity steps from the window start.</summary>
     public static void EnsureAligned(DateTime startUtc, OperatingWindow window, int granularityMinutes)
     {
+        Guard.Utc(startUtc, nameof(startUtc));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(granularityMinutes);
 
         var offset = startUtc - window.StartUtc;

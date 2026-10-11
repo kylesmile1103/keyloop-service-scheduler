@@ -59,4 +59,18 @@ public class LocalTimeConverterTests
         LocalTimeConverter.ToLocalDate(utc, London).ShouldBe(new DateOnly(2026, 7, 2));
         LocalTimeConverter.ToLocalDate(utc, TimeZoneInfo.Utc).ShouldBe(new DateOnly(2026, 7, 1));
     }
+
+    [Fact]
+    public void ToLocalDate_rejects_non_utc_instant()
+    {
+        var unspecified = new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Unspecified);
+        Should.Throw<ArgumentException>(() => LocalTimeConverter.ToLocalDate(unspecified, London)).ParamName.ShouldBe("utc");
+    }
+
+    [Fact]
+    public void FormatLocal_rejects_non_utc_instant()
+    {
+        var local = new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Local);
+        Should.Throw<ArgumentException>(() => LocalTimeConverter.FormatLocal(local, London)).ParamName.ShouldBe("utc");
+    }
 }
