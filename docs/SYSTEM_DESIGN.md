@@ -788,11 +788,12 @@ Base path `/api/v1`. JSON only; enums as strings; instants ISO-8601 UTC. All err
 | `lead-time-not-met` | 422 | Start earlier than now + minimum lead time | `earliestStartUtc` |
 | `beyond-booking-horizon` | 422 | Start later than now + horizon | `latestStartUtc` |
 | `slot-not-aligned` | 422 | Start not on the granularity grid | `slotGranularityMinutes` |
-| `no-qualified-resources` | 422 | Dealership has no active bay/technician that could ever serve this service | `missingCapabilities`, `missingCertifications` |
+| `no-qualified-resources` | 422 | Dealership has no active bay/technician that could ever serve this service | `missingCapabilities`, `missingCertifications` (present when the gap is a capability/certification mismatch; the `detail` text never names individual staff) |
 | `idempotency-key-reuse` | 422 | Same key, different request | — |
 | `slot-unavailable` | 409 | All qualified resources busy at that time (pre-check) | `suggestedSlots[]` |
 | `slot-conflict` | 409 | Database overlap constraint fired (backstop) | `suggestedSlots[]`, `conflictingResource` |
-| `invalid-state-transition` | 409 | e.g. cancel a cancelled appointment | `currentStatus`, `attempted` |
+| `invalid-state-transition` | 409 | e.g. cancel a cancelled appointment | `currentStatus`, `attempted` (machine token: `cancel`, `check-in`, `start`, `complete`, `mark-no-show`) |
+| `no-show-before-slot-end` | 422 | Marking a no-show before the slot has ended (domain rule; no endpoint in this slice) | — |
 | `concurrency-conflict` | 409 | Row changed since read (`xmin`) | — |
 | `rate-limited` | 429 | Policy exceeded | `retryAfterSeconds` |
 | `internal-error` | 500 | Unhandled | `traceId` only — never exception details |
