@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Resuming this project in a fresh session? Read `docs/HANDOFF.md` first** — current state, process, remaining tasks with binding carry-overs, rulings and gotchas.
+
 ## What this repository is
 
 The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). Two documents are the source of truth and must stay consistent with the code:
