@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  backend:
+    name: Backend and contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Build with warnings as errors
+        run: dotnet build -c Release -warnaserror --no-restore
+      - name: Check OpenAPI contract drift
+        run: git diff --exit-code contracts/
+      - name: Unit tests with coverage
+        run: >-
+          dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests
+          -c Release --no-build --no-restore
+          --coverage --coverage-output-format cobertura
+          --results-directory "$GITHUB_WORKSPACE/TestResults/unit"
+      # Hosted Ubuntu runners already provide Docker for Testcontainers.
+      - name: Integration tests with coverage (excluding Aspire)
+        run: >-
+          dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests
+          -c Release --no-build --no-restore --filter "Category!=Aspire"
+          --coverage --coverage-output-format cobertura
+          --results-directory "$GITHUB_WORKSPACE/TestResults/integration"
+      - name: Fail on vulnerable NuGet packages
+        run: |
+          mkdir -p TestResults
+          dotnet list package --vulnerable --include-transitive --no-restore \
+            --format json --output-version 1 > TestResults/nuget-vulnerabilities.json
+          cat TestResults/nuget-vulnerabilities.json
+          # The CLI exits zero for advisories; inspect both direct and transitive packages.
+          jq -e '
+            (.version == 1) and (.projects | type == "array") and
+            ([.projects[] | .frameworks[]? |
+              ((.topLevelPackages // []) + (.transitivePackages // []))[] |
+              .vulnerabilities[]?] | length == 0) and
+            ((.problems // []) | length == 0)
+          ' TestResults/nuget-vulnerabilities.json
+      - name: Upload test results and dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Measure AOT readiness
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts/aot-readiness
+          scripts/aot-readiness.sh 2>&1 | tee artifacts/aot-readiness/report.txt
+      - name: Upload AOT readiness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AOT readiness
+          path: artifacts/aot-readiness/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  frontend:
+    name: Frontend and generated client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/Keyloop.ServiceScheduler.Web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: src/Keyloop.ServiceScheduler.Web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate API client
+        run: pnpm generate:api
+      - name: Check generated client drift
+        working-directory: .
+        run: git diff --exit-code src/Keyloop.ServiceScheduler.Web/src/api
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  aspire-smoke:
+    name: Whole-stack Aspire smoke
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: src/Keyloop.ServiceScheduler.Web/pnpm-lock.yaml
+      - name: Install web dependencies before starting Aspire
+        working-directory: src/Keyloop.ServiceScheduler.Web
+        run: pnpm install --frozen-lockfile
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build -c Release -warnaserror --no-restore
+      - name: Test PostgreSQL, API and web through Aspire
+        run: |
+          mkdir -p TestResults/aspire
+          dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests \
+            -c Release --no-build --no-restore --filter "Category=Aspire" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults/aspire" \
+            2>&1 | tee TestResults/aspire/smoke.log
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aspire-test-results
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14
