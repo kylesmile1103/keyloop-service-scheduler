@@ -113,7 +113,7 @@ public class BookingWindowPolicyTests
     [Fact]
     public void EnsureAligned_measures_the_grid_from_the_window_start()
     {
-        var halfPastWindow = new OperatingWindow(Utc(6, 30), Utc(17, 30)); // e.g. 07:30-18:30 Europe/Berlin
+        var halfPastWindow = new OperatingWindow(Utc(6, 30), Utc(17, 30)); // e.g. 07:30-18:30 Europe/London on 2026-10-13 (BST, UTC+1)
         Should.NotThrow(() => BookingWindowPolicy.EnsureAligned(Utc(6, 30), halfPastWindow, 60));
         Should.NotThrow(() => BookingWindowPolicy.EnsureAligned(Utc(7, 30), halfPastWindow, 60));
         Should.Throw<DomainRuleViolationException>(() => BookingWindowPolicy.EnsureAligned(Utc(7, 0), halfPastWindow, 60))

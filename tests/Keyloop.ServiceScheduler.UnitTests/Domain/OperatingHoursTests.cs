@@ -89,6 +89,23 @@ public class OperatingHoursTests
     }
 
     [Fact]
+    public void ResolveOperatingWindow_follows_the_offset_on_dst_change_days()
+    {
+        var everyDay = OperatingHours.Create(Enum.GetValues<DayOfWeek>().Select(Open));
+        var dealership = Dealership.Create(Guid.NewGuid(), "Keyloop Motors Reading", "Europe/London", everyDay, CreatedAt);
+
+        // Sunday 2026-03-29: clocks go forward at 01:00 GMT, so the day opens and closes on BST (UTC+1).
+        var springForward = dealership.ResolveOperatingWindow(new DateOnly(2026, 3, 29)).ShouldNotBeNull();
+        springForward.StartUtc.ShouldBe(new DateTime(2026, 3, 29, 7, 0, 0, DateTimeKind.Utc));
+        springForward.EndUtc.ShouldBe(new DateTime(2026, 3, 29, 17, 0, 0, DateTimeKind.Utc));
+
+        // Sunday 2026-10-25: clocks go back at 02:00 BST, so the day opens and closes on GMT (UTC+0).
+        var fallBack = dealership.ResolveOperatingWindow(new DateOnly(2026, 10, 25)).ShouldNotBeNull();
+        fallBack.StartUtc.ShouldBe(new DateTime(2026, 10, 25, 8, 0, 0, DateTimeKind.Utc));
+        fallBack.EndUtc.ShouldBe(new DateTime(2026, 10, 25, 18, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
     public void Dealership_create_rejects_unknown_time_zone() =>
         Should.Throw<ArgumentException>(() =>
             Dealership.Create(Guid.NewGuid(), "Nowhere Motors", "Mars/Olympus_Mons", OperatingHours.MondayToFriday(Eight, Eighteen), CreatedAt))
