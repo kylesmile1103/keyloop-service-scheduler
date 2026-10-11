@@ -580,6 +580,10 @@ C4Container
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
+**Cloudflare deployment view (public demo).** `deploy/cloudflare` builds a Worker on the Custom Domain `keyloop.kylesmile.me`. Static Assets contain the React build and SPA fallback. `/api` and `/api/*` run the Worker first, including browser navigations, and reach one named Durable Object (`api`) obtained with the `weur` location hint before its first creation. Its API Container uses the default scheduling policy, `basic`, `maxInstances=1`, a WEUR constraint, port 8080 and `sleepAfter=30m`. Internet egress remains enabled for direct TLS PostgreSQL traffic to Neon Free PostgreSQL 17 in London. No application state resides on the container disk.
+
+The Container's outbound `http://email.internal/v1/send` handler owns the sender identity and uses the Email Service binding, with an explicitly selected REST alternative. `/otlp/v1/traces` is a bounded browser relay with an edge-only credential; other OTLP paths return 404. Public `/health`, `/alive`, `/openapi` and `/scalar` paths are never forwarded to the API. Actual provisioning and cross-tier validation remain deployment work.
+
 ### 8.3 C4 - Components inside the Scheduler API
 
 ```mermaid
@@ -1069,6 +1073,12 @@ flowchart LR
     UAT -->|promotion of the same immutable images| PROD["Production"]
 ```
 
+### 10.1 Cloudflare deployment profile
+
+The public demo keeps `ASPNETCORE_ENVIRONMENT=Production` and overrides configuration at container start: demo data on, migration-on-start off, no reseed key, JSON console logging, and booking permits **120/min/IP** rather than the generic Production value of 30. This permits the 30-way demonstration after a book and cancellation. Global limits retain the API defaults. An operator executes the migration bundle before image rollout; the container runtime uses a DML-only database role.
+
+Notifications use `Provider=Cloudflare`, `Relay:BaseUrl=http://email.internal`, recipient mode `AllowList`, and configurable caps (defaults 10 per recipient/day and 100/day). The daily cap must be set below the account quota after onboarding. `NOTIFICATIONS_ENABLED` and the independent Worker switch `EMAIL_SENDING_ENABLED` default to false. Enabling notifications requires approved recipients. Sleeping is intentional; the dispatcher must suppress stale notifications before sending on a later wake. This edge profile defines the API integration contract; the corresponding .NET provider and recipient-policy implementation are maintained separately.
+
 ---
 
 ## 11. Security
@@ -1113,6 +1123,16 @@ builder.Services.AddAuthorizationBuilder()
 ```
 
 Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Development/SystemTest, `Security:Authority` is unset and a clearly logged *anonymous mode* is active; the `actor` on history rows is `"anonymous:<client-ip>"`. This keeps the demo frictionless while making the production posture explicit rather than implicit.
+
+### 11.4 Cloudflare edge boundary and credentials
+
+Before forwarding an API request the Worker overwrites `X-Forwarded-For` with Cloudflare's single client IP and `X-Forwarded-Proto` with the incoming scheme; it removes `Forwarded` and `X-Forwarded-Host`. Missing client identity fails closed. Only this deployment supplies trusted networks `0.0.0.0/0` and `::/0`, with the API's one-hop forwarding limit. This requires the Container to have no other ingress. Per-client limiting and HTTPS/HSTS depend on the API consuming the trusted headers before its other middleware.
+
+The Durable Object reads `keyloop_prod_db_url` from Secrets Store only before a stopped container starts, passes it as `ConnectionStrings__schedulerdb`, and fails without echoing values if it is missing. A running container keeps its start-time value, so DB rotation requires a restart. Optional REST email and browser OTLP credentials stay in the Worker and are only bound when those integrations are selected. Provider error bodies and secret exceptions never reach clients.
+
+The email relay pins `notifications@keyloop.kylesmile.me`, accepts one bare recipient, rejects sender/header overrides and reply-to, and enforces the exact address/domain allowlist plus reserved-domain blocking. The dispatcher owns suppression and daily caps. Binding and REST sends are selected explicitly, with no automatic resend after an ambiguous result. Binding sends to an approved but unverified destination and account entitlement are go-live checks.
+
+The OTLP relay accepts only same-origin fetch metadata (missing metadata is permitted), checks Origin when present, accepts JSON or protobuf without compression, bounds the streamed body to 256 KiB, and applies a Workers limiter of 120 requests/min/client IP. Only a configured Grafana HTTPS OTLP gateway receives the credential. Static Asset headers carry the SPA CSP, host-only HSTS, and immutable caching for hashed `/assets/*`.
 
 ---
 
@@ -1187,6 +1207,10 @@ A request the framework cannot bind at all (a body that is not JSON, a `413`) ne
 2. Traces: one `POST …/appointments` → `scheduler.book_appointment` → `acquire_dealership_lock` → `compute_availability` → `persist_appointment` → Npgsql `INSERT`.
 3. After the stress panel fires 30 bookings: 30 traces, one with `booking.outcome=confirmed`, 29 with `slot_unavailable`, and `lock_wait` rising across them; metrics page shows `scheduler.booking.requests` by outcome and `deadlocks = 0`.
 4. Structured booking logs filtered by `AppointmentId` (notification logs carry it too, with `OutboxId`). Book with a non-reserved address and open the Mailpit inbox to inspect both message parts.
+
+### 12.5 Cloudflare signals
+
+The Worker enables invocation logs and traces with full sampling at demo volume and query-string redaction. Its API-unavailable log contains only an event name. Container stdout uses JSON; no recipient, email body or credential is logged by the relay. Container logs use Cloudflare Observability pricing beginning 2026-12-01. The optional browser trace relay is disabled until its Secrets Store credential and Grafana endpoint are configured. API OTLP export, Grafana resources and email outcome instruments remain separate integration work.
 
 ---
 
@@ -1319,7 +1343,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-004** | Booking transaction runs at `READ COMMITTED`, opened explicitly | Per-statement snapshots are required for check-after-lock correctness. Consequence: never raise isolation for this path; a test asserts behaviour. |
 | **ADR-005** | UTC storage; IANA time zone per dealership; half-open intervals; `TimeProvider` injected | Deterministic DST behaviour; testable time rules. |
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |
-| **ADR-007** | Migrations run at API startup only in Development, SystemTest and the compose-only Demo environment; UAT/Production use EF migration bundles generated separately by the release pipeline (`dotnet ef migrations bundle`) | Preserves the prescribed solution layout; production never migrates at boot. |
+| **ADR-007** | Migrations run at API startup only in Development, SystemTest and the compose-only Demo environment; UAT/Production use EF migration bundles generated separately by the release pipeline (`dotnet ef migrations bundle`), which the Cloudflare profile's operator builds and runs directly | Preserves the prescribed solution layout; production never migrates at boot. The Cloudflare operator runs the owner-role bundle before container rollout; the API uses a DML-only role. |
 | **ADR-008** | OpenAPI document generated at build time into `contracts/openapi/v1.json` (committed); HeyAPI generates the client from the file; CI fails on drift; a parity test checks runtime == build-time; the build-time run uses the Development environment and no database | Deterministic contract sync reviewable in PRs; production needs no runtime document generation. |
 | **ADR-009** | Optional `Idempotency-Key` memoises successful bookings only, inside the booking transaction; the UI uses one key per booking intention and retains it for transport retries | One transaction; failures are safe to retry. Unkeyed requests are independent bookings and may allocate spare capacity again; no VIN/body deduplication. |
 | **ADR-010** | Authentication/authorisation deferred with an explicit seam and anonymous-mode logging | Keeps the evaluated engine in focus; production posture documented. |
@@ -1333,6 +1357,9 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-018** | Scalar is the API test UI (`/scalar/v1`), enabled outside Production | Best interactive client among Scalar/Swagger UI/ReDoc for .NET 10; linked from the Aspire dashboard and the dispatch board. |
 | **ADR-019** | Aspire is the whole development platform: generated secret parameters persisted to user secrets, persistent PostgreSQL + pgweb, health-gated startup, automatic `pnpm install`, Aspire service discovery (`API_HTTP`) for the Vite proxy, browser OTLP to the dashboard, a dashboard *Reseed demo data* HTTP command, `Aspire.Hosting.Testing` whole-stack smoke test, and `aspire publish --apphost` to Demo Docker Compose with an initialized database, application-owned forwarded-header trust, and the repository-root API Dockerfile | One command bootstraps all three tiers with correlated telemetry using the CLI bundle. Publication emits artifacts and inputs; `aspire deploy --apphost` builds and deploys. Isolated checks use session resources and bounded startup/cleanup. |
 | **ADR-020** | Transactional outbox for email notifications: persist an immutable appointment snapshot with appointment/history (in-memory staging, no lookup or rendering in the transaction), render at dispatch, dispatch through `IEmailSender` using short SKIP LOCKED claims and expiring leases, suppress reserved domains when staging (re-checked at claim), wake on commit nudges and due times, at-least-once delivery correlated by the `X-Keyloop-Notification-Id` header (SMTP also derives a stable Message-Id) | Rejected send in the request path (SMTP outage must not fail a booking), after-commit observer only (crash window loses committed emails), a message broker (adds infrastructure without removing the atomic DB write requirement), and rendering inside the transaction (a template or time-zone fault would fail the booking, and the lookups would lengthen the advisory-lock critical section). Consequence: email is isolated from requests, several instances share work safely, bounded retries end in manual dead-letter handling; duplicate delivery after ambiguous acceptance is possible; names and zone are the current ones at send time. See §8.9. |
+| **ADR-022** | Cloudflare Worker Static Assets plus one sleeping API Container, with default scheduling, `basic`, WEUR placement and a first-creation Durable Object hint of `weur`; Neon PostgreSQL 17 London via direct TLS | Preserves PostgreSQL exclusion constraints, advisory locks and xmin. The documented Container class supplies concurrent-start and readiness helpers; the Durable Object Container API migration guide is the exit path. A singleton rollout briefly restarts the API. |
+| **ADR-023** | Secrets Store bindings supply the DB credential at container start and optional REST email/browser OTLP credentials inside the Worker | No credential is committed or included in the SPA. Running API requests avoid secret reads; database credential rotation requires restart. |
+| **ADR-024** | The Worker overwrites forwarding headers; only the Cloudflare profile trusts all IPv4/IPv6 networks with a one-hop limit because the Container has no other ingress | The API sees the real client for rate limits and the original HTTPS scheme. This trust configuration must never be copied to an API with direct ingress. |
 
 ---
 

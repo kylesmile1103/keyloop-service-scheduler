@@ -36,3 +36,11 @@ pnpm-debug.log*
 .superpowers/
 # Aspire publish output
 artifacts/
+# Cloudflare local state, generated runtime types, and edge build output
+.cloudflare/
+.wrangler/
+deploy/cloudflare/build/
+.dev.vars
+.dev.vars.*
+.env
+.env.*

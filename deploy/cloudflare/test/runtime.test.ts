@@ -1,0 +1,67 @@
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { build } from "esbuild";
+import { convertV4MiniflareOptions, Miniflare, Response as MiniflareResponse } from "miniflare";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+const directory = new URL("../build/runtime-tests/", import.meta.url);
+let mf: Miniflare;
+
+beforeAll(async () => {
+  await mkdir(new URL("assets/", directory), { recursive: true });
+  await writeFile(new URL("index.html", directory), "<!doctype html><title>SPA runtime fixture</title>");
+  await writeFile(new URL("assets/app-hash.js", directory), "console.log('runtime fixture');");
+  await writeFile(new URL("_headers", directory), await readFile(new URL("../public/_headers", import.meta.url)));
+  const result = await build({ entryPoints: [new URL("./runtime-entry.ts", import.meta.url).pathname],
+    bundle: true, format: "esm", platform: "browser", write: false, external: ["cloudflare:workers"] });
+  mf = new Miniflare(convertV4MiniflareOptions({
+    name: "keyloop-edge-runtime-test", modules: true, script: result.outputFiles[0]!.text,
+    // The machine is still 2026-10-11 UTC. Miniflare refuses a future UTC date.
+    compatibilityDate: "2026-10-11", compatibilityFlags: ["nodejs_compat"],
+    cf: false,
+    unsafeDevRegistryPath: new URL("../build/dev-registry/", import.meta.url).pathname,
+    durableObjects: { API: { className: "FakeApi", useSQLite: true } },
+    assets: {
+      directory: directory.pathname, binding: "ASSETS", run_worker_first: ["/api", "/api/*", "/otlp", "/otlp/*"],
+      routerConfig: { has_user_worker: true },
+      assetConfig: { not_found_handling: "single-page-application" },
+    },
+    // Test runtime cannot open an external service or send telemetry.
+    outboundService: () => new MiniflareResponse("Network forbidden", { status: 503 }),
+  }));
+  await mf.ready;
+}, 30_000);
+
+afterAll(async () => {
+  await mf?.dispose();
+  await rm(directory, { recursive: true, force: true });
+});
+
+describe("Miniflare asset and Worker routing", () => {
+  it.each(["/", "/board/deep/link", "/apix"])("serves SPA fallback for %s", async path => {
+    const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`, { headers: { "sec-fetch-mode": "navigate" } });
+    expect(result.status).toBe(200);
+    expect(result.headers.get("content-type")).toContain("text/html");
+    expect(await result.text()).toContain("SPA runtime fixture");
+    expect(result.headers.get("x-frame-options")).toBe("DENY");
+    expect(result.headers.get("content-security-policy")).toContain("connect-src 'self'");
+  });
+  it.each(["/api", "/api/v1/dealerships", "/api/v1/does-not-exist"])("routes navigation to %s to the DO with JSON and trusted headers", async path => {
+    const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`, {
+      headers: { "sec-fetch-mode": "navigate", "cf-connecting-ip": "203.0.113.9", "x-forwarded-for": "forged", "x-forwarded-proto": "http" },
+    });
+    expect(result.status, await result.clone().text()).toBe(200);
+    expect(result.headers.get("content-type")).toContain("application/json");
+    expect(result.headers.has("content-security-policy")).toBe(false);
+    expect(await result.json()).toEqual({ api: true, path, forwardedFor: "203.0.113.9", forwardedProto: "https" });
+  });
+  it("serves immutable hashed assets through the platform asset pipeline", async () => {
+    const result = await mf.dispatchFetch("https://keyloop.kylesmile.me/assets/app-hash.js");
+    expect(result.status).toBe(200);
+    expect(result.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  });
+  it("does not serve an OTLP navigation as index.html", async () => {
+    const result = await mf.dispatchFetch("https://keyloop.kylesmile.me/otlp/v1/metrics", { headers: { "sec-fetch-mode": "navigate" } });
+    expect(result.status, await result.clone().text()).toBe(404);
+    expect(result.headers.get("content-type")).toContain("application/json");
+  });
+});
