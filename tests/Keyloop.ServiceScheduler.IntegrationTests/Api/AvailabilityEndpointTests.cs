@@ -4,6 +4,7 @@ using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;

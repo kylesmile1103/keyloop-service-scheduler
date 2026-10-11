@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Domain.Catalog;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;

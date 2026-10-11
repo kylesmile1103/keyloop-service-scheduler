@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Resources;

@@ -649,6 +649,8 @@ src/Keyloop.ServiceScheduler.Api/
 │   └── Idempotency/   IdempotencyKey entity + store
 ├── Common/
 │   ├── Endpoints/     IEndpoint + EndpointRegistry (explicit list, no discovery), route group /api/v1
+│   ├── Contracts/     wire records more than one feature family returns (OperatingWindowResponse, ServiceTypeSummary,
+│   │                  ResourceSummary): one schema each in the contract, one type in the generated client
 │   ├── Validation/    ValidationFilter (FluentValidation -> 400 validation-error)
 │   ├── Problems/      ProblemTypes, ProblemDetailsFactory, GlobalExceptionHandler
 │   ├── Telemetry/     SchedulerTelemetry (ActivitySource, Meter, instruments)
