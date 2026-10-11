@@ -62,6 +62,22 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reads_the_day_of_an_already_loaded_dealership_without_reading_it_again()
+    {
+        var (early, late, cancelled) = await SeedDayAsync();
+        var byId = (await ReadAsync(_workshop.Dealership.Id, activeOnly: false)).ShouldNotBeNull();
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var snapshot = await scope.ServiceProvider.GetRequiredService<DayScheduleReader>().ReadAsync(_workshop.Dealership, _window, activeOnly: false, Ct);
+
+        snapshot.Dealership.ShouldBeSameAs(_workshop.Dealership); // the caller's instance, not a second read
+        snapshot.Bays.Select(b => b.Id).ShouldBe(byId.Bays.Select(b => b.Id));
+        snapshot.Technicians.Select(t => t.Id).ShouldBe(byId.Technicians.Select(t => t.Id));
+        snapshot.Appointments.ShouldBe(byId.Appointments);
+        snapshot.Appointments.Select(a => a.Id).ShouldBe([early.Id, cancelled.Id, late.Id]);
+    }
+
+    [Fact]
     public async Task Unknown_dealership_reads_as_null()
     {
         (await ReadAsync(Guid.NewGuid(), activeOnly: true)).ShouldBeNull();

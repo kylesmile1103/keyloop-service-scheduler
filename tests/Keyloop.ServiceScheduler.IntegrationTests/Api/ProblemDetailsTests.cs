@@ -138,8 +138,8 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
         var problem = await ProblemAsync("unavailable", HttpStatusCode.Conflict, "slot-unavailable");
 
         problem.GetProperty("suggestedSlots").GetRawText().ShouldBe(
-            """[{"startUtc":"2026-10-13T09:00:00Z","endUtc":"2026-10-13T10:00:00Z","startLocal":"2026-10-13T10:00:00+01:00"},""" +
-            """{"startUtc":"2026-10-13T10:00:00Z","endUtc":"2026-10-13T11:00:00Z","startLocal":"2026-10-13T11:00:00+01:00"}]""");
+            """[{"startUtc":"2026-10-13T09:00:00Z","endUtc":"2026-10-13T10:00:00Z","startLocal":"2026-10-13T10:00+01:00"},""" +
+            """{"startUtc":"2026-10-13T10:00:00Z","endUtc":"2026-10-13T11:00:00Z","startLocal":"2026-10-13T11:00+01:00"}]""");
     }
 
     [Fact]

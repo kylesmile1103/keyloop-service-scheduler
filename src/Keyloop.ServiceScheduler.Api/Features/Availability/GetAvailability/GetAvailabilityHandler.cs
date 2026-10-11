@@ -55,7 +55,7 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
 
         // The day-schedule read returns every resource, active or not: only active ones that qualify are capacity, exactly the
         // ones booking would accept (Appointment.Book re-asserts the same rules).
-        var day = await reader.ReadAsync(dealershipId, window, activeOnly: true, ct) ?? throw new NotFoundException(ProblemResources.Dealership, dealershipId);
+        var day = await reader.ReadAsync(dealership, window, activeOnly: true, ct);
         var bays = day.Bays.Where(b => b.IsActive && b.Supports(serviceType)).ToList();
         var technicians = day.Technicians.Where(t => t.IsActive && t.IsCertifiedFor(serviceType)).ToList();
         if (bays.Count == 0 || technicians.Count == 0)

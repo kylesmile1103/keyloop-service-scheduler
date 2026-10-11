@@ -73,7 +73,8 @@ builder.Services.PostConfigure<JsonOptions>(o =>
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
-// Binding failures throw in every environment (not only Development), so GlobalExceptionHandler answers all of them the same way.
+// Binding failures the framework rejects throw in every environment (not only Development), so GlobalExceptionHandler answers them
+// the same way. (A nullable parameter that fails to parse on a filtered endpoint binds as null and reaches the validator instead.)
 builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
 
 builder.Services.AddSchedulerOpenApi();

@@ -18,7 +18,7 @@ public class LocalTimeConverterTests
 
         utc.ShouldBe(new DateTime(2026, 3, 29, 1, 0, 0, DateTimeKind.Utc));
         utc.Kind.ShouldBe(DateTimeKind.Utc);
-        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-03-29T02:00");
+        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-03-29T02:00+01:00");
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class LocalTimeConverterTests
 
         utc.ShouldBe(new DateTime(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc));
         utc.Kind.ShouldBe(DateTimeKind.Utc);
-        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-10-25T01:30");
+        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-10-25T01:30+01:00");
     }
 
     [Fact]
@@ -46,8 +46,33 @@ public class LocalTimeConverterTests
         utc.ShouldBe(new DateTime(2026, 10, 13, 8, 15, 0, DateTimeKind.Utc));
         utc.Kind.ShouldBe(DateTimeKind.Utc);
         LocalTimeConverter.ToLocalDate(utc, London).ShouldBe(date);
-        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-10-13T09:15");
+        LocalTimeConverter.FormatLocal(utc, London).ShouldBe("2026-10-13T09:15+01:00");
         LocalTimeConverter.ToUtc(date, time, Berlin).ShouldBe(new DateTime(2026, 10, 13, 7, 15, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void FormatLocal_tells_the_two_occurrences_of_a_repeated_wall_clock_time_apart()
+    {
+        // 2026-10-25 in Europe/London: 01:30 happens at 00:30Z (BST, +01:00) and again at 01:30Z (GMT, +00:00). The offset is the
+        // only part of the string that differs, which is why every *Local value in the API carries it.
+        var first = LocalTimeConverter.FormatLocal(new DateTime(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc), London);
+        var second = LocalTimeConverter.FormatLocal(new DateTime(2026, 10, 25, 1, 30, 0, DateTimeKind.Utc), London);
+
+        first.ShouldBe("2026-10-25T01:30+01:00");
+        second.ShouldBe("2026-10-25T01:30+00:00");
+        first.ShouldNotBe(second);
+        DateTimeOffset.Parse(first, System.Globalization.CultureInfo.InvariantCulture).UtcDateTime.ShouldBe(new DateTime(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc));
+        DateTimeOffset.Parse(second, System.Globalization.CultureInfo.InvariantCulture).UtcDateTime.ShouldBe(new DateTime(2026, 10, 25, 1, 30, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public void FormatLocal_uses_the_zone_offset_not_the_machine_offset()
+    {
+        var utc = new DateTime(2026, 10, 13, 5, 30, 0, DateTimeKind.Utc);
+
+        LocalTimeConverter.FormatLocal(utc, Berlin).ShouldBe("2026-10-13T07:30+02:00");
+        LocalTimeConverter.FormatLocal(utc, TimeZoneInfo.Utc).ShouldBe("2026-10-13T05:30+00:00");
+        LocalTimeConverter.FormatLocal(utc, TimeZoneInfo.FindSystemTimeZoneById("America/New_York")).ShouldBe("2026-10-13T01:30-04:00");
     }
 
     [Fact]

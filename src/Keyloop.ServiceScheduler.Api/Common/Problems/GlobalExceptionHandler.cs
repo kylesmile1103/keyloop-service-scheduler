@@ -64,9 +64,12 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         DbUpdateConcurrencyException => Problem(
             StatusCodes.Status409Conflict, ProblemTypes.ConcurrencyConflict, "The resource was changed by another request after it was read. Reload it and retry."),
 
-        // Binding failures (missing or malformed parameters, unreadable JSON). RouteHandlerOptions.ThrowOnBadRequest is on in every
-        // environment so they all arrive here; the framework's message names C# types, so the detail is generic.
-        // validation-error always carries `errors` (§8.7); a binding failure names no field, so it is empty.
+        // Binding failures (a missing or malformed parameter, unreadable JSON) that the framework rejects itself:
+        // RouteHandlerOptions.ThrowOnBadRequest is on in every environment, so those arrive here rather than as a bare 400. Not every
+        // malformed value does: on an endpoint with a filter, a nullable parameter that fails to parse binds as null and the request
+        // continues to the filters, so ValidationFilter answers it with a field-keyed validation-error instead (e.g. availability's
+        // serviceTypeId=not-a-guid). The framework's message names C# types, so the detail here is generic. validation-error always
+        // carries `errors` (§8.7); a binding failure names no field, so it is empty.
         BadHttpRequestException { StatusCode: StatusCodes.Status400BadRequest } => Problem(
             new HttpValidationProblemDetails(), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError,
             "The request could not be read: a parameter is missing or malformed, or the body is not valid JSON."),

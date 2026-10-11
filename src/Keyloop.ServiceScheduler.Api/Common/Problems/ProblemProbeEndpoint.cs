@@ -21,6 +21,8 @@ internal sealed class ProblemProbeEndpoint : IEndpoint
 {
     private static readonly DateTime Nine = new(2026, 10, 13, 9, 0, 0, DateTimeKind.Utc);
 
+    private static readonly TimeZoneInfo London = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
+
     public static void Map(IEndpointRouteBuilder app) => app.MapGet("/__throw", Throw).ExcludeFromDescription();
 
     internal static Results<NoContent, Ok<string>> Throw(string kind, [FromServices] CurrentActor actor) => kind switch
@@ -52,6 +54,5 @@ internal sealed class ProblemProbeEndpoint : IEndpoint
         _ => throw new InvalidOperationException("Simulated failure: Host=db;Password=do-not-leak"),
     };
 
-    private static SuggestedSlot Suggestion(DateTime startUtc) =>
-        new(startUtc, startUtc.AddHours(1), startUtc.AddHours(1).ToString("yyyy-MM-dd'T'HH:mm:ss'+01:00'", System.Globalization.CultureInfo.InvariantCulture));
+    private static SuggestedSlot Suggestion(DateTime startUtc) => new(startUtc, startUtc.AddHours(1), LocalTimeConverter.FormatLocal(startUtc, London));
 }

@@ -58,13 +58,13 @@ public class SchedulerJsonContextTests
     [Fact]
     public void Api_extension_value_types_are_registered()
     {
-        var slot = new SuggestedSlot(new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 9, 0, 0, DateTimeKind.Utc), "2026-10-13T09:00:00+01:00");
+        var slot = new SuggestedSlot(new DateTime(2026, 10, 13, 8, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 9, 0, 0, DateTimeKind.Utc), "2026-10-13T09:00+01:00");
 
         using (var suggestions = JsonDocument.Parse(Json(new[] { slot })))
         {
             var only = suggestions.RootElement.EnumerateArray().ShouldHaveSingleItem();
             only.EnumerateObject().Select(p => p.Name).ShouldBe(["startUtc", "endUtc", "startLocal"]);
-            only.GetProperty("startLocal").GetString().ShouldBe("2026-10-13T09:00:00+01:00"); // the HTTP encoder leaves '+' unescaped
+            only.GetProperty("startLocal").GetString().ShouldBe("2026-10-13T09:00+01:00"); // the HTTP encoder leaves '+' unescaped
         }
 
         foreach (var type in new[]

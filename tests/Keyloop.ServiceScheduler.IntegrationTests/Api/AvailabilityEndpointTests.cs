@@ -116,6 +116,46 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task Availability_reports_no_qualified_resources_when_no_technician_is_certified()
+    {
+        // The technician-side half: an active EV bay qualifies, but the only technician lacks the high-voltage certification (and
+        // a certified colleague is inactive), so the service can never be booked here either.
+        var dealership = TestData.NewDealership("Uncertified Motors");
+        var ev = TestData.NewServiceType("EV-BATTERY-CHECK", 60, [BayCapability.EvHighVoltage], [Certification.HighVoltageElectrical]);
+        await SaveAsync(
+            dealership,
+            TestData.NewBay(dealership.Id, "EV Bay", BayCapability.EvHighVoltage, BayCapability.StandardLift),
+            TestData.NewTechnician(dealership.Id, "Amelia Clarke", "T-1001", Certification.GeneralService),
+            Technician.Create(Guid.NewGuid(), dealership.Id, "Ben Okafor", "T-1002", [Certification.HighVoltageElectrical], isActive: false),
+            ev);
+
+        var (availability, _) = await GetAvailabilityAsync(dealership.Id, ev.Id, TestData.BookingDay);
+
+        availability.UnavailableReason.ShouldBe("no-qualified-resources");
+        availability.Slots.ShouldBeEmpty();
+        availability.OperatingWindow.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task Availability_for_a_service_longer_than_the_opening_hours_is_empty_without_a_reason()
+    {
+        // Open 08:00–10:00 on the booking day; a three-hour service fits no start, yet the day is open and the resources qualify.
+        var dealership = TestData.NewDealership("Short Day Motors", hours: OperatingHours.MondayToFriday(new TimeOnly(8, 0), new TimeOnly(10, 0)));
+        var major = TestData.NewServiceType("MAJOR-SERVICE", 180, [BayCapability.StandardLift], [Certification.GeneralService]);
+        await SaveAsync(
+            dealership,
+            TestData.NewBay(dealership.Id, "Bay 1", BayCapability.StandardLift),
+            TestData.NewTechnician(dealership.Id, "Amelia Clarke", "T-1001", Certification.GeneralService),
+            major);
+
+        var (availability, _) = await GetAvailabilityAsync(dealership.Id, major.Id, TestData.BookingDay);
+
+        availability.OperatingWindow.ShouldNotBeNull();
+        availability.Slots.ShouldBeEmpty();
+        availability.UnavailableReason.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Availability_ignores_inactive_and_unqualified_resources()
     {
         // One active qualified bay and technician; an inactive copy of each, and an active MOT-only pair, must add no capacity.
@@ -169,14 +209,14 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
 
         availability.TimeZoneId.ShouldBe("Europe/Berlin");
         availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(
-            new DateTime(2026, 10, 13, 5, 30, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 16, 30, 0, DateTimeKind.Utc), "2026-10-13T07:30", "2026-10-13T18:30"));
-        availability.Slots[0].StartLocal.ShouldBe("2026-10-13T07:30"); // 05:30Z in CEST (UTC+2)
-        availability.Slots[^1].StartLocal.ShouldBe("2026-10-13T17:30");
+            new DateTime(2026, 10, 13, 5, 30, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 16, 30, 0, DateTimeKind.Utc), "2026-10-13T07:30+02:00", "2026-10-13T18:30+02:00"));
+        availability.Slots[0].StartLocal.ShouldBe("2026-10-13T07:30+02:00"); // 05:30Z in CEST (UTC+2)
+        availability.Slots[^1].StartLocal.ShouldBe("2026-10-13T17:30+02:00");
 
-        // The wire format of one slot: instants in UTC with Z, the local start without an offset.
+        // The wire format of one slot: instants in UTC with Z, the local start as ISO-8601 with the zone's offset that day.
         using var body = JsonDocument.Parse(json);
         body.RootElement.GetProperty("slots")[0].GetRawText().ShouldBe(
-            """{"startUtc":"2026-10-13T05:30:00Z","endUtc":"2026-10-13T06:30:00Z","startLocal":"2026-10-13T07:30","freeBays":1,"freeTechnicians":1}""");
+            """{"startUtc":"2026-10-13T05:30:00Z","endUtc":"2026-10-13T06:30:00Z","startLocal":"2026-10-13T07:30+02:00","freeBays":1,"freeTechnicians":1}""");
     }
 
     [Fact]
@@ -199,14 +239,16 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         var (availability, _) = await GetAvailabilityAsync(dealership.Id, interim.Id, sunday);
 
         var opens = new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc);
-        availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(opens, opens.AddHours(4), "2026-10-25T01:00", "2026-10-25T04:00"));
+        availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(opens, opens.AddHours(4), "2026-10-25T01:00+01:00", "2026-10-25T04:00+00:00"));
         var starts = availability.Slots.Select(s => s.StartUtc).ToList();
         starts.ShouldBe([.. Enumerable.Range(0, 13).Select(k => opens + (k * Grid))]); // 00:00Z to 03:00Z: none duplicated, none skipped
         starts.ShouldBeUnique();
         starts.ShouldAllBe(s => (s - opens).Ticks % Grid.Ticks == 0);
 
-        // StartLocal carries no offset, so the repeated hour shows twice; startUtc is the identity of a slot.
-        availability.Slots.Where(s => s.StartLocal == "2026-10-25T01:00").Select(s => s.StartUtc).ShouldBe([opens, opens.AddHours(1)]);
+        // The repeated hour shows the same wall-clock time twice; the offset tells the two apart (startUtc stays the identity of a slot).
+        availability.Slots.Where(s => s.StartLocal.StartsWith("2026-10-25T01:00", StringComparison.Ordinal)).Select(s => (s.StartUtc, s.StartLocal))
+            .ShouldBe([(opens, "2026-10-25T01:00+01:00"), (opens.AddHours(1), "2026-10-25T01:00+00:00")]);
+        availability.Slots.Select(s => s.StartLocal).ShouldBeUnique();
     }
 
     [Fact]
@@ -229,7 +271,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         var (availability, _) = await GetAvailabilityAsync(dealership.Id, interim.Id, new DateOnly(2027, 3, 28));
 
         var instant = new DateTime(2027, 3, 28, 1, 0, 0, DateTimeKind.Utc);
-        availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(instant, instant, "2027-03-28T02:00", "2027-03-28T02:00"));
+        availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(instant, instant, "2027-03-28T02:00+01:00", "2027-03-28T02:00+01:00"));
         availability.Slots.ShouldBeEmpty();
         availability.UnavailableReason.ShouldBeNull();
     }

@@ -27,8 +27,9 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     /// Start times on the slot grid, counted from opening, at which one active bay with every capability the service requires and one
     /// active technician with every certification it requires are both free for the whole duration, with how many of each are free.
     /// A closed day has no slots and <c>unavailableReason</c> <c>closed</c>; a service the dealership can never perform has
-    /// <c>no-qualified-resources</c>. Opening hours that fall entirely in a daylight-saving gap give a zero-length window: no slots
-    /// and no reason. The answer is a snapshot; booking checks again.
+    /// <c>no-qualified-resources</c>. A service longer than that day's opening hours, and opening hours that fall entirely in a
+    /// daylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset
+    /// (<c>2026-10-13T10:00+01:00</c>). The answer is a snapshot; booking checks again.
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose bays, technicians and opening hours are used (the example is the seeded Reading dealership).</param>

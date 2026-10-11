@@ -29,11 +29,17 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
     public async Task<DaySnapshot?> ReadAsync(Guid dealershipId, OperatingWindow window, bool activeOnly, CancellationToken ct)
     {
         var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == dealershipId, ct);
-        if (dealership is null)
-        {
-            return null;
-        }
+        return dealership is null ? null : await ReadAsync(dealership, window, activeOnly, ct);
+    }
 
+    /// <summary>
+    /// The day of a dealership the caller has already loaded (it resolved the operating window from it), without reading it
+    /// again; <see cref="DaySnapshot.Dealership"/> is that instance. Otherwise as <see cref="ReadAsync(Guid, OperatingWindow, bool, CancellationToken)"/>.
+    /// </summary>
+    public async Task<DaySnapshot> ReadAsync(Dealership dealership, OperatingWindow window, bool activeOnly, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(dealership);
+        var dealershipId = dealership.Id;
         var bays = await db.ServiceBays.AsNoTracking()
             .Where(b => b.DealershipId == dealershipId)
             .OrderBy(b => b.Name).ThenBy(b => b.Id)

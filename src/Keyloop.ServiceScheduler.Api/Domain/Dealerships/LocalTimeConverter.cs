@@ -6,6 +6,9 @@ namespace Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 /// <summary>Converts dealership wall-clock times to UTC instants and back (SYSTEM_DESIGN §6.4).</summary>
 public static class LocalTimeConverter
 {
+    /// <summary>The format of <see cref="FormatLocal"/>: local date and time to the minute, then the offset (<c>+01:00</c>, <c>+00:00</c>, <c>-04:00</c>).</summary>
+    public const string LocalFormat = "yyyy-MM-dd'T'HH:mmzzz";
+
     private const int MaxGapMinutes = 180;
 
     /// <summary>
@@ -41,6 +44,18 @@ public static class LocalTimeConverter
     public static DateOnly ToLocalDate(DateTime utc, TimeZoneInfo zone) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(Guard.Utc(utc, nameof(utc)), zone));
 
-    public static string FormatLocal(DateTime utc, TimeZoneInfo zone) =>
-        TimeZoneInfo.ConvertTimeFromUtc(Guard.Utc(utc, nameof(utc)), zone).ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// The instant as ISO-8601 local time in <paramref name="zone"/>, to the minute, with the zone's UTC offset at that instant
+    /// (<see cref="LocalFormat"/>, e.g. <c>2026-10-13T07:30+02:00</c>). Every <c>…Local</c> string in the API uses it: the offset keeps
+    /// the repeated hour of an autumn change unambiguous (Europe/London on 2026-10-25: 00:30Z is <c>01:30+01:00</c>, 01:30Z is
+    /// <c>01:30+00:00</c>), and the string parses back to the same instant.
+    /// </summary>
+    public static string FormatLocal(DateTime utc, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+
+        // A DateTimeOffset, not a DateTime: "zzz" on a DateTime formats the machine's offset, not the zone's.
+        var local = TimeZoneInfo.ConvertTime(new DateTimeOffset(Guard.Utc(utc, nameof(utc))), zone);
+        return local.ToString(LocalFormat, CultureInfo.InvariantCulture);
+    }
 }
