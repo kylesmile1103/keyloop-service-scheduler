@@ -88,6 +88,21 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
                 new Dictionary<string, object?> { ["earliestStartUtc"] = earliestStartUtc });
         }
 
+        EnsureWithinHorizon(startUtc, nowUtc);
+    }
+
+    /// <summary>
+    /// Bounds the requested instant before slot arithmetic or time-zone conversion. Does not check lead time: operating-hours
+    /// refusals still precede lead-time/grid refusals for ordinary starts inside the horizon.
+    /// </summary>
+    public void EnsureWithinHorizon(DateTime startUtc)
+    {
+        Guard.Utc(startUtc, nameof(startUtc));
+        EnsureWithinHorizon(startUtc, _clock.GetUtcNow().UtcDateTime);
+    }
+
+    private void EnsureWithinHorizon(DateTime startUtc, DateTime nowUtc)
+    {
         var latestStartUtc = nowUtc + _bookingHorizon;
         if (startUtc > latestStartUtc)
         {

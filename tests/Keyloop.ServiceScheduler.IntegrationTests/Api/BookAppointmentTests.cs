@@ -200,6 +200,36 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         problem.GetProperty("latestStartUtc").GetString().ShouldBe("2027-01-10T08:00:00Z");
     }
 
+    [Theory]
+    [InlineData("9999-12-31T23:30:00Z", 60)]
+    [InlineData("9999-12-31T23:59:00Z", 60)]
+    [InlineData("9999-12-31T20:00:00Z", 480)]
+    public async Task Beyond_horizon_start_near_DateTime_MaxValue_returns_422(string start, int durationMinutes)
+    {
+        var service = TestData.NewServiceType("MAX-DATE-SERVICE", durationMinutes, [BayCapability.StandardLift], [Certification.GeneralService]);
+        await SaveAsync(service);
+
+        using var response = await PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(service.Id, Utc(start)));
+
+        var problem = await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, "beyond-booking-horizon", Ct);
+        problem.GetProperty("latestStartUtc").GetString().ShouldBe("2027-01-10T08:00:00Z");
+        await ShouldHaveNoAppointmentsAsync();
+    }
+
+    [Theory]
+    [InlineData("2026-10-11T10:00:00Z", "outside-operating-hours")] // past and closed: hours retain precedence over lead time
+    [InlineData("2026-10-12T08:10:00Z", "lead-time-not-met")] // inside hours, inside lead time, off grid
+    [InlineData("0001-01-01T10:00:00Z", "lead-time-not-met")] // earliest supported calendar date, no underflow/500
+    public async Task Normal_rule_order_is_preserved_after_the_early_horizon_guard(string start, string problemType)
+    {
+        await using var factory = _factory.WithWebHostBuilder(builder => builder.UseSetting("Scheduling:MinimumLeadTime", "01:00:00"));
+        using var client = factory.CreateClient();
+
+        using var response = await PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Utc(start)), client: client);
+
+        await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, problemType, Ct);
+    }
+
     [Fact]
     public async Task Rejects_off_grid_start_422()
     {

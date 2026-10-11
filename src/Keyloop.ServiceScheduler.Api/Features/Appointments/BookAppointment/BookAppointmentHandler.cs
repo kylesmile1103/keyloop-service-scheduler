@@ -91,7 +91,7 @@ public sealed class BookAppointmentHandler(
                 return replay;
             }
 
-            // 2. The rules that need no lock: unknown ids (404), opening hours, lead time and horizon, slot grid, qualified resources (422).
+            // 2. The rules that need no lock: unknown ids (404), the horizon bound, opening hours, lead time, slot grid, qualified resources (422).
             var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == command.DealershipId, ct)
                 ?? throw new NotFoundException(ProblemResources.Dealership, command.DealershipId);
             var serviceType = await db.ServiceTypes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == request.ServiceTypeId, ct)
@@ -99,6 +99,9 @@ public sealed class BookAppointmentHandler(
             serviceCode = serviceType.Code;
             activity?.SetTag("service_type.code", serviceCode);
 
+            // A shape-valid UTC start can be near DateTime.MaxValue: reject it before adding duration or converting time zones.
+            // Keep replay first, and hours before lead-time/alignment for starts inside the horizon.
+            windowPolicy.EnsureWithinHorizon(request.StartUtc);
             var slot = TimeSlot.FromStart(request.StartUtc, serviceType.Duration);
             var window = BookingWindowPolicy.OperatingWindowFor(dealership, slot);
             windowPolicy.EnsureBookable(slot.StartUtc);

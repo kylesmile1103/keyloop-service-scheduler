@@ -398,7 +398,7 @@ This is a greedy heuristic, not an optimiser; it is cheap, explainable to a work
 | Dealership closed on that weekday | `422 outside-operating-hours` (detail says "closed on Sundays"). |
 | Start not aligned to granularity | `422 slot-not-aligned` (the UI only offers aligned slots; the API still validates). |
 | Start in the past / inside lead time | `422 lead-time-not-met`. |
-| Start beyond horizon | `422 beyond-booking-horizon`. |
+| Start beyond horizon (including instants near `DateTime.MaxValue` whose end cannot be represented) | `422 beyond-booking-horizon`, checked after idempotent replay and unknown-id lookups but before range arithmetic or time-zone conversion. Within the horizon, hours still precede lead-time and grid refusals. |
 | Service requires a capability no bay at the dealership has | `422 no-qualified-resources` (and the catalogue marks it not bookable). |
 | All qualified resources busy at that time | `409 slot-unavailable` + `suggestedSlots`. |
 | Race lost after pre-check (only possible for writers bypassing the lock) | `409 slot-conflict` (constraint backstop) + `suggestedSlots`. |

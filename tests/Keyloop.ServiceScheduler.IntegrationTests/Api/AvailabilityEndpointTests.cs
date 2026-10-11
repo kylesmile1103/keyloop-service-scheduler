@@ -333,6 +333,16 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task Availability_near_DateTime_MaxValue_is_rejected_before_range_arithmetic()
+    {
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+
+        using var response = await _client.GetAsync($"/api/v1/dealerships/{workshop.Dealership.Id}/availability?serviceTypeId={workshop.Interim.Id}&date=9999-12-31", Ct);
+
+        await response.ShouldBeValidationErrorAsync(["date"], Ct); // the availability contract bounds dates at validation (400)
+    }
+
+    [Fact]
     public async Task Availability_unknown_dealership_404()
     {
         var unknown = Guid.Parse("0199d2a4-0000-7000-8000-00000000dead");
