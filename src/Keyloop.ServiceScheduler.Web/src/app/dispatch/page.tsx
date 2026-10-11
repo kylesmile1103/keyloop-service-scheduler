@@ -66,7 +66,7 @@ export default function DispatchPage() {
         ) : (
           <>
             <DispatchToolbar dealershipSelect={dealershipSelect} />
-            {dealerships.data ? (
+            {dealerships.data?.length === 0 ? (
               <Card className="py-0">
                 <IllustratedState
                   illustration="empty-schedule"
@@ -82,14 +82,14 @@ export default function DispatchPage() {
                   <p>There are no dealerships to schedule. Once one is set up, it appears here.</p>
                 </IllustratedState>
               </Card>
-            ) : dealerships.isError ? (
+            ) : !dealerships.data && dealerships.isError ? (
               <Card className="py-0">
                 <FailedState title="Couldn’t load dealerships" error={dealerships.error} onRetry={retry} retrying={dealerships.isFetching} />
               </Card>
             ) : (
               <>
                 <p role="status" className="sr-only">
-                  Loading dealerships…
+                  {dealerships.data ? "Finding a dealership with work today…" : "Loading dealerships…"}
                 </p>
                 <BoardPlaceholder loading />
               </>

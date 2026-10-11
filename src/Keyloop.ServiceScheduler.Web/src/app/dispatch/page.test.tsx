@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { getDealershipsQueryKey } from "@/api/@tanstack/react-query.gen"
-import { mockBoardApi } from "@/test/board-api"
+import { defaultSchedule, mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard, search } from "@/test/render-board"
@@ -70,6 +70,30 @@ describe("dispatch board: dealership", () => {
     expect(await dealershipSelect()).toHaveTextContent(reading.name)
     await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id }))
     expect(router.state.historyAction).toBe("REPLACE")
+  })
+
+  it("opens on the first dealership with appointments today when the address names none, not on an empty one", async () => {
+    // The API lists dealerships by name, so München comes first; it has no demo appointments.
+    mockBoardApi({ dealerships: () => [munich, reading] })
+    const { router } = renderBoard()
+
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+    await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id }))
+    expect(router.state.historyAction).toBe("REPLACE")
+  })
+
+  it("falls back to the first dealership open today, then to the first one, when nobody has appointments", async () => {
+    // Saturday 2026-10-17: München is closed, Reading opens until 13:00; neither has appointments.
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"))
+    const empty = (schedule: ReturnType<typeof defaultSchedule>) => ({ ...schedule, bays: schedule.bays.map((bay) => ({ ...bay, appointments: [] })) })
+    mockBoardApi({
+      dealerships: () => [munich, reading],
+      schedule: (dealershipId, date) =>
+        dealershipId === munich.id ? { ...empty(defaultSchedule(dealershipId, date)), operatingWindow: null } : empty(defaultSchedule(dealershipId, date)),
+    })
+    renderBoard()
+
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
   })
 
   it("opens the dealership the address names", async () => {

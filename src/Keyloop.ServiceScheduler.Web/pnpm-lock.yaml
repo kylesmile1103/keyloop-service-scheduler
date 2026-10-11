@@ -220,9 +220,6 @@ importers:
       cn:
         specifier: ^0.4.0
         version: 0.4.0
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
       lucide-react:
         specifier: ^1.52.0
         version: 1.55.0(@types/react@19.3.0)(react@19.3.0)
