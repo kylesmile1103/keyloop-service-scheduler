@@ -166,15 +166,53 @@ public sealed class RequestCorrelationTests(PostgresFixture pg) : IAsyncLifetime
         {
             recorded.ShouldNotContain(pii);
         }
-        using var outsideBusinessWork = await client.GetAsync("/api/v1/__throw?kind=unexpected", Ct);
+        // Cross-request isolation, not disposal: log scopes live in an AsyncLocal, so a later request never sees an earlier request's
+        // scopes even if they were left open. Disposal within one request is Booking_refusal_is_logged_after_the_appointment_scope_is_disposed.
+        using var laterRequest = await client.GetAsync("/api/v1/__throw?kind=unexpected", Ct);
         var error = logs.Entries.Where(e => e.EventId.Id == 1200).ShouldHaveSingleItem();
-        error.Scopes.Select(p => p.Key).ShouldNotContain("DealershipId", "the business scope must be disposed after the request");
+        error.Scopes.Select(p => p.Key).ShouldNotContain("DealershipId", "a later request does not inherit an earlier request's business scopes");
         error.Scopes.Select(p => p.Key).ShouldNotContain("AppointmentId");
         error.Scopes.Select(p => p.Key).ShouldNotContain("IdempotencyKey");
-        outsideBusinessWork.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
-        var errorRequestId = outsideBusinessWork.Headers.GetValues("X-Request-Id").ShouldHaveSingleItem();
+        laterRequest.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        var errorRequestId = laterRequest.Headers.GetValues("X-Request-Id").ShouldHaveSingleItem();
         Guid.TryParseExact(errorRequestId, "D", out _).ShouldBeTrue();
         AssertScope(error, "RequestId", errorRequestId);
+        error.Scopes.Where(p => p.Key == "RequestId").Select(p => p.Value).ShouldNotContain(requestId);
+        error.Scopes.Where(p => p.Key == "RequestId").Select(p => p.Value).ShouldNotContain(cancelRequestId);
+    }
+
+    [Fact]
+    public async Task Booking_refusal_is_logged_after_the_appointment_scope_is_disposed()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command", "Information")
+            .ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+        using var client = factory.CreateClient();
+        var request = TestData.BookingRequest(_workshop.Interim.Id, Ten);
+        for (var capacity = 0; capacity < 2; capacity++) // the workshop's two bays and two technicians
+        {
+            using var booked = await client.PostJsonAsync(BookingUrl, request, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
+            booked.StatusCode.ShouldBe(HttpStatusCode.Created);
+        }
+
+        var requestId = Guid.NewGuid().ToString();
+        const string key = "refused-booking-intention";
+        using var refused = await client.PostJsonAsync(BookingUrl, request, SchedulerJsonContext.Default.BookAppointmentRequest,
+            new Dictionary<string, string> { ["X-Request-Id"] = requestId, ["Idempotency-Key"] = key }, Ct);
+        await refused.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
+
+        // One request flow. Its transaction (lock, check, suggestions, rollback) ran inside the scope of the once-minted appointment id ...
+        var flow = logs.Entries.Where(e => e.Scopes.Any(p => p.Key == "RequestId" && Equals(p.Value, requestId))).ToList();
+        flow.Where(e => e.Category == "Microsoft.EntityFrameworkCore.Database.Command" && e.Message.Contains("pg_advisory_xact_lock", StringComparison.Ordinal))
+            .ShouldHaveSingleItem().Scopes.Where(p => p.Key == "AppointmentId").ShouldHaveSingleItem().Value.ShouldBeOfType<Guid>();
+
+        // ... and the same handler call logs the refusal (1002) in its finally block, after that scope's block has ended: the request and
+        // booking scopes are still open, the appointment scope is not. Leaving the appointment scope undisposed fails this assertion.
+        var rejected = flow.Where(e => e.EventId.Id == 1002).ShouldHaveSingleItem();
+        AssertScope(rejected, "DealershipId", _workshop.Dealership.Id);
+        AssertScope(rejected, "IdempotencyKey", key);
+        rejected.Scopes.Select(p => p.Key).ShouldNotContain("AppointmentId", "the appointment scope is disposed when the transaction block ends");
     }
 
     [Fact]
