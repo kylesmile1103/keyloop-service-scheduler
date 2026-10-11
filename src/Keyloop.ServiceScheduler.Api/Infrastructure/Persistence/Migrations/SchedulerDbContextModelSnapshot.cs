@@ -452,6 +452,8 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                                     b2.ToTable("dealership_operating_hours", null, t =>
                                         {
                                             t.HasCheckConstraint("ck_dealership_operating_hours_open_before_close", "(opens_at IS NULL AND closes_at IS NULL) OR (opens_at IS NOT NULL AND closes_at IS NOT NULL AND closes_at > opens_at)");
+
+                                            t.HasCheckConstraint("ck_dealership_operating_hours_whole_minutes", "EXTRACT(SECOND FROM opens_at) = 0 AND EXTRACT(SECOND FROM closes_at) = 0");
                                         });
 
                                     b2.WithOwner()

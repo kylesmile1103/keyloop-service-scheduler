@@ -2,6 +2,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using NpgsqlTypes;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
@@ -114,6 +115,28 @@ public sealed class MigrationTests(PostgresFixture pg) : IAsyncLifetime
                 SELECT indexdef AS "Value" FROM pg_indexes WHERE indexname = 'ix_appointments_dealership_id_start_utc'
                 """).SingleAsync(Ct);
             dayIndex.ShouldEndWith("USING btree (dealership_id, start_utc)");
+        });
+    }
+
+    [Theory]
+    [InlineData(true, 300000000L)]
+    [InlineData(false, 300000000L)]
+    [InlineData(true, 10L)] // one microsecond, PostgreSQL's storage precision
+    [InlineData(false, 10L)]
+    public async Task Database_rejects_subminute_operating_hours(bool opening, long extraTicks)
+    {
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+        var opens = new TimeOnly(8, 0).Add(TimeSpan.FromTicks(opening ? extraTicks : 0));
+        var closes = new TimeOnly(18, 0).Add(TimeSpan.FromTicks(opening ? 0 : extraTicks));
+
+        await _factory.WithDbAsync(async db =>
+        {
+            var ex = await Should.ThrowAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
+                UPDATE dealership_operating_hours SET opens_at = {opens}, closes_at = {closes}
+                WHERE dealership_id = {workshop.Dealership.Id} AND day_of_week = {(short)DayOfWeek.Tuesday}
+                """, Ct));
+            ex.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
+            ex.ConstraintName.ShouldBe("ck_dealership_operating_hours_whole_minutes");
         });
     }
 

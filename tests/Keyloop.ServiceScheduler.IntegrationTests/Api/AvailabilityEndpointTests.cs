@@ -98,6 +98,27 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     }
 
     [Fact]
+    public async Task Whole_minute_operating_hours_offer_a_start_that_can_be_booked()
+    {
+        var hours = OperatingHours.MondayToFriday(new TimeOnly(8, 7), new TimeOnly(18, 11));
+        var dealership = TestData.NewDealership("Minute Motors", hours: hours);
+        var service = TestData.NewServiceType("MINUTE-SERVICE", 60, [BayCapability.StandardLift], [Certification.GeneralService]);
+        await SaveAsync(dealership, service,
+            TestData.NewBay(dealership.Id, "Bay 1", BayCapability.StandardLift),
+            TestData.NewTechnician(dealership.Id, "Technician", "M-1", Certification.GeneralService));
+
+        var (availability, _) = await GetAvailabilityAsync(dealership.Id, service.Id, TestData.BookingDay);
+        var offered = availability.Slots.First();
+        (offered.StartUtc.Ticks % TimeSpan.TicksPerMinute).ShouldBe(0);
+        DateTimeOffset.Parse(offered.StartLocal, CultureInfo.InvariantCulture).UtcDateTime.ShouldBe(offered.StartUtc);
+        using var booked = await _client.PostJsonAsync($"/api/v1/dealerships/{dealership.Id}/appointments",
+            TestData.BookingRequest(service.Id, offered.StartUtc), SchedulerJsonContext.Default.BookAppointmentRequest, ct: Ct);
+
+        booked.StatusCode.ShouldBe(HttpStatusCode.Created, await booked.Content.ReadAsStringAsync(Ct));
+        (await booked.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct)).StartUtc.ShouldBe(offered.StartUtc);
+    }
+
+    [Fact]
     public async Task Availability_reports_no_qualified_resources()
     {
         // The technician is certified; the dealership has no EV bay, so the service can never be booked here.

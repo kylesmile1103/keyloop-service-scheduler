@@ -276,6 +276,7 @@ Defence in depth: every invariant has a *primary* enforcement point and, where t
 | Technician certifications ⊇ required | same | same |
 | No overlapping active appointments per bay | Pre-check inside advisory lock (§7.3) | **`EXCLUDE USING gist (bay_id WITH =, time_range WITH &&) WHERE status IN active`** |
 | No overlapping active appointments per technician | same | **`EXCLUDE USING gist (technician_id WITH =, time_range WITH &&) WHERE status IN active`** |
+| Whole-minute opening and closing times (no seconds or fractional ticks) | `DayOperatingHours` constructor, including EF materialisation | DB `CHECK` on both bounds (`EXTRACT(SECOND) = 0`) |
 | Within operating window, dealership open | `Dealership.ResolveOperatingWindow` + `TimeSlot.IsWithin` | n/a (not safety-critical) |
 | Not in the past / lead time / horizon | `BookingWindowPolicy` (uses `TimeProvider`) | n/a |
 | Valid state transitions | `Appointment` state machine | `xmin` concurrency token → `409 concurrency-conflict` |
@@ -379,10 +380,11 @@ This is a greedy heuristic, not an optimiser; it is cheap, explainable to a work
 
 - **Storage**: all instants are `timestamp with time zone` in UTC; the .NET type is `DateTime` with `Kind = Utc` (Npgsql's non-legacy mapping). The API serialises ISO-8601 with `Z`.
 - **Display strings**: every `…Local` field (`startLocal`, `endLocal`, `opensAtLocal`, `closesAtLocal`) is ISO-8601 local time to the minute *with the zone's offset at that instant* (`yyyy-MM-ddTHH:mm±hh:mm`, `LocalTimeConverter.FormatLocal`), e.g. `2026-10-13T10:00+01:00`. The offset keeps the repeated hour of a fall-back day unambiguous (Europe/London 2026-10-25: 00:30Z is `01:30+01:00`, 01:30Z is `01:30+00:00`) and parses back to the same instant; the `…Utc` field remains the identity.
-- **Operating hours** are wall-clock `TimeOnly` values per weekday. `ResolveOperatingWindow(date)` converts `(date, opensAt)` and `(date, closesAt)` with `TimeZoneInfo.FindSystemTimeZoneById(ianaId)`:
+- **Operating hours** are whole-minute wall-clock `TimeOnly` values per weekday; seconds and fractional ticks are rejected on both opening and closing times (the grid remains anchored at opening, which need not be a quarter hour). `ResolveOperatingWindow(date)` converts `(date, opensAt)` and `(date, closesAt)` with `TimeZoneInfo.FindSystemTimeZoneById(ianaId)`:
   - a wall-clock time that **does not exist** (spring-forward gap, e.g. Europe/London 2026-03-29 01:00–02:00) is advanced to the first valid instant (01:30 → 02:00 BST = 01:00Z);
   - an **ambiguous** wall-clock time (autumn fall-back, 2026-10-25) resolves to the *earlier* instant (first occurrence, which carries the larger daylight-saving offset: 01:30 → 01:30 BST = 00:30Z, not 01:30 GMT = 01:30Z), matching the reference implementation reviewed during design.
   - Candidate start times are generated in UTC from `O`, so a DST day simply has an operating window that is one hour shorter or longer in absolute terms - slots are never duplicated or skipped.
+- **Reference-data migration**: `OperatingHoursWholeMinutes` adds the whole-minute database check through the normal EF migration path. Existing sub-minute rows must be audited and corrected explicitly before applying it; the migration fails on invalid data rather than silently rounding the grid. Closed days retain null bounds.
 - **Half-open intervals** everywhere (`[start, end)`), so 09:00–10:00 and 10:00–11:00 are adjacent, not overlapping. This is mirrored in the database range (`tstzrange(start_utc, end_utc, '[)')`).
 - **Clock**: `TimeProvider` is injected (never `DateTime.UtcNow` inline), enabling deterministic tests of lead time, horizon and no-show logic with `FakeTimeProvider`.
 

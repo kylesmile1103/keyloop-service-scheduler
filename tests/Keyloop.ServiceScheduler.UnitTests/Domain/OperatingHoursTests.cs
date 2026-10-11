@@ -51,6 +51,28 @@ public class OperatingHoursTests
         withSaturday.ForDay(DayOfWeek.Sunday).IsClosed.ShouldBeTrue();
     }
 
+    [Theory]
+    [InlineData(true, 300000000L)] // seconds on opening
+    [InlineData(false, 300000000L)] // seconds on closing
+    [InlineData(true, 1L)] // fractional tick on opening
+    [InlineData(false, 1L)] // fractional tick on closing
+    public void Rejects_subminute_operating_hours_on_either_bound(bool opening, long extraTicks)
+    {
+        var opens = opening ? Eight.Add(TimeSpan.FromTicks(extraTicks)) : Eight;
+        var closes = opening ? Eighteen : Eighteen.Add(TimeSpan.FromTicks(extraTicks));
+
+        Should.Throw<ArgumentException>(() => new DayOperatingHours(DayOfWeek.Tuesday, opens, closes))
+            .ParamName.ShouldBe(opening ? "opensAt" : "closesAt");
+    }
+
+    [Fact]
+    public void Accepts_whole_minutes_without_requiring_the_default_slot_grid()
+    {
+        var hours = new DayOperatingHours(DayOfWeek.Tuesday, new TimeOnly(8, 7), new TimeOnly(18, 11));
+        hours.OpensAt.ShouldBe(new TimeOnly(8, 7));
+        hours.ClosesAt.ShouldBe(new TimeOnly(18, 11));
+    }
+
     [Fact]
     public void Rejects_closes_before_opens()
     {

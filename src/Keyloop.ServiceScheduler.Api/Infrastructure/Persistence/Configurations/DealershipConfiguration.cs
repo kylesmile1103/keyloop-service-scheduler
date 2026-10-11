@@ -32,6 +32,9 @@ internal sealed class DealershipConfiguration : IEntityTypeConfiguration<Dealers
                 day.Property(d => d.ClosesAt).HasColumnName("closes_at");
                 day.Ignore(d => d.IsClosed);
                 day.ToTable(t => t.HasCheckConstraint(
+                    "ck_dealership_operating_hours_whole_minutes",
+                    "EXTRACT(SECOND FROM opens_at) = 0 AND EXTRACT(SECOND FROM closes_at) = 0"));
+                day.ToTable(t => t.HasCheckConstraint(
                     "ck_dealership_operating_hours_open_before_close",
                     "(opens_at IS NULL AND closes_at IS NULL) OR (opens_at IS NOT NULL AND closes_at IS NOT NULL AND closes_at > opens_at)"));
             });
