@@ -22,7 +22,12 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 
-var builder = WebApplication.CreateBuilder(args);
+// Build-time OpenAPI generation runs this composition root in a fixed environment (Addendum B §B1); otherwise the usual sources decide.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    EnvironmentName = BuildTimeOpenApi.IsActive ? BuildTimeOpenApi.EnvironmentName : null,
+});
 builder.AddServiceDefaults();
 
 // Options are bound by the configuration-binding generator and validated at startup by [OptionsValidator] validators (Addendum A §A4).

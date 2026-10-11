@@ -1,0 +1,1090 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Keyloop Unified Service Scheduler API",
+    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\n- **400** — the request is malformed (`validation-error`).\n- **422** — the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** — the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** — rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/SYSTEM_DESIGN.md`, section 8.7 (API contract).",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/v1/dealerships": {
+      "get": {
+        "tags": [
+          "Dealerships"
+        ],
+        "summary": "List dealerships",
+        "description": "Every dealership with its IANA time zone and weekly operating hours as local wall-clock times, ordered by name. Start here:\nthe catalogue, availability, booking and schedule routes are all scoped by a dealership id.",
+        "operationId": "GetDealerships",
+        "responses": {
+          "200": {
+            "description": "The dealerships, ordered by name, each with seven days of operating hours from Monday.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DealershipResponse"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/service-types": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List the service catalogue for a dealership",
+        "description": "The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician\ncertifications each requires. `bookable` is computed for this dealership: at least one active bay and one active\ntechnician qualify. Whether a slot is free on a given day is a separate question for the availability route.",
+        "operationId": "GetServiceTypes",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "The dealership whose active bays and technicians decide `bookable`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalogue, ordered by name, with `bookable` for this dealership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceTypeResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership has this id (`not-found`, with `resource` = `dealership` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/availability": {
+      "get": {
+        "tags": [
+          "Availability"
+        ],
+        "summary": "Find bookable start times for a service on a date",
+        "description": "Start times on the slot grid, counted from opening, at which one active bay with every capability the service requires and one\nactive technician with every certification it requires are both free for the whole duration, with how many of each are free.\nA closed day has no slots and `unavailableReason` `closed`; a service the dealership can never perform has\n`no-qualified-resources`. A service longer than that day's opening hours, and opening hours that fall entirely in a\ndaylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset\n(`2026-10-13T10:00+01:00`). The answer is a snapshot; booking checks again.",
+        "operationId": "GetAvailability",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "The dealership whose bays, technicians and opening hours are used (the example is the seeded Reading dealership).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "45fa64a1-baa9-8c61-b11a-ee9d7572ae3e"
+          },
+          {
+            "name": "serviceTypeId",
+            "in": "query",
+            "description": "The service to fit (the example is the seeded Interim Service).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "3153f30d-5700-8f07-a25d-4a4ea44dfeef"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "description": "The dealership's local calendar date, exactly `yyyy-MM-dd`, from yesterday to the end of the booking horizon.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "example": "2026-10-13"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operating window and the bookable starts in ascending order with free bay and technician counts; no starts, and a reason when the day can have none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The service type id or the date is missing or malformed, or the date is outside the bookable range (`validation-error`, `errors` keyed `serviceTypeId` or `date`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/appointments": {
+      "post": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Book an appointment",
+        "description": "Reserves one bay with every capability the service requires and one technician with every certification it requires for the\nwhole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free\npreferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's\nload. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours\nwith the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.",
+        "operationId": "BookAppointment",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "The dealership to book at (the example is the seeded Reading dealership).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "45fa64a1-baa9-8c61-b11a-ee9d7572ae3e"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional; makes retries safe. 1 to 64 characters of letters, digits, '-' and '_' (a UUID works). The same key with the same body within 24 hours of a successful booking replays its 201 (with Idempotent-Replayed: true) and books nothing; the same key with a different body is a 422 idempotency-key-reuse. Failed bookings are not stored, so they can be retried with the same key.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookAppointmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Booked: the appointment with its bay, technician and local times; `Location` is its path. A replay carries `Idempotent-Replayed: true`.",
+            "headers": {
+              "Location": {
+                "description": "The new appointment's path, /api/v1/appointments/{id} (the same id on a replay).",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
+                }
+              },
+              "Idempotent-Replayed": {
+                "description": "Present, with the value true, only when the response is the stored result of an earlier request with the same Idempotency-Key.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or the `Idempotency-Key` is malformed (`validation-error`, `errors` keyed by JSON path such as `customer.email`, or `Idempotency-Key`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many bookings from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppointmentResponse": {
+        "required": [
+          "id",
+          "dealershipId",
+          "serviceType",
+          "bay",
+          "technician",
+          "startUtc",
+          "endUtc",
+          "startLocal",
+          "endLocal",
+          "status",
+          "customer",
+          "vehicle",
+          "notes",
+          "cancellationReason",
+          "createdAtUtc",
+          "updatedAtUtc"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The appointment's id; `Location` of a booking points at `/api/v1/appointments/{id}`.",
+            "format": "uuid"
+          },
+          "dealershipId": {
+            "type": "string",
+            "description": "The dealership whose bay and technician are reserved.",
+            "format": "uuid"
+          },
+          "serviceType": {
+            "description": "The service booked.",
+            "$ref": "#/components/schemas/ServiceTypeSummary"
+          },
+          "bay": {
+            "description": "The service bay reserved for the whole slot (chosen by the allocation policy unless a preferred free one was given).",
+            "$ref": "#/components/schemas/ResourceSummary"
+          },
+          "technician": {
+            "description": "The technician reserved for the whole slot.",
+            "$ref": "#/components/schemas/ResourceSummary"
+          },
+          "startUtc": {
+            "type": "string",
+            "description": "Start (inclusive), UTC.",
+            "format": "date-time"
+          },
+          "endUtc": {
+            "type": "string",
+            "description": "End (exclusive), UTC: the start plus the service duration.",
+            "format": "date-time"
+          },
+          "startLocal": {
+            "type": "string",
+            "description": "Start as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display."
+          },
+          "endLocal": {
+            "type": "string",
+            "description": "End as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for display."
+          },
+          "status": {
+            "description": "Lifecycle state: `Confirmed` when booked; `CheckedIn`, `InProgress`, `Completed`, `Cancelled` or `NoShow` later.",
+            "$ref": "#/components/schemas/AppointmentStatus"
+          },
+          "customer": {
+            "description": "Who the appointment is for.",
+            "$ref": "#/components/schemas/CustomerResponse"
+          },
+          "vehicle": {
+            "description": "The vehicle to be serviced.",
+            "$ref": "#/components/schemas/VehicleResponse"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Free-text notes from booking, trimmed; null when none were given."
+          },
+          "cancellationReason": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Why the appointment was cancelled; null unless `status` is `Cancelled`."
+          },
+          "createdAtUtc": {
+            "type": "string",
+            "description": "When it was booked, UTC.",
+            "format": "date-time"
+          },
+          "updatedAtUtc": {
+            "type": "string",
+            "description": "When its status last changed, UTC (the booking time until then).",
+            "format": "date-time"
+          }
+        },
+        "description": "An appointment: one service for one vehicle, with the bay and the technician reserved for it over the same time slot."
+      },
+      "AppointmentStatus": {
+        "enum": [
+          "Confirmed",
+          "CheckedIn",
+          "InProgress",
+          "Completed",
+          "Cancelled",
+          "NoShow"
+        ],
+        "type": "string"
+      },
+      "AvailabilityResponse": {
+        "required": [
+          "date",
+          "timeZoneId",
+          "operatingWindow",
+          "durationMinutes",
+          "slotGranularityMinutes",
+          "slots",
+          "unavailableReason"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "The local calendar date asked for, in the dealership's time zone.",
+            "format": "date"
+          },
+          "timeZoneId": {
+            "type": "string",
+            "description": "The dealership's IANA time-zone id (e.g. `Europe/London`); every `…Local` value is wall-clock time there, with that zone's offset."
+          },
+          "operatingWindow": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Opening to closing time that day; null when the dealership is closed on that weekday.",
+                "$ref": "#/components/schemas/OperatingWindowResponse"
+              }
+            ]
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "description": "How long the service occupies one bay and one technician, in minutes.",
+            "format": "int32"
+          },
+          "slotGranularityMinutes": {
+            "type": "integer",
+            "description": "Start times fall on this grid, counted from the opening time.",
+            "format": "int32"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilitySlotResponse"
+            },
+            "description": "Every start on the grid where at least one qualified bay and one qualified technician are free for the whole duration, in\nascending order. Empty when `unavailableReason` is set, when everything is booked, when the service is longer than that\nday's opening hours, or on a day whose opening hours fall entirely in a daylight-saving gap."
+          },
+          "unavailableReason": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Why there can be no slots at all that day: `closed` (no opening hours on that weekday) or `no-qualified-resources`\n(no active bay with every required capability, or no active technician with every required certification). Null otherwise,\nincluding when every qualified resource is simply busy."
+          }
+        },
+        "description": "Feasible start times for one service on one local date at one dealership."
+      },
+      "AvailabilitySlotResponse": {
+        "required": [
+          "startUtc",
+          "endUtc",
+          "startLocal",
+          "freeBays",
+          "freeTechnicians"
+        ],
+        "type": "object",
+        "properties": {
+          "startUtc": {
+            "type": "string",
+            "description": "Start (inclusive), UTC. The identity of the slot: book with this value.",
+            "format": "date-time"
+          },
+          "endUtc": {
+            "type": "string",
+            "description": "End (exclusive), UTC: the start plus the service duration.",
+            "format": "date-time"
+          },
+          "startLocal": {
+            "type": "string",
+            "description": "Start as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display. In the repeated\nhour of an autumn daylight-saving change two slots show the same wall-clock time, and the offset tells them apart."
+          },
+          "freeBays": {
+            "type": "integer",
+            "description": "How many qualified bays are free for the whole slot (at least 1).",
+            "format": "int32"
+          },
+          "freeTechnicians": {
+            "type": "integer",
+            "description": "How many qualified technicians are free for the whole slot (at least 1).",
+            "format": "int32"
+          }
+        },
+        "description": "A bookable start time, with how much capacity remains at it."
+      },
+      "BayCapability": {
+        "enum": [
+          "StandardLift",
+          "HeavyDutyLift",
+          "EvHighVoltage",
+          "WheelAlignment",
+          "Diagnostics",
+          "MotTesting",
+          "AirConditioning"
+        ],
+        "type": "string"
+      },
+      "BookAppointmentRequest": {
+        "required": [
+          "serviceTypeId",
+          "startUtc",
+          "customer",
+          "vehicle"
+        ],
+        "type": "object",
+        "properties": {
+          "serviceTypeId": {
+            "examples": [
+              "3153f30d-5700-8f07-a25d-4a4ea44dfeef"
+            ],
+            "type": "string",
+            "description": "The service to book, from the catalogue (the example is the seeded Interim Service).",
+            "format": "uuid"
+          },
+          "startUtc": {
+            "examples": [
+              "2026-10-13T09:00:00Z"
+            ],
+            "type": "string",
+            "description": "Start time in UTC with `Z` and no seconds: a start offered by the availability route, inside the dealership's opening hours,\non its slot grid, and between the minimum lead time and the booking horizon from now.",
+            "format": "date-time"
+          },
+          "customer": {
+            "description": "Who the appointment is for.",
+            "$ref": "#/components/schemas/CustomerRequest"
+          },
+          "vehicle": {
+            "description": "The vehicle to be serviced.",
+            "$ref": "#/components/schemas/VehicleRequest"
+          },
+          "preferredBayId": {
+            "examples": [
+              "29c9f970-e13d-879e-a949-a553839cf25e"
+            ],
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy\nchooses (the example is the seeded Reading Bay 1 — Standard).",
+            "format": "uuid"
+          },
+          "preferredTechnicianId": {
+            "examples": [
+              "bd559b63-ceea-83dd-9a48-f2bc7a515dcd"
+            ],
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional: a technician to assign when free and certified; otherwise ignored (the example is the seeded Amelia Clarke at Reading).",
+            "format": "uuid"
+          },
+          "notes": {
+            "examples": [
+              "Customer reports a rattle from the front left wheel."
+            ],
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional free text for the workshop, at most 1000 characters after trimming."
+          }
+        },
+        "description": "The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The\nexamples form a valid booking at the seeded Keyloop Motors Reading dealership."
+      },
+      "Certification": {
+        "enum": [
+          "GeneralService",
+          "Brakes",
+          "HighVoltageElectrical",
+          "Diagnostics",
+          "MotTester",
+          "WheelAlignment",
+          "AirConditioning",
+          "HeavyVehicle"
+        ],
+        "type": "string"
+      },
+      "CustomerRequest": {
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "examples": [
+              "Alex Morgan"
+            ],
+            "type": "string",
+            "description": "Full name, 1 to 120 characters after trimming."
+          },
+          "email": {
+            "examples": [
+              "alex.morgan@example.com"
+            ],
+            "type": "string",
+            "description": "Email address, at most 254 characters."
+          },
+          "phone": {
+            "examples": [
+              "+44 7700 900123"
+            ],
+            "type": "string",
+            "description": "Phone number, 3 to 40 characters of digits, spaces and `+ ( ) -`."
+          }
+        },
+        "description": "The customer's contact details."
+      },
+      "CustomerResponse": {
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name, trimmed."
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address, trimmed."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number, trimmed."
+          }
+        },
+        "description": "The customer's contact details as booked."
+      },
+      "DayOfWeek": {
+        "enum": [
+          "Sunday",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday"
+        ],
+        "type": "string"
+      },
+      "DayOperatingHoursResponse": {
+        "required": [
+          "day",
+          "opensAt",
+          "closesAt"
+        ],
+        "type": "object",
+        "properties": {
+          "day": {
+            "description": "The weekday.",
+            "$ref": "#/components/schemas/DayOfWeek"
+          },
+          "opensAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Opening time, `HH:mm` local; null when the dealership is closed that day."
+          },
+          "closesAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Closing time, `HH:mm` local (exclusive); null when the dealership is closed that day."
+          }
+        },
+        "description": "Opening hours for one weekday, as wall-clock times in the dealership's time zone."
+      },
+      "DealershipResponse": {
+        "required": [
+          "id",
+          "name",
+          "timeZoneId",
+          "operatingHours"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The dealership's id; every other route is scoped by it.",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "timeZoneId": {
+            "type": "string",
+            "description": "IANA time-zone id (e.g. `Europe/London`) in which the operating hours are expressed."
+          },
+          "operatingHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DayOperatingHoursResponse"
+            },
+            "description": "Exactly seven entries, one per weekday, Monday first."
+          }
+        },
+        "description": "A dealership with its time zone and weekly operating hours."
+      },
+      "HttpValidationProblemDetails": {
+        "required": [
+          "traceId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs."
+          }
+        }
+      },
+      "OperatingWindowResponse": {
+        "required": [
+          "startUtc",
+          "endUtc",
+          "opensAtLocal",
+          "closesAtLocal"
+        ],
+        "type": "object",
+        "properties": {
+          "startUtc": {
+            "type": "string",
+            "description": "Opening time (inclusive), UTC.",
+            "format": "date-time"
+          },
+          "endUtc": {
+            "type": "string",
+            "description": "Closing time (exclusive), UTC; equal to `startUtc` when the opening hours fall entirely in a daylight-saving gap.",
+            "format": "date-time"
+          },
+          "opensAtLocal": {
+            "type": "string",
+            "description": "Opening time as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, after daylight-saving resolution (a time skipped by the clocks moves to the first valid one)."
+          },
+          "closesAtLocal": {
+            "type": "string",
+            "description": "Closing time as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, after daylight-saving resolution."
+          }
+        },
+        "description": "The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times."
+      },
+      "ProblemDetails": {
+        "required": [
+          "traceId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs."
+          }
+        }
+      },
+      "ResourceSummary": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The resource's id (usable as `preferredBayId` or `preferredTechnicianId` on a later booking).",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          }
+        },
+        "description": "A bay or a technician, by id and display name."
+      },
+      "ServiceTypeResponse": {
+        "required": [
+          "id",
+          "code",
+          "name",
+          "durationMinutes",
+          "requiredBayCapabilities",
+          "requiredCertifications",
+          "bookable"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The service type's id, used when asking for availability and booking.",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable upper-kebab identifier, unique across the catalogue (e.g. `EV-BATTERY-CHECK`)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "description": "How long the service occupies one bay and one technician, in minutes (a multiple of 5).",
+            "format": "int32"
+          },
+          "requiredBayCapabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BayCapability"
+            },
+            "description": "Capabilities the bay must have, all of them, in the enumeration's declared order."
+          },
+          "requiredCertifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Certification"
+            },
+            "description": "Certifications the technician must hold, all of them, in the enumeration's declared order."
+          },
+          "bookable": {
+            "type": "boolean",
+            "description": "True when the dealership has at least one active bay with every required capability and at least one active technician with\nevery required certification. It says the service can ever be booked there, not that a slot is free on a given day."
+          }
+        },
+        "description": "A catalogue entry: how long the service takes, what it needs, and whether the dealership in the route can perform it."
+      },
+      "ServiceTypeSummary": {
+        "required": [
+          "id",
+          "code",
+          "name",
+          "durationMinutes"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The service type's id.",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable upper-kebab identifier (e.g. `INTERIM-SERVICE`)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "description": "How long the bay and the technician are reserved, in minutes.",
+            "format": "int32"
+          }
+        },
+        "description": "The booked service, as the catalogue lists it."
+      },
+      "VehicleRequest": {
+        "required": [
+          "vin",
+          "registration",
+          "make",
+          "model"
+        ],
+        "type": "object",
+        "properties": {
+          "vin": {
+            "examples": [
+              "WVWZZZ1KZAW123456"
+            ],
+            "type": "string",
+            "description": "Vehicle identification number: 17 characters, digits and letters other than I, O and Q (case-insensitive)."
+          },
+          "registration": {
+            "examples": [
+              "AB12 CDE"
+            ],
+            "type": "string",
+            "description": "Registration plate, 1 to 16 characters; stored upper case."
+          },
+          "make": {
+            "examples": [
+              "Volkswagen"
+            ],
+            "type": "string",
+            "description": "Manufacturer, 1 to 60 characters."
+          },
+          "model": {
+            "examples": [
+              "Golf"
+            ],
+            "type": "string",
+            "description": "Model, 1 to 60 characters."
+          }
+        },
+        "description": "The vehicle to be serviced."
+      },
+      "VehicleResponse": {
+        "required": [
+          "vin",
+          "registration",
+          "make",
+          "model"
+        ],
+        "type": "object",
+        "properties": {
+          "vin": {
+            "type": "string",
+            "description": "The 17-character VIN, upper case."
+          },
+          "registration": {
+            "type": "string",
+            "description": "Registration plate, upper case."
+          },
+          "make": {
+            "type": "string",
+            "description": "Manufacturer."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model."
+          }
+        },
+        "description": "The vehicle as booked."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Dealerships",
+      "description": "Dealerships, their time zones and weekly operating hours."
+    },
+    {
+      "name": "Catalog",
+      "description": "Service types a dealership offers, with the bay capabilities and technician certifications each requires."
+    },
+    {
+      "name": "Availability",
+      "description": "Feasible start times for a service on a dealership's local date."
+    },
+    {
+      "name": "Appointments",
+      "description": "Book, read and cancel appointments."
+    },
+    {
+      "name": "Schedule",
+      "description": "The dispatch board: a dealership's bays, technicians and appointments for one day."
+    }
+  ]
+}
