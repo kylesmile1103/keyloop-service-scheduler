@@ -10,7 +10,9 @@ using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
@@ -20,7 +22,8 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 /// exists only where demo data is seeded and a key is configured, answers a missing or wrong <c>X-Reseed-Key</c> exactly like an
 /// unknown route, stays out of the OpenAPI contract, and replaces the demo dealerships' appointments (with their history and
 /// idempotency keys) by the deterministic demo week in one transaction that waits for bookings in flight. The clock is Monday
-/// 2026-10-12 08:00Z, so the demo week is the one startup seeded.
+/// 2026-10-12 08:00Z, so the demo week is the one startup seeded, and a reseed books it again under the same ids: a test that must
+/// see that no reseed ran books a marker first (<see cref="BookMarkerAsync"/>), which any reseed deletes.
 /// </summary>
 public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
 {
@@ -128,7 +131,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
             "the key in upper case" => Key.ToUpperInvariant(),
             _ => throw new ArgumentOutOfRangeException(nameof(attempt), attempt, null),
         };
-        var before = await AppointmentIdsAsync();
+        var before = await BookMarkerAsync();
         using var client = _factory.CreateClient();
         using var unknownRoute = await ReseedAsync(client, Key); // the same request where the route does not exist
 
@@ -143,19 +146,54 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         (await AppointmentIdsAsync()).ShouldBe(before);
     }
 
+    [Fact]
+    public void Route_is_mapped_for_POST_only_with_demo_data_and_a_configured_key() =>
+        // The positive control of the theory below: the same lookup finds the route on the host where it must exist.
+        ReseedEndpoints(_demo).ShouldHaveSingleItem().Metadata.GetMetadata<IHttpMethodMetadata>().ShouldNotBeNull().HttpMethods.ShouldBe(["POST"]);
+
     [Theory]
     [InlineData(false, Key)] // UAT and Production never seed demo data
     [InlineData(true, null)] // no key configured: nothing could ever call it
-    public async Task Route_exists_only_with_demo_data_and_a_configured_key(bool seedDemoData, string? key)
+    [InlineData(true, "")]   // an empty value, as an unset environment variable binds, is no key either
+    public async Task Route_exists_only_with_demo_data_and_a_configured_key(bool seedDemoData, string? configuredKey)
     {
-        var before = await AppointmentIdsAsync();
-        await using var host = Demo(seedDemoData, key);
+        await using var host = Demo(seedDemoData, configuredKey);
         using var client = host.CreateClient();
+        var before = await BookMarkerAsync();
 
-        using var response = await ReseedAsync(client, Key);
+        // TestServer drops a header whose only value is empty, so "" arrives as no header here; ReseedDemoDataGuardTests pins that an
+        // empty key never matches, which is what keeps a real empty X-Reseed-Key header out if the route were ever mapped without a key.
+        foreach (var presented in new[] { null, "", Key })
+        {
+            using var response = await ReseedAsync(client, presented);
+            response.StatusCode.ShouldBe(HttpStatusCode.NotFound, $"X-Reseed-Key {(presented is null ? "absent" : $"'{presented}'")}");
+        }
 
-        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await AppointmentIdsAsync()).ShouldBe(before);
+        (await AppointmentIdsAsync()).ShouldBe(before, "no request reseeded: the marker booking is still there");
+
+        // Not mapped at all, rather than mapped and refusing every key: a 404 cannot tell the two apart, the endpoint table can.
+        ReseedEndpoints(host).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Reseed_counts_against_the_write_rate_limit()
+    {
+        await using var host = Demo(seedDemoData: true, Key, builder => builder
+            .UseSetting("Security:RateLimiting:Enabled", "true")
+            .UseSetting("Security:RateLimiting:BookingPermitsPerMinute", "1"));
+        using var client = host.CreateClient();
+        using (var first = await ReseedAsync(client, Key)) // the minute's one write
+        {
+            first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync(Ct));
+        }
+
+        var before = await BookMarkerAsync(); // through the other host's client, which has no limiter
+
+        using var second = await ReseedAsync(client, Key);
+
+        var problem = await second.ShouldBeProblemAsync(HttpStatusCode.TooManyRequests, "rate-limited", Ct);
+        problem.GetProperty("retryAfterSeconds").GetInt32().ShouldBeGreaterThan(0);
+        (await AppointmentIdsAsync()).ShouldBe(before, "the limited reseed did not run");
     }
 
     [Fact]
@@ -193,7 +231,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
     }
 
-    private WebApplicationFactory<Program> Demo(bool seedDemoData, string? key) =>
+    private WebApplicationFactory<Program> Demo(bool seedDemoData, string? key, Action<IWebHostBuilder>? configure = null) =>
         _factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Database:SeedDemoData", seedDemoData ? "true" : "false");
@@ -201,7 +239,15 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
             {
                 builder.UseSetting("Demo:ReseedKey", key);
             }
+
+            configure?.Invoke(builder);
         });
+
+    /// <summary>The reseed route among the endpoints <paramref name="host"/> mapped (none where it is not mapped).</summary>
+    private static List<RouteEndpoint> ReseedEndpoints(WebApplicationFactory<Program> host) =>
+        host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText == Route)
+            .ToList();
 
     private static async Task<HttpResponseMessage> ReseedAsync(HttpClient client, string? key)
     {
@@ -221,6 +267,19 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         using var response = await _client.PostJsonAsync(
             $"/api/v1/dealerships/{dealershipId}/appointments", request, SchedulerJsonContext.Default.BookAppointmentRequest, headers, Ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    /// <summary>
+    /// Books an appointment outside the demo week (Reading, 16:30 on the booking day) and returns every appointment id. Any reseed
+    /// deletes it, so comparing the ids afterwards shows whether one ran; the demo week alone would not, since a reseed books it again
+    /// under the same ids.
+    /// </summary>
+    private async Task<List<Guid>> BookMarkerAsync()
+    {
+        await BookAsync(ReferenceDataSeed.ReadingDealershipId, TestData.LondonTime(16, 30));
+        var ids = await AppointmentIdsAsync();
+        ids.Count.ShouldBeGreaterThan(1, "the demo week and the marker");
+        return ids;
     }
 
     private Task<List<Guid>> AppointmentIdsAsync() =>

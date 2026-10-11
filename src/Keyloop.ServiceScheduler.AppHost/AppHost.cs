@@ -28,15 +28,26 @@ if (builder.ExecutionContext.IsRunMode)
 var db = postgres.AddDatabase("schedulerdb");
 
 // The API receives its connection string only as ConnectionStrings__schedulerdb (WithReference), starts once the database is
-// healthy, and is healthy itself when /health (which includes the database check) answers 200. The dashboard links to Scalar.
+// healthy, and is healthy itself when /health (which includes the database check) answers 200.
 var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
     .WithReference(db)
     .WaitFor(db)
     .WithHttpHealthCheck("/health")
-    .WithUrlForEndpoint("https", url => url.DisplayText = "API (https)")
-    .WithUrlForEndpoint("http", url => url.DisplayText = "API (http)")
-    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "Scalar API reference" })
     .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
+
+// The dashboard labels the API's endpoints and links to Scalar. The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE):
+// `https` gives it an https and an http endpoint, `http` only the latter. A URL callback on an endpoint the API lacks is dropped (with a
+// warning), so only the endpoints it has are labelled, and the Scalar link goes on https when there is one, else on http.
+string[] apiEndpoints = [.. new[] { "https", "http" }.Where(name => api.GetEndpoint(name).Exists)];
+foreach (var name in apiEndpoints)
+{
+    api.WithUrlForEndpoint(name, url => url.DisplayText = $"API ({name})");
+}
+
+if (apiEndpoints is [var scalarEndpoint, ..])
+{
+    api.WithUrlForEndpoint(scalarEndpoint, _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "Scalar API reference" });
+}
 
 // The dashboard's "Reseed demo data" command (§C3), in run mode only. Its key is a fresh secret for every run (the API is restarted
 // with the AppHost, so nothing needs to remember it), given to the API as Demo__ReseedKey and sent by the command as X-Reseed-Key;

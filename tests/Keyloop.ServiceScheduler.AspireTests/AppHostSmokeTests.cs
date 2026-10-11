@@ -53,6 +53,34 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         new Uri(scalar.Url).Scheme.ShouldBe("https");
     }
 
+    [Theory]
+    [InlineData("https", new[] { "https", "http" })]
+    [InlineData("http", new[] { "http" })]
+    public async Task Dashboard_links_Scalar_from_whichever_endpoint_the_launch_profile_gives_the_api(string launchProfile, string[] endpoints)
+    {
+        // The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE): `https` gives it both endpoints, `http` plain HTTP only.
+        // The model only, nothing is started: the URL callbacks run as the orchestrator runs them, over one URL per endpoint.
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
+            [$"--DOTNET_LAUNCH_PROFILE={launchProfile}"], Ct);
+        var api = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api");
+        api.Annotations.OfType<EndpointAnnotation>().Select(endpoint => endpoint.Name).ShouldBe(endpoints, ignoreOrder: true);
+        var context = new ResourceUrlsCallbackContext(
+            builder.ExecutionContext,
+            api,
+            [.. endpoints.Select(name => new ResourceUrlAnnotation { Url = $"{name}://localhost", Endpoint = new EndpointReference(api, name) })],
+            Ct);
+
+        foreach (var annotation in api.Annotations.OfType<ResourceUrlsCallbackAnnotation>())
+        {
+            await annotation.Callback(context);
+        }
+
+        // Preferably on https; a link on an endpoint the api does not have would be dropped.
+        var scalar = context.Urls.Where(url => url.DisplayText == "Scalar API reference").ShouldHaveSingleItem();
+        (scalar.Url, scalar.Endpoint?.EndpointName).ShouldBe(("/scalar/v1", endpoints[0]));
+        context.Urls.Where(url => url != scalar).Select(url => url.DisplayText).ShouldBe(endpoints.Select(name => $"API ({name})"));
+    }
+
     [Fact]
     public async Task Reseed_demo_data_command_reseeds_through_the_key_protected_route()
     {
