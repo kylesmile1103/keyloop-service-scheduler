@@ -71,14 +71,14 @@ resource links against the integrated branch before recording.
 | 8:00–9:30 | AI collaboration | Design record, written plan, reviewed changes and defects caught. |
 | 9:30–10:00 | Lessons | State the main trade-offs and remaining reflection budget. |
 
-### 0:00–0:45 — Scenario and dispatch board
+### 0:00–0:45 - Scenario and dispatch board
 
 Click **Workshop → Dispatch Board**, select **Keyloop Motors Reading**, and point
 to the date, KPI strip, bay lanes and status legend. Click **Technicians**, then
 **Bays**. Explain that both resources must be free and qualified for the full
 half-open interval; availability is a snapshot, so booking must check again.
 
-### 0:45–2:45 — Architecture
+### 0:45–2:45 - Architecture
 
 Open [SYSTEM_DESIGN.md §8.2](SYSTEM_DESIGN.md#82-c4--containers-with-aspire-orchestration)
 in a rendered Markdown preview. Follow browser → Vite proxy → API → PostgreSQL;
@@ -96,7 +96,7 @@ Explain explicit endpoint/DI registration, generated request delegates and JSON,
 and HeyAPI-generated types, SDK calls and TanStack Query options. Show CI's
 `git diff --exit-code` gates for the OpenAPI contract and generated client.
 
-### 2:45–4:45 — Implementation highlights
+### 2:45–4:45 - Implementation highlights
 
 Use editor **Go to File** to open, in order:
 
@@ -116,11 +116,11 @@ Use editor **Go to File** to open, in order:
    show `slot-unavailable`, `slot-conflict`, `concurrency-conflict` and
    `validation-error`. Explain `409` with `suggestedSlots` and a copyable `traceId`.
 
-### 4:45–7:15 — Live booking, contention and observability
+### 4:45–7:15 - Live booking, contention and observability
 
 Use these rehearsal marks to keep the live segment within 2½ minutes:
 
-1. **4:45–5:15 — Book.** In both tabs, click **Book appointment**, choose
+1. **4:45–5:15 - Book.** In both tabs, click **Book appointment**, choose
    **EV Battery Health Check**, the same date and the same free slot, then advance
    from **Service & time** to **Customer & vehicle**. Prepare both dialogs before
    submitting either. In A use Alex Morgan, `alex.morgan@example.com`,
@@ -128,21 +128,21 @@ Use these rehearsal marks to keep the live segment within 2½ minutes:
    Golf. In B use Jamie Taylor, `jamie.taylor@example.com`, `+44 7700 900124`, VIN
    `WVWZZZ1KZAW123457`, registration `AB12 CDF`, Volkswagen, Golf. Submit A; show
    `201` in Network, the allocation toast and **View on board** highlighting.
-2. **5:15–5:35 — Stale-slot conflict.** Submit B's already selected slot. Show
+2. **5:15–5:35 - Stale-slot conflict.** Submit B's already selected slot. Show
    `409`, the warning alert, `traceId` and suggested-slot chips. The two submits
    are separate booking attempts, not an idempotency replay. Click a suggested
    slot to resubmit and show the successful recovery. Keep Network open long
    enough to show the RFC 9457 response and its `suggestedSlots` extension.
-3. **5:35–5:55 — Cancel + rebook.** In A, click the original appointment block,
+3. **5:35–5:55 - Cancel + rebook.** In A, click the original appointment block,
    then **Cancel** in its details sheet; enter `Demo slot released` and confirm.
    Open **Book appointment** and book the original EV slot again. Show that its
    original bay and technician are available after cancellation.
-4. **5:55–6:20 — 30-way stress panel.** Select the third untouched EV slot,
+4. **5:55–6:20 - 30-way stress panel.** Select the third untouched EV slot,
    set **N = 30**, and click **Fire N parallel bookings**. Show **1 × 201**,
    **29 × 409**, **0 × 5xx**, p50/p95/max, and the per-request trace ids. Refresh
    the board and point to the single winning booking. If the tallies differ,
    investigate the capacity/slot setup and test output before recording.
-5. **6:20–6:55 — Aspire traces and metrics.** Copy one stress-result `traceId`;
+5. **6:20–6:55 - Aspire traces and metrics.** Copy one stress-result `traceId`;
    in dashboard **Traces**, filter by that id and open the trace. Expand the
    `ui.stress_test`/fetch → API → `scheduler.book_appointment` → dealership-lock,
    availability and PostgreSQL spans. On **Metrics**, select `api` and show
@@ -151,14 +151,14 @@ Use these rehearsal marks to keep the live segment within 2½ minutes:
    `scheduler.booking.deadlocks` and `scheduler.booking.constraint_backstop`
    must stay at zero; an instrument with no observations may have no visible
    series. The adversarial tests assert those counters directly.
-6. **6:55–7:15 — Scalar and reseed.** Click **API reference** at `/scalar/v1`,
+6. **6:55–7:15 - Scalar and reseed.** Click **API reference** at `/scalar/v1`,
    expand **Dealerships → GetDealerships**, click **Test Request**, then **Send**;
    show the two seeded dealerships and the typed booking schema under
    **Appointments → BookAppointment**. Return to dashboard **Resources → api →
    Commands → Reseed demo data**, run it and refresh the board to restore the
    demo. Do this after the trace demonstration; it removes the recorded bookings.
 
-### 7:15–8:00 — Adversarial test run
+### 7:15–8:00 - Adversarial test run
 
 Switch to the warmed terminal and run:
 
@@ -173,7 +173,7 @@ succeeding, and independent dealerships avoiding shared contention. End on the
 actual summary. If runtime exceeds the segment, use a clearly labelled recording
 cut to completion; do not substitute an invented test count or duration.
 
-### 8:00–9:30 — AI collaboration narrative
+### 8:00–9:30 - AI collaboration narrative
 
 Open [SYSTEM_DESIGN.md §16](SYSTEM_DESIGN.md#16-genai-co-design-record), the
 [implementation plan](superpowers/plans/2026-10-11-keyloop-service-scheduler.md),
@@ -191,7 +191,7 @@ example. Mention the decision to avoid reflection-based JSON and assembly
 scanning. Distinguish completed checks from planned checks and state your own
 role in reviewing the algorithms, validating behavior and owning the submission.
 
-### 9:30–10:00 — Lessons and challenges
+### 9:30–10:00 - Lessons and challenges
 
 Return to the board. Explain why database constraints remain the final overlap
 invariant, the advisory lock trades per-dealership throughput for predictable
