@@ -6,9 +6,9 @@ public sealed record VehicleDetails
     {
         ArgumentNullException.ThrowIfNull(vin);
         Vin = vin;
-        Registration = Text.Required(registration, 1, 16, nameof(registration)).ToUpperInvariant();
-        Make = Text.Required(make, 1, 60, nameof(make));
-        Model = Text.Required(model, 1, 60, nameof(model));
+        Registration = Guard.Required(registration, 1, 16, nameof(registration)).ToUpperInvariant();
+        Make = Guard.Required(make, 1, 60, nameof(make));
+        Model = Guard.Required(model, 1, 60, nameof(model));
     }
 
     public Vin Vin { get; }

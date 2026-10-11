@@ -1,6 +1,6 @@
 namespace Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 
-internal static class Text
+internal static class Guard
 {
     public static string Required(string? value, int min, int max, string paramName)
     {
