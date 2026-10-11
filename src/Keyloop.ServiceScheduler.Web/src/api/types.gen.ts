@@ -141,6 +141,33 @@ export type AvailabilitySlotResponse = {
 export type BayCapability = 'StandardLift' | 'HeavyDutyLift' | 'EvHighVoltage' | 'WheelAlignment' | 'Diagnostics' | 'MotTesting' | 'AirConditioning';
 
 /**
+ * A service bay, a lane of the board, with the appointments it hosts that day.
+ */
+export type BayScheduleResponse = {
+    /**
+     * The bay's id (usable as `preferredBayId` on a booking).
+     */
+    id: string;
+    /**
+     * Display name.
+     */
+    name: string;
+    /**
+     * What the bay is equipped for, in the enumeration's declared order.
+     */
+    capabilities: Array<BayCapability>;
+    /**
+     * False when the bay is out of service: it takes no new bookings, but the appointments it already holds stay listed under it.
+     */
+    isActive: boolean;
+    /**
+     * Its appointments overlapping that day's opening hours, in every status except `Cancelled`, ordered by start. Empty when
+     * the dealership is closed that day.
+     */
+    appointments: Array<ScheduledAppointmentResponse>;
+};
+
+/**
  * The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The
  * examples form a valid booking at the seeded Keyloop Motors Reading dealership.
  */
@@ -175,6 +202,17 @@ export type BookAppointmentRequest = {
      * Optional free text for the workshop, at most 1000 characters after trimming.
      */
     notes?: null | string;
+};
+
+/**
+ * The body of `POST /appointments/{appointmentId}/cancel`.
+ */
+export type CancelAppointmentRequest = {
+    /**
+     * Why the appointment is cancelled, 1 to 500 characters after trimming. Stored on the appointment (returned as
+     * `cancellationReason`) and in its audit history; never written to logs.
+     */
+    reason: string;
 };
 
 export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle';
@@ -257,6 +295,24 @@ export type DealershipResponse = {
     operatingHours: Array<DayOperatingHoursResponse>;
 };
 
+/**
+ * The dealership a schedule belongs to.
+ */
+export type DealershipSummary = {
+    /**
+     * The dealership's id.
+     */
+    id: string;
+    /**
+     * Display name.
+     */
+    name: string;
+    /**
+     * IANA time-zone id (e.g. `Europe/London`); every `…Local` value in the schedule is wall-clock time there, with that zone's offset.
+     */
+    timeZoneId: string;
+};
+
 export type HttpValidationProblemDetails = {
     type?: null | string;
     title?: null | string;
@@ -321,6 +377,57 @@ export type ResourceSummary = {
 };
 
 /**
+ * An appointment on the board: when it runs, what it is, who works on it, and for which vehicle and customer.
+ */
+export type ScheduledAppointmentResponse = {
+    /**
+     * The appointment's id; `GET /api/v1/appointments/{id}` has the whole record (contact details, make and model, notes).
+     */
+    id: string;
+    /**
+     * Start (inclusive), UTC.
+     */
+    startUtc: string;
+    /**
+     * End (exclusive), UTC.
+     */
+    endUtc: string;
+    /**
+     * Start as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display.
+     */
+    startLocal: string;
+    /**
+     * End as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for display.
+     */
+    endLocal: string;
+    /**
+     * Lifecycle state: `Confirmed`, `CheckedIn` or `InProgress`, which hold the bay and the technician, or `Completed`
+     * or `NoShow`. Cancelled appointments are not on the board.
+     */
+    status: AppointmentStatus;
+    /**
+     * The booked service.
+     */
+    serviceType: ServiceTypeSummary;
+    /**
+     * The technician reserved for it, one of the schedule's `technicians`.
+     */
+    technician: ResourceSummary;
+    /**
+     * The vehicle's 17-character VIN, upper case.
+     */
+    vin: string;
+    /**
+     * The vehicle's registration plate, upper case.
+     */
+    registration: string;
+    /**
+     * The customer's full name.
+     */
+    customerName: string;
+};
+
+/**
  * A catalogue entry: how long the service takes, what it needs, and whether the dealership in the route can perform it.
  */
 export type ServiceTypeResponse = {
@@ -378,6 +485,32 @@ export type ServiceTypeSummary = {
 };
 
 /**
+ * A technician on the dealership's roster: a lane of the board when it is viewed by technician.
+ */
+export type TechnicianResponse = {
+    /**
+     * The technician's id (usable as `preferredTechnicianId` on a booking); appointments name it in `technician.id`.
+     */
+    id: string;
+    /**
+     * Display name.
+     */
+    name: string;
+    /**
+     * The dealership's employee number for the technician, unique within the dealership.
+     */
+    employeeNumber: string;
+    /**
+     * What the technician is certified to perform, in the enumeration's declared order.
+     */
+    certifications: Array<Certification>;
+    /**
+     * False when the technician takes no new bookings; appointments made before still name them.
+     */
+    isActive: boolean;
+};
+
+/**
  * The vehicle to be serviced.
  */
 export type VehicleRequest = {
@@ -419,6 +552,34 @@ export type VehicleResponse = {
      * Model.
      */
     model: string;
+};
+
+/**
+ * The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.
+ * A projection over the day's appointments (SYSTEM_DESIGN §5.3); it is a snapshot, and booking checks again.
+ */
+export type WorkshopScheduleResponse = {
+    /**
+     * The dealership, with the time zone every `…Local` value is expressed in.
+     */
+    dealership: DealershipSummary;
+    /**
+     * The local calendar date asked for, in the dealership's time zone.
+     */
+    date: string;
+    operatingWindow: null | OperatingWindowResponse;
+    /**
+     * Bookable start times fall on this grid, counted from the opening time: the natural column width of a timeline.
+     */
+    slotGranularityMinutes: number;
+    /**
+     * Every bay of the dealership, active or not, ordered by name, each with its appointments that day.
+     */
+    bays: Array<BayScheduleResponse>;
+    /**
+     * Every technician of the dealership, active or not, ordered by name. Each appointment's `technician.id` is one of them.
+     */
+    technicians: Array<TechnicianResponse>;
 };
 
 export type GetDealershipsData = {
@@ -581,3 +742,125 @@ export type BookAppointmentResponses = {
 };
 
 export type BookAppointmentResponse = BookAppointmentResponses[keyof BookAppointmentResponses];
+
+export type GetAppointmentData = {
+    body?: never;
+    path: {
+        /**
+         * The appointment's id, as returned by the booking (its `id`, or the last segment of its `Location`).
+         */
+        appointmentId: string;
+    };
+    query?: never;
+    url: '/api/v1/appointments/{appointmentId}';
+};
+
+export type GetAppointmentErrors = {
+    /**
+     * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
+     */
+    404: ProblemDetails;
+    /**
+     * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type GetAppointmentError = GetAppointmentErrors[keyof GetAppointmentErrors];
+
+export type GetAppointmentResponses = {
+    /**
+     * The appointment.
+     */
+    200: AppointmentResponse;
+};
+
+export type GetAppointmentResponse = GetAppointmentResponses[keyof GetAppointmentResponses];
+
+export type CancelAppointmentData = {
+    /**
+     * The cancellation: why the appointment is cancelled.
+     */
+    body: CancelAppointmentRequest;
+    path: {
+        /**
+         * The appointment to cancel.
+         */
+        appointmentId: string;
+    };
+    query?: never;
+    url: '/api/v1/appointments/{appointmentId}/cancel';
+};
+
+export type CancelAppointmentErrors = {
+    /**
+     * The reason is missing, blank or longer than 500 characters (`validation-error`, `errors` keyed `reason`), or the body is not valid JSON.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
+     */
+    404: ProblemDetails;
+    /**
+     * The appointment cannot be cancelled in its current status (`invalid-state-transition`, with `currentStatus` and `attempted` = `cancel`), or another request changed it after this one read it (`concurrency-conflict`: read it again).
+     */
+    409: ProblemDetails;
+    /**
+     * Too many state-changing requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type CancelAppointmentError = CancelAppointmentErrors[keyof CancelAppointmentErrors];
+
+export type CancelAppointmentResponses = {
+    /**
+     * Cancelled: the appointment with status `Cancelled`, its `cancellationReason` and the time of the change as `updatedAtUtc`.
+     */
+    200: AppointmentResponse;
+};
+
+export type CancelAppointmentResponse = CancelAppointmentResponses[keyof CancelAppointmentResponses];
+
+export type GetWorkshopScheduleData = {
+    body?: never;
+    path: {
+        /**
+         * The dealership whose board is read (the example is the seeded Reading dealership).
+         */
+        dealershipId: string;
+    };
+    query: {
+        /**
+         * The dealership's local calendar date, exactly `yyyy-MM-dd`.
+         */
+        date: string;
+    };
+    url: '/api/v1/dealerships/{dealershipId}/schedule';
+};
+
+export type GetWorkshopScheduleErrors = {
+    /**
+     * The date is missing or not a calendar date in the form `yyyy-MM-dd` (`validation-error`, `errors` keyed `date`).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No dealership has this id (`not-found`, with `resource` = `dealership` and the `id`).
+     */
+    404: ProblemDetails;
+    /**
+     * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type GetWorkshopScheduleError = GetWorkshopScheduleErrors[keyof GetWorkshopScheduleErrors];
+
+export type GetWorkshopScheduleResponses = {
+    /**
+     * The board: the dealership, the operating window (null when closed), the slot grid, the bays with their appointments ordered by start, and the technicians.
+     */
+    200: WorkshopScheduleResponse;
+};
+
+export type GetWorkshopScheduleResponse = GetWorkshopScheduleResponses[keyof GetWorkshopScheduleResponses];

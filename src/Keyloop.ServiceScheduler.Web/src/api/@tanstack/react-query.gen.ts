@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, getAvailability, getDealerships, getServiceTypes, type Options } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getDealerships, getServiceTypes, getWorkshopSchedule, type Options } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -129,3 +129,72 @@ export const bookAppointmentMutation = (options?: Partial<Options<BookAppointmen
     };
     return mutationOptions;
 };
+
+export const getAppointmentQueryKey = (options: Options<GetAppointmentData>) => createQueryKey('getAppointment', options);
+
+/**
+ * Get an appointment
+ *
+ * The appointment in whatever status it is now (cancelled ones included), with its service, the bay and technician reserved for
+ * it, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's `Location`
+ * header points here.
+ */
+export const getAppointmentOptions = (options: Options<GetAppointmentData>) => queryOptions<GetAppointmentResponse, GetAppointmentError, GetAppointmentResponse, ReturnType<typeof getAppointmentQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getAppointment({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getAppointmentQueryKey(options)
+});
+
+/**
+ * Cancel an appointment
+ *
+ * Cancels a confirmed or checked-in appointment and records why. Its bay and technician are free again at once, so the slot is
+ * re-bookable; the appointment stays readable, with status `Cancelled` and the reason as `cancellationReason`. Cancelling is
+ * not repeatable: a second cancel, or one after work has started, is refused with the current status. When another request changed
+ * the appointment after this one read it, nothing is overwritten: read it again and decide.
+ */
+export const cancelAppointmentMutation = (options?: Partial<Options<CancelAppointmentData>>): UseMutationOptions<CancelAppointmentResponse, CancelAppointmentError, Options<CancelAppointmentData>> => {
+    const mutationOptions: UseMutationOptions<CancelAppointmentResponse, CancelAppointmentError, Options<CancelAppointmentData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await cancelAppointment({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getWorkshopScheduleQueryKey = (options: Options<GetWorkshopScheduleData>) => createQueryKey('getWorkshopSchedule', options);
+
+/**
+ * Get the workshop schedule for a date
+ *
+ * The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and
+ * every technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold
+ * stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
+ * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
+ * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
+ * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
+ */
+export const getWorkshopScheduleOptions = (options: Options<GetWorkshopScheduleData>) => queryOptions<GetWorkshopScheduleResponse, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ReturnType<typeof getWorkshopScheduleQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getWorkshopSchedule({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getWorkshopScheduleQueryKey(options)
+});
