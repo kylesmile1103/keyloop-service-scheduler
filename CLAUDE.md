@@ -14,8 +14,11 @@ The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Un
 Prerequisites: .NET SDK 10.0.100 (`global.json`), Node 22 + pnpm, and a running Docker daemon. On this machine Docker is provided by **Colima**: `colima status` and, if stopped, `colima start --cpu 4 --memory 6 --disk 40`.
 
 ```bash
-# whole stack (PostgreSQL container, API, Vite app, Aspire dashboard)
+# whole stack (PostgreSQL container, API, Vite app, Aspire dashboard); `aspire run` is equivalent
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost
+
+# Docker Compose bundle generated from the AppHost model (Demo environment)
+aspire publish --project src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose
 
 # build with the same strictness as CI (warnings are errors)
 dotnet build -warnaserror
@@ -48,7 +51,8 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 - **Audit/events:** aggregates raise domain events; `DomainEventInterceptor` writes `appointment_history` rows in the same transaction and notifies `IDomainEventObserver`s after commit.
 - **Telemetry:** `SchedulerTelemetry` owns the `ActivitySource`/`Meter` named `Keyloop.ServiceScheduler`; ServiceDefaults wires OTLP to the Aspire dashboard. Metric names are part of the design (§12) — do not rename.
 - **Contract sync:** `dotnet build` of the API writes `contracts/openapi/v1.json` (commit it); `OpenApiContractTests` asserts the runtime document equals that file; HeyAPI (`openapi-ts.config.ts`) generates `src/api/*.gen.ts` including TanStack `queryOptions`/`mutationOptions`. Operation ids (`BookAppointment`, `GetAvailability`, …) are stable API.
-- **Environments:** `Development` (migrate + seed on startup, Scalar on), `SystemTest` (integration tests; rate limiting off), `UAT`/`Production` (migration bundles, no seed, Scalar off in Production). Behaviour differs only via `appsettings.{Env}.json` and options classes validated on start.
+- **Environments:** `Development` (migrate + seed on startup, Scalar on), `SystemTest` (integration tests; rate limiting off), `UAT`/`Production` (migration bundles, no seed, Scalar off in Production), and `Demo` (only for the Aspire-published compose bundle: UAT posture plus migrate/seed at startup).
+- **Aspire (ADR-019):** the AppHost owns secrets (generated `postgres-password` parameter persisted to user secrets — never put credentials in appsettings), persistent PostgreSQL + pgweb, health-gated startup, `pnpm install` for the web app, `API_HTTP` service discovery for the Vite proxy, browser OTLP to the dashboard (dev only), and the *Reseed demo data* dashboard command (`POST /api/v1/admin/demo/reseed`, key-protected, excluded from OpenAPI). Behaviour differs only via `appsettings.{Env}.json` and options classes validated on start.
 - **OpenAPI (ADR-008/017/018):** the document is generated at build time into `contracts/openapi/v1.json` (a `BuildTimeOpenApi.IsActive` guard in `Program.cs` skips database work during generation); summaries, response docs and request examples come from XML comments on static handler methods and DTOs; Scalar at `/scalar/v1` is the API test UI (not mapped in Production).
 - **Reflection budget (ADR-016):** no assembly scanning or reflection-based discovery; endpoints are listed in `EndpointRegistry`, handlers and validators are registered explicitly; every HTTP DTO (and top-level `IReadOnlyList<T>`) is listed in `Common/Serialization/SchedulerJsonContext.cs` because reflection-based JSON is disabled; mappers are Mapperly-generated (`RequiredMappingStrategy.Target`); options are validated by `[OptionsValidator]`; logs go through `[LoggerMessage]` methods in `SchedulerLog`; the Request Delegate Generator is on, so an endpoint it cannot intercept fails the build. Residual reflection (EF Core, FluentValidation) is measured by `scripts/aot-readiness.sh`.
 - **Frontend conventions** follow the shadcn dashboard template (Vite variant): Base UI primitives, `cn` from the `cn` package inside `components/ui`, `@/` alias, Tailwind v4 tokens in `src/index.css`. Vite proxies `/api`, `/openapi`, `/scalar` to the API (no CORS in dev). Aspire sets `PORT` and `VITE_API_PROXY_TARGET`.

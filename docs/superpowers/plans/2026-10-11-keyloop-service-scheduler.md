@@ -30,6 +30,7 @@
 - Docker is provided by **Colima** on the author's machine (`colima status`; `colima start --cpu 4 --memory 6 --disk 40` if stopped). Integration tests and Aspire need it running.
 - Frontend package manager is **pnpm**; Node 22. Follow the template conventions found in `../references/shadcn-dashboard-landing-template/vite-version` (Base UI primitives, `cn` from the `cn` package in `components/ui`, `@/` alias, Tailwind v4 CSS tokens).
 - Never copy code from `../references/mirotalkwebrtc` (AGPL). Only the MIT shadcn template may be vendored.
+- **Aspire as the platform (ADR-019, Addendum C `docs/superpowers/plans/2026-10-11-addendum-aspire.md`):** `dotnet run` of the AppHost bootstraps all tiers (generated persisted secrets, persistent PostgreSQL + pgweb, health-gated API, automatic `pnpm install`, `API_HTTP` discovery for the Vite proxy, browser OTLP to the dashboard, *Reseed demo data* command); `aspire publish` emits Docker Compose. Addendum C supersedes any AppHost/Vite wiring shown inline in Tasks 14 and 15 (e.g. `VITE_API_PROXY_TARGET` is replaced by `API_HTTP`).
 - **OpenAPI, API test UI and UI quality (ADR-008/017/018, Addendum B `docs/superpowers/plans/2026-10-11-addendum-openapi-ui.md`):** the OpenAPI document is generated at build time into `contracts/openapi/v1.json`; descriptions and examples come from XML comments on static handler methods and DTOs; Scalar is the test UI; the dispatch board meets the §B4 quality bar and is validated in Chrome (Task 17b).
 - **Reflection budget (ADR-016, Addendum A `docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md`):** no assembly scanning, no reflection-based discovery, no runtime-compiled expressions in our code; JSON via `SchedulerJsonContext` with reflection disabled; mapping via Mapperly; options validated by `[OptionsValidator]`; logging via `[LoggerMessage]`; RDG enabled. Tasks 6–12, 14 and 18 name the addendum sections they must apply.
 
@@ -711,6 +712,8 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 
 ### Task 7: Cross-cutting API infrastructure (endpoints, validation, problems, telemetry, options, security)
 
+**Addendum C (Aspire):** apply §C4 (ServiceDefaults resource attributes `deployment.environment.name` and `service.version`; OpenTelemetry logging with scopes; JSON console logging outside Development; no duplicate DB health check or retry policy).
+
 **Addendum B (OpenAPI/UI):** apply §B1 guard (`BuildTimeOpenApi.IsActive`, placeholder connection string, skip `DatabaseInitializer`; `__throw` endpoint `.ExcludeFromDescription()`), §B2 conventions (static handler methods, XML comments, fixed tags, document transformer for info/tags, clear `servers`), §B3 Scalar configuration. Register the domain `OperatingWindow`, `BayCapability[]` and `Certification[]` in `SchedulerJsonContext` (Task 4 uses `OperatingWindow` as the `operatingWindow` problem extension, so the planned `OperatingWindowExtension` record is not needed).
 
 **Addendum A (reflection/AOT):** apply §A1 (csproj switches, Mapperly package), §A2 (register `SchedulerJsonContext` first in the resolver chain, register ProblemDetails extension records, no `JsonStringEnumConverter`), §A3 (`EndpointRegistry`, explicit validator/handler registration — `AddValidatorsFromAssemblyContaining` is forbidden), §A4 (`[OptionsValidator]` validators replacing `ValidateDataAnnotations()`), §A5 (all log calls through `SchedulerLog`). Replace the anonymous `operatingWindow` extension object with a named record `OperatingWindowExtension(DateTime StartUtc, DateTime EndUtc)` registered in the context. Read the addendum first.
@@ -1084,6 +1087,8 @@ Plus `Thirty_bookings_for_different_slots_all_succeed` (30 requests, each at a d
 
 ### Task 14: OpenAPI contract export, AppHost orchestration, Dockerfile
 
+**Scope note:** with Addendum C, this task delivers the build-time OpenAPI wiring and parity test (Addendum B §B1), the API Dockerfile, and a minimal AppHost (PostgreSQL + API) sufficient for Step 4's manual run; the full Aspire platform work moves to **Task 14b**.
+
 **Addendum B (OpenAPI/UI):** apply §B1 wiring — build-time generation replaces the `UPDATE_CONTRACT` export described below; `scripts/export-openapi.sh` runs `dotnet build`; the contract test becomes the parity test described in §B1; the AppHost link opens `/scalar/v1`.
 
 **Addendum A (reflection/AOT):** the contract test also asserts that `/openapi/v1.json` renders every enum as string values and every response schema is present (a type missing from `SchedulerJsonContext` surfaces here as a failing request). No other change.
@@ -1152,9 +1157,15 @@ If `WithUrlForEndpoint` has a different shape in 13.6.1, use `WithUrls(ctx => ct
 
 ---
 
+### Task 14b: Aspire platform — secrets, resources, dashboard command, whole-stack smoke test
+
+Apply Addendum C §C1 (secret parameters, generated and persisted), §C2 (full AppHost: persistent PostgreSQL + pgweb, health-gated API with Scalar link, `compose` environment, guarded `AddViteApp` block with `WithPnpm`, `WithReference(api)`, `WithOtlpExporter(OtlpProtocol.HttpProtobuf)`, health check, `PublishAsDockerFile`; launch settings with `ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL`), §C3 (reseed endpoint + `WithHttpCommand`, integration tests for wrong/right key), §C7 (create `Aspire/AppHostSmokeTests.cs` for postgres + api). Add `Aspire.Hosting.Docker` and `Aspire.Hosting.Testing` (13.6.1) to `Directory.Packages.props`; reference `Aspire.Hosting.Testing` and the AppHost project from the integration tests. Verify every Aspire API against the 13.6.1 docs before use and record deviations. Manual check: on a fresh `docker volume rm keyloop-scheduler-pgdata` + cleared AppHost user secrets, one `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` reaches all-healthy, and the dashboard shows the Scalar link and the *Reseed demo data* command (run it once and confirm the board data is recreated via `GET /api/v1/dealerships/{id}/schedule`). Commit: `feat(aspire): add secret parameters, persistent resources, reseed command and whole-stack smoke test`.
+
 ## Phase 4 — Dispatch board (UI harness)
 
 ### Task 15: Web project scaffold from the template, HeyAPI contract sync, app shell
+
+**Addendum C (Aspire):** apply §C5 (proxy target from `API_HTTP`, Aspire-owned `PORT`, `predev: openapi-ts`, browser OpenTelemetry with dev-only OTLP exposure and `ui.*` spans, web Dockerfile with nginx `/api` proxy) and extend §C7's smoke test to the `web` resource; remove the AppHost directory guard. The inline `vite.config.ts` in Step 2 below is superseded where it differs.
 
 **Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (status tokens in `src/index.css` for both themes, typography, shell with sidebar footer "API reference" link to `/scalar/v1`, Keyloop wordmark as text only — no third-party logos).
 
@@ -1281,6 +1292,8 @@ Apply Addendum B §B5 exactly: the controller drives the running app with the `c
 ## Phase 5 — CI, documentation, final verification
 
 ### Task 18: CI workflow, README, video guide, CLAUDE.md, final gate
+
+**Addendum C (Aspire):** apply §C6 (`appsettings.Demo.json`, `ASPNETCORE_ENVIRONMENT=Demo` for the API in publish mode, `aspire publish -o artifacts/compose`, bring it up with Docker Compose, curl `/health` and `/api/v1/dealerships` through the web container, tear down; add `artifacts/` to `.gitignore`); CI runs the `Category=Aspire` smoke test in its own step after `pnpm install`; README has an "Aspire tour" section (resources, secrets, browser traces, reseed command, compose publish).
 
 **Addendum B (OpenAPI/UI):** CI runs `dotnet build` and then `git diff --exit-code contracts/`; README embeds `docs/media/*` screenshots and GIFs and documents Scalar (`/scalar/v1`, prefilled test requests).
 

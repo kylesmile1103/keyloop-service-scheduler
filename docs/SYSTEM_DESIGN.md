@@ -357,7 +357,7 @@ GetAvailability(d, s, D):
   return { t ∈ S : t ∈ F }  with, for each t, |{b : t ∈ Φ(b)}| and |{t' : t ∈ Φ(t')}|
 ```
 
-**Complexity.** With `A` appointments that day and `R = |B*| + |T*|` resources: sorting `O(A log A)`, free/feasible sets `O(A + R)`, unions `O(A log R)`, intersection `O(A)`, enumeration `O(|S|)`. For realistic sizes (A ≈ 50, R ≈ 15, |S| ≈ 40) this is microseconds of CPU; the request cost is one indexed read. Per-slot counts (used by the UI as a capacity heat-map) are obtained by a second linear pass over `S` against each `Φ(r)` with a moving pointer, still `O(|S| + A)`.
+**Complexity.** With `A` appointments that day and `R = |B*| + |T*|` resources: sorting `O(A log A)`, free/feasible sets `O(A + R)`, unions `O(A log R)`, intersection `O(A)`, enumeration `O(|S|)`. For realistic sizes (A ≈ 50, R ≈ 15, |S| ≈ 40) this is microseconds of CPU; the request cost is one indexed read. Per-slot counts (used by the UI as a capacity heat-map) are obtained by a pass over `S` that checks each resource's feasible-start intervals with a moving pointer: `O(|S| · R + A)`, still microseconds at workshop sizes.
 
 **Worked example.** Window 08:00–12:00, `Δ` = 60 min, `G` = 15. Bay 1 busy 09:00–10:00; Bay 2 busy 08:00–09:30 and 10:30–11:00. Tech A busy 08:30–09:00; Tech B busy 10:00–12:00.
 - `Φ(Bay1)` = [08:00, 08:00] ∪ [10:00, 11:00]; `Φ(Bay2)` = [09:30, 09:30] ∪ [11:00, 11:00] → `ΦB` = [08:00,08:00] ∪ [09:30,09:30] ∪ [10:00,11:00].
@@ -556,7 +556,7 @@ C4Container
     Rel(web, api, "Calls /api/v1 (dev: Vite proxy, prod: ingress)", "JSON / HTTPS")
     Rel(api, db, "Reads/writes", "Npgsql, TLS")
     Rel(api, dash, "Exports telemetry", "OTLP/gRPC")
-    Rel(web, dash, "Console logs", "stdout via AppHost")
+    Rel(web, dash, "Browser traces (fetch, document load) + dev-server logs", "OTLP/HTTP protobuf, stdout")
     Rel(api, gen, "Emits contracts/openapi/v1.json at build", "MSBuild")
     Rel(gen, web, "Writes src/api/*.gen.ts", "pnpm generate:api")
 
@@ -738,11 +738,13 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph AppHost["Keyloop.ServiceScheduler.AppHost (dotnet run)"]
-        PG[("postgres:17<br/>+ data volume<br/>+ pgweb (dev)")]
-        API["api<br/>(.NET 10)<br/>WaitFor(db)"]
-        WEB["web<br/>AddViteApp + pnpm<br/>WaitFor(api)<br/>VITE_API_PROXY_TARGET"]
+        PARAMS["parameters<br/>postgres-user, postgres-password<br/>(secret, generated, persisted)"]
+        PG[("postgres:17<br/>persistent + data volume<br/>+ pgweb (dev)")]
+        API["api<br/>(.NET 10)<br/>WaitFor(db), /health check<br/>command: Reseed demo data"]
+        WEB["web<br/>AddViteApp + pnpm install<br/>WaitFor(api), API_HTTP discovery<br/>OTLP/HTTP for the browser"]
         DASH["Aspire Dashboard<br/>OTLP + resources"]
-        PG --> API --> WEB
+        PARAMS --> PG --> API --> WEB
+        WEB -. OTLP/HTTP .-> DASH
         API -. OTLP .-> DASH
         WEB -. stdout .-> DASH
     end
@@ -758,8 +760,8 @@ flowchart LR
     CI["CI: regenerate + git diff --exit-code<br/>(fails on contract drift)"] --> SPEC
 ```
 
-- **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`): Aspire starts PostgreSQL in a container with a named data volume, waits for it to be healthy, starts the API (which migrates and seeds in Development), then starts the Vite dev server with the API's HTTP endpoint injected as `VITE_API_PROXY_TARGET`. Vite proxies `/api/*` and `/openapi/*` to the API so the browser is same-origin (no CORS in development, ADR-012). The dashboard opens automatically.
-- **Publish mode** (`aspire publish`): produces deployment artefacts; the API image is built from its Dockerfile, the Vite app is published as a static Dockerfile (`PublishAsDockerFile`), and EF migration bundles are produced for the pipeline (§10).
+- **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`, or `aspire run`): Aspire generates the PostgreSQL credentials once (secret parameters persisted to the AppHost's user secrets), starts PostgreSQL as a persistent container with a named data volume (plus pgweb), waits for it, starts the API (which migrates and seeds in Development) and gates readiness on `/health`, installs the web dependencies (`pnpm install` as an installer child resource), regenerates the typed client from the committed contract (`predev`), and starts the Vite dev server with the API discovered through Aspire's `API_HTTP` variable; Vite proxies `/api/*`, `/openapi/*` and `/scalar/*` so the browser is same-origin (no CORS in development, ADR-012). The browser sends its own spans to the dashboard over OTLP/HTTP, so one trace runs from the click in the browser through the API to PostgreSQL. The dashboard exposes a *Reseed demo data* command on the API resource and links to Scalar and pgweb (ADR-019).
+- **Publish mode** (`aspire publish`): produces deployment artefacts — API image from its Dockerfile, web image from its Dockerfile (nginx serving the static build and proxying `/api`), EF migration bundles for UAT/Production pipelines, and a Docker Compose definition (`docker-compose.yaml` + `.env` with the secret parameters as inputs) from the `compose` environment. The compose output runs the **Demo** environment (§10) so `docker compose up` works without the .NET SDK.
 - **Contract sync**: `dotnet build` of the API emits the OpenAPI document into `contracts/openapi/v1.json` (committed) through build-time generation (`Microsoft.Extensions.ApiDescription.Server` runs the composition root against a mock server; a `GetDocument.Insider` guard skips database work). XML documentation comments become OpenAPI summaries, descriptions, response docs and request examples through the source generator built into `Microsoft.AspNetCore.OpenApi`. The Web project's `openapi-ts.config.ts` reads the committed file and generates `types.gen.ts`, `sdk.gen.ts`, `client.gen.ts` and `@tanstack/react-query.gen.ts` (`queryOptions`/`mutationOptions` per operation). CI builds, then fails on `git diff --exit-code contracts/` and on client drift; a parity test asserts the runtime document served in SystemTest equals the build-time file. Production never generates documents at runtime (ADR-008, ADR-017).
 
 ### 8.7 API contract
@@ -957,9 +959,12 @@ Four environments share one codebase; behaviour differs only by configuration, n
 | HTTPS / HSTS | Dev certificate; HSTS off | Off | TLS at ingress; HSTS on | TLS at ingress; HSTS on |
 | Telemetry export | Aspire dashboard (OTLP injected by AppHost) | None (in-memory exporters in tests) | OTLP collector → vendor | OTLP collector → vendor; sampling 100 % traces at this volume |
 | Secrets | Aspire parameters + user-secrets (`postgres-password` generated) | Testcontainers-generated | Key vault / env vars injected by platform | Key vault; DB auth via managed identity or rotated secrets |
+| Secret source | AppHost user secrets (generated on first run; nothing typed by hand) | Testcontainers credentials per run | Platform secret store → parameters | Platform secret store → parameters (rotated) |
 | DB role | Single dev role | Single role | `scheduler_app` (DML only); migrations run as owner | Same, least privilege |
 
 Configuration sources (last wins): `appsettings.json` → `appsettings.{Environment}.json` → environment variables (Aspire injects `ConnectionStrings__schedulerdb`, `OTEL_*`) → user-secrets (Development only). All strongly-typed options use `ValidateDataAnnotations().ValidateOnStart()` so a misconfigured deployment fails fast at boot rather than at first request.
+
+A fifth environment, **Demo**, exists only for the Aspire-published Docker Compose bundle: UAT's security posture (rate limits on, Scalar on, no secrets in files) with migrations and demo seeding at startup and HSTS off because compose serves plain HTTP. It is a convenience for evaluators without the .NET SDK, not a deployment target.
 
 ```mermaid
 flowchart LR
@@ -1047,6 +1052,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 - W3C `traceparent` is honoured on inbound requests and propagated to PostgreSQL spans; the ASP.NET Core `Activity` id is written into every log line (trace id + span id) and into `ProblemDetails.extensions.traceId`.
 - The dispatch board shows the `traceId` on error toasts, so a reviewer can paste it into the Aspire dashboard's trace search during the demo.
+- The browser is a first-class trace participant: the dispatch board's OpenTelemetry web SDK (fetch and document-load instrumentation, plus `ui.book_appointment` and `ui.stress_test` spans) exports to the dashboard over OTLP/HTTP, and `traceparent` propagates on the same-origin `/api` calls, so the click, the API span tree and the SQL statements share one trace id. The OTLP API key is exposed to the browser only in Development; production builds ship with browser telemetry off unless a secret-free collector URL is configured.
 - Frontend requests include an `X-Request-Id` (uuid) that the API echoes; the Vite console logs it for the harness's stress panel.
 
 ### 12.3 Health, SLOs and alerts
@@ -1062,7 +1068,7 @@ Endpoint groups declare `.RequireAuthorization("Scheduler.Book")` etc. In Develo
 
 ### 12.4 What to look at during the demo
 
-1. Resources page: `postgres`, `api`, `web` healthy; `api` shows the Scalar URL.
+1. Resources page: `postgres`, `pgweb`, `api`, `web` (and its pnpm installer) healthy; `api` links to Scalar and offers the *Reseed demo data* command.
 2. Traces: one `POST …/appointments` → `scheduler.book_appointment` → `acquire_dealership_lock` → `compute_availability` → `persist_appointment` → Npgsql `INSERT`.
 3. After the stress panel fires 30 bookings: 30 traces, one with `booking.outcome=confirmed`, 29 with `slot_unavailable`, and `lock_wait` rising across them; metrics page shows `scheduler.booking.requests` by outcome and `deadlocks = 0`.
 4. Structured logs filtered by `AppointmentId`.
@@ -1198,7 +1204,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-004** | Booking transaction runs at `READ COMMITTED`, opened explicitly | Per-statement snapshots are required for check-after-lock correctness. Consequence: never raise isolation for this path; a test asserts behaviour. |
 | **ADR-005** | UTC storage; IANA time zone per dealership; half-open intervals; `TimeProvider` injected | Deterministic DST behaviour; testable time rules. |
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |
-| **ADR-007** | Migrations run at API startup only in Development/SystemTest; UAT/Production use EF migration bundles produced by `aspire publish` | Preserves the prescribed solution layout; production never migrates at boot. |
+| **ADR-007** | Migrations run at API startup only in Development, SystemTest and the compose-only Demo environment; UAT/Production use EF migration bundles produced by `aspire publish` | Preserves the prescribed solution layout; production never migrates at boot. |
 | **ADR-008** | OpenAPI document generated at build time into `contracts/openapi/v1.json` (committed); HeyAPI generates the client from the file; CI fails on drift; a parity test checks runtime == build-time | Deterministic contract sync reviewable in PRs; production needs no runtime document generation. |
 | **ADR-009** | `Idempotency-Key` memoises successful bookings only, inside the booking transaction | One transaction; failures are safe to retry. |
 | **ADR-010** | Authentication/authorisation deferred with an explicit seam and anonymous-mode logging | Keeps the evaluated engine in focus; production posture documented. |
@@ -1210,6 +1216,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-016** | Prefer build-time source generation over runtime reflection: RDG, STJ source generation with reflection disabled, Mapperly, configuration-binding and options-validator generators, `[LoggerMessage]`, explicit endpoint/DI/validator registration; keep MEDI as the container; FluentValidation and EF Core are the measured residue | Stakeholder direction (2026-10-11). Consequence: missing JSON registrations and unmapped DTO members are build/test failures; `scripts/aot-readiness.sh` tracks the residue; `PublishAot` is not enabled yet. |
 | **ADR-017** | OpenAPI descriptions come from XML documentation comments (compile-time source generator); handlers are static method groups so comments attach; request properties carry `<example>`s | Docs live next to code with zero runtime cost; Scalar's test requests are prefilled with valid data. |
 | **ADR-018** | Scalar is the API test UI (`/scalar/v1`), enabled outside Production | Best interactive client among Scalar/Swagger UI/ReDoc for .NET 10; linked from the Aspire dashboard and the dispatch board. |
+| **ADR-019** | Aspire is the whole development platform: generated secret parameters persisted to user secrets, persistent PostgreSQL + pgweb, health-gated startup, automatic `pnpm install`, Aspire service discovery (`API_HTTP`) for the Vite proxy, browser OTLP to the dashboard, a dashboard *Reseed demo data* HTTP command, `Aspire.Hosting.Testing` whole-stack smoke test, and `aspire publish` to Docker Compose | One command bootstraps all three tiers with correlated telemetry; deployment artefacts come from the same model as the dev loop. |
 
 ---
 

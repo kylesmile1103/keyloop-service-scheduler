@@ -34,3 +34,5 @@ references/*
 npm-debug.log*
 pnpm-debug.log*
 .superpowers/
+# Aspire publish output
+artifacts/
