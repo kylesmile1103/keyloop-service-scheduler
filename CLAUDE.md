@@ -26,7 +26,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests           
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~Concurrency"   # 30-way contention proof
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~BookAppointmentTests.Books_and_returns_201"  # single test
 
-# OpenAPI contract: export (rewrites contracts/openapi/v1.json) and check for drift
+# OpenAPI contract: dotnet build regenerates contracts/openapi/v1.json (build-time generation); check drift / parity
 scripts/export-openapi.sh
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "Category=Contract"
 
@@ -47,8 +47,9 @@ pnpm dev | pnpm lint | pnpm typecheck | pnpm test | pnpm build
 - **Errors:** RFC 9457 ProblemDetails with types under `https://api.keyloop.example/problems/<slug>`; 400 = malformed, 422 = business rule, 409 = state conflict (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`, `concurrency-conflict`). `GlobalExceptionHandler` is the only mapper.
 - **Audit/events:** aggregates raise domain events; `DomainEventInterceptor` writes `appointment_history` rows in the same transaction and notifies `IDomainEventObserver`s after commit.
 - **Telemetry:** `SchedulerTelemetry` owns the `ActivitySource`/`Meter` named `Keyloop.ServiceScheduler`; ServiceDefaults wires OTLP to the Aspire dashboard. Metric names are part of the design (§12) — do not rename.
-- **Contract sync:** the integration test `OpenApiContractTests` exports `/openapi/v1.json` to `contracts/openapi/v1.json` (`UPDATE_CONTRACT=1`) and otherwise fails on drift; HeyAPI (`openapi-ts.config.ts`) generates `src/api/*.gen.ts` including TanStack `queryOptions`/`mutationOptions`. Operation ids (`BookAppointment`, `GetAvailability`, …) are stable API.
+- **Contract sync:** `dotnet build` of the API writes `contracts/openapi/v1.json` (commit it); `OpenApiContractTests` asserts the runtime document equals that file; HeyAPI (`openapi-ts.config.ts`) generates `src/api/*.gen.ts` including TanStack `queryOptions`/`mutationOptions`. Operation ids (`BookAppointment`, `GetAvailability`, …) are stable API.
 - **Environments:** `Development` (migrate + seed on startup, Scalar on), `SystemTest` (integration tests; rate limiting off), `UAT`/`Production` (migration bundles, no seed, Scalar off in Production). Behaviour differs only via `appsettings.{Env}.json` and options classes validated on start.
+- **OpenAPI (ADR-008/017/018):** the document is generated at build time into `contracts/openapi/v1.json` (a `BuildTimeOpenApi.IsActive` guard in `Program.cs` skips database work during generation); summaries, response docs and request examples come from XML comments on static handler methods and DTOs; Scalar at `/scalar/v1` is the API test UI (not mapped in Production).
 - **Reflection budget (ADR-016):** no assembly scanning or reflection-based discovery; endpoints are listed in `EndpointRegistry`, handlers and validators are registered explicitly; every HTTP DTO (and top-level `IReadOnlyList<T>`) is listed in `Common/Serialization/SchedulerJsonContext.cs` because reflection-based JSON is disabled; mappers are Mapperly-generated (`RequiredMappingStrategy.Target`); options are validated by `[OptionsValidator]`; logs go through `[LoggerMessage]` methods in `SchedulerLog`; the Request Delegate Generator is on, so an endpoint it cannot intercept fails the build. Residual reflection (EF Core, FluentValidation) is measured by `scripts/aot-readiness.sh`.
 - **Frontend conventions** follow the shadcn dashboard template (Vite variant): Base UI primitives, `cn` from the `cn` package inside `components/ui`, `@/` alias, Tailwind v4 tokens in `src/index.css`. Vite proxies `/api`, `/openapi`, `/scalar` to the API (no CORS in dev). Aspire sets `PORT` and `VITE_API_PROXY_TARGET`.
 

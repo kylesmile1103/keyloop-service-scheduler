@@ -24,12 +24,13 @@
 - API route group prefix `/api/v1`; OpenAPI document name `v1`; every endpoint has `.WithName("<OperationId>")` using the exact ids listed in Task 7.
 - Commit after every task with Conventional Commits, and end every commit message with:
   ```
-  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   Claude-Session: https://claude.ai/code/session_01PcPKoNTdJPvHdVxgPZEvPV
   ```
 - Docker is provided by **Colima** on the author's machine (`colima status`; `colima start --cpu 4 --memory 6 --disk 40` if stopped). Integration tests and Aspire need it running.
 - Frontend package manager is **pnpm**; Node 22. Follow the template conventions found in `../references/shadcn-dashboard-landing-template/vite-version` (Base UI primitives, `cn` from the `cn` package in `components/ui`, `@/` alias, Tailwind v4 CSS tokens).
 - Never copy code from `../references/mirotalkwebrtc` (AGPL). Only the MIT shadcn template may be vendored.
+- **OpenAPI, API test UI and UI quality (ADR-008/017/018, Addendum B `docs/superpowers/plans/2026-10-11-addendum-openapi-ui.md`):** the OpenAPI document is generated at build time into `contracts/openapi/v1.json`; descriptions and examples come from XML comments on static handler methods and DTOs; Scalar is the test UI; the dispatch board meets the §B4 quality bar and is validated in Chrome (Task 17b).
 - **Reflection budget (ADR-016, Addendum A `docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md`):** no assembly scanning, no reflection-based discovery, no runtime-compiled expressions in our code; JSON via `SchedulerJsonContext` with reflection disabled; mapping via Mapperly; options validated by `[OptionsValidator]`; logging via `[LoggerMessage]`; RDG enabled. Tasks 6–12, 14 and 18 name the addendum sections they must apply.
 
 ## Review Focus
@@ -710,6 +711,8 @@ await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
 
 ### Task 7: Cross-cutting API infrastructure (endpoints, validation, problems, telemetry, options, security)
 
+**Addendum B (OpenAPI/UI):** apply §B1 guard (`BuildTimeOpenApi.IsActive`, placeholder connection string, skip `DatabaseInitializer`; `__throw` endpoint `.ExcludeFromDescription()`), §B2 conventions (static handler methods, XML comments, fixed tags, document transformer for info/tags, clear `servers`), §B3 Scalar configuration. Register the domain `OperatingWindow`, `BayCapability[]` and `Certification[]` in `SchedulerJsonContext` (Task 4 uses `OperatingWindow` as the `operatingWindow` problem extension, so the planned `OperatingWindowExtension` record is not needed).
+
 **Addendum A (reflection/AOT):** apply §A1 (csproj switches, Mapperly package), §A2 (register `SchedulerJsonContext` first in the resolver chain, register ProblemDetails extension records, no `JsonStringEnumConverter`), §A3 (`EndpointRegistry`, explicit validator/handler registration — `AddValidatorsFromAssemblyContaining` is forbidden), §A4 (`[OptionsValidator]` validators replacing `ValidateDataAnnotations()`), §A5 (all log calls through `SchedulerLog`). Replace the anonymous `operatingWindow` extension object with a named record `OperatingWindowExtension(DateTime StartUtc, DateTime EndUtc)` registered in the context. Read the addendum first.
 
 **Files:**
@@ -802,6 +805,8 @@ public partial class Program;
 
 ### Task 8: GetDealerships and GetServiceTypes slices
 
+**Addendum B (OpenAPI/UI):** apply §B2 (static handler methods with XML docs and `<response>` codes; tags `Dealerships`, `Catalog`; `<summary>` on response properties).
+
 **Addendum A (reflection/AOT):** apply §A6 (`Features/Dealerships/Mapping/DealershipMapper.cs`, `Features/Catalog/Mapping/ServiceTypeMapper.cs` with Mapperly), §A2 (register `DealershipResponse`, `DayOperatingHoursResponse`, `ServiceTypeResponse` and the top-level `IReadOnlyList<...>` types in `SchedulerJsonContext`), §A3 (add both endpoints to `EndpointRegistry`).
 
 **Files:** `Features/Dealerships/GetDealerships/{GetDealershipsEndpoint,GetDealershipsHandler,DealershipResponse}.cs`; `Features/Catalog/GetServiceTypes/{GetServiceTypesEndpoint,GetServiceTypesHandler,ServiceTypeResponse}.cs`; tests `IntegrationTests/Api/DealershipsEndpointTests.cs`, `ServiceTypesEndpointTests.cs`; modify `Program.cs` (register handlers).
@@ -820,6 +825,8 @@ public sealed record ServiceTypeResponse(Guid Id, string Code, string Name, int 
 - [ ] **Step 5: Commit** `feat(api): add dealerships and service catalogue slices`
 
 ### Task 9: GetAvailability slice
+
+**Addendum B (OpenAPI/UI):** apply §B2 (tag `Availability`; `<param>` docs with `example` attributes for `serviceTypeId` and `date`).
 
 **Addendum A (reflection/AOT):** apply §A6 (`Features/Availability/Mapping/AvailabilityMapper.cs` for `AvailabilitySlot`→`AvailabilitySlotResponse` with the local string as an additional parameter), §A2 (register `AvailabilityResponse`, `AvailabilitySlotResponse`, `OperatingWindowResponse`), §A3 (registry line), explicit `AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>()`.
 
@@ -844,6 +851,8 @@ public sealed class GetAvailabilityHandler(DayScheduleReader reader, IOptions<Sc
 - [ ] **Step 5: Commit** `feat(api): add availability slice backed by the domain calculator`
 
 ### Task 10: BookAppointment slice (lock, allocation, idempotency, suggestions)
+
+**Addendum B (OpenAPI/UI):** apply §B2 (tag `Appointments`; `<example>` on every `BookAppointmentRequest`/`CustomerRequest`/`VehicleRequest` property so Scalar's test request is a valid booking; `<response>` for 201/400/404/409/422/429 and the `Idempotency-Key` header documented).
 
 **Addendum A (reflection/AOT):** apply §A6 (`Features/Appointments/Mapping/AppointmentMapper.cs`; `AppointmentResponseMapper` becomes a thin wrapper), §A2 (register `BookAppointmentRequest`, `CustomerRequest`, `VehicleRequest`, `AppointmentResponse` and its nested records, `SuggestedSlot`, `IReadOnlyList<SuggestedSlot>`; serialise/deserialise idempotency bodies with `SchedulerJsonContext.Default.AppointmentResponse`), §A3 (registry line, explicit validator registration), §A5 (events 1001–1004 via `SchedulerLog`).
 
@@ -975,6 +984,8 @@ finally
 
 ### Task 11: GetAppointment and CancelAppointment slices
 
+**Addendum B (OpenAPI/UI):** apply §B2 (tag `Appointments`; `<example>` on `Reason`).
+
 **Addendum A (reflection/AOT):** apply §A2 (register `CancelAppointmentRequest`), §A3 (registry lines, explicit validator registration), §A5 (event 1010), reuse `AppointmentMapper` from Task 10.
 
 **Files:** `Features/Appointments/GetAppointment/{GetAppointmentEndpoint,GetAppointmentHandler}.cs`; `Features/Appointments/CancelAppointment/{CancelAppointmentEndpoint,CancelAppointmentRequest,CancelAppointmentValidator,CancelAppointmentHandler}.cs`; tests `IntegrationTests/Api/AppointmentLifecycleTests.cs`.
@@ -991,6 +1002,8 @@ public sealed class CancelAppointmentHandler(SchedulerDbContext db, TimeProvider
 - [ ] **Step 5: Commit** `feat(api): add GetAppointment and CancelAppointment slices with optimistic concurrency`
 
 ### Task 12: GetWorkshopSchedule slice
+
+**Addendum B (OpenAPI/UI):** apply §B2 (tag `Schedule`).
 
 **Addendum A (reflection/AOT):** apply §A6 (`Features/Schedule/Mapping/ScheduleMapper.cs` for bays, technicians and scheduled appointments), §A2 (register `WorkshopScheduleResponse` and nested records), §A3 (registry line).
 
@@ -1071,6 +1084,8 @@ Plus `Thirty_bookings_for_different_slots_all_succeed` (30 requests, each at a d
 
 ### Task 14: OpenAPI contract export, AppHost orchestration, Dockerfile
 
+**Addendum B (OpenAPI/UI):** apply §B1 wiring — build-time generation replaces the `UPDATE_CONTRACT` export described below; `scripts/export-openapi.sh` runs `dotnet build`; the contract test becomes the parity test described in §B1; the AppHost link opens `/scalar/v1`.
+
 **Addendum A (reflection/AOT):** the contract test also asserts that `/openapi/v1.json` renders every enum as string values and every response schema is present (a type missing from `SchedulerJsonContext` surfaces here as a failing request). No other change.
 
 **Files:** `IntegrationTests/Contract/OpenApiContractTests.cs`; `contracts/openapi/v1.json`; `scripts/export-openapi.sh`; `src/Keyloop.ServiceScheduler.AppHost/*` (`AppHost.cs`, csproj, `appsettings.json`, `Properties/launchSettings.json`); `src/Keyloop.ServiceScheduler.Api/Dockerfile`; modify `Keyloop.ServiceScheduler.sln`.
@@ -1141,6 +1156,8 @@ If `WithUrlForEndpoint` has a different shape in 13.6.1, use `WithUrls(ctx => ct
 
 ### Task 15: Web project scaffold from the template, HeyAPI contract sync, app shell
 
+**Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (status tokens in `src/index.css` for both themes, typography, shell with sidebar footer "API reference" link to `/scalar/v1`, Keyloop wordmark as text only — no third-party logos).
+
 **Files:** `src/Keyloop.ServiceScheduler.Web/{package.json,pnpm-lock.yaml,vite.config.ts,tsconfig*.json,components.json,eslint.config.js,index.html,openapi-ts.config.ts,vitest.config.ts,.gitignore}`; `src/{main.tsx,App.tsx,index.css,vite-env.d.ts}`; `src/api/{client.gen.ts,sdk.gen.ts,types.gen.ts,@tanstack/react-query.gen.ts}` (generated), `src/api/runtime.ts`; `src/lib/{utils.ts,query-client.ts}`; vendored `src/components/ui/*` (only those used: button, badge, card, dialog, sheet, select, input, label, field, textarea, tooltip, skeleton, toast, separator, scroll-area, sidebar, avatar, alert, tabs, kbd, dropdown-menu, loading-spinner, popover, calendar), `src/components/{app-sidebar,site-header,logo,mode-toggle,theme-provider,nav-main,nav-user}.tsx`, `src/components/layouts/base-layout.tsx`, `src/components/router/root-layout.tsx`, `src/hooks/use-mobile.ts`, `src/config/routes.tsx`, `src/app/dispatch/page.tsx` (placeholder page reading `GET /dealerships`); modify AppHost (remove the directory guard).
 
 - [ ] **Step 1: Scaffold** — copy from `../references/shadcn-dashboard-landing-template/vite-version`: `package.json` (rename to `keyloop-service-scheduler-web`, keep dependency versions, **remove** `@dnd-kit/*`, `@tanstack/react-table`, `recharts`, `react-day-picker` if unused, `cmdk`, `react-resizable-panels`; **add** `@tanstack/react-query@^5.104.1`; devDependencies add `@hey-api/openapi-ts@^0.99.0`, `vitest@^5.0.3`, `jsdom@^26`, `@testing-library/react@^16.3.3`, `@testing-library/jest-dom@^6`), `vite.config.ts`, `tsconfig*.json`, `components.json`, `eslint.config.js`, `.prettierrc`, `index.html`, `src/index.css` (keep the theme tokens), `src/lib/utils.ts`, `src/hooks/use-mobile.ts`, the ui components listed above, the shell components, `router/root-layout.tsx`. Remove theme-customizer, landing, auth, mail, chat, tasks, users, pricing, faqs, dashboard pages and the `upgrade-to-pro-button`, GTM analytics and `sidebar-notification`. `app-sidebar.tsx` nav: group "Workshop" → `Dispatch Board` (`/dispatch`, icon `CalendarRange`), `Appointments` (`/appointments`, icon `ClipboardList`, placeholder page). Brand block: "Keyloop" / "Service Scheduler".
@@ -1198,6 +1215,8 @@ export const createClientConfig: CreateClientConfig = (config) => ({
 
 ### Task 16: Timeline board, appointment blocks, technician lanes, details sheet with cancel
 
+**Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (KPI strip, timeline grid details, block design, legend, loading/empty/error states, accessibility, responsiveness).
+
 **Files:** `src/app/dispatch/{page.tsx}`; `src/app/dispatch/components/{dispatch-toolbar,timeline-grid,appointment-block,appointment-sheet,capability-badges,status-legend}.tsx`; `src/app/dispatch/lib/{time-grid.ts,status.ts}`; `src/lib/problem-details.ts`; tests `src/app/dispatch/lib/time-grid.test.ts`, `src/lib/problem-details.test.ts`.
 
 **Interfaces (produced):**
@@ -1227,6 +1246,8 @@ export function fieldErrors(p: ProblemDetails): Record<string, string>          
 
 ### Task 17: Booking dialog with availability chips, conflict surfacing, and stress panel
 
+**Addendum B (OpenAPI/UI):** load the `frontend-design:frontend-design` skill first; apply §B4 (two-step dialog with stepper, grouped slot chips with capacity, success toast with *View on board*, conflict/422/400 UX, stress panel tiles/bar/latency table).
+
 **Files:** `src/app/dispatch/components/{booking-dialog,availability-chips,stress-panel}.tsx`; `src/app/dispatch/lib/{booking-schema.ts,stress.ts}`; tests `src/app/dispatch/lib/stress.test.ts`, `src/app/dispatch/lib/booking-schema.test.ts`.
 
 **Interfaces (produced):**
@@ -1253,9 +1274,15 @@ export async function fireParallelBookings(n: number, build: (i: number) => Book
 
 ---
 
+### Task 17b: Visual QA in Chrome (controller-run)
+
+Apply Addendum B §B5 exactly: the controller drives the running app with the `claude-in-chrome` tools, captures the screenshots and GIFs into `docs/media/`, checks console and network logs, scores every screen against §B4, records findings in the ledger, dispatches ONE implementer (Opus, `frontend-design` skill) for Blocker/Major findings, and re-validates the changed screens. Commit `docs/media/*` with `docs: add dispatch board screenshots and demo recordings`.
+
 ## Phase 5 — CI, documentation, final verification
 
 ### Task 18: CI workflow, README, video guide, CLAUDE.md, final gate
+
+**Addendum B (OpenAPI/UI):** CI runs `dotnet build` and then `git diff --exit-code contracts/`; README embeds `docs/media/*` screenshots and GIFs and documents Scalar (`/scalar/v1`, prefilled test requests).
 
 **Addendum A (reflection/AOT):** apply §A8 (`scripts/aot-readiness.sh`, non-blocking CI step uploading its output, README section "Runtime reflection budget" listing generated vs explicit vs residual items and the compiled-model command with its drift caveat). CI coverage uses `dotnet test --coverage` (Microsoft.Testing.Platform), not `--collect:"XPlat Code Coverage"`.
 

@@ -557,7 +557,7 @@ C4Container
     Rel(api, db, "Reads/writes", "Npgsql, TLS")
     Rel(api, dash, "Exports telemetry", "OTLP/gRPC")
     Rel(web, dash, "Console logs", "stdout via AppHost")
-    Rel(api, gen, "Exports contracts/openapi/v1.json via contract test", "dotnet test")
+    Rel(api, gen, "Emits contracts/openapi/v1.json at build", "MSBuild")
     Rel(gen, web, "Writes src/api/*.gen.ts", "pnpm generate:api")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
@@ -748,7 +748,7 @@ flowchart LR
     end
 
     subgraph Contract["Contract sync (build time)"]
-        BUILD["Contract test exports /openapi/v1.json<br/>(UPDATE_CONTRACT=1 dotnet test --filter Category=Contract)"]
+        BUILD["dotnet build Api<br/>(build-time OpenAPI generation,<br/>Microsoft.Extensions.ApiDescription.Server)"]
         SPEC["contracts/openapi/v1.json<br/>(committed)"]
         GEN["pnpm generate:api<br/>@hey-api/openapi-ts<br/>plugins: client-fetch, @tanstack/react-query"]
         TS["src/api/*.gen.ts<br/>types, sdk, queryOptions, mutationOptions"]
@@ -760,7 +760,7 @@ flowchart LR
 
 - **Run mode** (`dotnet run --project src/Keyloop.ServiceScheduler.AppHost`): Aspire starts PostgreSQL in a container with a named data volume, waits for it to be healthy, starts the API (which migrates and seeds in Development), then starts the Vite dev server with the API's HTTP endpoint injected as `VITE_API_PROXY_TARGET`. Vite proxies `/api/*` and `/openapi/*` to the API so the browser is same-origin (no CORS in development, ADR-012). The dashboard opens automatically.
 - **Publish mode** (`aspire publish`): produces deployment artefacts; the API image is built from its Dockerfile, the Vite app is published as a static Dockerfile (`PublishAsDockerFile`), and EF migration bundles are produced for the pipeline (§10).
-- **Contract sync**: a contract test boots the API in-process, fetches `/openapi/v1.json`, and compares it with the committed `contracts/openapi/v1.json`; running it with `UPDATE_CONTRACT=1` rewrites the file (`scripts/export-openapi.sh`). The Web project's `openapi-ts.config.ts` reads that file and generates `types.gen.ts`, `sdk.gen.ts`, `client.gen.ts` and `@tanstack/react-query.gen.ts` (`queryOptions`/`mutationOptions` per operation). CI runs the contract test and regenerates the client, failing on drift, so a backend change that alters the contract cannot merge without the frontend being regenerated. Exporting from the running application rather than at MSBuild time avoids starting the host without a database connection string and keeps the export identical to what clients see.
+- **Contract sync**: `dotnet build` of the API emits the OpenAPI document into `contracts/openapi/v1.json` (committed) through build-time generation (`Microsoft.Extensions.ApiDescription.Server` runs the composition root against a mock server; a `GetDocument.Insider` guard skips database work). XML documentation comments become OpenAPI summaries, descriptions, response docs and request examples through the source generator built into `Microsoft.AspNetCore.OpenApi`. The Web project's `openapi-ts.config.ts` reads the committed file and generates `types.gen.ts`, `sdk.gen.ts`, `client.gen.ts` and `@tanstack/react-query.gen.ts` (`queryOptions`/`mutationOptions` per operation). CI builds, then fails on `git diff --exit-code contracts/` and on client drift; a parity test asserts the runtime document served in SystemTest equals the build-time file. Production never generates documents at runtime (ADR-008, ADR-017).
 
 ### 8.7 API contract
 
@@ -906,12 +906,12 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 | Validation | **FluentValidation 12.2** via endpoint filter, validators registered explicitly (no assembly scanning) | Declarative, testable, produces field-level `400` problems; mandated by the brief | DataAnnotations (weaker composition); hand-written validators (would be fully AOT-clean) |
 | Object mapping | **Mapperly 4.3** (source generator) | Build-time generated mappers, no reflection, unmapped members are build errors | AutoMapper (runtime reflection/expression compilation); hand-written mappers (reflection-free but boilerplate) |
 | JSON | **System.Text.Json source generation** (`JsonSerializerContext`) with reflection disabled | AOT-safe, faster startup, missing types fail fast | Reflection-based STJ (default) |
-| API reference UI | **Scalar.AspNetCore 2.17** | Modern, reads the built-in OpenAPI doc; off in Production | Swagger UI |
+| API test UI | **Scalar.AspNetCore 2.17** at `/scalar/v1` | Modern interactive client (request history, editable bodies prefilled from XML `<example>`s, code snippets), OpenAPI 3.1, dark mode; off in Production (ADR-018) | Swagger UI via `Swashbuckle.AspNetCore.SwaggerUI` 10.3 (familiar, older UX); ReDoc (read-only); `Scalar.Aspire` 0.11 (pre-1.0, extra container) |
 | Telemetry | **OpenTelemetry 1.19** via ServiceDefaults + custom `ActivitySource`/`Meter`; `Npgsql.OpenTelemetry` | Vendor-neutral; Aspire dashboard locally, any OTLP backend in UAT/Prod | Application Insights SDK (vendor lock-in) |
 | Resilience | `Microsoft.Extensions.Http.Resilience`; Npgsql execution strategy | Standard handlers; DB transient retries re-run the whole lock+check+insert unit | Polly direct |
 | Testing | **xunit.v3 4.0**, **Shouldly 4.3**, **Testcontainers.PostgreSql 4.16**, `Microsoft.AspNetCore.Mvc.Testing`, `Microsoft.Extensions.TimeProvider.Testing` | Real PostgreSQL semantics for the concurrency proof; `FakeTimeProvider` for time rules | `Aspire.Hosting.Testing` (boots the whole AppHost — slower, used optionally for a smoke test) |
 | Frontend | **React 19.3, Vite 8, TypeScript 6, Tailwind 4, shadcn/ui (Base UI), react-router-dom 7, react-hook-form + zod 4, TanStack Query 5.104** | Brief-mandated; matches the provided template's conventions exactly | — |
-| Contract sync | **@hey-api/openapi-ts 0.99** with `@hey-api/client-fetch` and `@tanstack/react-query` plugins | Generates types, SDK, `queryOptions`/`mutationOptions` straight from the committed OpenAPI doc; drift caught in CI | openapi-typescript + hand-written hooks; `Microsoft.Extensions.ApiDescription.Server` build-time emission (rejected: starts the host at build) |
+| Contract sync | **Build-time OpenAPI** (`Microsoft.Extensions.ApiDescription.Server` 10.0) + **XML-comment source generator** (`Microsoft.AspNetCore.OpenApi`) → **@hey-api/openapi-ts 0.99** with `@hey-api/client-fetch` and `@tanstack/react-query` plugins | Document produced by `dotnet build`, descriptions/examples compiled from XML comments, typed SDK and `queryOptions`/`mutationOptions` generated from the committed file; drift caught in CI | openapi-typescript + hand-written hooks; exporting the document from a test (earlier draft, replaced) |
 | Package management | pnpm 12 (web), NuGet Central Package Management (`Directory.Packages.props`) | Single source of truth for versions; reproducible installs | — |
 
 ### 9.1 Runtime reflection budget and NativeAOT readiness
@@ -932,7 +932,7 @@ Direction added on 2026-10-11 (stakeholder request): prefer build-time source ge
 | DI container | `Microsoft.Extensions.DependencyInjection`, explicit registrations only | Constructor discovery at startup (AOT-compatible) | Microsoft ships no source-generated container; third-party generators (Jab, Pure.DI) would replace the container under ASP.NET Core hosting — rejected as high risk for negligible gain. |
 | Input validation | FluentValidation, validators registered explicitly | Expression trees compiled at first use (interpreted under AOT) | Mandated by the brief; no assembly scanning. Residual item in the budget. |
 | ORM | EF Core 10 + Npgsql (AOT-compatible driver) | Model building and LINQ translation | Residual item. Next steps when needed: `dotnet ef dbcontext optimize` (compiled model; documented with its silent-drift caveat — not adopted for a 7-entity model) and precompiled queries once they leave preview. |
-| OpenAPI / Scalar | `Microsoft.AspNetCore.OpenApi` | Endpoint metadata inspection | Non-production environments only. |
+| OpenAPI document | **Build-time generation** (`OpenApiGenerateDocumentsOnBuild`) + **XML-comment source generator** | Production: none (no runtime document). Non-production: runtime `MapOpenApi()` for live Scalar | `Microsoft.AspNetCore.OpenApi` is NativeAOT-compatible; Scalar (non-production only) serves static assets. |
 | Telemetry | OpenTelemetry .NET (AOT-compatible) | No | — |
 
 See ADR-016.
@@ -1118,7 +1118,7 @@ A second variant removes the advisory lock (via a test-only option) to *demonstr
 
 ### 14.5 Frontend harness checks
 
-`tsc --noEmit`, `eslint`, `vitest` for `time-grid.ts` (UTC slot → grid column mapping across DST), `problem-details.ts` (type → UI message/field mapping), and the stress-panel tally reducer. The generated client is never hand-edited (CI drift check).
+`tsc --noEmit`, `eslint`, `vitest` for `time-grid.ts` (UTC slot → grid column mapping across DST), `problem-details.ts` (type → UI message/field mapping), and the stress-panel tally reducer. The generated client is never hand-edited (CI drift check). Visual QA in a real browser (Chrome, via claude-in-chrome) covers layout, both themes, two viewports, keyboard focus and console/network cleanliness (§15).
 
 ### 14.6 Continuous integration
 
@@ -1136,6 +1136,8 @@ Purpose: demonstrate end-to-end booking, schedule visualisation and conflict han
 - **Booking dialog**: service type (shows duration, required capabilities/certifications and `bookable`), date, then available start times fetched from `GET /availability` rendered as chips with free-bay/technician counts; customer and vehicle fields (VIN validated client-side with the same rule as the server); optional preferred bay/technician. On `201` the dialog closes, the new block pulses on the board and a toast shows the allocated bay/technician. On `409` an inline alert shows the problem title/detail, `traceId`, and `suggestedSlots` as one-click chips; on `400/422` field errors map onto the form from `errors`/`type`.
 - **Stress panel** (the video's proof moment): fire N (default 30) parallel bookings for one chosen slot from the browser and tally responses by status/type live — "1 × 201 · 29 × 409 slot-unavailable · 0 × 5xx" — with each row linking its `traceId`.
 - **Error surfaces**: every non-2xx is parsed as ProblemDetails by one helper; unknown shapes fall back to a generic toast with status code.
+- **Design direction and quality bar**: "calm control room" — neutral surfaces, one accent, colour reserved for appointment state (dedicated status tokens, AA contrast in both themes, never colour-only), Inter with tabular numbers, monospace VINs; a KPI strip (appointments today, bay utilisation, technicians busy now, next free slot); hatched out-of-hours time and a live "now" line; loading, empty and error states for every view; keyboard-reachable blocks with descriptive labels; reduced-motion support. The full checklist is in Addendum B §B4 of the implementation plan.
+- **Visual QA**: after the harness is built, it is driven in Chrome (light/dark, 1440 and 1024 px) through every flow; console and network logs must be clean; findings are fixed and re-validated; screenshots and GIFs are committed under `docs/media/` for the README and the video.
 
 ---
 
@@ -1157,7 +1159,8 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | Mediator | MediatR vs hand-rolled vs none | None: minimal API endpoints call handlers directly; MediatR's licence change removed the "free convention" argument. |
 | Migrations | Aspire `AddEFMigrations` + `RunDatabaseUpdateOnStart`, separate MigrationService project, API-startup migrate | API-startup in Dev/ST (fewest moving parts for `dotnet run`), **migration bundles** in UAT/Prod; the prescribed solution layout is preserved. `Aspire.Hosting.EntityFrameworkCore` was additionally found to be preview-only on NuGet at design time (13.6.1-preview), which rules it out for a production-grade submission. |
 | 400 vs 422 | Everything-is-400 vs semantic split | Split (ADR-011) so clients branch on `type`. |
-| Contract sync | Generate from the live URL at dev time vs MSBuild-time emission vs test-exported committed document | Committed document exported by a contract test + CI drift check: deterministic, reviewable in PRs, and the export is exactly what the running API serves. |
+| Contract sync | Generate from the live URL at dev time vs exporting from a contract test vs build-time generation | Build-time generation into the committed `contracts/openapi/v1.json` with a `GetDocument.Insider` guard, plus a runtime-parity test; the first draft exported from a test because MSBuild-time emission starts the host — the stakeholder's prompt to look for source generation led to re-checking the .NET 10 docs, which document the guard for exactly this case. |
+| API test UI and UI quality | Scalar vs Swagger UI vs ReDoc; visual QA by screenshots only vs driving the real UI in a browser | Scalar (interactive client, 3.1, examples from XML comments). The UI is validated by driving it in Chrome (claude-in-chrome): flows, both themes, two viewports, console/network checks, recorded GIFs for the video (§15). |
 | CORS vs proxy in dev | Allow-list the Vite origin vs Vite proxy | Proxy (same-origin), CORS default-deny with configurable origins for other deployments. |
 | Reflection reduction / AOT readiness (added mid-implementation at the stakeholder's request) | Source-generated DI containers (Jab, Pure.DI) vs explicit MEDI registrations; EF compiled models now vs later; Mapperly vs hand mappers; mediator source generators | Explicit MEDI registrations (Microsoft ships no DI generator; MEDI is AOT-compatible); compiled models deferred with the drift caveat; Mapperly adopted; no mediator exists to replace. The model inventoried every reflection site in the design and produced the budget table in §9.1. |
 
@@ -1195,7 +1198,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-005** | UTC storage; IANA time zone per dealership; half-open intervals; `TimeProvider` injected | Deterministic DST behaviour; testable time rules. |
 | **ADR-006** | Capabilities/certifications are C# enums persisted as `text[]` with GIN indexes | Compile-time safety + OpenAPI enums + `@>` containment queries. |
 | **ADR-007** | Migrations run at API startup only in Development/SystemTest; UAT/Production use EF migration bundles produced by `aspire publish` | Preserves the prescribed solution layout; production never migrates at boot. |
-| **ADR-008** | OpenAPI document exported by a contract test into `contracts/openapi/v1.json` (committed); HeyAPI generates from the file; CI fails on drift | Deterministic contract sync reviewable in PRs; no MSBuild-time host start. |
+| **ADR-008** | OpenAPI document generated at build time into `contracts/openapi/v1.json` (committed); HeyAPI generates the client from the file; CI fails on drift; a parity test checks runtime == build-time | Deterministic contract sync reviewable in PRs; production needs no runtime document generation. |
 | **ADR-009** | `Idempotency-Key` memoises successful bookings only, inside the booking transaction | One transaction; failures are safe to retry. |
 | **ADR-010** | Authentication/authorisation deferred with an explicit seam and anonymous-mode logging | Keeps the evaluated engine in focus; production posture documented. |
 | **ADR-011** | Problem type catalogue: 400 malformed, 422 business rule, 409 state conflict; RFC 9457 | Clients branch on `type`; no text parsing. |
@@ -1204,6 +1207,8 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-014** | GUID v7 primary keys | Index locality without exposing sequence; generated in the domain. |
 | **ADR-015** | Domain events persisted as `appointment_history` rows in the same transaction (lightweight outbox) | Audit trail is atomic with the change; integration events can relay from the same table later. |
 | **ADR-016** | Prefer build-time source generation over runtime reflection: RDG, STJ source generation with reflection disabled, Mapperly, configuration-binding and options-validator generators, `[LoggerMessage]`, explicit endpoint/DI/validator registration; keep MEDI as the container; FluentValidation and EF Core are the measured residue | Stakeholder direction (2026-10-11). Consequence: missing JSON registrations and unmapped DTO members are build/test failures; `scripts/aot-readiness.sh` tracks the residue; `PublishAot` is not enabled yet. |
+| **ADR-017** | OpenAPI descriptions come from XML documentation comments (compile-time source generator); handlers are static method groups so comments attach; request properties carry `<example>`s | Docs live next to code with zero runtime cost; Scalar's test requests are prefilled with valid data. |
+| **ADR-018** | Scalar is the API test UI (`/scalar/v1`), enabled outside Production | Best interactive client among Scalar/Swagger UI/ReDoc for .NET 10; linked from the Aspire dashboard and the dispatch board. |
 
 ---
 
