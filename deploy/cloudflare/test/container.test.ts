@@ -35,6 +35,11 @@ function vehicleAwareEnv() {
   return Object.assign(coreEnv(), { VEHICLE_AWARE_REQUIREMENTS: "true" as Env["VEHICLE_AWARE_REQUIREMENTS"] });
 }
 
+// Both on: API telemetry export and the vehicle-aware switch.
+function otlpAndVehicleAwareEnv() {
+  return Object.assign(otlpEnv(), { VEHICLE_AWARE_REQUIREMENTS: "true" as Env["VEHICLE_AWARE_REQUIREMENTS"] });
+}
+
 const otlpKeys = (settings: Record<string, string>) => Object.keys(settings).filter(key => key.startsWith("OTEL_"));
 const schedulingKeys = (settings: Record<string, string>) => Object.keys(settings).filter(key => key.startsWith("Scheduling__"));
 
@@ -190,6 +195,11 @@ describe("container startup and Secrets Store", () => {
     expect(settings.Scheduling__VehicleAwareRequirements).toBe("true");
     const { Scheduling__VehicleAwareRequirements: _switch, ...rest } = vehicleAwareEnvFixture;
     expect(rest).toEqual(coreEnvFixture);
+  });
+  it("passes the OTLP block and the vehicle-aware switch together, each unchanged by the other", async () => {
+    const settings = await containerEnv(otlpAndVehicleAwareEnv());
+    expect(settings).toEqual({ ...otlpEnvFixture, Scheduling__VehicleAwareRequirements: "true" });
+    expect(Object.fromEntries(Object.entries(settings).filter(([key]) => !key.startsWith("OTEL_")))).toEqual(vehicleAwareEnvFixture);
   });
   it.each(["TRUE", "yes", ""])("refuses to start with the vehicle-aware switch %j before reading Secrets Store", async value => {
     const env = coreEnv();
@@ -370,6 +380,12 @@ describe("start configuration fingerprint", () => {
       { ...start, enableInternet: false },
     ]) expect(startFingerprint(changed)).not.toBe(base);
   });
+  it("differs for each combination of the OTLP block and the vehicle-aware switch", async () => {
+    const image = "registry.example/api:a";
+    const fingerprints = await Promise.all([coreEnv(), otlpEnv(), vehicleAwareEnv(), otlpAndVehicleAwareEnv()]
+      .map(async env => startFingerprint({ image, enableInternet: true, env: await containerEnv(env) })));
+    expect(new Set(fingerprints).size).toBe(4);
+  });
   it("hashes identically in workerd with nodejs_compat", async () => {
     const bundle = await build({ entryPoints: [new URL("./fingerprint-runtime-entry.ts", import.meta.url).pathname], bundle: true,
       write: false, format: "esm", platform: "browser", external: ["node:crypto"] });
@@ -482,6 +498,23 @@ describe("configuration changes reach a running container", () => {
     expect(await serve(off.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
     expect(runtime.starts[2]!.env).toEqual(runtime.starts[0]!.env);
     expect(runtime.signals).toEqual([15, 15]);
+  });
+
+  it("restarts the container when a deploy turns API telemetry on or off, keeping the vehicle-aware switch", async () => {
+    const { runtime, storage } = await warmContainer();
+    const vehicleAware = (env: Env) => { env.VEHICLE_AWARE_REQUIREMENTS = "true" as Env["VEHICLE_AWARE_REQUIREMENTS"]; };
+    const both = deploy(runtime, storage, env => { vehicleAware(env); env.API_OTLP_ENABLED = "true" as Env["API_OTLP_ENABLED"]; });
+    expect(await serve(both.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[1]!.env).toMatchObject({
+      Scheduling__VehicleAwareRequirements: "true", OTEL_SERVICE_NAME: "api",
+      OTEL_EXPORTER_OTLP_HEADERS: otlpEnvFixture.OTEL_EXPORTER_OTLP_HEADERS,
+    });
+    const telemetryOff = deploy(runtime, storage, vehicleAware);
+    expect(await serve(telemetryOff.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(otlpKeys(runtime.starts[2]!.env!)).toEqual([]);
+    expect(runtime.starts[2]!.env).toMatchObject({ Scheduling__VehicleAwareRequirements: "true" });
+    expect(runtime.signals).toEqual([15, 15]);
+    expect(runtime.starts).toHaveLength(3);
   });
 
   it("restarts under the current configuration after a rollout to another image", async () => {
