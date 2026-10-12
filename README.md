@@ -35,6 +35,27 @@ Open **Mailpit inbox** on the `mailpit` resource for local email capture. Aspire
 
 For an isolated manual check, supply a temporary PostgreSQL password and `--AppHost:UsePersistentResources=false` after `--`; stop the AppHost afterwards. This avoids the developer's database volume and generated password default.
 
+### Try each role locally
+
+Locally, who you are is configuration, not a sign-in: the AppHost runs the API with the Development identity `admin@keyloop.test` / Admin unless told otherwise, so there is no login page and nothing to sign out of. To see the board as another role, stop the AppHost and start it again with the role (the app's Settings > Account lists the same settings):
+
+```bash
+dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-development-roles=ServiceAdvisor --Parameters:auth-development-email=advisor@keyloop.test
+dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-development-roles=Viewer
+dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-development-roles=""   # signed out
+```
+
+Running the API on its own in Development, set `Auth__Development__Roles__0` to `Admin`, `ServiceAdvisor`, `Viewer` or an empty value (signed out), and optionally `Auth__Development__Email`; the Vite dev server (`pnpm dev`, with `API_HTTP` naming the API) needs nothing else.
+
+| Role | Board and appointments list | Details sheet | Book, cancel, service suggestions | Resources |
+|---|---|---|---|---|
+| Signed out | names as initials, VINs as their last six characters, plates as `*******` | the masked card and a sign-in panel; the record is not requested | a "Sign in to book" prompt instead of the booking dialog | the 401 page |
+| No role (signed in) | masked, as signed out | masked, with the reason | unavailable, with the reason on screen | the 403 page |
+| Viewer | full | full record | unavailable: "Your role can view bookings but not change them." | read-only lists |
+| Service advisor, Admin | full | full record | available | read-only lists (Admin-only editing is Task 30) |
+
+Where a deployed build offers **Sign in** (the Access login, coming back to the same page, dealership and day) and **Sign out** (the hostname's Access logout), the development server shows **How to sign in**, which leads to those settings, and no Sign out. A refusal the UI did not foresee (a session that ended, a role removed) is answered once, with "Your session has ended" and Sign in for a `401` or "Your role doesn't allow that" for a `403`, and the app reads `/me` again; when the identity changes, whatever the previous caller read is cleared and read again.
+
 **`TODO(final-gate)`:** add Task 17b's approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports, and record the final clean-clone startup. No screenshot is embedded until that evidence exists.
 
 ## Optional booking intake triage
@@ -247,7 +268,7 @@ The shared production/UAT global rate limit is 300/min/IP. Every environment use
 
 Options come from `appsettings.json`, environment-specific files, Development user secrets and environment variables. Aspire injects `ConnectionStrings__schedulerdb` and telemetry settings. `[OptionsValidator]` and generated binding validate at startup before database work. Key settings include `Auth:Mode`, `Auth:TeamDomain`, indexed `Auth:Audience`, external `Auth:Roles:{Admin,ServiceAdvisor,Viewer}`, and `Scheduling`, `Database:MigrateOnStartup`, `Database:SeedDemoData`, `Security:AllowedOrigins` and `Security:ForwardedHeaders`. UAT/Production deliberately enable forwarded headers with empty trusted-peer lists and refuse startup until the platform supplies `KnownProxies` or `KnownNetworks`; do not inherit broad private-network trust by accident.
 
-The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. Enforce audit-table and appointment-delete restrictions in the actual role grants. Authentication/authorization now uses Cloudflare Access and API roles ([ADR-027](docs/ADR-027.md)). Public reads mask customer names, VINs and registrations; booking, cancellation, triage evaluation and triage photo upload require Admin or ServiceAdvisor, appointment details require any API role, and reseed requires Admin plus its key. Development defaults to `admin@keyloop.test` / Admin; Task 27b adds the frontend sign-in controls. Startup diagnostics were hardened by Task 18a to report members/indexes and safe path/type descriptions, with no raw configuration values.
+The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. Enforce audit-table and appointment-delete restrictions in the actual role grants. Authentication/authorization now uses Cloudflare Access and API roles ([ADR-027](docs/ADR-027.md)). Public reads mask customer names, VINs and registrations; booking, cancellation, triage evaluation and triage photo upload require Admin or ServiceAdvisor, appointment details require any API role, and reseed requires Admin plus its key. Development defaults to `admin@keyloop.test` / Admin; the app's sign-in controls follow `GET /me` (see [Try each role locally](#try-each-role-locally)). Startup diagnostics were hardened by Task 18a to report members/indexes and safe path/type descriptions, with no raw configuration values.
 
 Development identity is switchable through optional AppHost arguments `--Parameters:auth-development-email=advisor@keyloop.test` and `--Parameters:auth-development-roles=ServiceAdvisor` (comma-separated for multiple roles; an empty string selects anonymous). No auth parameters or Access account are needed for the default run. `Auth:Mode=Development` fails outside Development; `None` is SystemTest-only and grants no write access. `GET /api/v1/me` discovers the current identity, roles and `/auth/login?returnTo=%2F` / `/cdn-cgi/access/logout` URLs. Navigate to the hosted Access flow; do not build a password form or store JWTs in browser storage. See the [operator checklist](deploy/cloudflare/README.md#access-login-and-api-roles-task-27) before deployment.
 

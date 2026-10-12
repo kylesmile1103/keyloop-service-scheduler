@@ -4,6 +4,7 @@
 import { RotateCw } from "lucide-react"
 import { isRouteErrorResponse, Outlet, useNavigation, useRouteError } from "react-router-dom"
 
+import { SessionWatch } from "@/components/auth/session-watch"
 import { IllustratedState } from "@/components/illustrated-state"
 import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,8 @@ export function RootLayout() {
     <>
       {navigation.state === "loading" && <RouteProgress />}
       <Outlet />
+      {/* After the routes: its effects run after the pages' own (see SessionWatch). */}
+      <SessionWatch />
     </>
   )
 }
