@@ -125,7 +125,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Response_has_summaries_and_masks_personal_data_for_callers_without_a_role(string? authorization)
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
-        var appointment = Book(workshop, TestData.LondonTime(9), name: "  Alice   Louise Smith  ");
+        var appointment = Book(workshop, TestData.LondonTime(9), name: "  Alice   Louise Smith  ", id: TestData.PlateLookalikeId());
         await SaveAsync(appointment);
         if (authorization is not null)
         {
@@ -153,8 +153,9 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         item.GetProperty("technician").GetRawText().ShouldBe($$"""{"id":"{{workshop.Technician1.Id}}","name":"Amelia Clarke"}""");
         body.RootElement.GetRawText().ShouldNotContain("Alice");
         body.RootElement.GetRawText().ShouldNotContain("WVWZZZ1KZAW");
-        body.RootElement.GetRawText().ShouldNotContain("AB12");
-        body.RootElement.GetRawText().ShouldNotContain("CDE");
+        // Shouldly ignores case by default, and every id in the body is lowercase hex (the appointment's starts ab12cde0).
+        body.RootElement.GetRawText().ShouldNotContain("AB12", Case.Sensitive);
+        body.RootElement.GetRawText().ShouldNotContain("CDE", Case.Sensitive);
     }
 
     [Fact]

@@ -219,7 +219,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var appointment = TestData.NewAppointment(workshop.Dealership, workshop.Interim, workshop.Bay1, workshop.Technician1,
-            TestData.LondonTime(9), customer: 1, vin: "WVWZZZ1KZAW123456");
+            TestData.LondonTime(9), customer: 1, vin: "WVWZZZ1KZAW123456", id: TestData.PlateLookalikeId());
         // Use the same whitespace-sensitive initials fixture as the range-read tests.
         await _factory.WithDbAsync(async db =>
         {
@@ -245,8 +245,9 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
                 var raw = body.RootElement.GetRawText();
                 raw.ShouldNotContain("Alice");
                 raw.ShouldNotContain("WVWZZZ1KZAW");
-                raw.ShouldNotContain("AB12");
-                raw.ShouldNotContain("CDE");
+                // Shouldly ignores case by default, and every id in the body is lowercase hex (the appointment's starts ab12cde0).
+                raw.ShouldNotContain("AB12", Case.Sensitive);
+                raw.ShouldNotContain("CDE", Case.Sensitive);
             }
         }
     }
