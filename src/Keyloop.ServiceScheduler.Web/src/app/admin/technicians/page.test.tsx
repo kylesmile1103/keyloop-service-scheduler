@@ -6,7 +6,7 @@ import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { problemResponse } from "@/test/mock-api"
 import { renderBoard, search, viewportOf } from "@/test/render-board"
-import { bodyRows, columnTexts, figure, headers, openFilter } from "@/test/resource-list"
+import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 import { readingSunday, readingTuesday, technicians } from "@/test/schedules"
 
 // The Technicians page (Task 29): the roster as a read-only list on Refine core, with today's work.
@@ -135,8 +135,12 @@ describe("technicians list", () => {
     const list = await table()
     expect(bodyRows(list)).toHaveLength(6)
     expect(columnTexts(list, "Booked today")).toEqual(Array(6).fill("Closed"))
-    expect(figure("Working today")).toHaveTextContent("Closed today")
-    expect(figure("Technician load")).toHaveTextContent("Closed today")
+    expect(figureValue("Technicians")).toBe("6")
+    // A closed day has no figure for the day, not a 0: each card says so in words.
+    for (const label of ["Working today", "Booked today", "Technician load"]) {
+      expect(figureValue(label)).toBe("–No figure")
+      expect(figure(label)).toHaveTextContent("Closed today")
+    }
     expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
   })
 

@@ -5,7 +5,7 @@ import type { WorkshopScheduleResponse } from "@/api/types.gen"
 import { mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { renderBoard, viewportOf } from "@/test/render-board"
-import { bodyRows, columnTexts, figure, headers, openFilter } from "@/test/resource-list"
+import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 import { appointments, bays, readingSunday, readingTuesday, withStatus } from "@/test/schedules"
 
 // The Bays page (Task 29): the dealership's service bays as a read-only list on Refine core, with today's load.
@@ -102,10 +102,13 @@ describe("bays list", () => {
     const list = await table()
     expect(bodyRows(list)).toHaveLength(6)
     expect(columnTexts(list, "Load today")).toEqual(Array(6).fill("Closed"))
+    expect(figureValue("Bays")).toBe("6")
     expect(figure("Bays")).toHaveTextContent("All in service")
-    expect(figure("In use today")).toHaveTextContent("Closed today")
-    expect(figure("Booked today")).toHaveTextContent("Closed today")
-    expect(figure("Bay utilisation")).toHaveTextContent("Closed today")
+    // A closed day has no figure for the day, not a 0: each card says so in words.
+    for (const label of ["In use today", "Booked today", "Bay utilisation"]) {
+      expect(figureValue(label)).toBe("–No figure")
+      expect(figure(label)).toHaveTextContent("Closed today")
+    }
     expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
   })
 
