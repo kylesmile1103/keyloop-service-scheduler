@@ -19,16 +19,18 @@ using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Triage;
 using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
-using Keyloop.ServiceScheduler.Infrastructure.Triage;
+using Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
-using Keyloop.ServiceScheduler.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Triage;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Json;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 
@@ -60,6 +62,12 @@ builder.Services.AddHttpClient<CloudflareTriageClient>(client =>
     client.Timeout = Timeout.InfiniteTimeSpan; // the adapter owns one short deadline, including retry and response parsing
     client.MaxResponseContentBufferSize = 64 * 1024;
 }).RemoveAllResilienceHandlers().RemoveAllLoggers(); // framework transport logs can retain an exception containing upstream text
+builder.Services.AddSingleton<TransientTriageImages>();
+builder.Services.AddHttpClient<TriageImageStore>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(8);
+    client.MaxResponseContentBufferSize = TriageImageLimits.MaxImageBytes;
+}).RemoveAllResilienceHandlers().RemoveAllLoggers();
 #pragma warning restore EXTEXP0001
 
 builder.Services.AddOptions<NotificationOptions>().BindConfiguration(NotificationOptions.SectionName).ValidateOnStart();
@@ -120,6 +128,8 @@ builder.Services.AddScoped<ReseedDemoDataHandler>();
 builder.Services.AddScoped<GetBookingTriageStatusHandler>();
 builder.Services.AddScoped<TriageBookingHandler>();
 builder.Services.AddScoped<IValidator<TriageBookingRequest>, TriageBookingValidator>();
+builder.Services.AddScoped<UploadBookingTriageImageHandler>();
+builder.Services.AddScoped<IValidator<UploadBookingTriageImageRequest>, UploadBookingTriageImageValidator>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);
@@ -165,6 +175,12 @@ var app = builder.Build();
 try
 {
     app.Services.GetRequiredService<IStartupValidator>().Validate();
+    var triage = app.Services.GetRequiredService<IOptions<TriageConnectionOptions>>().Value;
+    if (app.Environment.IsProduction() && triage.Enabled && triage.ImagesEnabled && triage.ImageStoreUrl.Length == 0)
+    {
+        throw new InvalidOperationException("Production image triage requires the private R2 relay at Triage:ImageStoreUrl.");
+    }
+
     if (app.Services.GetRequiredService<IOptions<NotificationOptions>>().Value.Provider == NotificationProvider.Cloudflare)
     {
         throw new InvalidOperationException("Notifications:Provider=Cloudflare is reserved; the Cloudflare email adapter is not implemented yet. Select Smtp or None.");
@@ -202,6 +218,16 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("SystemTe
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseCors();
 app.UseRateLimiter();
+app.Use(async (context, next) =>
+{
+    if (context.GetEndpoint()?.Metadata.GetMetadata<TriageImageBodyLimit>() is not null &&
+        context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+    {
+        limit.MaxRequestBodySize = TriageImageLimits.MaxUploadBodyBytes;
+    }
+
+    await next(context);
+});
 app.UseMiddleware<CurrentActorMiddleware>();
 
 app.MapDefaultEndpoints();

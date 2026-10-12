@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, type Options, triageBookingRequest } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, type Options, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -228,6 +228,25 @@ export const triageBookingRequestMutation = (options?: Partial<Options<TriageBoo
     const mutationOptions: UseMutationOptions<TriageBookingRequestResponse, TriageBookingRequestError, Options<TriageBookingRequestData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await triageBookingRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Upload a private photo for booking intake triage
+ *
+ * Uploads expire after one hour. No public download URL, filename or booking attachment is created.
+ */
+export const uploadBookingTriageImageMutation = (options?: Partial<Options<UploadBookingTriageImageData>>): UseMutationOptions<UploadBookingTriageImageResponse2, UploadBookingTriageImageError, Options<UploadBookingTriageImageData>> => {
+    const mutationOptions: UseMutationOptions<UploadBookingTriageImageResponse2, UploadBookingTriageImageError, Options<UploadBookingTriageImageData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await uploadBookingTriageImage({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

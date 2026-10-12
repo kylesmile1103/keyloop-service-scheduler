@@ -138,15 +138,15 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         using var client = host.CreateClient();
         using var response = await PostAsync(client, description, ReferenceDataSeed.MunichDealershipId);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        stub.Uri!.AbsoluteUri.ShouldBe("https://triage.test/client/v4/accounts/00000000000000000000000000000000/ai/run");
+        stub.Uri!.AbsoluteUri.ShouldBe("https://triage.test/client/v4/accounts/00000000000000000000000000000000/ai/run/@cf/cloudflare/clef-flash");
         stub.Headers["Authorization"].ShouldBe("Bearer test-token");
         stub.Headers["cf-aig-gateway-id"].ShouldBe("keyloop-scheduler");
         stub.Headers["cf-aig-collect-log"].ShouldBe("false");
         stub.Headers["cf-aig-skip-cache"].ShouldBe("true");
         stub.Headers["cf-aig-max-attempts"].ShouldBe("1");
-        stub.Body!.AsObject().Select(p => p.Key).ShouldBe(["model", "input"]);
-        var input = stub.Body["input"]!.AsObject();
-        input.Select(p => p.Key).ShouldBe(["state", "questions"]);
+        stub.Body!.AsObject().Select(p => p.Key).ShouldBe(["model", "state", "questions"]);
+        stub.Body["model"]!.GetValue<string>().ShouldBe("clef-flash");
+        var input = stub.Body.AsObject();
         input["state"]!.AsObject().ShouldHaveSingleItem().Key.ShouldBe("customer_description");
         input["state"]!["customer_description"]!.GetValue<string>().ShouldBe(description);
         var criteria = input["questions"]!["service"]!["criteria"]!.AsObject();
@@ -371,7 +371,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(0);
         using var valid = await PostAsync(client, "  " + new string('x', 500) + "  ");
         valid.StatusCode.ShouldBe(HttpStatusCode.OK);
-        stub.Body!["input"]!["state"]!["customer_description"]!.GetValue<string>().Length.ShouldBe(500);
+        stub.Body!["state"]!["customer_description"]!.GetValue<string>().Length.ShouldBe(500);
     }
 
     public async ValueTask DisposeAsync()
@@ -387,7 +387,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         body.RootElement.GetProperty("enabled").GetBoolean().ShouldBeFalse();
-        body.RootElement.GetProperty("model").GetString().ShouldBe("typesafe/jev");
+        body.RootElement.GetProperty("model").GetString().ShouldBe("@cf/cloudflare/clef-flash");
         body.RootElement.GetProperty("maxDescriptionLength").GetInt32().ShouldBe(500);
     }
 
@@ -420,4 +420,117 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     {
         public string Text { get; } = new System.Text.Json.Nodes.JsonObject { ["description"] = description }.ToJsonString();
     }
+
+    private const string Photo = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII=";
+
+    [Fact]
+    public async Task Kestrel_allows_bounded_image_uploads_and_preserves_the_ordinary_64_KiB_body_limit()
+    {
+        using var stub = new StubTriageHandler();
+        await using var host = Enabled(stub);
+        host.UseKestrel(0);
+        using var client = host.CreateClient();
+        var bytes = new byte[256 * 1024];
+        Convert.FromBase64String(Photo).CopyTo(bytes, 0);
+        await UploadPhotoAsync(client, Convert.ToBase64String(bytes));
+        using var oversized = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
+            new StringContent(new string(' ', TriageImageLimits.MaxUploadBodyBytes + 1), Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        oversized.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        using var ordinary = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage",
+            new StringContent("{\"description\":\"brakes squeal\"}" + new string(' ', 64 * 1024), Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        ordinary.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        stub.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Uploads_private_photo_and_sends_only_embedded_bytes_to_Clef()
+    {
+        using var stub = new StubTriageHandler();
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        var id = await UploadPhotoAsync(client);
+        using var response = await PostImagesAsync(client, [id]);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var image = stub.Body!["images"]!.AsArray().ShouldHaveSingleItem()!;
+        image["content_type"]!.GetValue<string>().ShouldBe("image/png");
+        image["base64"]!.GetValue<string>().ShouldBe(Photo);
+        stub.Body.ToJsonString().ShouldNotContain(id.ToString());
+        stub.Body["model"]!.GetValue<string>().ShouldBe("clef-flash");
+        stub.Headers["cf-aig-collect-log"].ShouldBe("false");
+        _logs.Entries.ShouldNotContain(e => e.Message.Contains(Photo, StringComparison.Ordinal));
+        await _factory.WithDbAsync(async db =>
+            (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Appointments,
+                TestContext.Current.CancellationToken)).ShouldBe(0));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("expired")]
+    [InlineData("other-dealership")]
+    public async Task Rejects_missing_expired_or_cross_dealership_images_before_inference(string fault)
+    {
+        using var stub = new StubTriageHandler();
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        var id = fault == "missing" ? Guid.NewGuid() : await UploadPhotoAsync(client);
+        if (fault == "expired") { _factory.Clock.Advance(TimeSpan.FromHours(1)); }
+        using var response = await PostImagesAsync(client, [id], fault == "other-dealership" ? ReferenceDataSeed.MunichDealershipId : null);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        json.RootElement.GetProperty("errors").TryGetProperty("imageIds", out _).ShouldBeTrue();
+        stub.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Rejects_more_than_four_duplicate_and_over_eight_MiB_images_before_inference()
+    {
+        using var stub = new StubTriageHandler();
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var tooMany = await PostImagesAsync(client, Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray());
+        tooMany.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var id = await UploadPhotoAsync(client);
+        using var duplicate = await PostImagesAsync(client, [id, id]);
+        duplicate.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var bytes = new byte[3 * 1024 * 1024];
+        Convert.FromBase64String(Photo).CopyTo(bytes, 0);
+        var ids = new List<Guid>();
+        for (var i = 0; i < 3; i++) { ids.Add(await UploadPhotoAsync(client, Convert.ToBase64String(bytes))); }
+        using var tooLarge = await PostImagesAsync(client, [.. ids]);
+        tooLarge.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        stub.Calls.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("application/pdf", Photo)]
+    [InlineData("image/jpeg", Photo)]
+    [InlineData("image/png", "private malformed content")]
+    public async Task Rejects_invalid_photo_upload_without_retaining_payload(string type, string data)
+    {
+        using var stub = new StubTriageHandler();
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
+            new StringContent(new JsonObject { ["contentType"] = type, ["base64"] = data }.ToJsonString(), Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        _logs.Entries.ShouldNotContain(e => e.Message.Contains(data, StringComparison.Ordinal));
+        stub.Calls.ShouldBe(0);
+    }
+
+    private static async Task<Guid> UploadPhotoAsync(HttpClient client, string data = Photo)
+    {
+        using var response = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
+            new StringContent(new JsonObject { ["contentType"] = "image/png", ["base64"] = data }.ToJsonString(), Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.CacheControl!.NoStore.ShouldBeTrue();
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        return json.RootElement.GetProperty("imageId").GetGuid();
+    }
+
+    private static Task<HttpResponseMessage> PostImagesAsync(HttpClient client, Guid[] ids, Guid? dealership = null) =>
+        client.PostAsync($"/api/v1/dealerships/{dealership ?? ReferenceDataSeed.ReadingDealershipId}/booking-triage",
+            new StringContent(new JsonObject { ["description"] = "Warning light in photo", ["imageIds"] = new JsonArray(ids.Select(id => (JsonNode?)JsonValue.Create(id)).ToArray()) }.ToJsonString(), Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
 }

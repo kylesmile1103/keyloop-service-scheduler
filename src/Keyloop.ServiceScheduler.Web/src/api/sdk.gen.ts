@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -117,6 +117,20 @@ export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(opt
  */
 export const triageBookingRequest = <ThrowOnError extends boolean = false>(options: Options<TriageBookingRequestData, ThrowOnError>): RequestResult<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError> => (options.client ?? client).post<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError>({
     url: '/api/v1/dealerships/{dealershipId}/booking-triage',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Upload a private photo for booking intake triage
+ *
+ * Uploads expire after one hour. No public download URL, filename or booking attachment is created.
+ */
+export const uploadBookingTriageImage = <ThrowOnError extends boolean = false>(options: Options<UploadBookingTriageImageData, ThrowOnError>): RequestResult<UploadBookingTriageImageResponses, UploadBookingTriageImageErrors, ThrowOnError> => (options.client ?? client).post<UploadBookingTriageImageResponses, UploadBookingTriageImageErrors, ThrowOnError>({
+    url: '/api/v1/dealerships/{dealershipId}/booking-triage/images',
     ...options,
     headers: {
         'Content-Type': 'application/json',

@@ -69,11 +69,14 @@ if (action === "build" && result.status === 0) {
   assert.equal(Boolean(worker.env.EMAIL_API_TOKEN), integrations);
   assert.equal(Boolean(worker.env.GRAFANA_OTLP_BASIC_BROWSER), integrations);
   assert.equal(Boolean(worker.env.AI_TOKEN), integrations);
+  assert.equal(Boolean(worker.env.TRIAGE_IMAGES), integrations);
   assert.equal(worker.env.TRIAGE_ENABLED.value, integrations ? "true" : "false");
   if (integrations) {
     assert.equal(worker.env.EMAIL_API_TOKEN.secretName, "keyloop_prod_email_api_token");
     assert.equal(worker.env.GRAFANA_OTLP_BASIC_BROWSER.secretName, "grafana-otlp-basic-browser");
     assert.equal(worker.env.AI_TOKEN.secretName, "keyloop_prod_ai_token");
+    assert.equal(worker.env.TRIAGE_IMAGES.type, "r2");
+    assert.equal(worker.env.TRIAGE_IMAGES.name, "keyloop-scheduler-triage");
   }
   console.log(`Local build metadata verified (${integrations ? "REST email and OTLP" : "integrations disabled"})`);
   // cloudflare.config.ts must refuse an invalid setting at build time (src/settings.ts), not at the first send.

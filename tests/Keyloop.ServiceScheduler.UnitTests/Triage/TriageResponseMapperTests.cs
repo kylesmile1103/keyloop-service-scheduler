@@ -38,7 +38,7 @@ public sealed class TriageResponseMapperTests
     [Fact]
     public void None_winner_abstains_even_with_other_candidates()
     {
-        var response = Map(probability: 0.2, choice: JevQuestionBuilder.NoneOfThese);
+        var response = Map(probability: 0.2, choice: ClefQuestionBuilder.NoneOfThese);
         response.Recommendation.ShouldBe("no-match");
         response.Services.ShouldHaveSingleItem().ServiceType.Code.ShouldBe("BRAKES-PADS-DISCS");
     }
@@ -54,7 +54,7 @@ public sealed class TriageResponseMapperTests
 
     [Fact]
     public void No_specific_date_returns_null_even_at_high_confidence() =>
-        Map(date: JevQuestionBuilder.NoSpecificDate).PreferredDate.ShouldBeNull();
+        Map(date: ClefQuestionBuilder.NoSpecificDate).PreferredDate.ShouldBeNull();
 
     [Fact]
     public void Candidates_are_ranked_limited_to_three_and_use_only_the_bookable_list()
@@ -62,7 +62,7 @@ public sealed class TriageResponseMapperTests
         var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes();
         var probabilities = services.Select((s, i) => (s.Code, Probability: (i + 1) / 100.0))
             .ToDictionary(p => p.Code, p => p.Probability, StringComparer.Ordinal);
-        var response = TriageResponseMapper.Map("typesafe/jev",
+        var response = TriageResponseMapper.Map("@cf/cloudflare/clef-flash",
             new(new("choice", "DIAG-FAULT-FINDING", 0.8, probabilities),
                 new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }), null),
             services.Take(9).ToList(), new TriageOptions { CandidateFloor = 0.01 });
@@ -72,7 +72,7 @@ public sealed class TriageResponseMapperTests
 
     private static TriageBookingResponse Map(double confidence = 0.9, double dateConfidence = 0.9,
         double probability = 0.8, string choice = "BRAKES-PADS-DISCS", string date = "2026-10-18") =>
-        TriageResponseMapper.Map("typesafe/jev", new(
-            new("choice", choice, confidence, new() { ["BRAKES-PADS-DISCS"] = probability, [JevQuestionBuilder.NoneOfThese] = 1 - probability }),
-            new("choice", date, dateConfidence, new() { [date] = 0.9 }), 321), [JevQuestionBuilderTests.Brakes], new());
+        TriageResponseMapper.Map("@cf/cloudflare/clef-flash", new(
+            new("choice", choice, confidence, new() { ["BRAKES-PADS-DISCS"] = probability, [ClefQuestionBuilder.NoneOfThese] = 1 - probability }),
+            new("choice", date, dateConfidence, new() { [date] = 0.9 }), 321), [ClefQuestionBuilderTests.Brakes], new());
 }

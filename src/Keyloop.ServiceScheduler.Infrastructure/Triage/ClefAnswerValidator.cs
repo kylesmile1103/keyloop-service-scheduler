@@ -2,9 +2,9 @@ using System.Text.Json.Nodes;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Triage;
 
-internal static class JevAnswerValidator
+internal static class ClefAnswerValidator
 {
-    internal static JevEvaluation Validate(JevEnvelope? envelope, JevRequest request)
+    internal static ClefEvaluation Validate(ClefEnvelope? envelope, ClefRequest request)
     {
         if (envelope is null || envelope.Success == false)
         {
@@ -25,8 +25,8 @@ internal static class JevAnswerValidator
             throw new TriageUnavailableException("invalid-answer");
         }
 
-        ValidateChoice(service, request.Input.Questions["service"].Criteria);
-        ValidateChoice(date, request.Input.Questions["preferred_date"].Criteria);
+        ValidateChoice(service, request.Questions["service"].Criteria);
+        ValidateChoice(date, request.Questions["preferred_date"].Criteria);
         var tokens = (body?.Usage ?? envelope.Usage)?.InputTokens;
         if (tokens < 0)
         {
@@ -36,7 +36,7 @@ internal static class JevAnswerValidator
         return new(service, date, tokens);
     }
 
-    private static void ValidateChoice(JevAnswer? answer, JsonObject options)
+    private static void ValidateChoice(ClefAnswer? answer, JsonObject options)
     {
         if (answer is not { Type: "choice", Choice: { } label, Confidence: { } confidence, Probabilities: { } probabilities } ||
             !options.ContainsKey(label) || !double.IsFinite(confidence) || confidence is < 0 or > 1 ||

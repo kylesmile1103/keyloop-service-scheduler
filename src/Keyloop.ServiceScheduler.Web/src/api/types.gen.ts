@@ -224,6 +224,22 @@ export type BookingTriageStatusResponse = {
      * Maximum trimmed description length.
      */
     maxDescriptionLength: number;
+    /**
+     * Whether private photo uploads are available.
+     */
+    imagesEnabled: boolean;
+    /**
+     * Maximum photos per evaluation.
+     */
+    maxImages: number;
+    /**
+     * Maximum decoded bytes per photo.
+     */
+    maxImageBytes: number;
+    /**
+     * Maximum combined decoded photo bytes per evaluation.
+     */
+    maxTotalImageBytes: number;
 };
 
 /**
@@ -536,6 +552,7 @@ export type TechnicianResponse = {
  * A customer's untrusted booking intake description, never stored or logged.
  */
 export type TriageBookingRequest = {
+    imageIds?: null | Array<string>;
     /**
      * The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming.
      */
@@ -555,7 +572,7 @@ export type TriageBookingResponse = {
      */
     recommendation: string;
     /**
-     * Jev's service confidence, distinct from a candidate's probability.
+     * Clef's service confidence, distinct from a candidate's probability.
      */
     serviceConfidence: number;
     /**
@@ -580,6 +597,24 @@ export type TriagePreferredDate = {
 export type TriageServiceCandidate = {
     serviceType: ServiceTypeSummary;
     probability: number;
+};
+
+/**
+ * A PNG, JPEG or WebP image. Original filenames are never sent or stored.
+ */
+export type UploadBookingTriageImageRequest = {
+    contentType: string;
+    base64: string;
+};
+
+/**
+ * A private, dealership-scoped upload reference usable for triage until expiry.
+ */
+export type UploadBookingTriageImageResponse = {
+    imageId: string;
+    contentType: string;
+    sizeBytes: number;
+    expiresAt: string;
 };
 
 /**
@@ -1062,3 +1097,58 @@ export type TriageBookingRequestResponses = {
 };
 
 export type TriageBookingRequestResponse = TriageBookingRequestResponses[keyof TriageBookingRequestResponses];
+
+export type UploadBookingTriageImageData = {
+    /**
+     * A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels.
+     */
+    body: UploadBookingTriageImageRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * Dealership that can use this upload reference.
+         */
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/booking-triage/images';
+};
+
+export type UploadBookingTriageImageErrors = {
+    /**
+     * Invalid image type, encoding, dimensions or size (validation-error).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No dealership has this id (not-found).
+     */
+    404: ProblemDetails;
+    /**
+     * Upload request exceeds the six MiB JSON body limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Too many uploads or evaluations from this client; retry after Retry-After.
+     */
+    429: ProblemDetails;
+    /**
+     * Image triage is disabled or private storage is unavailable.
+     */
+    503: ProblemDetails;
+};
+
+export type UploadBookingTriageImageError = UploadBookingTriageImageErrors[keyof UploadBookingTriageImageErrors];
+
+export type UploadBookingTriageImageResponses = {
+    /**
+     * Opaque image ID, type, byte count and expiry.
+     */
+    200: UploadBookingTriageImageResponse;
+};
+
+export type UploadBookingTriageImageResponse2 = UploadBookingTriageImageResponses[keyof UploadBookingTriageImageResponses];

@@ -11,8 +11,10 @@ public sealed class TriageConnectionOptions : IValidatableObject
     public string AccountId { get; set; } = "";
     public string ApiToken { get; set; } = "";
     public string GatewayId { get; set; } = "keyloop-scheduler";
-    public string Model { get; set; } = "typesafe/jev";
+    public string Model { get; set; } = "@cf/cloudflare/clef-flash";
     public string BaseUrl { get; set; } = "https://api.cloudflare.com/client/v4";
+    public bool ImagesEnabled { get; set; } = true;
+    public string ImageStoreUrl { get; set; } = "";
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(4);
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -32,15 +34,20 @@ public sealed class TriageConnectionOptions : IValidatableObject
             yield return new("GatewayId must be a gateway slug of at most 64 characters.", [nameof(GatewayId)]);
         }
 
-        if (string.IsNullOrWhiteSpace(Model) || Model.Length > 128 || Model.Any(char.IsControl))
+        if (Model is not ("@cf/cloudflare/clef-flash" or "@cf/cloudflare/clef"))
         {
-            yield return new("Model must be a non-empty model identifier of at most 128 characters.", [nameof(Model)]);
+            yield return new("Model must be @cf/cloudflare/clef-flash or @cf/cloudflare/clef.", [nameof(Model)]);
         }
 
         if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps ||
             !string.IsNullOrEmpty(url.UserInfo) || !string.IsNullOrEmpty(url.Query) || !string.IsNullOrEmpty(url.Fragment))
         {
             yield return new("BaseUrl must be an absolute HTTPS URL without credentials, query or fragment.", [nameof(BaseUrl)]);
+        }
+
+        if (ImageStoreUrl.Length > 0 && ImageStoreUrl != "http://triage-media.internal")
+        {
+            yield return new("ImageStoreUrl must be the private Cloudflare container relay or empty for transient local storage.", [nameof(ImageStoreUrl)]);
         }
 
         if (Timeout < TimeSpan.FromMilliseconds(100) || Timeout > TimeSpan.FromSeconds(10))

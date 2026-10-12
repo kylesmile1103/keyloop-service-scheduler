@@ -44,7 +44,7 @@ internal sealed class StubTriageHandler : HttpMessageHandler
 
         if (ThrowWithDescription)
         {
-            throw new HttpRequestException(Body["input"]!["state"]!["customer_description"]!.GetValue<string>());
+            throw new HttpRequestException(Body["state"]!["customer_description"]!.GetValue<string>());
         }
 
         if (ThrowLocalBug)
@@ -92,7 +92,7 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     private JsonObject Answer(string question, string winner, double confidence)
     {
         var probabilities = new JsonObject();
-        var criteria = Body!["input"]!["questions"]![question]!["criteria"]!.AsObject();
+        var criteria = Body!["questions"]![question]!["criteria"]!.AsObject();
         foreach (var option in criteria)
         {
             probabilities[option.Key] = option.Key == winner ? 0.85 : 0.15 / (criteria.Count - 1);

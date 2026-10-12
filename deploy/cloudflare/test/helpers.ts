@@ -10,6 +10,7 @@ export function fakeEnv() {
       newUniqueId: vi.fn(), idFromString: vi.fn(), getByName: vi.fn(), jurisdiction: vi.fn(),
     },
     DB_URL: { get: vi.fn().mockResolvedValue("local-test-database-value") },
+    TRIAGE_IMAGES: { put: vi.fn(), get: vi.fn(), delete: vi.fn(), head: vi.fn(), list: vi.fn(), createMultipartUpload: vi.fn(), resumeMultipartUpload: vi.fn() },
     AI_TOKEN: { get: vi.fn().mockResolvedValue("test-token") },
     TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"],
     TRIAGE_ACCOUNT_ID: "00000000000000000000000000000000",

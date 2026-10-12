@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -51,6 +51,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.TechnicianResponse,
         SchedulerJsonContext.Default.BookingTriageStatusResponse,
         SchedulerJsonContext.Default.TriageBookingResponse,
+        SchedulerJsonContext.Default.UploadBookingTriageImageResponse,
         SchedulerJsonContext.Default.TriageServiceCandidate,
         SchedulerJsonContext.Default.TriagePreferredDate,
     ];
@@ -192,6 +193,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "404"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "429"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "503"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "413"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "503"),
             ],
             ignoreOrder: true);
 
@@ -246,6 +252,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("BookAppointment", "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes."),
             ("CancelAppointment", "The cancellation: why the appointment is cancelled."),
             ("TriageBookingRequest", "The booking intake: the customer's issue and optional preferred date, as untrusted text."),
+            ("UploadBookingTriageImage", "A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels."),
         ]);
     }
 
@@ -270,6 +277,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "200", "WorkshopScheduleResponse"),
                 ("GET /api/v1/booking-triage", "200", "BookingTriageStatusResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "200", "TriageBookingResponse"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "200", "UploadBookingTriageImageResponse"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))

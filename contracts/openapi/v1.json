@@ -1124,6 +1124,172 @@
           }
         }
       }
+    },
+    "/api/v1/dealerships/{dealershipId}/booking-triage/images": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Upload a private photo for booking intake triage",
+        "description": "Uploads expire after one hour. No public download URL, filename or booking attachment is created.",
+        "operationId": "UploadBookingTriageImage",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "Dealership that can use this upload reference.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBookingTriageImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Opaque image ID, type, byte count and expiry.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadBookingTriageImageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid image type, encoding, dimensions or size (validation-error).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership has this id (not-found).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload request exceeds the six MiB JSON body limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many uploads or evaluations from this client; retry after Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Image triage is disabled or private storage is unavailable.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1460,7 +1626,11 @@
           "enabled",
           "model",
           "provider",
-          "maxDescriptionLength"
+          "maxDescriptionLength",
+          "imagesEnabled",
+          "maxImages",
+          "maxImageBytes",
+          "maxTotalImageBytes"
         ],
         "type": "object",
         "properties": {
@@ -1479,6 +1649,25 @@
           "maxDescriptionLength": {
             "type": "integer",
             "description": "Maximum trimmed description length.",
+            "format": "int32"
+          },
+          "imagesEnabled": {
+            "type": "boolean",
+            "description": "Whether private photo uploads are available."
+          },
+          "maxImages": {
+            "type": "integer",
+            "description": "Maximum photos per evaluation.",
+            "format": "int32"
+          },
+          "maxImageBytes": {
+            "type": "integer",
+            "description": "Maximum decoded bytes per photo.",
+            "format": "int32"
+          },
+          "maxTotalImageBytes": {
+            "type": "integer",
+            "description": "Maximum combined decoded photo bytes per evaluation.",
             "format": "int32"
           }
         },
@@ -1999,6 +2188,16 @@
         ],
         "type": "object",
         "properties": {
+          "imageIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "description": {
             "examples": [
               "Brakes squeal, it's an EV, need it Thursday."
@@ -2029,7 +2228,7 @@
           },
           "serviceConfidence": {
             "type": "number",
-            "description": "Jev's service confidence, distinct from a candidate's probability.",
+            "description": "Clef's service confidence, distinct from a candidate's probability.",
             "format": "double"
           },
           "services": {
@@ -2092,6 +2291,49 @@
           }
         },
         "description": "A candidate from the dealership's bookable catalogue."
+      },
+      "UploadBookingTriageImageRequest": {
+        "required": [
+          "contentType",
+          "base64"
+        ],
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "base64": {
+            "type": "string"
+          }
+        },
+        "description": "A PNG, JPEG or WebP image. Original filenames are never sent or stored."
+      },
+      "UploadBookingTriageImageResponse": {
+        "required": [
+          "imageId",
+          "contentType",
+          "sizeBytes",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "imageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A private, dealership-scoped upload reference usable for triage until expiry."
       },
       "VehicleRequest": {
         "required": [

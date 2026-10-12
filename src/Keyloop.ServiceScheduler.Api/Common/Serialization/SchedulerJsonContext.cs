@@ -11,6 +11,7 @@ using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
+using Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -91,4 +92,6 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
+[JsonSerializable(typeof(UploadBookingTriageImageRequest))]
+[JsonSerializable(typeof(UploadBookingTriageImageResponse))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;
