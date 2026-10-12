@@ -1,8 +1,9 @@
 // Browser check for the static API reference: serves build/assets (run `npm run assemble` first) through Miniflare's
 // Static Assets pipeline with public/_headers and the real edge router (a fake API Durable Object answers /api/*), then
 // loads /scalar/v1 in headless Chromium in light, dark and phone layouts. It fails on any CSP violation, request to
-// another origin, console error or contract operation that did not render, and checks that "Test Request" reaches
-// this origin. Local only: no account, no network beyond 127.0.0.1.
+// another origin, link to another origin (other than Scalar's credit and MDN's page for a response status, below), console
+// error or contract operation that did not render, and checks that "Test Request" reaches this origin. Local only: no
+// account, no network beyond 127.0.0.1.
 //
 //   PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core node scripts/check-api-reference.mjs [screenshot directory]
 //
@@ -62,6 +63,24 @@ try {
       return route.abort();
     });
     const page = await context.newPage();
+    // Links, not requests: Scalar's "Open API Client" button links to its hosted client, which would then send "Test Request"
+    // calls through Scalar's proxy. Collected again once "Test Request" has opened the client modal, where that button also
+    // appears, and after its response. Two kinds are accepted, and nothing else: Scalar's credit to its home page ("Powered by
+    // Scalar" in the sidebar, "Powered By Scalar.com" in the client modal), and the MDN page for the response's status code,
+    // which the client links from every response's status and no option turns off. Neither carries API data.
+    const offSiteLinks = new Set();
+    const acceptedLinks = new Set();
+    const collectOffSiteLinks = async () => {
+      for (const { link, accepted } of await page.evaluate(() => [...document.querySelectorAll("a[href], area[href]")]
+        .map(element => ({ url: new URL(element.href), text: element.textContent.trim().replace(/\s+/g, " ") }))
+        .filter(({ url }) => /^https?:$/.test(url.protocol) && url.origin !== location.origin)
+        .map(({ url, text }) => ({
+          link: `${text.slice(0, 40)} -> ${url.href}`,
+          accepted: (/^Powered by Scalar(\.com)?$/i.test(text) && /^https:\/\/(www\.)?scalar\.com$/.test(url.origin) && url.pathname === "/") ||
+            (url.origin === "https://developer.mozilla.org" && /^\/en-US\/docs\/Web\/HTTP\/Status\/\d{3}$/.test(url.pathname) && !url.search &&
+              text.startsWith(url.pathname.slice(-3))),
+        })))) (accepted ? acceptedLinks : offSiteLinks).add(link);
+    };
     const consoleErrors = [];
     const sameOriginApi = [];
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
@@ -94,31 +113,35 @@ try {
       missing: operations.filter(operation => !text.includes(operation.summary)).map(operation => operation.id),
     };
     if (shots) await page.screenshot({ path: `${shots}/scalar-v1-${layout}.png` });
-    if (layout === "phone" && shots) {
+    await collectOffSiteLinks();
+    if (layout === "phone") {
+      // The phone layout renders its sidebar, and so the sidebar's links, once the menu is open.
       await page.mouse.click(28, 25);
       await page.waitForTimeout(800);
-      await page.screenshot({ path: `${shots}/scalar-v1-phone-menu.png` });
+      if (shots) await page.screenshot({ path: `${shots}/scalar-v1-phone-menu.png` });
+      await collectOffSiteLinks();
     }
     if (layout.startsWith("desktop") && result.missing.length === 0) {
-      await page.locator("aside, nav").getByText(operations.find(operation => operation.id.startsWith("POST"))?.summary ?? "", { exact: true }).first().click();
-      await page.waitForTimeout(1_200);
-      if (shots) await page.screenshot({ path: `${shots}/scalar-v1-${layout}-operation.png` });
       result.curlExample = await page.evaluate(() => [...document.querySelectorAll("pre, code")].map(element => element.textContent)
         .find(snippet => snippet.includes("curl"))?.replace(/\s+/g, " ").slice(0, 80));
       if (layout === "desktop-light") {
         await page.getByRole("button", { name: /Test Request/i }).first().click();
         await page.waitForTimeout(1_000);
+        await collectOffSiteLinks();
         await page.getByRole("button", { name: /^Send/i }).first().click();
         await page.waitForTimeout(1_500);
         if (shots) await page.screenshot({ path: `${shots}/scalar-v1-test-request.png` });
         result.testRequests = [...sameOriginApi];
+        await collectOffSiteLinks();
       }
     }
+    result.offSiteLinks = [...offSiteLinks];
+    result.acceptedLinks = [...acceptedLinks];
     result.cspViolations = await page.evaluate(() => window.__cspViolations);
     result.foreignRequests = foreign;
     result.consoleErrors = consoleErrors;
     const ok = result.status === 200 && result.missing.length === 0 && result.cspViolations.length === 0 &&
-      result.foreignRequests.length === 0 && result.consoleErrors.length === 0 &&
+      result.foreignRequests.length === 0 && result.offSiteLinks.length === 0 && result.consoleErrors.length === 0 &&
       (layout !== "desktop-dark" || result.darkMode) &&
       (!layout.startsWith("desktop") || result.curlExample?.includes(`curl ${origin}/api/`) || result.curlExample?.includes(`curl '${origin}/api/`)) &&
       (layout !== "desktop-light" || (result.testRequests ?? []).some(entry => entry.endsWith("(Access cookie sent)")));

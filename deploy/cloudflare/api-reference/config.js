@@ -1,8 +1,10 @@
 // Mounts Scalar's standalone bundle (/scalar/standalone.js, @scalar/api-reference, MIT) on the committed contract. A file,
-// not an inline script, because the site CSP allows only same-origin script files. Every option that would reach another
-// origin is off: Scalar's font CDN, telemetry, the AI agent, MCP and the developer toolbar (dashboard and registry links).
-// No proxy is set and the only server is this origin, so "Test Request" calls and the curl examples target this site:
-// anonymous reads work, and writes need the Access session from /auth/login.
+// not an inline script, because the site CSP allows only same-origin script files. Every option that would load from or link
+// to another origin is off: Scalar's font CDN, telemetry, the AI agent, MCP, the developer toolbar (dashboard and registry
+// links) and the "Open API Client" button (Scalar's hosted client, which sends requests through Scalar's proxy). The one
+// remaining off-site link is the sidebar's "Powered by Scalar" credit. No proxy is set and the only server is this origin,
+// so "Test Request" calls and the curl examples target this site: anonymous reads work, and writes need the Access session
+// from /auth/login.
 ;(function () {
   var dark = false
   try {
@@ -21,6 +23,7 @@
     showDeveloperTools: "never",
     agent: { disabled: true },
     mcp: { disabled: true },
+    hideClientButton: true,
     persistAuth: false,
     darkMode: dark,
     // Matches the API's Development reference (Program.cs: curl snippets, operation IDs, all tags expanded).

@@ -87,10 +87,12 @@ describe("static API reference", () => {
     expect(page).toContain('id="keyloop-api-reference"');
   });
 
-  it("configures Scalar to reach no other origin and to need no unsafe-eval", async () => {
+  it("configures Scalar to reach no other origin, to link to no hosted client and to need no unsafe-eval", async () => {
     const config = await reference("config.js");
     for (const setting of ['url: "/openapi/v1.json"', "withDefaultFonts: false", "telemetry: false", 'showDeveloperTools: "never"',
-      "agent: { disabled: true }", "mcp: { disabled: true }", "servers: [{ url: window.location.origin"]) expect(config).toContain(setting);
+      "agent: { disabled: true }", "mcp: { disabled: true }", "hideClientButton: true", "servers: [{ url: window.location.origin"]) {
+      expect(config).toContain(setting);
+    }
     expect(config).toContain('Scalar.createApiReference("#keyloop-api-reference"');
     expect(config).not.toMatch(/proxyUrl|pluginUrls|https?:\/\//);
     expect(await reference("before.js")).toContain("globalThis.__zod_globalConfig = { jitless: true }");
