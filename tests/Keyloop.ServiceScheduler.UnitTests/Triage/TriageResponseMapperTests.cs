@@ -133,7 +133,28 @@ public sealed class TriageResponseMapperTests
             new("choice", "GLASS", 0.9, new() { ["GLASS"] = 1 }), null), [], new());
         response.Services.ShouldBeEmpty();
         response.Recommendation.ShouldBe("no-match");
-        response.UncoveredIssue.ShouldNotBeNull().Category.ShouldBe(TriageUncoveredCategory.GLASS);
+        var issue = response.UncoveredIssue.ShouldNotBeNull();
+        issue.Category.ShouldBe(TriageUncoveredCategory.GLASS);
+        issue.OutsideServiceTypeId.ShouldBeNull(); // Clef chose no service, so the issue is outside the whole bookable catalogue
+    }
+
+    // The question asks for an issue outside Clef's most likely service, which need not be the candidate a person picks: with
+    // DIAG 0.45 and ACCIDENT 0.40 (confirm, nothing preselected) the notice is relative to DIAG only.
+    [Theory]
+    [InlineData("DIAG-FAULT-FINDING")]
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT")]
+    public void Uncovered_issue_names_the_service_it_is_outside(string chosen)
+    {
+        var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes()
+            .Where(s => s.Code is "DIAG-FAULT-FINDING" or "ACCIDENT-DAMAGE-ASSESSMENT").ToArray();
+        var other = chosen == "DIAG-FAULT-FINDING" ? "ACCIDENT-DAMAGE-ASSESSMENT" : "DIAG-FAULT-FINDING";
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", chosen, 0.4, new() { [chosen] = 0.45, [other] = 0.40, [ClefQuestionBuilder.NoneOfThese] = 0.15 }),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }),
+            new("choice", "AIR_CONDITIONING", 0.9, new() { ["AIR_CONDITIONING"] = 1 }), null), services, new());
+        response.Recommendation.ShouldBe("confirm");
+        response.Services.Select(s => s.ServiceType.Code).ShouldBe([chosen, other]);
+        response.UncoveredIssue.ShouldNotBeNull().OutsideServiceTypeId.ShouldBe(services.Single(s => s.Code == chosen).Id);
     }
 
     [Theory]

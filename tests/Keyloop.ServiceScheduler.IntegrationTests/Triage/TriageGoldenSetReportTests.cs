@@ -48,7 +48,7 @@ public sealed class TriageGoldenSetReportTests
         var uncovered = new ClefAnswer("choice", actual, confidence, new() { [actual] = 1 });
         var answer = new ClefEvaluation(service, date, uncovered, 100);
         var response = new TriageBookingResponse("clef-flash", "suggest", 0.8, [], null,
-            exposed is { } category ? new(category, 1, confidence) : null);
+            exposed is { } category ? new(category, 1, confidence, null) : null);
         return new(id, "BRAKES-PADS-DISCS", false, "NO_SPECIFIC_DATE", expected, answer, response, 100, 2000);
     }
 }

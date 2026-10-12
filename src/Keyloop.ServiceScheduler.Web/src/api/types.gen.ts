@@ -847,9 +847,22 @@ export type TriageUncoveredCategory = 'ACCIDENT_OR_BODY_DAMAGE' | 'LIGHTS_OR_ELE
  * A validated closed category, with confidence distinct from its probability. NONE and below-threshold answers return null.
  */
 export type TriageUncoveredIssue = {
+    /**
+     * Closed UI-copy key for the additional issue.
+     */
     category: TriageUncoveredCategory;
+    /**
+     * The category's probability in Clef's answer.
+     */
     probability: number;
+    /**
+     * Clef's confidence in this answer, compared with the uncovered-issue threshold.
+     */
     confidence: number;
+    /**
+     * The service type the issue is outside: Clef's most likely service, which need not be the first candidate a person picks. Null when Clef chose none of the bookable services, so the issue is outside the whole catalogue. Show the notice while this service is selected (or whenever it is null), not for another candidate.
+     */
+    outsideServiceTypeId: null | string;
 };
 
 /**

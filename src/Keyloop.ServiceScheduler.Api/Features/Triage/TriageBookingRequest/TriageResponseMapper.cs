@@ -26,9 +26,16 @@ internal static class TriageResponseMapper
                 date.Probabilities![date.Choice!], date.Confidence!.Value) : null;
         var uncovered = evaluation.UncoveredIssue;
         var issue = uncovered.Choice != ClefQuestionBuilder.NoUncoveredIssue && uncovered.Confidence >= options.UncoveredIssueThreshold
-            ? new TriageUncoveredIssue(Category(uncovered.Choice!), uncovered.Probabilities![uncovered.Choice!], uncovered.Confidence!.Value) : null;
+            ? new TriageUncoveredIssue(Category(uncovered.Choice!), uncovered.Probabilities![uncovered.Choice!], uncovered.Confidence!.Value,
+                OutsideServiceTypeId(service.Choice!, services))
+            : null;
         return new(model, recommendation, service.Confidence!.Value, candidates, preferred, issue);
     }
+
+    // The question asks for an issue outside Clef's most likely service (its validated choice), not outside whichever candidate is picked
+    // later; NONE_OF_THESE means outside every bookable service. The validator admits only codes of the catalogue sent, so a miss is a defect.
+    private static Guid? OutsideServiceTypeId(string choice, IReadOnlyList<ServiceType> services) =>
+        choice == ClefQuestionBuilder.NoneOfThese ? null : services.Single(s => s.Code == choice).Id;
 
     private static TriageUncoveredCategory Category(string choice) => choice switch
     {

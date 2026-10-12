@@ -407,6 +407,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         {
             issue.GetProperty("category").GetString().ShouldBe(category);
             issue.GetProperty("confidence").GetDouble().ShouldBe(confidence);
+            issue.GetProperty("outsideServiceTypeId").GetGuid().ShouldBe(ReferenceDataSeed.ServiceTypeId("BRAKES-PADS-DISCS"));
         }
         else
         {
@@ -470,8 +471,25 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         body.RootElement.GetProperty("services").EnumerateArray().ShouldHaveSingleItem()
             .GetProperty("serviceType").GetProperty("code").GetString().ShouldBe("DIAG-FAULT-FINDING");
-        body.RootElement.GetProperty("uncoveredIssue").GetProperty("category").GetString().ShouldBe("ACCIDENT_OR_BODY_DAMAGE");
+        var issue = body.RootElement.GetProperty("uncoveredIssue");
+        issue.GetProperty("category").GetString().ShouldBe("ACCIDENT_OR_BODY_DAMAGE");
+        issue.GetProperty("outsideServiceTypeId").GetGuid().ShouldBe(ReferenceDataSeed.ServiceTypeId("DIAG-FAULT-FINDING"));
         stub.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_no_match_notice_is_outside_no_particular_service_on_the_wire()
+    {
+        using var stub = new StubTriageHandler { ServiceChoice = "NONE_OF_THESE", UncoveredChoice = "GLASS" };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "Replace my cracked windscreen");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        body.RootElement.GetProperty("recommendation").GetString().ShouldBe("no-match");
+        var issue = body.RootElement.GetProperty("uncoveredIssue");
+        issue.GetProperty("category").GetString().ShouldBe("GLASS");
+        issue.GetProperty("outsideServiceTypeId").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     [Fact]
