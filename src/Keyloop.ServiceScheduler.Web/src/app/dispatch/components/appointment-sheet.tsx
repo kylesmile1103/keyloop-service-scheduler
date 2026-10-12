@@ -359,14 +359,15 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
   const errorId = useId()
   const countId = useId()
   const deniedId = useId()
-  const queryClient = useQueryClient()
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
   const generated = cancelAppointmentMutation()
-  // Checked as it is sent, and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a late
-  // answer neither caches the record nor shows a toast for the next caller.
+  // Bound to the account the sheet was drawn for and sent only while the cache names it (checked last as the request
+  // leaves, `write.fetch`), and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a reason
+  // typed for one account is never sent as another, and a late answer neither caches the record nor shows a toast for the
+  // next caller.
   const cancel = useWriteMutation({
-    mutationFn: (variables: CancelVariables, _guard, context) => generated.mutationFn!(variables, context),
+    mutationFn: (variables: CancelVariables, write, context) => generated.mutationFn!({ ...variables, fetch: write.fetch() }, context),
     onSuccess: (cancelled) => {
       toast.add({
         type: "success",
@@ -390,8 +391,9 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    // The identity in the cache decides, not the last render: `/me` may have changed since.
-    if (!cachedCapabilities(queryClient).canWrite) return
+    // The identity in the cache decides, not the last render: `/me` may have changed since, to nobody or to another account.
+    const send = cancel.begin()
+    if (!send) return
     const trimmed = reason.trim()
     if (!trimmed) {
       setMissingReason(true)
@@ -399,7 +401,7 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
       return
     }
     setMissingReason(false)
-    cancel.mutate({ path: { appointmentId: appointment.id }, body: { reason: trimmed } })
+    send({ path: { appointmentId: appointment.id }, body: { reason: trimmed } })
   }
 
   // A visitor who is not signed in has the sign-in panel above, which covers cancelling.

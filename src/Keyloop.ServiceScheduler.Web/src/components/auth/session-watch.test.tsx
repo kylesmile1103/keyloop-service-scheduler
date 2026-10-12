@@ -1,8 +1,12 @@
-import { focusManager } from "@tanstack/react-query"
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { focusManager, QueryClientProvider } from "@tanstack/react-query"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { CurrentUserResponse, WorkshopScheduleResponse } from "@/api/types.gen"
+import { AppointmentSheet } from "@/app/dispatch/components/appointment-sheet"
+import { boardAppointments } from "@/app/dispatch/lib/schedule"
+import { createQueryClient } from "@/lib/query-client"
+import { currentUserQueryKey } from "@/lib/session"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
@@ -268,6 +272,48 @@ describe("a change of identity", () => {
     // the skip link at the top of the page.
     await waitFor(() => expect(document.activeElement).not.toBe(document.body))
     expect(document.getElementById("content")?.contains(document.activeElement)).toBe(true)
+  })
+
+  // The sheet alone, so what it came from can be made to be gone: on the board the fallback (the board itself) is usually
+  // still there, so the case above passes with or without the sheet's own fallback to the page's content.
+  it.each<[string, () => HTMLElement | null]>([
+    ["an element no longer in the page", () => document.createElement("button")],
+    ["nothing", () => null],
+  ])("puts focus on the page's content when the sheet closes and what it came from is %s", async (_, returnFocus) => {
+    mockBoardApi({ me: () => admin })
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(currentUserQueryKey(), admin)
+    const appointment = boardAppointments(readingTuesday)[0]
+    const page = (shown: typeof appointment | null) => (
+      <QueryClientProvider client={queryClient}>
+        <button type="button">Outside the content</button>
+        <div id="content" tabIndex={-1}>
+          <p>The board, reading its day again</p>
+          <AppointmentSheet
+            appointment={shown}
+            open={shown !== null}
+            onOpenChange={() => {}}
+            side="bottom"
+            dealershipId={reading.id}
+            date="2026-10-13"
+            timeZone={reading.timeZoneId}
+            returnFocus={returnFocus}
+          />
+        </div>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(page(null))
+    // Focus was outside the content when the sheet opened, so falling back to it would not land in the content either.
+    screen.getByRole("button", { name: "Outside the content" }).focus()
+    rerender(page(appointment))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    await waitFor(() => expect(sheet.contains(document.activeElement)).toBe(true))
+
+    // The identity changed: the page drops its selection, and the sheet closes.
+    rerender(page(null))
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(document.activeElement).toBe(document.getElementById("content")))
   })
 
   it("does not read an open booking's record again when the window regains focus, before /me has answered", async () => {

@@ -1,4 +1,4 @@
-import { QueryObserver } from "@tanstack/react-query"
+import { type QueryClient, QueryObserver } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 
 import {
@@ -16,9 +16,17 @@ import { calendarRange } from "@/app/calendar/lib/calendar"
 import { overviewWindow } from "@/app/overview/lib/overview"
 import { rangeReadOptions } from "@/lib/appointment-range"
 import { createQueryClient } from "@/lib/query-client"
-import { callerGeneration, clearCallerData, holdsCallerData } from "@/lib/session-cache"
+import {
+  bindWrite,
+  CallerChangedError,
+  callerGeneration,
+  clearCallerData,
+  holdsCallerData,
+  WriteNotAllowedError,
+} from "@/lib/session-cache"
+import type { CurrentUserResponse } from "@/api/types.gen"
 import { reading } from "@/test/dealerships"
-import { admin } from "@/test/identities"
+import { admin, anonymous, viewer } from "@/test/identities"
 
 const dealershipId = reading.id
 const keys = {
@@ -158,5 +166,100 @@ describe("clearing what the previous caller read", () => {
 
     expect(callerGeneration(queryClient)).toBe(before + 2)
     expect(callerGeneration(createQueryClient())).toBe(0)
+  })
+})
+
+describe("a write's account, checked inside the fetch its requests are given (bindWrite)", () => {
+  const owner = "admin@keyloop.test"
+  const otherAdmin: CurrentUserResponse = { ...admin, email: "another.admin@keyloop.test" }
+  const sameEmailAdvisor: CurrentUserResponse = { ...admin, roles: ["ServiceAdvisor"] }
+  const url = "http://localhost:3000/api/v1/dealerships/d/appointments"
+
+  /** A cache for the Admin, and a change of caller as SessionWatch makes it: the new `/me` and the cleared cache. */
+  function signedIn() {
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(keys.me, admin)
+    const becomes = (next: CurrentUserResponse) => {
+      queryClient.setQueryData(keys.me, next)
+      clearCallerData(queryClient)
+    }
+    const base = vi.fn<typeof fetch>(async () => new Response("{}", { status: 201 }))
+    return { queryClient, becomes, base }
+  }
+
+  it("hands the request to the fetch it wraps while the cache names the write's account", async () => {
+    const { queryClient, base } = signedIn()
+    const request = new Request(url, { method: "POST" })
+
+    const response = await bindWrite(queryClient, owner).fetch(base)(request)
+
+    expect(response.status).toBe(201)
+    expect(base).toHaveBeenCalledExactlyOnceWith(request, undefined)
+  })
+
+  it("looks the page's fetch up as the request leaves when it wraps none (a test's stub, the tracing instrumentation)", async () => {
+    const { queryClient, base } = signedIn()
+    const fetch = bindWrite(queryClient, owner).fetch()
+    vi.stubGlobal("fetch", base)
+
+    await fetch(url, { method: "POST" })
+
+    expect(base).toHaveBeenCalledOnce()
+  })
+
+  it.each<[string, (queryClient: QueryClient) => void]>([
+    ["signed out", (queryClient) => queryClient.setQueryData(keys.me, anonymous)],
+    ["a Viewer", (queryClient) => queryClient.setQueryData(keys.me, viewer)],
+    ["another account that may write", (queryClient) => queryClient.setQueryData(keys.me, otherAdmin)],
+    [
+      "nobody known (/me's last read failed)",
+      (queryClient) => queryClient.getQueryCache().find({ queryKey: keys.me })!.setState({ status: "error", fetchFailureCount: 1 }),
+    ],
+  ])("refuses, as the client calls it, once the identity in the cache is %s: nothing reaches the fetch it wraps", async (_, change) => {
+    const { queryClient, base } = signedIn()
+    const fetch = bindWrite(queryClient, owner).fetch(base)
+
+    change(queryClient)
+
+    await expect(fetch(url, { method: "POST" })).rejects.toBeInstanceOf(WriteNotAllowedError)
+    expect(base).not.toHaveBeenCalled()
+  })
+
+  it("decides synchronously, when it is called, with nothing awaited before the request is handed on", () => {
+    const { queryClient, base } = signedIn()
+    const fetch = bindWrite(queryClient, owner).fetch(base)
+
+    void fetch(url, { method: "POST" })
+    queryClient.setQueryData(keys.me, otherAdmin)
+    expect(base).toHaveBeenCalledOnce()
+
+    void fetch(url, { method: "POST" }).catch(() => {})
+    expect(base).toHaveBeenCalledOnce()
+  })
+
+  it("lets a write leave as the same email in another role that may write, before its first request: its answers are theirs", async () => {
+    const { queryClient, becomes, base } = signedIn()
+    const write = bindWrite(queryClient, owner)
+
+    becomes(sameEmailAdvisor)
+    expect(write.stale()).toBe(true)
+    await write.fetch(base)(url, { method: "POST" })
+
+    expect(base).toHaveBeenCalledOnce()
+    expect(write.stale()).toBe(false)
+    expect(() => write.guard()).not.toThrow()
+  })
+
+  it("sends every request of one write as one caller: after its first request left, any change stops the next one", async () => {
+    const { queryClient, becomes, base } = signedIn()
+    const write = bindWrite(queryClient, owner)
+    await write.fetch(base)(url, { method: "POST" })
+
+    becomes(sameEmailAdvisor)
+
+    expect(write.stale()).toBe(true)
+    expect(() => write.guard()).toThrow(CallerChangedError)
+    await expect(write.fetch(base)(url, { method: "POST" })).rejects.toBeInstanceOf(CallerChangedError)
+    expect(base).toHaveBeenCalledOnce()
   })
 })
