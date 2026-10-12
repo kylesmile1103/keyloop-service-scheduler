@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/vite-env.d.ts`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {

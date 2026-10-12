@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/contexts/theme-context.ts`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import * as React from "react"
 
 export type Theme = "dark" | "light" | "system"

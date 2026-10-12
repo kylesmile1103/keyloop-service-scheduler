@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `eslint.config.js`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'

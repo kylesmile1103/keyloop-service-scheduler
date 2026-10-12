@@ -1,5 +1,6 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendars.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendars.tsx` and
+// `src/app/calendar/components/calendar-sidebar.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice is
+// in the README's licence section).
 import { ListFilter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"

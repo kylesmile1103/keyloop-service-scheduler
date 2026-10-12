@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/config/routes.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import type { ComponentType } from "react"
 import { Navigate, type RouteObject } from "react-router-dom"
 

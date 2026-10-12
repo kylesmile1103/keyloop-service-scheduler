@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/mode-toggle.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 "use client"
 
 import { Moon, Sun } from "lucide-react"

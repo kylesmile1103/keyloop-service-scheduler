@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/toast.tsx`, a shadcn/ui primitive:
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
+// the README's licence section).
 import * as React from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "cn"
