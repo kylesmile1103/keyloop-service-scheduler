@@ -7,9 +7,11 @@ import { routeRequest } from "../src/router";
 import { FakeContainerRuntime, fakeContainerState, settle } from "./container-runtime";
 import { fakeEnv, edgeRequest } from "./helpers";
 import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "json" };
+import vehicleAwareEnvFixture from "./fixtures/container-env-vehicle-aware.json" with { type: "json" };
 
-// The core-only profile: notifications, email, triage and the OTLP relay off. The .NET integration test
-// CloudflareContainerEnvTests boots the API with the committed fixture, so both sides are pinned to the same contract.
+// The core-only profile: notifications, email, triage, the OTLP relay and vehicle-aware requirements off. The .NET
+// integration test CloudflareContainerEnvTests boots the API with the committed fixture, so both sides are pinned to the
+// same contract.
 function coreEnv() {
   const { env } = fakeEnv();
   return Object.assign(env, {
@@ -17,8 +19,16 @@ function coreEnv() {
     EMAIL_ALLOWED_ADDRESSES: "", OTLP_RELAY_ENABLED: "false" as Env["OTLP_RELAY_ENABLED"],
     TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"], TRIAGE_ACCOUNT_ID: "",
     AUTH_ADMIN: "admin@fixture.test", AUTH_SERVICE_ADVISOR: "advisor@fixture.test", AUTH_VIEWER: "@viewers.fixture.test",
+    VEHICLE_AWARE_REQUIREMENTS: "false" as Env["VEHICLE_AWARE_REQUIREMENTS"],
   });
 }
+
+// The core profile with ADR-029's vehicle-aware requirements switched on for the deployment (test/fixtures/container-env-vehicle-aware.json).
+function vehicleAwareEnv() {
+  return Object.assign(coreEnv(), { VEHICLE_AWARE_REQUIREMENTS: "true" as Env["VEHICLE_AWARE_REQUIREMENTS"] });
+}
+
+const schedulingKeys = (settings: Record<string, string>) => Object.keys(settings).filter(key => key.startsWith("Scheduling__"));
 
 describe("container startup and Secrets Store", () => {
   it("builds the Cloudflare Production env including F2 and the allowlist", async () => {
@@ -91,6 +101,24 @@ describe("container startup and Secrets Store", () => {
     const { env } = fakeEnv();
     env.EMAIL_MAX_PER_RECIPIENT_PER_DAY = "1001";
     await expect(containerEnv(env)).rejects.toThrow("valid per-recipient email cap");
+  });
+  it("passes no Scheduling setting while vehicle-aware requirements are off, so the API's Production default (false) applies", async () => {
+    expect(schedulingKeys(await containerEnv(coreEnv()))).toEqual([]);
+    expect(schedulingKeys(coreEnvFixture)).toEqual([]);
+  });
+  it("passes Scheduling__VehicleAwareRequirements=true, and nothing else new, when the deployment switches it on", async () => {
+    const settings = await containerEnv(vehicleAwareEnv());
+    expect(settings).toEqual(vehicleAwareEnvFixture);
+    expect(schedulingKeys(settings)).toEqual(["Scheduling__VehicleAwareRequirements"]);
+    expect(settings.Scheduling__VehicleAwareRequirements).toBe("true");
+    const { Scheduling__VehicleAwareRequirements: _switch, ...rest } = vehicleAwareEnvFixture;
+    expect(rest).toEqual(coreEnvFixture);
+  });
+  it.each(["TRUE", "yes", ""])("refuses to start with the vehicle-aware switch %j before reading Secrets Store", async value => {
+    const env = coreEnv();
+    env.VEHICLE_AWARE_REQUIREMENTS = value as Env["VEHICLE_AWARE_REQUIREMENTS"];
+    await expect(containerEnv(env)).rejects.toThrow("Set KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false");
+    expect(env.DB_URL.get).not.toHaveBeenCalled();
   });
   it("registers the email relay on the container outbound handler", async () => {
     const { env, mocks } = fakeEnv();
@@ -334,6 +362,18 @@ describe("configuration changes reach a running container", () => {
     expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
     expect(runtime.starts).toHaveLength(2);
     expect(runtime.starts[1]!.env).toMatchObject({ ConnectionStrings__schedulerdb: "rotated-local-test-value" });
+  });
+
+  it("restarts the container with the vehicle-aware switch when a deploy turns it on, and without it when one turns it off", async () => {
+    const { runtime, storage } = await warmContainer();
+    expect(runtime.starts[0]!.env).not.toHaveProperty("Scheduling__VehicleAwareRequirements");
+    const on = deploy(runtime, storage, env => { env.VEHICLE_AWARE_REQUIREMENTS = "true" as Env["VEHICLE_AWARE_REQUIREMENTS"]; });
+    expect(await serve(on.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[1]!.env).toEqual({ ...runtime.starts[0]!.env, Scheduling__VehicleAwareRequirements: "true" });
+    const off = deploy(runtime, storage);
+    expect(await serve(off.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[2]!.env).toEqual(runtime.starts[0]!.env);
+    expect(runtime.signals).toEqual([15, 15]);
   });
 
   it("restarts under the current configuration after a rollout to another image", async () => {

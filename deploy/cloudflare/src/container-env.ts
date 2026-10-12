@@ -6,7 +6,7 @@ import { requiredSecret } from "./secrets.ts";
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
   "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY" |
   "AUTH_TEAM_DOMAIN" | "AUTH_AUDIENCE" | "AUTH_ADMIN" | "AUTH_SERVICE_ADVISOR" | "AUTH_VIEWER" |
-  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN">;
+  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN" | "VEHICLE_AWARE_REQUIREMENTS">;
 
 export function triageSettings(enabled: string, account: string, gateway: string): void {
   if (enabled !== "true" && enabled !== "false") throw new Error("Set KEYLOOP_TRIAGE_ENABLED to true or false");
@@ -55,6 +55,9 @@ export function startFingerprint(start: { image: string; enableInternet: boolean
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
   const access = accessSettings(env.AUTH_TEAM_DOMAIN, env.AUTH_AUDIENCE, env.AUTH_ADMIN, env.AUTH_SERVICE_ADVISOR, env.AUTH_VIEWER);
   triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
+  if (env.VEHICLE_AWARE_REQUIREMENTS !== "true" && env.VEHICLE_AWARE_REQUIREMENTS !== "false") {
+    throw new Error("Set KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false");
+  }
   const notificationsEnabled = env.NOTIFICATIONS_ENABLED === "true";
   const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS, notificationsEnabled);
   const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
@@ -93,6 +96,9 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
     result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");
   }
+  // Off passes nothing, so appsettings.Production.json's false applies and the core profile is unchanged. On is this
+  // deployment's explicit override (ADR-029): the API honours vehicle-aware inputs and GET /features tells the board.
+  if (env.VEHICLE_AWARE_REQUIREMENTS === "true") result.Scheduling__VehicleAwareRequirements = "true";
   addresses.forEach((value, index) => { result[`Notifications__Recipients__AllowedAddresses__${index}`] = value; });
   domains.forEach((value, index) => { result[`Notifications__Recipients__AllowedDomains__${index}`] = value; });
   access.audiences.forEach((value, index) => { result[`Auth__Audience__${index}`] = value; });

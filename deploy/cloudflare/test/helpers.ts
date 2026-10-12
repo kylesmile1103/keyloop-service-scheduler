@@ -21,6 +21,7 @@ export function fakeEnv() {
     TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"],
     TRIAGE_ACCOUNT_ID: "00000000000000000000000000000000",
     TRIAGE_GATEWAY_ID: "keyloop-scheduler",
+    VEHICLE_AWARE_REQUIREMENTS: "false" as Env["VEHICLE_AWARE_REQUIREMENTS"],
     EMAIL: { send: vi.fn().mockResolvedValue({ messageId: "provider-id" }) },
     EMAIL_API_TOKEN: { get: vi.fn().mockResolvedValue("local-test-email-value") },
     GRAFANA_OTLP_BASIC_BROWSER: { get: vi.fn().mockResolvedValue("bG9jYWw6dGVzdA==") },

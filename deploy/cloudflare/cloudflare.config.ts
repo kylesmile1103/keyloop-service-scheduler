@@ -55,6 +55,8 @@ export default defineConfig({
       TRIAGE_ENABLED: bindings.text(settings.triageEnabled),
       TRIAGE_ACCOUNT_ID: bindings.text(settings.triageAccountId),
       TRIAGE_GATEWAY_ID: bindings.text(settings.triageGatewayId),
+      // ADR-029's vehicle-aware booking for this deployment; the API's Production default stays false (src/container-env.ts).
+      VEHICLE_AWARE_REQUIREMENTS: bindings.text(settings.vehicleAwareRequirements),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["notifications@keyloop.kylesmile.me"] }),
       // Disabled integrations must not require provisioning unused credentials.
       ...(settings.emailTransport === "rest" ? {

@@ -176,6 +176,7 @@ The role lists are typed privately, so they reach neither history nor the reposi
 ```sh
 export KEYLOOP_NOTIFICATIONS_ENABLED=false KEYLOOP_EMAIL_SENDING_ENABLED=false
 export KEYLOOP_OTLP_RELAY_ENABLED=false KEYLOOP_TRIAGE_ENABLED=false KEYLOOP_EMAIL_TRANSPORT=binding
+export KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=false
 read -r KEYLOOP_ACCESS_ADMIN            # comma-separated emails or @domain entries
 read -r KEYLOOP_ACCESS_SERVICE_ADVISOR
 read -r KEYLOOP_ACCESS_VIEWER
@@ -188,7 +189,7 @@ jq '{name, domains, workersDev, previewUrls, triggers, env: (.env | del(.AUTH_AD
 jq '{name, instanceType, maxInstances, constraints, image, schedulingPolicy}' .cloudflare/output/v0/containers/keyloop-scheduler-api/container.config.json
 ```
 
-Check before going on: domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers; `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE` is your pushed image reference; `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours; there is no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `AI_TOKEN` or `TRIAGE_IMAGES` binding; `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED` and `TRIAGE_ENABLED` are `false`; the container is `basic`, one instance, `WEUR`, with your pushed image. `.cloudflare/` is ignored; it holds the role lists in plain text, so do not share it.
+Check before going on: domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers; `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE` is your pushed image reference; `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours; there is no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `AI_TOKEN` or `TRIAGE_IMAGES` binding; `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED`, `TRIAGE_ENABLED` and `VEHICLE_AWARE_REQUIREMENTS` are `false`; the container is `basic`, one instance, `WEUR`, with your pushed image. `.cloudflare/` is ignored; it holds the role lists in plain text, so do not share it.
 
 ## 7. Deploy
 
@@ -248,13 +249,13 @@ Expected: `201: 1   409: 29   other: 0` and `PASS`. The k6 profiles in `tests/lo
 
 ## Later configuration changes
 
-A running container keeps the environment it was started with; neither a Worker deploy nor the platform's image rollout changes it. The Durable Object compares a fingerprint of the configuration it would start the container with now against the one it last started it with, once per deploy, on the first API request, and restarts the container when they differ ([README](README.md#configuration-changes-and-container-restarts)). To change a setting, for example enabling triage:
+A running container keeps the environment it was started with; neither a Worker deploy nor the platform's image rollout changes it. The Durable Object compares a fingerprint of the configuration it would start the container with now against the one it last started it with, once per deploy, on the first API request, and restarts the container when they differ ([README](README.md#configuration-changes-and-container-restarts)). To change a setting, for example enabling triage or vehicle-aware booking (`KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=true`):
 
 1. Set the changed variables with the others from step 6 and run `npm run build`; check the bindings as in step 6.
 2. **REQUIRES USER CONFIRMATION:** deploy as in step 7.
 3. Send one API request, as in rehearsal item 1. It waits for the old container to stop (up to 15 s after SIGTERM, then up to 5 s after a kill) and the new one to start; a `503` with `E_API_UNAVAILABLE` means the old container did not stop, so send another request, which tries again.
 4. In the Worker logs (dashboard), confirm one `ApiContainerRestart` event with reason `configuration-changed` (or `unrecorded`, the first time this behaviour is deployed onto a running container). No event means no running container had to be replaced: either it was already running with this configuration, or it was not running (it sleeps after 30 idle minutes), and this request cold-started it with the new settings. Either way, step 5 confirms that the change took effect.
-5. Check the change itself: for triage, signed in as a ServiceAdvisor, describing an issue in the booking dialog returns suggestions instead of the `503 triage-unavailable` fallback to manual selection.
+5. Check the change itself: for triage, signed in as a ServiceAdvisor, describing an issue in the booking dialog returns suggestions instead of the `503 triage-unavailable` fallback to manual selection. For vehicle-aware booking, `curl -sS "$H/api/v1/features"` gives `{"vehicleAwareRequirements":true}`, and, signed in as a ServiceAdvisor, the booking dialog has the vehicle step (with a web build that includes Task 31b).
 
 ## Rollback
 
