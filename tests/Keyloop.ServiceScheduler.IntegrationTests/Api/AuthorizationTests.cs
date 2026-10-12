@@ -23,6 +23,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/appointments")]
     [InlineData("POST", "/api/v1/appointments/11111111-1111-1111-1111-111111111111/cancel")]
     [InlineData("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/booking-triage")]
+    [InlineData("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/booking-triage/images")]
     [InlineData("GET", "/api/v1/appointments/11111111-1111-1111-1111-111111111111")]
     public async Task Anonymous_protected_routes_return_401_before_binding(string method, string route)
     {
@@ -91,7 +92,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     [Theory]
     [InlineData("ServiceAdvisor")]
     [InlineData("Admin")]
-    public async Task Write_roles_book_cancel_and_reach_triage(string role)
+    public async Task Write_roles_book_cancel_and_reach_triage_and_photo_upload(string role)
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         using var client = _factory.CreateClient();
@@ -108,6 +109,9 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
         using var triage = await client.PostAsync($"/api/v1/dealerships/{workshop.Dealership.Id}/booking-triage",
             new StringContent("{\"description\":\"routine service\"}", System.Text.Encoding.UTF8, "application/json"), Ct);
         triage.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, "triage is disabled in this fixture, but the write role passes authorization");
+        using var upload = await client.PostAsync($"/api/v1/dealerships/{workshop.Dealership.Id}/booking-triage/images",
+            new StringContent("{\"contentType\":\"image/png\",\"base64\":\"AA==\"}", System.Text.Encoding.UTF8, "application/json"), Ct);
+        upload.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable, "image triage is disabled in this fixture, but the write role passes authorization");
     }
 
     [Theory]
@@ -150,6 +154,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
                     ("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/appointments", false),
                     ("POST", "/api/v1/appointments/11111111-1111-1111-1111-111111111111/cancel", false),
                     ("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/booking-triage", false),
+                    ("POST", "/api/v1/dealerships/11111111-1111-1111-1111-111111111111/booking-triage/images", false),
                     ("GET", "/api/v1/appointments/11111111-1111-1111-1111-111111111111", true),
                 })
                 {
@@ -262,6 +267,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
             $"/api/v1/dealerships/{workshop.Dealership.Id}/appointments",
             "/api/v1/appointments/11111111-1111-1111-1111-111111111111/cancel",
             $"/api/v1/dealerships/{workshop.Dealership.Id}/booking-triage",
+            $"/api/v1/dealerships/{workshop.Dealership.Id}/booking-triage/images",
         })
         {
             using var content = new StringContent("{}");

@@ -595,6 +595,49 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData("Anonymous", HttpStatusCode.Unauthorized)]
+    [InlineData("Unknown", HttpStatusCode.Forbidden)]
+    [InlineData("Viewer", HttpStatusCode.Forbidden)]
+    [InlineData("ServiceAdvisor", HttpStatusCode.OK)]
+    [InlineData("Admin", HttpStatusCode.OK)]
+    public async Task Photo_upload_and_evaluation_require_a_booking_write_role(string role, HttpStatusCode expected)
+    {
+        // Both Clef triage endpoints are writes: an upload stores a photo and an evaluation spends Clef credits (ADR-027, ADR-028).
+        var ct = TestContext.Current.CancellationToken;
+        using var stub = new StubTriageHandler();
+        using var relay = new StubTriageMediaRelay();
+        await using var host = Enabled(stub, relay: relay);
+        using var admin = host.CreateClient(); // the fixture's default Admin supplies an upload id for the evaluation
+        var id = await UploadPhotoAsync(admin);
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, role);
+
+        using var upload = await UploadAsync(client, ReferenceDataSeed.ReadingDealershipId);
+        using var evaluation = await PostImagesAsync(client, [id]);
+
+        foreach (var response in new[] { upload, evaluation })
+        {
+            if (expected == HttpStatusCode.OK)
+            {
+                response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(ct));
+                continue;
+            }
+
+            var problem = await response.ShouldBeProblemAsync(expected, expected == HttpStatusCode.Unauthorized ? "unauthenticated" : "forbidden", ct);
+            problem.TryGetProperty("loginUrl", out var login).ShouldBe(expected == HttpStatusCode.Unauthorized);
+            if (expected == HttpStatusCode.Unauthorized)
+            {
+                login.GetString().ShouldStartWith("/auth/login?returnTo=");
+            }
+        }
+
+        // A refused caller stores nothing and never reaches Clef; an allowed one stores its photo and gets one evaluation.
+        relay.Requests.Count(r => r.Method == HttpMethod.Put).ShouldBe(expected == HttpStatusCode.OK ? 2 : 1);
+        stub.Calls.ShouldBe(expected == HttpStatusCode.OK ? 1 : 0);
+    }
+
     [Fact]
     public async Task Upload_for_an_unknown_dealership_is_404_and_stores_nothing()
     {

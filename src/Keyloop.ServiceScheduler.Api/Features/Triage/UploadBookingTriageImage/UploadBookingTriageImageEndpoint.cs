@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using FluentValidation;
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
@@ -68,6 +69,7 @@ public sealed class UploadBookingTriageImageEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) => app.MapPost("/dealerships/{dealershipId:guid}/booking-triage/images", HandleAsync)
         .WithName("UploadBookingTriageImage").WithTags(ApiTags.Catalog)
         .WithMetadata(new TriageImageBodyLimit())
+            .RequireAuthorization(SchedulerAuthentication.BookingsWrite)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
         .RequireRateLimiting(SchedulerRateLimiting.TriagePolicy)
