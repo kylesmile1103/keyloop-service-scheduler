@@ -46,10 +46,10 @@ jobs:
           --coverage --coverage-output-format cobertura
           --results-directory "$GITHUB_WORKSPACE/TestResults/unit"
       # Hosted Ubuntu runners already provide Docker for Testcontainers.
-      - name: Integration tests with coverage (excluding Aspire)
+      - name: Integration tests with coverage (excluding LiveAi)
         run: >-
           dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests
-          -c Release --no-build --no-restore --filter "Category!=Aspire"
+          -c Release --no-build --no-restore --filter "Category!=LiveAi"
           --coverage --coverage-output-format cobertura
           --results-directory "$GITHUB_WORKSPACE/TestResults/integration"
       - name: Fail on vulnerable NuGet packages
@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
-          version: '12'
+          package_json_file: src/Keyloop.ServiceScheduler.Web/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -138,7 +138,7 @@ jobs:
           global-json-file: global.json
       - uses: pnpm/action-setup@v4
         with:
-          version: '12'
+          package_json_file: src/Keyloop.ServiceScheduler.Web/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
