@@ -198,6 +198,48 @@ describe.each<[string, CurrentUserResponse]>([
   })
 })
 
+describe("a photo upload that answers after the identity changed", () => {
+  it("is not kept for reuse: the next suggestion uploads the photo again as the new caller", async () => {
+    let me: CurrentUserResponse = admin
+    const uploads: Array<ReturnType<typeof deferred<UploadBookingTriageImageResponse>>> = []
+    const api = mockBoardApi({
+      me: () => me,
+      triageStatus: () => triageEnabled,
+      serviceTypes: () => [interimServiceType, brakesServiceType],
+      uploadTriageImage: () => {
+        const upload = deferred<UploadBookingTriageImageResponse>()
+        uploads.push(upload)
+        return upload.promise
+      },
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.95]]),
+    })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    const photo = new File([new Uint8Array([137, 80, 78, 71])], "dashboard.png", { type: "image/png" })
+    fireEvent.change(within(dialog).getByLabelText("Photos or paperwork (optional)"), { target: { files: [photo] } })
+    fireEvent.change(await within(dialog).findByRole("textbox", { name: "Describe the issue" }), { target: { value: "Warning light" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Suggest a service" }))
+    await waitFor(() => expect(uploads).toHaveLength(1))
+
+    // The same email with another role that may book: the draft stays, but the upload's answer is the previous caller's.
+    me = { ...admin, roles: ["ServiceAdvisor"] }
+    refocus()
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey())).toEqual(me))
+    uploads[0].release({ imageId, contentType: "image/png", sizeBytes: 4, expiresAt: "2026-10-13T09:30:00Z" })
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(0)
+
+    const suggest = within(dialog).getByRole("button", { name: "Suggest a service" })
+    await waitFor(() => expect(suggest).not.toHaveAttribute("aria-disabled", "true"))
+    fireEvent.click(suggest)
+    await waitFor(() => expect(uploads).toHaveLength(2))
+    uploads[1].release({ imageId, contentType: "image/png", sizeBytes: 4, expiresAt: "2026-10-13T09:30:00Z" })
+    await within(dialog).findByRole("radiogroup", { name: "Suggested services" })
+    expect(posts(api.requests, "/booking-triage/images")).toHaveLength(2)
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(1)
+  })
+})
+
 describe("a write checked as it is sent", () => {
   it.each<[string, CurrentUserResponse]>([
     ["signed out", anonymous],
