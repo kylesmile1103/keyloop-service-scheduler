@@ -32,12 +32,12 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("BRAKES-PADS-DISCS", 0.9, "suggest", true)]
-    [InlineData("BRAKES-PADS-DISCS", 0.5, "confirm", false)]
-    [InlineData("NONE_OF_THESE", 0.9, "no-match", true)]
-    public async Task Maps_each_recommendation_from_both_envelopes(string choice, double confidence, string expected, bool envelope)
+    [InlineData("BRAKES-PADS-DISCS", 0.9, "suggest", "run")]
+    [InlineData("BRAKES-PADS-DISCS", 0.5, "confirm", "bare")]
+    [InlineData("NONE_OF_THESE", 0.9, "no-match", "result")]
+    public async Task Maps_each_recommendation_from_every_envelope(string choice, double confidence, string expected, string shape)
     {
-        using var stub = new StubTriageHandler { ServiceChoice = choice, Confidence = confidence, Envelope = envelope };
+        using var stub = new StubTriageHandler { ServiceChoice = choice, Confidence = confidence, Shape = shape };
         await using var host = Enabled(stub);
         using var client = host.CreateClient();
         using var response = await PostAsync(client, "  brakes squeal, it's an EV, need it Thursday  ");

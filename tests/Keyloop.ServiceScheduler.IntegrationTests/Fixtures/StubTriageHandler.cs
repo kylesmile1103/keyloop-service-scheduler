@@ -16,7 +16,8 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     internal string ServiceChoice { get; set; } = "BRAKES-PADS-DISCS";
     internal string DateChoice { get; set; } = "2026-10-15";
     internal double Confidence { get; set; } = 0.9;
-    internal bool Envelope { get; set; } = true;
+    /// <summary>"run" (what /ai/run returned live: a completed run wrapping the model body), "result" or "bare".</summary>
+    internal string Shape { get; set; } = "run";
     internal int? RetryAfter { get; set; }
     internal bool Hang { get; set; }
     internal bool ThrowWithDescription { get; set; }
@@ -53,7 +54,12 @@ internal sealed class StubTriageHandler : HttpMessageHandler
             ["usage"] = new JsonObject { ["input_tokens"] = 432 },
         };
         var status = FailFirst && Calls > 1 ? 200 : Status;
-        var json = RawBody ?? (Envelope ? new JsonObject { ["result"] = payload, ["success"] = true } : payload).ToJsonString();
+        var json = RawBody ?? (Shape switch
+        {
+            "run" => new JsonObject { ["result"] = new JsonObject { ["state"] = "Completed", ["result"] = payload }, ["success"] = true },
+            "result" => new JsonObject { ["result"] = payload, ["success"] = true },
+            _ => payload,
+        }).ToJsonString();
         var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         response.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(ContentType);
         if (RetryAfter is { } seconds)

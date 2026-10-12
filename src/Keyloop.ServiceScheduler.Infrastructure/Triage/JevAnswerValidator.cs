@@ -11,7 +11,14 @@ internal static class JevAnswerValidator
             throw new TriageUnavailableException("invalid-answer");
         }
 
-        var answers = envelope.Result?.Answers ?? envelope.Answers;
+        var run = envelope.Result;
+        if (run?.State is { } state && state != "Completed")
+        {
+            throw new TriageUnavailableException("invalid-answer");
+        }
+
+        var body = run?.Result ?? run;
+        var answers = body?.Answers ?? envelope.Answers;
         if (answers is null || answers.Count != 2 || !answers.TryGetValue("service", out var service) ||
             !answers.TryGetValue("preferred_date", out var date))
         {
@@ -20,7 +27,7 @@ internal static class JevAnswerValidator
 
         ValidateChoice(service, request.Input.Questions["service"].Criteria);
         ValidateChoice(date, request.Input.Questions["preferred_date"].Criteria);
-        var tokens = (envelope.Result?.Usage ?? envelope.Usage)?.InputTokens;
+        var tokens = (body?.Usage ?? envelope.Usage)?.InputTokens;
         if (tokens < 0)
         {
             throw new TriageUnavailableException("invalid-answer");
