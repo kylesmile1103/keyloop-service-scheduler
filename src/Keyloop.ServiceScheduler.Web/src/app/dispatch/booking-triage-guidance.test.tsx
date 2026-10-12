@@ -339,6 +339,110 @@ describe("the copy for the candidates the API returns", () => {
   })
 })
 
+describe("the photo picker", () => {
+  beforeEach(() => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test-photo") })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
+  })
+  const photo = (name = "front-wing.png", type = "image/png") => new File([new Uint8Array([137, 80, 78, 71])], name, { type })
+  /** The whole field (its label, panel, limits and photos): photos dropped anywhere on it are taken. */
+  const photoField = (scope: HTMLElement) => within(scope).getByLabelText("Photos or paperwork (optional)").closest<HTMLElement>("[data-slot='field']")!
+
+  it("is an Add photos control over a visually hidden file input that the keyboard reaches, with its limits", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await within(scope).findByRole("textbox", { name: "Describe the issue" })
+
+    const input = within(scope).getByLabelText("Photos or paperwork (optional)") as HTMLInputElement
+    const control = within(scope).getByText("Add photos").closest("label")!
+    // The visible control is a label for the input: a click on it opens the same file picker, and its words are in the name.
+    expect(control.control).toBe(input)
+    expect(input).toHaveAccessibleName("Photos or paperwork (optional) Add photos")
+    // Hidden from sight, not from the keyboard: no native "Choose Files" or "No file chosen", and no tooltip of its own.
+    expect(input).toHaveClass("sr-only")
+    expect(input).toHaveAttribute("title", "")
+    expect(input).not.toHaveAttribute("tabindex")
+    input.focus()
+    expect(input).toHaveFocus()
+    expect(input).toHaveAttribute("type", "file")
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp")
+    expect(input).toHaveAttribute("multiple")
+    expect(input).toHaveAccessibleDescription(
+      "Up to 4 PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour."
+    )
+
+    // The keyboard's choice (Enter or Space on the input) arrives as the input's change, like the picker's.
+    fireEvent.change(input, { target: { files: [photo()] } })
+    expect(within(scope).getByAltText("Selected photo: front-wing.png")).toBeInTheDocument()
+    // The same input, still labelled Add photos, beside the photos: focus returning from the picker stays in the dialog.
+    expect(within(scope).getByLabelText("Photos or paperwork (optional)")).toBe(input)
+    expect(within(scope).getByText("Add photos").closest("label")!.control).toBe(input)
+  })
+
+  it("ties a refusal to the input, as its error and its description", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    const input = await within(scope).findByLabelText("Photos or paperwork (optional)")
+
+    fireEvent.change(input, { target: { files: [new File(["paper"], "paper.pdf", { type: "application/pdf" })] } })
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(input).toHaveAccessibleDescription(expect.stringContaining("Choose PNG, JPEG or WebP photos."))
+  })
+
+  it("takes photos dropped on the field, keeping the browser from opening them", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await within(scope).findByRole("textbox", { name: "Describe the issue" })
+    const field = photoField(scope)
+    const files = [photo("front-wing.png"), photo("bumper.jpg", "image/jpeg")]
+
+    expect(fireEvent.dragEnter(field, { dataTransfer: { types: ["Files"], files: [] } })).toBe(false)
+    expect(field).toHaveAttribute("data-dragging")
+    expect(fireEvent.dragOver(field, { dataTransfer: { types: ["Files"], files: [] } })).toBe(false)
+    expect(fireEvent.drop(field, { dataTransfer: { types: ["Files"], files } })).toBe(false)
+
+    expect(field).not.toHaveAttribute("data-dragging")
+    expect(within(scope).getByAltText("Selected photo: front-wing.png")).toBeInTheDocument()
+    expect(within(scope).getByAltText("Selected photo: bumper.jpg")).toBeInTheDocument()
+    expect(within(scope).getByRole("list", { name: "Selected photos" }).children).toHaveLength(2)
+  })
+
+  it("checks dropped files as it checks chosen ones", async () => {
+    const api = mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await within(scope).findByRole("textbox", { name: "Describe the issue" })
+
+    fireEvent.drop(photoField(scope), { dataTransfer: { types: ["Files"], files: [new File(["paper"], "paper.pdf", { type: "application/pdf" })] } })
+    expect(within(scope).getByText("Choose PNG, JPEG or WebP photos.")).toBeInTheDocument()
+    expect(within(scope).queryByRole("list", { name: "Selected photos" })).not.toBeInTheDocument()
+    expect(api.requests.some((request) => request.method === "POST")).toBe(false)
+  })
+
+  it("ignores a drop while it is asking, as the input does", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: async () => (await held, triageAnswer("suggest", [[brakesServiceType, 0.85]])),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Brakes squeal")
+    await waitFor(() => expect(within(scope).getByLabelText("Photos or paperwork (optional)")).toBeDisabled())
+
+    // Still kept from the browser, so a photo let go over the field never replaces the booking being entered.
+    expect(fireEvent.drop(photoField(scope), { dataTransfer: { types: ["Files"], files: [photo()] } })).toBe(false)
+    expect(within(scope).queryByRole("list", { name: "Selected photos" })).not.toBeInTheDocument()
+    answer()
+    await within(scope).findByRole("radio", { name: /^Brake Pads & Discs/ })
+  })
+})
+
 describe("the accident damage assessment's help", () => {
   it("says what it is in the Service list, under the chosen service and on its suggested card", async () => {
     mockBoardApi({

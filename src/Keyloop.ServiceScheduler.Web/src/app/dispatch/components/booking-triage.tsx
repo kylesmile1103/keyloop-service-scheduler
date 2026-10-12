@@ -1,12 +1,12 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
-import { CalendarDays, CalendarX2, Check, CircleAlert, Info, LoaderCircle, MessageSquareText, NotebookPen, ScanSearch } from "lucide-react"
-import { useEffect, useId, useLayoutEffect, useRef } from "react"
+import { CalendarDays, CalendarX2, Check, CircleAlert, ImagePlus, Info, LoaderCircle, MessageSquareText, NotebookPen, ScanSearch } from "lucide-react"
+import { type DragEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate, TriageUncoveredIssue } from "@/api/types.gen"
 import { CapabilityBadges } from "@/components/capability-badges"
 import { ProblemAlert } from "@/components/problem-alert"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Label } from "@/components/ui/label"
@@ -74,7 +74,7 @@ export function BookingTriageIntake({
   onUse,
   blockedBy,
 }: BookingTriageProps) {
-  const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
+  const ids = { description: useId(), help: useId(), count: useId(), error: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
   const { answer, failure, pending, waiting, descriptionError, maxLength } = triage
@@ -98,7 +98,6 @@ export function BookingTriageIntake({
   }
 
   const describedBy = [ids.help, ids.count, descriptionError ? ids.error : null].filter(Boolean).join(" ")
-  const noPhotos = triage.photos.length === 0
 
   return (
     <section aria-label="Suggest a service from the issue" className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:p-4">
@@ -132,67 +131,7 @@ export function BookingTriageIntake({
         )}
       </Field>
 
-      {triage.imagesEnabled && (
-        <Field className="gap-1.5" data-invalid={triage.imageError ? true : undefined}>
-          <FieldLabel htmlFor={ids.photos}>Photos or paperwork (optional)</FieldLabel>
-          {/*
-            Before the first photo, the field says what is worth photographing, beside the picture of it (UI_DESIGN 12.1).
-            The file input keeps its place in this wrapper either way, so the element the file picker returns focus to is
-            never replaced when the photos arrive.
-          */}
-          <div
-            className={cn(
-              noPhotos &&
-                "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 rounded-lg border border-dashed border-input p-3"
-            )}
-          >
-            {noPhotos && (
-              <img
-                src={illustrations["photo-evidence"]}
-                alt={illustrationAlt["photo-evidence"]}
-                width={1200}
-                height={900}
-                draggable={false}
-                className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
-              />
-            )}
-            {noPhotos && (
-              <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
-            )}
-            <input
-              id={ids.photos}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              disabled={pending || Boolean(blockedBy)}
-              aria-invalid={triage.imageError ? true : undefined}
-              aria-describedby={[ids.photoHelp, triage.imageError ? ids.photoError : null, blockedBy].filter(Boolean).join(" ")}
-              className={cn(
-                "w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-                noPhotos && "col-span-2 sm:col-span-1"
-              )}
-              onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
-            />
-          </div>
-          <p id={ids.photoHelp} className="text-xs text-muted-foreground">
-            Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
-          </p>
-          {triage.imageError && <FieldError id={ids.photoError}>{triage.imageError}</FieldError>}
-          {triage.photos.length > 0 && (
-            <ul aria-label="Selected photos" className="flex flex-col gap-2">
-              {triage.photos.map((photo, index) => (
-                <li key={`${photo.name}-${photo.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg border border-border p-2">
-                  <PhotoPreview photo={photo} />
-                  <span className="min-w-0 flex-1 truncate text-sm">{photo.name}</span>
-                  <Button type="button" variant="ghost" disabled={pending} onClick={() => triage.removePhoto(index)} aria-label={`Remove photo ${index + 1}: ${photo.name}`}>
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Field>
-      )}
+      {triage.imagesEnabled && <PhotoField triage={triage} pending={pending} blockedBy={blockedBy} />}
 
       <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <Button
@@ -254,6 +193,146 @@ export function BookingTriageIntake({
         />
       )}
     </section>
+  )
+}
+
+/** A drag that carries files (not text or a link dragged from the page). */
+const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files")
+
+interface PhotoFieldProps {
+  triage: BookingTriage
+  /** A suggestion is being asked for: its photos are on their way, so none is added or removed meanwhile. */
+  pending: boolean
+  /** As Suggest a service's: the id of the reason this account cannot ask any more; no photo is added meanwhile. */
+  blockedBy?: string
+}
+
+/**
+ * *Photos or paperwork (optional)*: a styled *Add photos* control over a visually hidden file input (UI_DESIGN 12.1). The
+ * input keeps the field's label, accept list, limits, error and keyboard behaviour (Tab reaches it, Enter or Space opens the
+ * picker, the control shows its focus), and the browser's own button, "No file chosen" text and tooltip never show. Photos
+ * can also be dropped anywhere on the field: a drop goes through the same checks as the picker, and while the field is
+ * unavailable it is still kept from the browser, which would otherwise leave the page to open the file. Before the first
+ * photo the dashed panel says what is worth photographing, beside the picture of it; after, it is the slim row that adds
+ * more. The input keeps its place in the panel either way, so the element the file picker returns focus to is never
+ * replaced when the photos arrive.
+ */
+function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
+  const ids = { input: useId(), help: useId(), error: useId() }
+  const disabled = pending || Boolean(blockedBy)
+  const [dragging, setDragging] = useState(false)
+  // Enter and leave fire for every child the pointer crosses: the highlight goes only when the drag has left the field.
+  const depth = useRef(0)
+  const noPhotos = triage.photos.length === 0
+
+  function enter(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    depth.current += 1
+    if (!disabled) setDragging(true)
+  }
+  function over(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = disabled ? "none" : "copy"
+  }
+  function leave(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    depth.current = Math.max(0, depth.current - 1)
+    if (depth.current === 0) setDragging(false)
+  }
+  function drop(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    depth.current = 0
+    setDragging(false)
+    if (!disabled) triage.addPhotos(Array.from(event.dataTransfer.files))
+  }
+
+  return (
+    <Field
+      className="group/photos gap-1.5"
+      data-invalid={triage.imageError ? true : undefined}
+      data-dragging={dragging || undefined}
+      onDragEnter={enter}
+      onDragOver={over}
+      onDragLeave={leave}
+      onDrop={drop}
+    >
+      <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
+      <div
+        className={cn(
+          "rounded-lg border border-dashed border-input transition-colors duration-100",
+          "group-data-dragging/photos:border-signal group-data-dragging/photos:bg-signal/10",
+          noPhotos ? "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 p-3" : "px-3 py-2"
+        )}
+      >
+        {noPhotos && (
+          <img
+            src={illustrations["photo-evidence"]}
+            alt={illustrationAlt["photo-evidence"]}
+            width={1200}
+            height={900}
+            draggable={false}
+            className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
+          />
+        )}
+        {noPhotos && (
+          <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
+        )}
+        <div className={cn("relative flex flex-wrap items-center gap-x-3 gap-y-1", noPhotos && "col-span-2 sm:col-span-1 sm:col-start-2")}>
+          <input
+            id={ids.input}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            // An empty title keeps the browser's own tooltip (the chosen file names) from floating over the photos.
+            title=""
+            disabled={disabled}
+            aria-invalid={triage.imageError ? true : undefined}
+            aria-describedby={[ids.help, triage.imageError ? ids.error : null, blockedBy].filter(Boolean).join(" ")}
+            className="peer sr-only"
+            onChange={(event) => {
+              triage.addPhotos(Array.from(event.target.files ?? []))
+              event.target.value = ""
+            }}
+          />
+          <label
+            htmlFor={ids.input}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "cursor-pointer",
+              "peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
+              "peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+            )}
+          >
+            <ImagePlus aria-hidden="true" />
+            Add photos
+          </label>
+          {/* Only where a pointer can drag: a phone has nothing to drop. */}
+          <span aria-hidden="true" className="hidden text-xs text-muted-foreground peer-disabled:opacity-50 pointer-fine:inline">
+            or drop them here
+          </span>
+        </div>
+      </div>
+      <p id={ids.help} className="text-xs text-muted-foreground">
+        Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
+      </p>
+      {triage.imageError && <FieldError id={ids.error}>{triage.imageError}</FieldError>}
+      {triage.photos.length > 0 && (
+        <ul aria-label="Selected photos" className="flex flex-col gap-2">
+          {triage.photos.map((photo, index) => (
+            <li key={`${photo.name}-${photo.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg border border-border p-2">
+              <PhotoPreview photo={photo} />
+              <span className="min-w-0 flex-1 truncate text-sm">{photo.name}</span>
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => triage.removePhoto(index)} aria-label={`Remove photo ${index + 1}: ${photo.name}`}>
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Field>
   )
 }
 
