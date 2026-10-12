@@ -4,6 +4,12 @@ namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 
 public sealed record VehicleDetails
 {
+    /// <summary>
+    /// The whole-registration mask: seven asterisks whatever the plate, so neither its distinctive last letters nor its length show.
+    /// The anonymous schedule and range reads return it, and <see cref="ToString"/> prints it.
+    /// </summary>
+    public const string MaskedRegistration = "*******";
+
     public VehicleDetails(Vin vin, string registration, string make, string model)
     {
         ArgumentNullException.ThrowIfNull(vin);
@@ -21,5 +27,6 @@ public sealed record VehicleDetails
 
     public string Model { get; }
 
-    public override string ToString() => $"{Vin.Masked} {Registration} {Make} {Model}";
+    /// <summary>Masked like the anonymous reads: the domain VIN mask and the whole-registration mask, never the stored plate.</summary>
+    public override string ToString() => $"{Vin.Masked} {MaskedRegistration} {Make} {Model}";
 }

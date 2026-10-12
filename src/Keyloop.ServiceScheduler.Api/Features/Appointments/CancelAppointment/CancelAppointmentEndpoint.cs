@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using System.ComponentModel;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
@@ -19,6 +20,9 @@ public sealed class CancelAppointmentEndpoint : IEndpoint
         app.MapPost("/appointments/{appointmentId:guid}/cancel", HandleAsync)
             .WithName("CancelAppointment")
             .WithTags(ApiTags.Appointments)
+            .RequireAuthorization(SchedulerAuthentication.BookingsWrite)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .AddEndpointFilter<ValidationFilter<CancelAppointmentRequest>>()
             // A state-changing POST: the stricter write policy, on top of the global limiter (ARCHITECTURE §11.1).
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
@@ -46,6 +50,8 @@ public sealed class CancelAppointmentEndpoint : IEndpoint
     /// <response code="400">The reason is missing, blank or longer than 500 characters (<c>validation-error</c>, <c>errors</c> keyed <c>reason</c>), or the body is not valid JSON.</response>
     /// <response code="404">No appointment has this id (<c>not-found</c>, with <c>resource</c> = <c>appointment</c> and the <c>id</c>).</response>
     /// <response code="409">The appointment cannot be cancelled in its current status (<c>invalid-state-transition</c>, with <c>currentStatus</c> and <c>attempted</c> = <c>cancel</c>), or another request changed it after this one read it (<c>concurrency-conflict</c>: read it again).</response>
+    /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
+    /// <response code="403">The caller's role does not permit this operation (<c>forbidden</c>).</response>
     /// <response code="429">Too many state-changing requests from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Ok<AppointmentResponse>> HandleAsync(
         Guid appointmentId,

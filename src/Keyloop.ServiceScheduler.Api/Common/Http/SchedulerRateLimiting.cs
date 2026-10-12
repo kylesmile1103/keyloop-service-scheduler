@@ -1,4 +1,5 @@
 using System.Globalization;
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using System.Threading.RateLimiting;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
 using Keyloop.ServiceScheduler.Api.Common.Options;
@@ -12,11 +13,12 @@ using Microsoft.OpenApi;
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Rate limiting per client IP with one-minute sliding windows (ARCHITECTURE §11.2): the <c>global</c> limiter applies to every
-/// request except health probes; the stricter <see cref="BookingPolicy"/> write policy is added to the state-changing endpoints
-/// (booking and cancellation) with <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>. A rejection is a 429
-/// <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>. <c>Security:RateLimiting:Enabled=false</c>
-/// (SystemTest) turns all policies off.
+/// Rate limiting with one-minute sliding windows, partitioned per verified email, otherwise client IP (ARCHITECTURE §11.2): the
+/// <c>global</c> limiter applies to every request except health probes; the stricter <see cref="BookingPolicy"/> write policy is
+/// added to the state-changing endpoints (booking, cancellation and the Development-only demo reseed) with
+/// <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>, and <see cref="TriagePolicy"/> to the triage evaluation and
+/// photo upload. A rejection is a 429 <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>.
+/// <c>Security:RateLimiting:Enabled=false</c> (SystemTest) turns all policies off.
 /// </summary>
 public static class SchedulerRateLimiting
 {
@@ -76,7 +78,8 @@ public static class SchedulerRateLimiting
     internal static TimeSpan RetryAfter(RateLimitLease lease) =>
         lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) && retryAfter > TimeSpan.Zero ? retryAfter : Window / SegmentsPerWindow;
 
-    private static string ClientKey(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    private static string ClientKey(HttpContext http) => SchedulerRoles.Email(http.User) is { } email
+        ? $"user:{email.ToLowerInvariant()}" : http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     private static RateLimitPartition<string> SlidingWindow(string client, int permitsPerMinute) =>
         RateLimitPartition.GetSlidingWindowLimiter(client, _ => new SlidingWindowRateLimiterOptions

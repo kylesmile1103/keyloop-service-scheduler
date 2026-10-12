@@ -41,6 +41,13 @@ public static class TestData
     public static VehicleDetails Vehicle(string vin = "WVWZZZ1KZAW123456") => new(Vin.Create(vin), "AB12 CDE", "Volkswagen", "Golf");
 
     /// <summary>
+    /// A fresh id whose text starts <c>ab12cde0</c>, the hex-legal characters of the fixture plate <c>AB12 CDE</c>. Checks that no plate
+    /// character reaches a masked body use it: a case-insensitive comparison then fails on every run rather than only when a random
+    /// lowercase GUID happens to contain <c>cde</c> or <c>ab12</c>.
+    /// </summary>
+    public static Guid PlateLookalikeId() => Guid.Parse(string.Concat("ab12cde0", Guid.NewGuid().ToString()[8..]));
+
+    /// <summary>
     /// A customer whose email is on a reserved domain (<c>example.com</c>), which the notification dispatcher never sends to; pass
     /// <paramref name="email"/> (e.g. <see cref="DeliverableEmail"/>) when a test needs the email to be sent.
     /// </summary>
@@ -84,13 +91,13 @@ public static class TestData
     /// </summary>
     public static Appointment NewAppointment(
         Dealership dealership, ServiceType serviceType, ServiceBay bay, Technician technician, DateTime startUtc, int customer = 1, string vin = "WVWZZZ1KZAW123456",
-        string? email = null, DateTime? bookedAtUtc = null)
+        string? email = null, DateTime? bookedAtUtc = null, Guid? id = null)
     {
         ArgumentNullException.ThrowIfNull(dealership);
         var window = dealership.ResolveOperatingWindow(LocalTimeConverter.ToLocalDate(startUtc, dealership.TimeZone))
             ?? throw new InvalidOperationException("The dealership is closed on that date.");
         return Appointment.Book(
-            Guid.CreateVersion7(), dealership, serviceType, bay, technician, TimeSlot.FromStart(startUtc, serviceType.Duration), window,
+            id ?? Guid.CreateVersion7(), dealership, serviceType, bay, technician, TimeSlot.FromStart(startUtc, serviceType.Duration), window,
             Customer(customer, email), Vehicle(vin), notes: null, bookedAtUtc ?? Now);
     }
 

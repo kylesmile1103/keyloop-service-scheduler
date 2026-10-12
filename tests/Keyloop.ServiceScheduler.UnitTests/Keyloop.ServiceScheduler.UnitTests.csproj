@@ -12,4 +12,8 @@
     <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>
+  <ItemGroup>
+    <!-- Real encoder output (ImageIO JPEG/PNG, libwebp via sharp), 3 x 2 pixels, no personal metadata. -->
+    <None Update="Triage/Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

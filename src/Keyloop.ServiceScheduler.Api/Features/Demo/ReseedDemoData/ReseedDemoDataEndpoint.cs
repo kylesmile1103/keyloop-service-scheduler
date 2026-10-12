@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -10,7 +11,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 /// </summary>
 /// <remarks>
 /// <see cref="EndpointRegistry"/> maps it only where demo data is seeded and <c>Demo:ReseedKey</c> is configured, which is the
-/// Development run under Aspire (the AppHost generates the key for each run); UAT and Production seed no demo data. A missing or wrong
+/// Development run under Aspire (the AppHost generates the key for each run); UAT and Production seed no demo data. After Admin authorization, a missing or wrong
 /// <see cref="KeyHeader"/> is answered with the same 404 as an unknown route rather than a 401, so the route is not advertised. It is
 /// excluded from the OpenAPI document, keeping the build-time contract identical in every environment, and it is rate-limited by the
 /// write policy like the other state-changing routes.
@@ -22,6 +23,7 @@ public sealed class ReseedDemoDataEndpoint : IEndpoint
 
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapPost("/admin/demo/reseed", HandleAsync)
+            .RequireAuthorization(SchedulerAuthentication.Admin)
             .ExcludeFromDescription()
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy);
 

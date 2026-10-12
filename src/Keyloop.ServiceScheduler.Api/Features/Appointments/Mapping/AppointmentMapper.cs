@@ -3,6 +3,7 @@ using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Riok.Mapperly.Abstractions;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Mapping;
@@ -21,6 +22,11 @@ public static partial class AppointmentMapper
     [MapProperty(nameof(@Appointment.Slot.EndUtc), nameof(AppointmentResponse.EndUtc))]
     public static partial AppointmentResponse ToResponse(
         Appointment appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician, string startLocal, string endLocal);
+
+    /// <summary>A range item; <c>ListAppointmentsResponseMapper</c> supplies the summaries and the audience-policy values.</summary>
+    internal static partial AppointmentListItemResponse ToListItem(
+        AppointmentListRow appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician,
+        string startLocal, string endLocal, string customerName, string vin, string registration);
 
     public static partial CustomerResponse ToResponse(CustomerDetails customer);
 

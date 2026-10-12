@@ -21,7 +21,7 @@ beforeAll(async () => {
     unsafeDevRegistryPath: new URL("../build/dev-registry/", import.meta.url).pathname,
     durableObjects: { API: { className: "FakeApi", useSQLite: true } },
     assets: {
-      directory: directory.pathname, binding: "ASSETS", run_worker_first: ["/api", "/api/*", "/otlp", "/otlp/*"],
+      directory: directory.pathname, binding: "ASSETS", run_worker_first: ["/api", "/api/*", "/auth/*", "/otlp", "/otlp/*"],
       routerConfig: { has_user_worker: true },
       assetConfig: { not_found_handling: "single-page-application" },
     },
@@ -45,7 +45,7 @@ describe("Miniflare asset and Worker routing", () => {
     expect(result.headers.get("x-frame-options")).toBe("DENY");
     expect(result.headers.get("content-security-policy")).toContain("connect-src 'self'");
   });
-  it.each(["/api", "/api/v1/dealerships", "/api/v1/does-not-exist"])("routes navigation to %s to the DO with JSON and trusted headers", async path => {
+  it.each(["/api", "/api/v1/dealerships", "/api/v1/does-not-exist", "/auth/login"])("routes navigation to %s to the DO with JSON and trusted headers", async path => {
     const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`, {
       headers: { "sec-fetch-mode": "navigate", "cf-connecting-ip": "203.0.113.9", "x-forwarded-for": "forged", "x-forwarded-proto": "http" },
     });

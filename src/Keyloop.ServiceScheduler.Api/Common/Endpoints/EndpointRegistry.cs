@@ -1,8 +1,10 @@
+using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -10,6 +12,7 @@ using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
+using Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
@@ -33,6 +36,9 @@ public static class EndpointRegistry
         GetWorkshopScheduleEndpoint.Map(group);
         GetBookingTriageStatusEndpoint.Map(group);
         TriageBookingEndpoint.Map(group);
+        UploadBookingTriageImageEndpoint.Map(group);
+        ListAppointmentsEndpoint.Map(group);
+        GetCurrentUserEndpoint.Map(group);
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

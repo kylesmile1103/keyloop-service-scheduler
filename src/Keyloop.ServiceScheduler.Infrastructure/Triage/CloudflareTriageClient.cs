@@ -11,7 +11,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Triage;
 public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConnectionOptions> options,
     TimeProvider clock, ILogger<CloudflareTriageClient> logger)
 {
-    public async Task<JevEvaluation> EvaluateAsync(JevRequest input, CancellationToken ct)
+    public async Task<ClefEvaluation> EvaluateAsync(ClefRequest input, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(input);
         var settings = options.Value;
@@ -27,28 +27,28 @@ public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConne
             for (var attempt = 0; ; attempt++)
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post,
-                    $"{settings.BaseUrl.TrimEnd('/')}/accounts/{settings.AccountId}/ai/run");
+                    $"{settings.BaseUrl.TrimEnd('/')}/accounts/{settings.AccountId}/ai/run/{settings.Model}");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiToken);
                 request.Headers.Add("cf-aig-gateway-id", settings.GatewayId);
                 request.Headers.Add("cf-aig-collect-log", "false");
                 request.Headers.Add("cf-aig-skip-cache", "true");
                 // Bound retries here and prevent a configured gateway retry from multiplying our attempts.
                 request.Headers.Add("cf-aig-max-attempts", "1");
-                request.Content = JsonContent.Create(input, TriageJsonContext.Default.JevRequest);
+                request.Content = JsonContent.Create(input, TriageJsonContext.Transport.ClefRequest);
                 using var response = await http.SendAsync(request, deadline.Token);
                 if (response.IsSuccessStatusCode)
                 {
-                    JevEnvelope? envelope;
+                    ClefEnvelope? envelope;
                     try
                     {
-                        envelope = await response.Content.ReadFromJsonAsync(TriageJsonContext.Default.JevEnvelope, deadline.Token);
+                        envelope = await response.Content.ReadFromJsonAsync(TriageJsonContext.Default.ClefEnvelope, deadline.Token);
                     }
                     // The JSON reader wraps an unsupported Content-Type charset's ArgumentException.
                     catch (InvalidOperationException ex) when (ex.InnerException is ArgumentException && response.Content.Headers.ContentType?.CharSet is not null)
                     {
                         throw new TriageUnavailableException("invalid-answer");
                     }
-                    return JevAnswerValidator.Validate(envelope, input);
+                    return ClefAnswerValidator.Validate(envelope, input);
                 }
                 var retry = RetryDelay(response.Headers.RetryAfter);
                 if (attempt == 0 && IsTransient(response.StatusCode) && (retry is null || retry <= TimeSpan.FromSeconds(1)))

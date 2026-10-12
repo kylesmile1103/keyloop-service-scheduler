@@ -1,7 +1,7 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, ScanSearch } from "lucide-react"
-import { useId, useLayoutEffect, useRef } from "react"
+import { useEffect, useId, useLayoutEffect, useRef } from "react"
 
 import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate } from "@/api/types.gen"
 import { CapabilityBadges } from "@/components/capability-badges"
@@ -20,7 +20,6 @@ import { cn } from "@/lib/utils"
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
 
 /** Said wherever suggestions are offered (Task 26): who makes them, and that a person checks them. */
-const disclosure = "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking."
 
 interface BookingTriageProps {
   triage: BookingTriage
@@ -44,7 +43,7 @@ interface BookingTriageProps {
  * leaves the manual choice below as it is.
  */
 export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse }: BookingTriageProps) {
-  const ids = { description: useId(), help: useId(), count: useId(), error: useId() }
+  const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
   const { answer, failure, pending, waiting, descriptionError, maxLength } = triage
@@ -100,6 +99,40 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
         )}
       </Field>
 
+      {triage.imagesEnabled && (
+        <Field className="gap-1.5" data-invalid={triage.imageError ? true : undefined}>
+          <FieldLabel htmlFor={ids.photos}>Photos or paperwork (optional)</FieldLabel>
+          <input
+            id={ids.photos}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            disabled={pending}
+            aria-invalid={triage.imageError ? true : undefined}
+            aria-describedby={`${ids.photoHelp}${triage.imageError ? ` ${ids.photoError}` : ""}`}
+            className="w-full text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm"
+            onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
+          />
+          <p id={ids.photoHelp} className="text-xs text-muted-foreground">
+            Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
+          </p>
+          {triage.imageError && <FieldError id={ids.photoError}>{triage.imageError}</FieldError>}
+          {triage.photos.length > 0 && (
+            <ul aria-label="Selected photos" className="flex flex-col gap-2">
+              {triage.photos.map((photo, index) => (
+                <li key={`${photo.name}-${photo.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg border border-border p-2">
+                  <PhotoPreview photo={photo} />
+                  <span className="min-w-0 flex-1 truncate text-sm">{photo.name}</span>
+                  <Button type="button" variant="ghost" disabled={pending} onClick={() => triage.removePhoto(index)} aria-label={`Remove photo ${index + 1}: ${photo.name}`}>
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Field>
+      )}
+
       <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <Button
           ref={suggestRef}
@@ -123,7 +156,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
       {notesHaveOwnText && triage.copyToNotes && triage.description.trim() !== "" && (
         <p className="text-xs text-muted-foreground">Notes already has other text, so the description is not copied into it.</p>
       )}
-      <p className="text-xs text-pretty text-muted-foreground">{disclosure}</p>
+      <p className="text-xs text-pretty text-muted-foreground">Suggestions by {triage.provider}. Check before booking.</p>
 
       {/* Always on the page, so what each answer says is read out as it arrives. */}
       <p role="status" className="sr-only">
@@ -135,7 +168,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
       {answer && (
         <Suggestions
           answer={answer}
-          stale={answer.description !== triage.description.trim()}
+          stale={answer.description !== triage.description.trim() || answer.imageVersion !== triage.imageVersion}
           pending={pending}
           selected={triage.selected}
           onSelect={triage.setSelected}
@@ -148,6 +181,16 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
       )}
     </section>
   )
+}
+
+function PhotoPreview({ photo }: { photo: File }) {
+  const ref = useRef<HTMLImageElement>(null)
+  useEffect(() => {
+    const url = URL.createObjectURL(photo)
+    if (ref.current) ref.current.src = url
+    return () => URL.revokeObjectURL(url)
+  }, [photo])
+  return <img ref={ref} alt={`Selected photo: ${photo.name}`} className="size-12 rounded-md object-cover" />
 }
 
 /** A candidate as the cards show it: its catalogue entry (for the badges) and whether it can be booked here, or why not. */
@@ -258,7 +301,7 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
         <p className="text-sm font-medium text-pretty">{headline(response, candidates.length)}</p>
         {stale && (
           <p className="text-xs text-pretty text-muted-foreground">
-            The description has changed since these suggestions. Suggest again to update them.
+            The description or photos have changed since these suggestions. Suggest again to update them.
           </p>
         )}
       </div>
@@ -268,7 +311,7 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
           aria-label="Suggested services"
           value={chosen?.serviceType.id ?? null}
           onValueChange={(value) => onSelect(typeof value === "string" ? value : null)}
-          disabled={pending}
+          disabled={pending || stale}
           className="flex flex-col gap-2"
         >
           {candidates.map((candidate) => (
@@ -284,9 +327,9 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
           <Button
             type="button"
             variant="signal"
-            onClick={() => chosen && onUse(chosen.serviceType.id, usableDate)}
+            onClick={() => !stale && chosen && onUse(chosen.serviceType.id, usableDate)}
             // Nothing chosen yet ("confirm"), or already in use: it waits, focusable, with the reason written above it.
-            disabled={chosen === null || inUse || pending}
+            disabled={chosen === null || inUse || pending || stale}
             focusableWhenDisabled
           >
             {inUse && <Check aria-hidden="true" />}

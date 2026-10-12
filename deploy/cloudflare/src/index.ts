@@ -2,6 +2,7 @@ import { Container } from "@cloudflare/containers";
 import { containerEnv } from "./container-env.ts";
 import { handleEmailRelay } from "./email/relay.ts";
 import { routeRequest } from "./router.ts";
+import { expireTriageMedia, handleTriageMedia } from "./triage-media.ts";
 
 export { ContainerProxy } from "@cloudflare/containers";
 
@@ -31,6 +32,10 @@ export class ApiContainer extends Container<Env> {
 
 ApiContainer.outboundByHost = {
   "email.internal": (request, env: Env) => handleEmailRelay(request, env),
+  "triage-media.internal": (request, env: Env) => handleTriageMedia(request, env),
 };
 
-export default { fetch: routeRequest } satisfies ExportedHandler<Env>;
+export default {
+  fetch: routeRequest,
+  async scheduled(_event, env) { await expireTriageMedia(env); },
+} satisfies ExportedHandler<Env>;

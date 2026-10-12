@@ -24,7 +24,7 @@ internal sealed class ProblemProbeEndpoint : IEndpoint
 
     private static readonly TimeZoneInfo London = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
 
-    public static void Map(IEndpointRouteBuilder app) => app.MapGet("/__throw", Throw).ExcludeFromDescription();
+    public static void Map(IEndpointRouteBuilder app) => app.MapGet("/__throw", Throw).ExcludeFromDescription().AllowAnonymous();
 
     internal static Results<NoContent, Ok<string>> Throw(string kind, [FromServices] CurrentActor actor) => kind switch
     {

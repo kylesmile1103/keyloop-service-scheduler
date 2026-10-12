@@ -5,6 +5,60 @@ export type ClientOptions = {
 };
 
 /**
+ * An appointment selected by its local start date, with its service and allocated resources.
+ */
+export type AppointmentListItemResponse = {
+    /**
+     * The appointment id; `GET /api/v1/appointments/{id}` reads the whole record.
+     */
+    id: string;
+    /**
+     * Lifecycle status, including cancelled and no-show appointments.
+     */
+    status: AppointmentStatus;
+    /**
+     * Inclusive start in UTC, for example `2026-10-13T08:00:00Z`.
+     */
+    startUtc: string;
+    /**
+     * Exclusive end in UTC.
+     */
+    endUtc: string;
+    /**
+     * Start in the dealership's time zone with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for example `2026-10-13T09:00+01:00`.
+     */
+    startLocal: string;
+    /**
+     * End in the dealership's time zone with offset; may fall outside the requested date range.
+     */
+    endLocal: string;
+    /**
+     * The booked service's id, code, name and duration in minutes.
+     */
+    serviceType: ServiceTypeSummary;
+    /**
+     * The allocated bay's id and display name.
+     */
+    bay: ResourceSummary;
+    /**
+     * The allocated technician's id and display name.
+     */
+    technician: ResourceSummary;
+    /**
+     * The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith.
+     */
+    customerName: string;
+    /**
+     * The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example `***********123456`.
+     */
+    vin: string;
+    /**
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as `*******`, whatever the plate, so no character or length is revealed.
+     */
+    registration: string;
+};
+
+/**
  * An appointment: one service for one vehicle, with the bay and the technician reserved for it over the same time slot.
  */
 export type AppointmentResponse = {
@@ -224,6 +278,22 @@ export type BookingTriageStatusResponse = {
      * Maximum trimmed description length.
      */
     maxDescriptionLength: number;
+    /**
+     * Whether private photo uploads are available.
+     */
+    imagesEnabled: boolean;
+    /**
+     * Maximum photos per evaluation.
+     */
+    maxImages: number;
+    /**
+     * Maximum decoded bytes per photo.
+     */
+    maxImageBytes: number;
+    /**
+     * Maximum combined decoded photo bytes per evaluation.
+     */
+    maxTotalImageBytes: number;
 };
 
 /**
@@ -238,6 +308,18 @@ export type CancelAppointmentRequest = {
 };
 
 export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle';
+
+/**
+ * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
+ */
+export type CurrentUserResponse = {
+    authenticated: boolean;
+    email: null | string;
+    displayName: null | string;
+    roles: Array<string>;
+    loginUrl: string;
+    logoutUrl: string;
+};
 
 /**
  * The customer's contact details.
@@ -348,6 +430,10 @@ export type HttpValidationProblemDetails = {
      * The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs.
      */
     traceId: string;
+    /**
+     * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
+     */
+    loginUrl?: string;
 };
 
 /**
@@ -382,6 +468,10 @@ export type ProblemDetails = {
      * The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs.
      */
     traceId: string;
+    /**
+     * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
+     */
+    loginUrl?: string;
 };
 
 /**
@@ -436,15 +526,15 @@ export type ScheduledAppointmentResponse = {
      */
     technician: ResourceSummary;
     /**
-     * The vehicle's 17-character VIN, upper case.
+     * The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example `***********123456`.
      */
     vin: string;
     /**
-     * The vehicle's registration plate, upper case.
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as `*******`, whatever the plate, so no character or length is revealed.
      */
     registration: string;
     /**
-     * The customer's full name.
+     * The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith.
      */
     customerName: string;
 };
@@ -540,6 +630,10 @@ export type TriageBookingRequest = {
      * The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming.
      */
     description: string;
+    /**
+     * Optional photos: at most four distinct, unexpired UploadBookingTriageImage ids from this dealership, at most 8 MiB decoded in total.
+     */
+    imageIds?: null | Array<string>;
 };
 
 /**
@@ -555,7 +649,7 @@ export type TriageBookingResponse = {
      */
     recommendation: string;
     /**
-     * Jev's service confidence, distinct from a candidate's probability.
+     * Clef's service confidence, distinct from a candidate's probability.
      */
     serviceConfidence: number;
     /**
@@ -580,6 +674,42 @@ export type TriagePreferredDate = {
 export type TriageServiceCandidate = {
     serviceType: ServiceTypeSummary;
     probability: number;
+};
+
+/**
+ * A PNG, JPEG or WebP image. Original filenames are never sent or stored.
+ */
+export type UploadBookingTriageImageRequest = {
+    /**
+     * image/png, image/jpeg or image/webp. The file's signature and header must match it.
+     */
+    contentType: string;
+    /**
+     * Standard base64 of the whole file: 1 byte to 4 MiB decoded (at most 5,592,408 characters) and at most 16 megapixels.
+     */
+    base64: string;
+};
+
+/**
+ * A private, dealership-scoped upload reference usable for triage until expiry.
+ */
+export type UploadBookingTriageImageResponse = {
+    /**
+     * Opaque reference for TriageBookingRequest imageIds, valid only for this dealership until expiresAt.
+     */
+    imageId: string;
+    /**
+     * The validated type: image/png, image/jpeg or image/webp.
+     */
+    contentType: string;
+    /**
+     * Decoded bytes stored.
+     */
+    sizeBytes: number;
+    /**
+     * One hour after upload. Later evaluations treat the reference as missing; storage deletes it within about an hour more.
+     */
+    expiresAt: string;
 };
 
 /**
@@ -778,6 +908,63 @@ export type GetAvailabilityResponses = {
 
 export type GetAvailabilityResponse = GetAvailabilityResponses[keyof GetAvailabilityResponses];
 
+export type ListAppointmentsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * The dealership whose appointments are read (the seeded Reading dealership in the example).
+         */
+        dealershipId: string;
+    };
+    query: {
+        /**
+         * First inclusive local date, exactly `yyyy-MM-dd`.
+         */
+        from: string;
+        /**
+         * Last inclusive local date, exactly `yyyy-MM-dd`; on or after from, spanning at most 62 calendar dates including both bounds.
+         */
+        to: string;
+        /**
+         * Optional, repeatable, case-sensitive status names: Confirmed, CheckedIn, InProgress, Completed, Cancelled, NoShow. Omit to read every status.
+         */
+        status?: Array<'Confirmed' | 'CheckedIn' | 'InProgress' | 'Completed' | 'Cancelled' | 'NoShow'>;
+    };
+    url: '/api/v1/dealerships/{dealershipId}/appointments';
+};
+
+export type ListAppointmentsErrors = {
+    /**
+     * Missing or malformed dates, from after to, more than 62 inclusive days, or an invalid status (`validation-error`, with `errors` keyed `from`, `to` or `status`).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No dealership has this id (`not-found`, with `resource` = `dealership` and the `id`).
+     */
+    404: ProblemDetails;
+    /**
+     * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type ListAppointmentsError = ListAppointmentsErrors[keyof ListAppointmentsErrors];
+
+export type ListAppointmentsResponses = {
+    /**
+     * An array of appointments ordered by start, then id, with service, bay and technician summaries and the customer name, VIN and registration (masked for callers without an API role); empty when there are no matches.
+     */
+    200: Array<AppointmentListItemResponse>;
+};
+
+export type ListAppointmentsResponse = ListAppointmentsResponses[keyof ListAppointmentsResponses];
+
 export type BookAppointmentData = {
     /**
      * The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes.
@@ -808,6 +995,14 @@ export type BookAppointmentErrors = {
      * The body or the `Idempotency-Key` is malformed (`validation-error`, `errors` keyed by JSON path such as `customer.email`, or `Idempotency-Key`).
      */
     400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
     /**
      * No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).
      */
@@ -861,6 +1056,14 @@ export type GetAppointmentData = {
 
 export type GetAppointmentErrors = {
     /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
      * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
      */
     404: ProblemDetails;
@@ -907,6 +1110,14 @@ export type CancelAppointmentErrors = {
      * The reason is missing, blank or longer than 500 characters (`validation-error`, `errors` keyed `reason`), or the body is not valid JSON.
      */
     400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
     /**
      * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
      */
@@ -1039,6 +1250,14 @@ export type TriageBookingRequestErrors = {
      */
     400: HttpValidationProblemDetails;
     /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
      * No dealership has this id (not-found).
      */
     404: ProblemDetails;
@@ -1062,3 +1281,97 @@ export type TriageBookingRequestResponses = {
 };
 
 export type TriageBookingRequestResponse = TriageBookingRequestResponses[keyof TriageBookingRequestResponses];
+
+export type UploadBookingTriageImageData = {
+    /**
+     * A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels.
+     */
+    body: UploadBookingTriageImageRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * Dealership that can use this upload reference.
+         */
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/booking-triage/images';
+};
+
+export type UploadBookingTriageImageErrors = {
+    /**
+     * Invalid image type, encoding, dimensions or size (validation-error).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
+     * No dealership has this id (not-found).
+     */
+    404: ProblemDetails;
+    /**
+     * Upload request exceeds the six MiB JSON body limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Too many uploads or evaluations from this client; retry after Retry-After.
+     */
+    429: ProblemDetails;
+    /**
+     * Image triage is disabled or private storage is unavailable.
+     */
+    503: ProblemDetails;
+};
+
+export type UploadBookingTriageImageError = UploadBookingTriageImageErrors[keyof UploadBookingTriageImageErrors];
+
+export type UploadBookingTriageImageResponses = {
+    /**
+     * Opaque image ID, type, byte count and expiry.
+     */
+    200: UploadBookingTriageImageResponse;
+};
+
+export type UploadBookingTriageImageResponse2 = UploadBookingTriageImageResponses[keyof UploadBookingTriageImageResponses];
+
+export type GetCurrentUserData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/me';
+};
+
+export type GetCurrentUserErrors = {
+    /**
+     * Too many requests (`rate-limited`, with `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type GetCurrentUserError = GetCurrentUserErrors[keyof GetCurrentUserErrors];
+
+export type GetCurrentUserResponses = {
+    /**
+     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.
+     */
+    200: CurrentUserResponse;
+};
+
+export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];

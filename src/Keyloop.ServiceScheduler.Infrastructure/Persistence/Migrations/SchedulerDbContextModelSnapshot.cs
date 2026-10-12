@@ -415,8 +415,8 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Actor")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
                         .HasColumnName("actor");
 
                     b.Property<Guid>("AppointmentId")

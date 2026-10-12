@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, type Options, triageBookingRequest } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -107,6 +107,33 @@ export const getAvailabilityOptions = (options: Options<GetAvailabilityData>) =>
     queryKey: getAvailabilityQueryKey(options)
 });
 
+export const listAppointmentsQueryKey = (options: Options<ListAppointmentsData>) => createQueryKey('listAppointments', options);
+
+/**
+ * List appointments for a local date range
+ *
+ * Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most
+ * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
+ * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
+ * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
+ * hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
+ * receives them masked: one initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks
+ * and the last six characters (`***********123456`), and the full registration mask `*******` whatever the plate.
+ * Returns an empty array when there are no matches.
+ */
+export const listAppointmentsOptions = (options: Options<ListAppointmentsData>) => queryOptions<ListAppointmentsResponse, ListAppointmentsError, ListAppointmentsResponse, ReturnType<typeof listAppointmentsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAppointments({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAppointmentsQueryKey(options)
+});
+
 /**
  * Book an appointment
  *
@@ -184,6 +211,9 @@ export const getWorkshopScheduleQueryKey = (options: Options<GetWorkshopSchedule
  * stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
  * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
  * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
+ * Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
+ * one initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks and the last six
+ * characters (`***********123456`), and the full registration mask `*******` whatever the plate.
  * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
  */
 export const getWorkshopScheduleOptions = (options: Options<GetWorkshopScheduleData>) => queryOptions<GetWorkshopScheduleResponse, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ReturnType<typeof getWorkshopScheduleQueryKey>>({
@@ -237,3 +267,42 @@ export const triageBookingRequestMutation = (options?: Partial<Options<TriageBoo
     };
     return mutationOptions;
 };
+
+/**
+ * Upload a private photo for booking intake triage
+ *
+ * Uploads expire after one hour. No public download URL, filename or booking attachment is created.
+ */
+export const uploadBookingTriageImageMutation = (options?: Partial<Options<UploadBookingTriageImageData>>): UseMutationOptions<UploadBookingTriageImageResponse2, UploadBookingTriageImageError, Options<UploadBookingTriageImageData>> => {
+    const mutationOptions: UseMutationOptions<UploadBookingTriageImageResponse2, UploadBookingTriageImageError, Options<UploadBookingTriageImageData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await uploadBookingTriageImage({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getCurrentUserQueryKey = (options?: Options<GetCurrentUserData>) => createQueryKey('getCurrentUser', options);
+
+/**
+ * Get the current caller and sign-in/out URLs
+ *
+ * Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ */
+export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => queryOptions<GetCurrentUserResponse, GetCurrentUserError, GetCurrentUserResponse, ReturnType<typeof getCurrentUserQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getCurrentUser({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getCurrentUserQueryKey(options)
+});

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { edgeSettings } from "../src/settings";
 
 const identifiers = {
+  KEYLOOP_ACCESS_TEAM_DOMAIN: "https://local-fixture.cloudflareaccess.com",
+  KEYLOOP_ACCESS_AUDIENCE: "local-validation-audience",
   KEYLOOP_SECRETS_STORE_ID: "00000000000000000000000000000000",
   KEYLOOP_API_IMAGE: "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:test",
 };
@@ -10,10 +12,12 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
   it("defaults every integration off with the binding transport and the documented caps", () => {
     expect(edgeSettings({ ...identifiers, KEYLOOP_EMAIL_TRANSPORT: "", KEYLOOP_EMAIL_MAX_PER_DAY: "" })).toEqual({
       secretsStoreId: identifiers.KEYLOOP_SECRETS_STORE_ID, apiImage: identifiers.KEYLOOP_API_IMAGE,
+      authTeamDomain: identifiers.KEYLOOP_ACCESS_TEAM_DOMAIN, authAudience: identifiers.KEYLOOP_ACCESS_AUDIENCE,
+      authAdmin: "", authServiceAdvisor: "", authViewer: "",
       notificationsEnabled: "false", emailSendingEnabled: "false", emailTransport: "binding", emailAccountId: "",
       emailAllowedAddresses: "", emailAllowedDomains: "", emailMaxPerRecipientPerDay: "10", emailMaxPerDay: "100",
       otlpRelayEnabled: "false", grafanaOtlpEndpoint: "",
-      triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler",
+      triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler", triageBucket: "keyloop-scheduler-triage",
     });
   });
   it("accepts a complete REST, notification and OTLP profile", () => {

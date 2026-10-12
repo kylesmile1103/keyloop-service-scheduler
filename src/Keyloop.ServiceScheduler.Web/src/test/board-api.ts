@@ -9,6 +9,8 @@ import type {
   TriageBookingRequest,
   TriageBookingResponse,
   WorkshopScheduleResponse,
+  UploadBookingTriageImageRequest,
+  UploadBookingTriageImageResponse,
 } from "@/api/types.gen"
 import { shiftDate } from "@/lib/calendar-date"
 import { munich, reading } from "@/test/dealerships"
@@ -43,6 +45,7 @@ export interface BoardApiOptions {
   triageStatus?: () => Answer<BookingTriageStatusResponse>
   /** POST an intake description for suggestions. By default: 503 `triage-unavailable`, as the API answers when they are off. */
   triage?: (dealershipId: string, body: TriageBookingRequest) => Answer<TriageBookingResponse>
+  uploadTriageImage?: (dealershipId: string, body: UploadBookingTriageImageRequest) => Answer<UploadBookingTriageImageResponse>
 }
 
 /** British Summer Time, as the fixtures' October dates are: a UTC instant as `yyyy-MM-ddTHH:mm+01:00`. */
@@ -199,6 +202,10 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
 
     if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
     if (path === "/api/v1/booking-triage") return answer(options.triageStatus?.() ?? triageDisabled)
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage\/images$/.exec(path)) && request.method === "POST") {
+      const body = (await request.clone().json()) as UploadBookingTriageImageRequest
+      return answer(options.uploadTriageImage?.(match[1], body) ?? problemResponse(503, triageUnavailable))
+    }
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage$/.exec(path)) && request.method === "POST") {
       const body = (await request.clone().json()) as TriageBookingRequest
       return answer(options.triage ? options.triage(match[1], body) : problemResponse(503, triageUnavailable))

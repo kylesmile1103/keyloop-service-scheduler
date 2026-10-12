@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -39,6 +40,12 @@ internal static class SchedulerOpenApi
         Every error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under
         `https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:
 
+        Public reads are anonymous. Customer names, VINs and registrations are masked unless the caller has an API role. Writes
+        require Admin or ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me`
+        discovers the caller.
+
+        - **401** - sign-in required (`unauthenticated`, with `loginUrl`).
+        - **403** - the caller has no permitted role (`forbidden`).
         - **400** - the request is malformed (`validation-error`).
         - **422** - the request is well-formed but breaks a business rule given current reference data (for example
           `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).
@@ -55,6 +62,7 @@ internal static class SchedulerOpenApi
         (ApiTags.Catalog, "Service types a dealership offers, with the bay capabilities and technician certifications each requires."),
         (ApiTags.Availability, "Feasible start times for a service on a dealership's local date."),
         (ApiTags.Appointments, "Book, read and cancel appointments."),
+        ("Identity", "The current caller, API roles and hosted Access navigation URLs."),
         (ApiTags.Schedule, "The dispatch board: a dealership's bays, technicians and appointments for one day."),
     ];
 
@@ -72,9 +80,26 @@ internal static class SchedulerOpenApi
             .AddSchemaTransformer(TransformParameterSchema)
             .AddSchemaTransformer(TypeStringEnums)
             .AddSchemaTransformer(DocumentProblemTraceId)
+            .AddOperationTransformer(DocumentAccessSecurity)
             .AddOperationTransformer(AddResponseHeaders)
             .AddOperationTransformer(DocumentRequestCorrelation)
             .AddOperationTransformer(DescribeRequestBody));
+
+    internal static Task DocumentAccessSecurity(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    {
+        // Deny by default (SchedulerAuthentication's fallback policy): only an explicitly anonymous operation is public.
+        var protectedRoute = !context.Description.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any();
+        operation.Security =
+        [
+            new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("CloudflareAccess", context.Document)] = [] },
+            new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AccessCookie", context.Document)] = [] },
+        ];
+        if (!protectedRoute)
+        {
+            operation.Security.Insert(0, new OpenApiSecurityRequirement());
+        }
+        return Task.CompletedTask;
+    }
 
     /// <summary>Adds the response headers endpoints declare with <see cref="ResponseHeaderExtensions.WithResponseHeader"/> (e.g. <c>Location</c> on a 201).</summary>
     internal static Task AddResponseHeaders(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
@@ -169,6 +194,11 @@ internal static class SchedulerOpenApi
         {
             schema.Properties ??= new Dictionary<string, IOpenApiSchema>();
             schema.Properties[TraceIdProperty] = new OpenApiSchema { Type = JsonSchemaType.String, Description = TraceIdDescription };
+            schema.Properties["loginUrl"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String,
+                Description = "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.",
+            };
             schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
             schema.Required.Add(TraceIdProperty);
         }
@@ -201,6 +231,20 @@ internal static class SchedulerOpenApi
             Description = Description.ReplaceLineEndings("\n"),
         };
         document.Servers = [];
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes = new Dictionary<string, IOpenApiSecurityScheme>
+        {
+            ["CloudflareAccess"] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "Cf-Access-Jwt-Assertion",
+                Description = "Access application JWT, validated for RS256 signature, team issuer, configured AUD and lifetime. Forwarded by Access on protected paths; never accepts unsigned edge identity or token role claims.",
+            },
+            ["AccessCookie"] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Cookie, Name = "CF_Authorization",
+                Description = "Hostname-scoped Access application JWT from /auth/login (Cookie Path Attribute disabled). Validated by the API on public paths. Browser sends it automatically; header takes precedence.",
+            },
+        };
 
         // The order is explicit (a sorted set ranked by the fixed list), not a hash set's enumeration order, so the build-time document
         // is byte-stable. A tag outside the list (a review miss) is kept after the fixed ones, by name, rather than silently dropped.

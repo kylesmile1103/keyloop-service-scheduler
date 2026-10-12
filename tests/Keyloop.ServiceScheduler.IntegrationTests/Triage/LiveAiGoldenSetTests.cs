@@ -45,9 +45,20 @@ public sealed class LiveAiGoldenSetTests
         var tokens = 0;
         foreach (var item in GoldenSet)
         {
-            var request = JevQuestionBuilder.Build(settings.Model, item.Description, services, dealership, TimeProvider.System, 90);
+            var request = ClefQuestionBuilder.Build(settings.Model, item.Description, services, dealership, TimeProvider.System, 90);
             var started = Stopwatch.GetTimestamp();
-            var answer = await client.EvaluateAsync(request, TestContext.Current.CancellationToken);
+            ClefEvaluation answer;
+            try
+            {
+                answer = await client.EvaluateAsync(request, TestContext.Current.CancellationToken);
+            }
+            catch (TriageUnavailableException ex)
+            {
+                // The client logs to NullLogger here, so the safe reason (timeout, rate-limited, billing, ...) must surface in the failure.
+                throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                    $"Fixture {rows.Count + 1} was unavailable: {ex.Reason}."), ex);
+            }
+
             latencies.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             tokens += answer.InputTokens ?? 0;
             var response = TriageResponseMapper.Map(settings.Model, answer, services, new TriageOptions());
@@ -66,14 +77,15 @@ public sealed class LiveAiGoldenSetTests
         }
         latencies.Sort();
         double Percentile(double p) => latencies[(int)Math.Ceiling(latencies.Count * p) - 1];
-        var report = new StringBuilder("# Live AI golden set\n\n");
+        var report = new StringBuilder("# Clef-flash live AI golden set\n\n");
+        report.AppendLine($"Model: {settings.Model}. Images: none (text regression set).\n");
         report.AppendLine(CultureInfo.InvariantCulture, $"Accuracy: {correct}/{GoldenSet.Length}. Abstain: {abstained}/{GoldenSet.Length}. Dates: {dateCorrect}/{dateCases}.");
         report.AppendLine(CultureInfo.InvariantCulture, $"Latency p50: {Percentile(0.5):F1} ms; p95: {Percentile(0.95):F1} ms. Input tokens: {tokens}.");
         report.AppendLine("\n| Fixture | Expected | Choice | Confidence | Recommendation | Date choice | Date confidence | Correct |\n|---|---|---|---|---|---|---|---|");
         foreach (var row in rows) { report.AppendLine(row); }
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Keyloop.ServiceScheduler.sln"))) { directory = directory.Parent; }
-        var path = Path.Combine(directory!.FullName, "docs", "media", "triage-live-golden-set.md");
+        var path = Path.Combine(directory!.FullName, "docs", "media", "triage-clef-flash-golden-set.md");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, report.ToString(), TestContext.Current.CancellationToken);
         // Measure first; acceptance thresholds require stakeholder ratification against actual results.

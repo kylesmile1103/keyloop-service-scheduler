@@ -7,7 +7,7 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
   const url = new URL(request.url);
   if (url.pathname === "/otlp/v1/traces") return relayBrowserTraces(request, env);
   if (url.pathname === "/otlp" || url.pathname.startsWith("/otlp/")) return jsonError("E_NOT_FOUND", 404);
-  if (url.pathname !== "/api" && !url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+  if (url.pathname !== "/api" && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/auth/")) return env.ASSETS.fetch(request);
   const headers = new Headers(request.headers);
   const ip = request.headers.get("cf-connecting-ip");
   if (!ip || ip.includes(",") || /\s/.test(ip)) return jsonError("E_CLIENT_IP_MISSING", 400);

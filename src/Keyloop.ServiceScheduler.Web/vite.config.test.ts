@@ -90,3 +90,10 @@ describe("inlineAsset", () => {
     expect((config as { build?: { assetsInlineLimit?: unknown } }).build?.assetsInlineLimit).toBe(inlineAsset)
   })
 })
+
+describe("Access login proxy", () => {
+  it("forwards the auth path to the API so login redirects do not become SPA HTML", () => {
+    const config = typeof viteConfig === "function" ? viteConfig({ command: "serve", mode: "development" }) : viteConfig
+    expect((config as { server?: { proxy?: Record<string, unknown> } }).server?.proxy?.["/auth"]).toBeDefined()
+  })
+})

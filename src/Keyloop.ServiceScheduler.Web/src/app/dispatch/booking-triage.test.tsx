@@ -34,7 +34,7 @@ beforeAll(async () => {
 const readingBoard = `/dispatch?dealership=${reading.id}`
 const problems = "https://api.keyloop.example/problems/"
 const catalogue = () => [interimServiceType, brakesServiceType, diagnosticsServiceType]
-const disclosure = "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking."
+const disclosure = "Suggestions by Clef-flash via Cloudflare AI Gateway. Check before booking."
 
 beforeEach(() => {
   // Tuesday 2026-10-13, 09:30 in Reading (BST). Only Date is faked; timers stay real for the UI.
@@ -477,7 +477,7 @@ describe("suggesting a service from the issue", () => {
 
     fireEvent.change(within(scope).getByRole("textbox", { name: "Describe the issue" }), { target: { value: "Aircon is not cold" } })
 
-    expect(within(scope).getByText("The description has changed since these suggestions. Suggest again to update them.")).toBeInTheDocument()
+    expect(within(scope).getByText("The description or photos have changed since these suggestions. Suggest again to update them.")).toBeInTheDocument()
   })
 
   it("offers a service the dealership cannot book only as information", async () => {
@@ -616,5 +616,56 @@ describe("suggesting a service on a phone", () => {
     expect(await describeIssue(scope)).toHaveValue("")
     expect(within(scope).queryByRole("radiogroup", { name: "Suggested services" })).not.toBeInTheDocument()
     expect(within(scope).getByRole("checkbox", { name: "Copy the description into Notes" })).toBeChecked()
+  })
+})
+
+describe("photo-assisted triage", () => {
+  const imageId = "550e8400-e29b-41d4-a716-446655440000"
+  beforeEach(() => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test-photo") })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
+  })
+
+  it("uploads photos before evaluation, reuses the private ID, and invalidates a suggestion when a photo is removed", async () => {
+    const api = mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      uploadTriageImage: (_dealership, body) => ({ imageId, contentType: body.contentType, sizeBytes: 4, expiresAt: "2026-10-13T09:30:00Z" }),
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.99]]),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    const photo = new File([new Uint8Array([137, 80, 78, 71])], "private-vehicle-photo.png", { type: "image/png" })
+    fireEvent.change(within(scope).getByLabelText("Photos or paperwork (optional)"), { target: { files: [photo] } })
+    expect(within(scope).getByAltText("Selected photo: private-vehicle-photo.png")).toBeInTheDocument()
+    await describeAndSuggest(scope)
+    await within(scope).findByRole("button", { name: "Use this" })
+    const uploads = api.requests.filter(request => new URL(request.url).pathname.endsWith("/booking-triage/images"))
+    expect(uploads).toHaveLength(1)
+    expect(await uploads[0].clone().json()).toEqual({ contentType: "image/png", base64: "iVBORw==" })
+    expect(await triageRequests(api.requests)[0].clone().json()).toEqual({ description: "Brakes squeal, it's an EV, need it Thursday", imageIds: [imageId] })
+    expect(bookingRequests(api.requests)).toHaveLength(0)
+    fireEvent.click(within(scope).getByRole("button", { name: "Suggest a service" }))
+    await waitFor(() => expect(triageRequests(api.requests)).toHaveLength(2))
+    await waitFor(() => expect(within(scope).getByRole("button", { name: "Remove photo 1: private-vehicle-photo.png" })).not.toBeDisabled())
+    expect(api.requests.filter(request => new URL(request.url).pathname.endsWith("/booking-triage/images"))).toHaveLength(1)
+    fireEvent.click(within(scope).getByRole("button", { name: "Remove photo 1: private-vehicle-photo.png" }))
+    expect(within(scope).getByText("The description or photos have changed since these suggestions. Suggest again to update them.")).toBeInTheDocument()
+    expectUnavailableButFocusable(within(scope).getByRole("button", { name: "Use this" }))
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-photo")
+  })
+
+  it("rejects PDFs, oversized files and too many photos before uploading", async () => {
+    const api = mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    const input = within(scope).getByLabelText("Photos or paperwork (optional)")
+    fireEvent.change(input, { target: { files: [new File(["paper"], "paper.pdf", { type: "application/pdf" })] } })
+    expect(within(scope).getByText("Choose PNG, JPEG or WebP photos.")).toBeInTheDocument()
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array(4 * 1024 * 1024 + 1)], "large.png", { type: "image/png" })] } })
+    expect(within(scope).getByText("Each photo must contain 1 byte to 4 MiB.")).toBeInTheDocument()
+    fireEvent.change(input, { target: { files: Array.from({ length: 5 }, (_, index) => new File(["x"], `${index}.png`, { type: "image/png" })) } })
+    expect(within(scope).getByText("Choose at most 4 photos.")).toBeInTheDocument()
+    expect(api.requests.some(request => request.method === "POST")).toBe(false)
   })
 })

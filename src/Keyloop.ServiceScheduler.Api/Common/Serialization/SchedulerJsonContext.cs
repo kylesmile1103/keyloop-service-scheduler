@@ -1,8 +1,10 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
@@ -11,6 +13,7 @@ using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
+using Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -91,4 +94,11 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
+[JsonSerializable(typeof(UploadBookingTriageImageRequest))]
+[JsonSerializable(typeof(UploadBookingTriageImageResponse))]
+// The date-range appointments read (shared summaries and status are registered above) and the current caller.
+[JsonSerializable(typeof(AppointmentListItemResponse))]
+[JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
+[JsonSerializable(typeof(CurrentUserResponse))]
+[JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

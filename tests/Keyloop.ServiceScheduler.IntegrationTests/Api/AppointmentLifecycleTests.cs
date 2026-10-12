@@ -130,7 +130,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
             var history = await db.AppointmentHistory.AsNoTracking().OrderBy(h => h.OccurredAtUtc).ToListAsync(Ct);
             history.Select(h => (h.AppointmentId, h.EventType, h.OccurredAtUtc)).ShouldBe(
                 [(booked.Id, "Booked", TestData.Now), (booked.Id, "Cancelled", cancelledAt)]);
-            history[1].Actor.ShouldStartWith("anonymous");
+            history[1].Actor.ShouldBe("user:test-user@keyloop.test");
             using var payload = JsonDocument.Parse(history[1].Payload);
             payload.RootElement.GetProperty("previousStatus").GetString().ShouldBe("Confirmed");
             payload.RootElement.GetProperty("reason").GetString().ShouldBe("Customer called to reschedule.");

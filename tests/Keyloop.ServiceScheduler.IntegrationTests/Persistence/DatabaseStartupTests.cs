@@ -36,6 +36,8 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
 
             await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
                 .UseEnvironment(environment)
+                .UseSetting("Auth:TeamDomain", "https://fixture.cloudflareaccess.com")
+                .UseSetting("Auth:Audience:0", "local-fixture-audience")
                 .UseSetting("ConnectionStrings:schedulerdb", connectionString)
                 .UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command", "Information")
                 .ConfigureServices(services => services
