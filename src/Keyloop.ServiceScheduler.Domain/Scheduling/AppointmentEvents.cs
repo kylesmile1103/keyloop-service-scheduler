@@ -13,7 +13,7 @@ public sealed record AppointmentBooked(
     DateTime StartUtc,
     DateTime EndUtc,
     string MaskedVin,
-    DateTime OccurredAtUtc) : IDomainEvent
+    DateTime OccurredAtUtc, VehicleProfile? VehicleProfile = null, AllocationDecision? Allocation = null) : IDomainEvent
 {
     public string EventType => "Booked";
 }

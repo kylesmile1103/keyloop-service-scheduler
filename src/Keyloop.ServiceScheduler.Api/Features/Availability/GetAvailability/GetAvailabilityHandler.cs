@@ -4,6 +4,7 @@ using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Features.Availability.Mapping;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles;
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -21,7 +22,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 /// dealership or service type. Records <c>scheduler.availability.duration</c> and <c>scheduler.availability.slots_returned</c>
 /// for every answer, and wraps the calculation in the <c>scheduler.compute_availability</c> span (§12.1).
 /// </summary>
-public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options)
+public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options, RequirementPolicyReader policies)
 {
     public async Task<AvailabilityResponse> HandleAsync(GetAvailabilityQuery query, CancellationToken ct)
     {
@@ -31,17 +32,21 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         var serviceTypeId = query.ServiceTypeId ?? throw new ArgumentException("The query has no service type id; validate it first.", nameof(query));
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
 
+        VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements, ("powertrain", query.Powertrain is not null),
+            ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.LiveDiagnosis == true));
+
         // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
         var started = Stopwatch.GetTimestamp();
-        var response = await ComputeAsync(query.DealershipId, serviceTypeId, date, ct);
+        var response = await ComputeAsync(query, serviceTypeId, date, ct);
         SchedulerTelemetry.AvailabilityDuration.Record(
             Stopwatch.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("dealership.id", query.DealershipId.ToString()));
         SchedulerTelemetry.AvailabilitySlotsReturned.Record(response.Slots.Count);
         return response;
     }
 
-    private async Task<AvailabilityResponse> ComputeAsync(Guid dealershipId, Guid serviceTypeId, DateOnly date, CancellationToken ct)
+    private async Task<AvailabilityResponse> ComputeAsync(GetAvailabilityQuery query, Guid serviceTypeId, DateOnly date, CancellationToken ct)
     {
+        var dealershipId = query.DealershipId;
         var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == dealershipId, ct)
             ?? throw new NotFoundException(ProblemResources.Dealership, dealershipId);
         var serviceType = await db.ServiceTypes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == serviceTypeId, ct)
@@ -59,8 +64,17 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         // The day-schedule read returns every resource, active or not: only active ones that qualify are capacity, exactly the
         // ones booking would accept (Appointment.Book re-asserts the same rules).
         var day = await reader.ReadAsync(dealership, window, activeOnly: true, ct);
-        var bays = day.Bays.Where(b => b.IsActive && b.Supports(serviceType)).ToList();
-        var technicians = day.Technicians.Where(t => t.IsActive && t.IsCertifiedFor(serviceType)).ToList();
+        var profile = VehicleProfile.Unknown with
+        {
+            // ValidationFilter has already rejected anything but one member name.
+            Powertrain = query.PowertrainValue ?? Powertrain.Unknown,
+            Manufacturer = VehicleProfile.NormalizeManufacturer(query.Manufacturer),
+            VehicleClass = query.VehicleClassValue ?? VehicleClass.Unknown,
+        };
+        var requirements = options.Value.VehicleAwareRequirements
+            ? RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealershipId, ct), query.LiveDiagnosis ?? false) : null;
+        var bays = day.Bays.Where(b => b.IsActive && (requirements is null ? b.Supports(serviceType) : b.Satisfies(requirements))).ToList();
+        var technicians = day.Technicians.Where(t => t.IsActive && (requirements is null ? t.IsCertifiedFor(serviceType) : t.Satisfies(requirements, date))).ToList();
         if (bays.Count == 0 || technicians.Count == 0)
         {
             return Response(date, dealership, serviceType, granularity, operatingWindow, slots: [], AvailabilityUnavailableReasons.NoQualifiedResources);

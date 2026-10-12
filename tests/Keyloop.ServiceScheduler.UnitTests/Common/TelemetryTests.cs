@@ -35,6 +35,10 @@ public class TelemetryTests
             [
                 ("scheduler.triage.requests", "{request}", "Counter`1"),
                 ("scheduler.triage.duration", "s", "Histogram`1"),
+                ("scheduler.allocation.decided_by", "{allocation}", "Counter`1"),
+                ("scheduler.requirements.rule_fired", "{rule}", "Counter`1"),
+                ("scheduler.intake.profile_source", "{profile}", "Counter`1"),
+                ("scheduler.allocation.below_hv_minimum", "{event}", "Counter`1"),
                 ("scheduler.booking.requests", "{request}", "Counter`1"),
                 ("scheduler.booking.duration", "ms", "Histogram`1"),
                 ("scheduler.booking.lock_wait", "ms", "Histogram`1"),

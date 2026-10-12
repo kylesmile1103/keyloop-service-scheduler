@@ -270,7 +270,7 @@ class Tooling(unittest.TestCase):
         resources = [load("Dashboard", n) for n in v.DASHBOARDS] + [load("AlertRule", n) for n in v.ALERTS]
         spec = v.read_yaml(ROOT / "validation/behaviour-tests.yaml")
         tests, targets = v.behaviour_tests(spec, resources)
-        self.assertEqual(targets, 9)
+        self.assertEqual(targets, 11)
         spec["scenarios"] = [s for s in spec["scenarios"] if "alert/keyloop-api-readiness" not in s["expect"]]
         with self.assertRaisesRegex(ValueError, "keyloop-api-readiness"):
             v.behaviour_tests(spec, resources)
@@ -282,7 +282,7 @@ class Tooling(unittest.TestCase):
             lint, canary, queries = v.lint_artifacts(resources, templates, Path(directory))
             versions = {v.read_yaml(p)["apiVersion"] for p in lint.glob("*.yaml")}
             self.assertEqual(versions, {"dashboard.grafana.app/v1beta1"})
-            self.assertEqual(queries, 8)
+            self.assertEqual(queries, 9)
             broken = v.read_yaml(canary / "dashboard.yaml")
             original = panel(next(r for r in resources if r["metadata"]["name"] == "keyloop-booking-engine"), 1)
             self.assertTrue(broken["spec"]["editable"])

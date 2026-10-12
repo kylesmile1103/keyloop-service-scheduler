@@ -987,3 +987,53 @@ spec:
       sortOrder: Descending
       enableLogDetails: true
       dedupStrategy: none
+  - id: 18
+    title: HV allocations below minimum, must be 0
+    description: Allocations whose technician's HV level on the appointment's local date is below the resolved minimum (ADR-029, critical event 1020 with
+      appointment and technician ids, local date, policy version, fired rules and both levels). The hard filter makes this impossible; any value pages. Empty or
+      0 is healthy; absent counter becomes 0. Counts a series' first export; a lower bound after a restart in the range.
+    type: stat
+    gridPos:
+      x: 0
+      y: 44
+      w: 6
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 1
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum((increase(scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range]) and scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}
+        offset $__range) or (max_over_time(scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])
+        unless scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__range)) or vector(0)
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false

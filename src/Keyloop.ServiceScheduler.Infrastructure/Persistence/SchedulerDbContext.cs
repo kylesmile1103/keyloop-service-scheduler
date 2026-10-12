@@ -27,6 +27,8 @@ public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> opti
 
     public DbSet<ServiceType> ServiceTypes => Set<ServiceType>();
 
+    public DbSet<RequirementRule> RequirementRules => Set<RequirementRule>();
+
     public DbSet<Appointment> Appointments => Set<Appointment>();
 
     public DbSet<AppointmentHistoryEntry> AppointmentHistory => Set<AppointmentHistoryEntry>();
@@ -46,6 +48,7 @@ public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> opti
         modelBuilder.ApplyConfiguration(new TechnicianConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AppointmentConfiguration());
+        modelBuilder.ApplyConfiguration(new RequirementRuleConfiguration());
         modelBuilder.ApplyConfiguration(new AppointmentHistoryConfiguration());
         modelBuilder.ApplyConfiguration(new IdempotencyKeyConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationOutboxConfiguration());

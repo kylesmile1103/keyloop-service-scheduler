@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getFeatures, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, resolveVehicleProfile, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetFeaturesData, GetFeaturesError, GetFeaturesResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, ResolveVehicleProfileData, ResolveVehicleProfileError, ResolveVehicleProfileResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -142,6 +142,10 @@ export const listAppointmentsOptions = (options: Options<ListAppointmentsData>) 
  * preferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's
  * load. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours
  * with the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.
+ * With Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.
+ * A concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.
+ * Decoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.
+ * Successful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.
  */
 export const bookAppointmentMutation = (options?: Partial<Options<BookAppointmentData>>): UseMutationOptions<BookAppointmentResponse, BookAppointmentError, Options<BookAppointmentData>> => {
     const mutationOptions: UseMutationOptions<BookAppointmentResponse, BookAppointmentError, Options<BookAppointmentData>> = {
@@ -305,4 +309,43 @@ export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => 
         return data;
     },
     queryKey: getCurrentUserQueryKey(options)
+});
+
+/**
+ * Resolve vehicle attributes from a transient VIN
+ *
+ * Booking-flow authorization is required. Offline WMI decoding returns manufacturer provenance VinDecoded or Unknown. Powertrain and class stay Unknown. VIN and registration are never stored, echoed, logged or traced.
+ */
+export const resolveVehicleProfileMutation = (options?: Partial<Options<ResolveVehicleProfileData>>): UseMutationOptions<ResolveVehicleProfileResponse, ResolveVehicleProfileError, Options<ResolveVehicleProfileData>> => {
+    const mutationOptions: UseMutationOptions<ResolveVehicleProfileResponse, ResolveVehicleProfileError, Options<ResolveVehicleProfileData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await resolveVehicleProfile({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getFeaturesQueryKey = (options?: Options<GetFeaturesData>) => createQueryKey('getFeatures', options);
+
+/**
+ * Discover this environment's client rendering switches
+ *
+ * Public and identical for every caller. Read before displaying vehicle-aware booking controls or sending vehicle-aware availability inputs. The effective switches require an API restart to change, matching booking and availability. Successful responses use Cache-Control: public, max-age=60, must-revalidate. A recently restarted deployment may differ from a cached read; refresh discovery after vehicle-aware-requirements-disabled.
+ */
+export const getFeaturesOptions = (options?: Options<GetFeaturesData>) => queryOptions<GetFeaturesResponse, GetFeaturesError, GetFeaturesResponse, ReturnType<typeof getFeaturesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getFeatures({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getFeaturesQueryKey(options)
 });

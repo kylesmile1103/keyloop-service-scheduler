@@ -19,6 +19,10 @@ public sealed class TelemetryDomainEventObserver(ILogger<TelemetryDomainEventObs
             switch (domainEvent)
             {
                 case AppointmentBooked booked:
+                    if (booked.Allocation is { } decision)
+                    {
+                        SchedulerTelemetry.AllocationDecidedBy.Add(1, new KeyValuePair<string, object?>("criterion", decision.DecidedBy.ToString()));
+                    }
                     logger.BookingConfirmed(booked.AppointmentId, booked.DealershipId, booked.BayId, booked.TechnicianId, booked.StartUtc, booked.MaskedVin);
                     break;
                 case AppointmentCancelled cancelled:

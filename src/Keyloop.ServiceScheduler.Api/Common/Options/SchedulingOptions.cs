@@ -8,6 +8,10 @@ public sealed class SchedulingOptions : IValidatableObject
 {
     public const string SectionName = "Scheduling";
 
+    /// <summary>Enable ADR-029 Phase 1 requirements. Defaults off in every environment until booking UI support ships.</summary>
+    [Required]
+    public bool VehicleAwareRequirements { get; set; }
+
     /// <summary>Start times fall on this grid from opening time.</summary>
     [Range(5, 60)]
     public int SlotGranularityMinutes { get; set; } = 15;

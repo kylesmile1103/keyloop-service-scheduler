@@ -30,7 +30,17 @@ public static partial class ScheduleMapper
     /// <summary>A bay as a lane of the board, holding <paramref name="appointments"/> (already mapped and ordered by start).</summary>
     public static partial BayScheduleResponse ToResponse(ServiceBay bay, IReadOnlyList<ScheduledAppointmentResponse> appointments);
 
-    public static partial TechnicianResponse ToResponse(Technician technician);
+    public static TechnicianResponse ToResponse(Technician technician) => MapTechnician(technician, null, null, null, null);
+
+    /// <summary>A technician of the board, with the vehicle-aware competence fields only when <paramref name="vehicleAware"/> (the flag is on and the caller has a role).</summary>
+    public static TechnicianResponse ToResponse(Technician technician, bool vehicleAware) => MapTechnician(technician,
+        vehicleAware ? technician.HvLevel : null,
+        vehicleAware ? technician.HvLevelValidUntil : null,
+        vehicleAware ? technician.HvLevelConfirmed : null,
+        vehicleAware ? technician.BrandSpecialisms.Order(StringComparer.Ordinal).ToArray() : null);
+
+    private static partial TechnicianResponse MapTechnician(Technician technician, int? hvLevel, DateOnly? hvLevelValidUntil,
+        bool? hvLevelConfirmed, IReadOnlyList<string>? brandSpecialisms);
 
     /// <summary>
     /// An appointment of the day's projection with its service and technician, start and end as local wall-clock times in

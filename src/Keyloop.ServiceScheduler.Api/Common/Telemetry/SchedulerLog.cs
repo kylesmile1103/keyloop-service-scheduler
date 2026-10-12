@@ -86,4 +86,9 @@ internal static partial class SchedulerLog
     [LoggerMessage(EventId = 1200, EventName = "UnhandledException", Level = LogLevel.Error,
         Message = "Unhandled exception for {Method} {Path}; answered 500 internal-error")]
     public static partial void UnhandledException(this ILogger logger, Exception exception, string method, string path);
+    /// <summary>The must-be-zero HV invariant failed (<c>AllocationSafety</c>). Ids, the local date and policy facts only, never a name.</summary>
+    [LoggerMessage(EventId = 1020, EventName = "AllocationBelowHvMinimum", Level = LogLevel.Critical,
+        Message = "Allocation {AppointmentId} chose technician {TechnicianId} on local date {LocalDate} below policy {PolicyVersion} required {MinimumHvLevel}: effective {EffectiveHvLevel}; fired rules {FiredRules}")]
+    public static partial void AllocationBelowHvMinimum(this ILogger logger, Guid appointmentId, Guid technicianId, string localDate, int policyVersion,
+        int minimumHvLevel, int effectiveHvLevel, string firedRules);
 }
