@@ -168,3 +168,90 @@ jobs:
           path: TestResults/**
           if-no-files-found: warn
           retention-days: 14
+
+  edge:
+    name: Cloudflare edge offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Validate local builds with and without optional integrations
+        run: |
+          npm run validate:build
+          npm run validate:build:integrations
+
+  images:
+    name: Build API and web images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build API image from repository context
+        run: docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:ci .
+      - name: Build web image
+        run: docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:ci src/Keyloop.ServiceScheduler.Web
+
+  grafana:
+    name: Grafana manifests offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: observability/grafana/validation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: observability/grafana/validation/requirements.txt
+      - name: Install validator dependencies in a venv
+        run: |
+          python -m venv ../.venv
+          ../.venv/bin/python -m pip install -r requirements.txt
+      - name: Validator self-tests
+        run: ../.venv/bin/python -m unittest discover
+      - name: Check manifests against the code
+        run: ../.venv/bin/python -c 'import validate; validate.check_manifests()'
+
+  k6:
+    name: k6 scenario offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      K6_NO_USAGE_REPORT: 'true'
+      K6_AUTO_EXTENSION_RESOLUTION: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '2.1.0'
+      - name: Inspect every scenario without sending requests
+        run: |
+          for scenario in tests/load/k6/*.js; do
+            k6 inspect --config tests/load/k6/k6.config.json "$scenario"
+          done
+      - name: Test origin guards and thresholds without an API
+        run: tests/load/k6/selftest.sh
