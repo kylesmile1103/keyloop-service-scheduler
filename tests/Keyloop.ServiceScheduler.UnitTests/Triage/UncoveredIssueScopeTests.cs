@@ -16,8 +16,7 @@ public sealed class UncoveredIssueScopeTests
     public void The_reviewed_map_covers_exactly_these_service_categories()
     {
         UncoveredIssueScope.Covered.Keys.Order(StringComparer.Ordinal).ToArray().ShouldBe(["ACCIDENT-DAMAGE-ASSESSMENT", "AIRCON-REGAS"]);
-        UncoveredIssueScope.Covered["ACCIDENT-DAMAGE-ASSESSMENT"].Order(StringComparer.Ordinal).ToArray()
-            .ShouldBe(["ACCIDENT_OR_BODY_DAMAGE", "GLASS", "LIGHTS_OR_ELECTRICAL_ACCESSORY", "TYRES_OR_WHEELS"]);
+        UncoveredIssueScope.Covered["ACCIDENT-DAMAGE-ASSESSMENT"].ToArray().ShouldBe(["ACCIDENT_OR_BODY_DAMAGE"]);
         UncoveredIssueScope.Covered["AIRCON-REGAS"].ToArray().ShouldBe(["AIR_CONDITIONING"]);
     }
 
@@ -38,12 +37,9 @@ public sealed class UncoveredIssueScopeTests
     }
 
     // Fixture 43 of the 2026-10-13 live run: Clef chose the accident assessment (confidence 0.409) and named ACCIDENT_OR_BODY_DAMAGE at
-    // 0.84, a notice telling the person to book separately the damage the chosen service inspects. Fixture 48 is the GLASS shape (0.62).
+    // 0.84, a notice telling the person to book separately the damage the chosen service inspects.
     [Theory]
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "ACCIDENT_OR_BODY_DAMAGE", 0.84)]
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.9)]
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "GLASS", 0.62)]
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "TYRES_OR_WHEELS", 1.0)]
     [InlineData("AIRCON-REGAS", "AIR_CONDITIONING", 1.0)]
     public void A_category_inside_the_chosen_services_scope_is_never_exposed(string chosen, string category, double confidence)
     {
@@ -56,6 +52,10 @@ public sealed class UncoveredIssueScopeTests
     [Theory]
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "AIR_CONDITIONING")] // rubric: not for an unrelated air-con fault (the stakeholder's case)
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "OTHER")]
+    // Impact damage is not something the categories can tell apart, and the live run chose the assessment for non-collision repairs.
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "LIGHTS_OR_ELECTRICAL_ACCESSORY")] // fixture 49, a blown bulb
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "GLASS")] // fixture 48, a windscreen replacement
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "TYRES_OR_WHEELS")] // fixture 31, a puncture
     [InlineData("AIRCON-REGAS", "GLASS")] // fixture 41
     [InlineData("AIRCON-REGAS", "OTHER")] // fixture 47's alternative pair
     [InlineData("WHEEL-ALIGNMENT", "TYRES_OR_WHEELS")] // geometry only; rubric: not for tyre puncture repair
@@ -71,6 +71,19 @@ public sealed class UncoveredIssueScopeTests
         var issue = Map(chosen, 0.6, category, new TriageOptions().UncoveredIssueThreshold).UncoveredIssue.ShouldNotBeNull();
         issue.Category.ToString().ShouldBe(category);
         issue.OutsideServiceTypeId.ShouldBe(Services.Single(s => s.Code == chosen).Id);
+    }
+
+    // Fixture 48 of the 2026-10-13 live run: a windscreen replacement that should be no-match came back as the accident assessment at
+    // 0.485 (confirm) with GLASS at 0.62. The replacement is outside the assessment ("not the repair itself"), so the notice is correct.
+    [Fact]
+    public void A_glass_replacement_beside_the_accident_assessment_is_exposed()
+    {
+        var response = Map("ACCIDENT-DAMAGE-ASSESSMENT", 0.485, "GLASS", 0.62);
+        response.Recommendation.ShouldBe("confirm");
+        var issue = response.UncoveredIssue.ShouldNotBeNull();
+        issue.Category.ShouldBe(TriageUncoveredCategory.GLASS);
+        issue.Confidence.ShouldBe(0.62);
+        issue.OutsideServiceTypeId.ShouldBe(Services.Single(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT").Id);
     }
 
     [Theory]

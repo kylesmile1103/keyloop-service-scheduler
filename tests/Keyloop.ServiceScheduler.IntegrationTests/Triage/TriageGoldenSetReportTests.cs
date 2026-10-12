@@ -58,16 +58,18 @@ public sealed class TriageGoldenSetReportTests
     {
         Sample[] samples =
         [
-            // The live run's fixture 48 shape on an accepted assessment: GLASS beside the accident assessment is its own scope.
-            Sample(1, [new("ACCIDENT-DAMAGE-ASSESSMENT")], "ACCIDENT-DAMAGE-ASSESSMENT", "GLASS", 0.62),
+            // An accepted assessment whose answer names the damage it inspects (as fixture 46 did at 0.09), here above the threshold.
+            Sample(1, [new("ACCIDENT-DAMAGE-ASSESSMENT")], "ACCIDENT-DAMAGE-ASSESSMENT", "ACCIDENT_OR_BODY_DAMAGE", 0.62),
             // Fixture 43's shape: the wrong service, so not scored for the uncovered answer, but still counted as suppressed.
             Sample(2, [new("BRAKES-PADS-DISCS", "ACCIDENT_OR_BODY_DAMAGE")], "ACCIDENT-DAMAGE-ASSESSMENT", "ACCIDENT_OR_BODY_DAMAGE", 0.84),
             Sample(3, [new("ACCIDENT-DAMAGE-ASSESSMENT", "AIR_CONDITIONING")], "ACCIDENT-DAMAGE-ASSESSMENT", "AIR_CONDITIONING", 0.6),
             Sample(4, [new("NONE_OF_THESE", "GLASS")], "NONE_OF_THESE", "GLASS", 0.9), // no service: never suppressed
-            Sample(5, [new("ACCIDENT-DAMAGE-ASSESSMENT")], "ACCIDENT-DAMAGE-ASSESSMENT", "LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.2),
+            Sample(5, [new("ACCIDENT-DAMAGE-ASSESSMENT")], "ACCIDENT-DAMAGE-ASSESSMENT", "ACCIDENT_OR_BODY_DAMAGE", 0.2),
+            // Fixture 48's shape: a windscreen replacement misrouted to the assessment. GLASS is outside its scope, so it is exposed.
+            Sample(6, [new("NONE_OF_THESE", "GLASS")], "ACCIDENT-DAMAGE-ASSESSMENT", "GLASS", 0.62),
         ];
         var report = Build("clef-flash", Services, samples);
-        // Raw lines keep the validated choice: the in-scope GLASS and LIGHTS answers are still wrong as answers.
+        // Raw lines keep the validated choice: the in-scope accident damage answers are still wrong as answers.
         report.ShouldContain("Uncovered given an accepted service: positive 2/2; NONE 0/2.");
         report.ShouldContain("Same-scope suppression (all fixtures): 2 at the configured threshold (fixtures 1, 2); 3 at any confidence (fixtures 1, 2, 5).");
         report.ShouldContain("Exposed notices given an accepted service: correct 2/2; false 0; missed 0; wrong category 0.");
@@ -75,8 +77,9 @@ public sealed class TriageGoldenSetReportTests
         report.ShouldContain("| 0.50 | 2 | 0 | 0 | 0 |");
         report.ShouldContain("| 0.70 | 1 | 0 | 1 | 0 |");
         report.ShouldContain("| NONE | 2 | 0 | 0 | 0 | 0 | 0 | 0 |"); // exposed matrix: both in-scope answers are NONE
-        report.ShouldContain("| 1 | natural | ACCIDENT-DAMAGE-ASSESSMENT+NONE | ACCIDENT-DAMAGE-ASSESSMENT | 0.800 | suggest | 1 | 1 | NO_SPECIFIC_DATE | NO_SPECIFIC_DATE | 0.800 | GLASS | 0.620 | NONE | yes | - |");
+        report.ShouldContain("| 1 | natural | ACCIDENT-DAMAGE-ASSESSMENT+NONE | ACCIDENT-DAMAGE-ASSESSMENT | 0.800 | suggest | 1 | 1 | NO_SPECIFIC_DATE | NO_SPECIFIC_DATE | 0.800 | ACCIDENT_OR_BODY_DAMAGE | 0.620 | NONE | yes | - |");
         report.ShouldContain("| 3 | natural | ACCIDENT-DAMAGE-ASSESSMENT+AIR_CONDITIONING | ACCIDENT-DAMAGE-ASSESSMENT | 0.800 | suggest | 1 | 1 | NO_SPECIFIC_DATE | NO_SPECIFIC_DATE | 0.800 | AIR_CONDITIONING | 0.600 | AIR_CONDITIONING | no | ACCIDENT-DAMAGE-ASSESSMENT |");
+        report.ShouldContain("| 6 | natural | NONE_OF_THESE+GLASS | ACCIDENT-DAMAGE-ASSESSMENT | 0.800 | suggest | 1 | n/a | NO_SPECIFIC_DATE | NO_SPECIFIC_DATE | 0.800 | GLASS | 0.620 | GLASS | no | ACCIDENT-DAMAGE-ASSESSMENT |");
     }
 
     [Fact]
