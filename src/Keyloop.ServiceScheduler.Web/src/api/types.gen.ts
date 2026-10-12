@@ -4,6 +4,46 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type AllocationCriterion = 'OnlyQualifiedResource' | 'PreferredResource' | 'SurplusCompetences' | 'LowestLoad' | 'Name' | 'Id';
+
+/**
+ * The persisted explanation is a snapshot of the policy and minimum in force when allocated.
+ */
+export type AllocationDecision = {
+    /**
+     * First comparison separating the technician winner from the runner-up, or OnlyQualifiedResource.
+     */
+    decidedBy: AllocationCriterion;
+    /**
+     * The separate deciding criterion for the service bay.
+     */
+    bayDecidedBy: AllocationCriterion;
+    /**
+     * The resolved dealership policy version at booking.
+     */
+    policyVersion: number;
+    /**
+     * The resolved HV competence floor at booking.
+     */
+    minimumHvLevel: number;
+    /**
+     * Policy rule codes in deterministic order.
+     */
+    firedRules: Array<string>;
+    /**
+     * Bounded exclusion reason codes for preferred resources that were not chosen.
+     */
+    reasons: Array<string>;
+    /**
+     * Original preferred bay hint, including one excluded by qualification or busy time.
+     */
+    preferredBayId: null | string;
+    /**
+     * Original preferred technician hint.
+     */
+    preferredTechnicianId: null | string;
+};
+
 /**
  * An appointment selected by its local start date, with its service and allocated resources.
  */
@@ -126,6 +166,7 @@ export type AppointmentResponse = {
      * When its status last changed, UTC (the booking time until then).
      */
     updatedAtUtc: string;
+    allocation?: null | AllocationDecision;
 };
 
 export type AppointmentStatus = 'Confirmed' | 'CheckedIn' | 'InProgress' | 'Completed' | 'Cancelled' | 'NoShow';
@@ -226,6 +267,10 @@ export type BayScheduleResponse = {
  * examples form a valid booking at the seeded Keyloop Motors Reading dealership.
  */
 export type BookAppointmentRequest = {
+    /**
+     * Explicit live HV working flag: requires level 4 and an EV bay when vehicle-aware requirements are enabled.
+     */
+    needsLiveDiagnosis?: boolean;
     /**
      * The service to book, from the catalogue (the example is the seeded Interim Service).
      */
@@ -417,6 +462,16 @@ export type DealershipSummary = {
     timeZoneId: string;
 };
 
+/**
+ * Environment-wide switches a client needs to decide which controls to render. Identical for every caller.
+ */
+export type FeatureSwitchesResponse = {
+    /**
+     * Whether vehicle-aware booking inputs, availability filters and allocation explanations are enabled. Changes require an API restart.
+     */
+    vehicleAwareRequirements: boolean;
+};
+
 export type HttpValidationProblemDetails = {
     type?: null | string;
     title?: null | string;
@@ -434,6 +489,26 @@ export type HttpValidationProblemDetails = {
      * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
      */
     loginUrl?: string;
+    /**
+     * Vehicle-aware no-qualified-resources: the resolved minimum HV competence level.
+     */
+    minimumHvLevel?: number;
+    /**
+     * Reserved for a later brand rule; null on vehicle-aware no-qualified-resources in Phase 1.
+     */
+    requiredBrand?: null | string;
+    /**
+     * Vehicle-aware no-qualified-resources: policy rule codes in deterministic order.
+     */
+    firedRules?: Array<string>;
+    /**
+     * vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.
+     */
+    conflictingAttributes?: Array<string>;
+    /**
+     * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
+     */
+    rejectedFields?: Array<string>;
 };
 
 /**
@@ -458,6 +533,11 @@ export type OperatingWindowResponse = {
     closesAtLocal: string;
 };
 
+/**
+ * Closed powertrain vocabulary; all hybrid/electric/fuel-cell and Unknown values take conservative HV requirements.
+ */
+export type Powertrain = 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
+
 export type ProblemDetails = {
     type?: null | string;
     title?: null | string;
@@ -472,6 +552,71 @@ export type ProblemDetails = {
      * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
      */
     loginUrl?: string;
+    /**
+     * Vehicle-aware no-qualified-resources: the resolved minimum HV competence level.
+     */
+    minimumHvLevel?: number;
+    /**
+     * Reserved for a later brand rule; null on vehicle-aware no-qualified-resources in Phase 1.
+     */
+    requiredBrand?: null | string;
+    /**
+     * Vehicle-aware no-qualified-resources: policy rule codes in deterministic order.
+     */
+    firedRules?: Array<string>;
+    /**
+     * vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.
+     */
+    conflictingAttributes?: Array<string>;
+    /**
+     * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
+     */
+    rejectedFields?: Array<string>;
+};
+
+/**
+ * Evidence for each attribute. Declaration accountability is private audit data, never telemetry or email content.
+ */
+export type ProfileProvenance = {
+    /**
+     * Evidence for the powertrain attribute.
+     */
+    powertrain: ProfileSource;
+    /**
+     * Evidence for the manufacturer attribute.
+     */
+    manufacturer: ProfileSource;
+    /**
+     * Evidence for the class attribute.
+     */
+    vehicleClass: ProfileSource;
+    /**
+     * Authenticated declaration actor, private audit data; null for no powertrain declaration.
+     */
+    declaredBy: null | string;
+    /**
+     * Private reason, 1..500 trimmed characters; never email or telemetry content.
+     */
+    declarationReason: null | string;
+};
+
+/**
+ * Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases.
+ */
+export type ProfileSource = 'Unknown' | 'Declared' | 'VinDecoded' | 'RegistryLookup' | 'SuggestedConfirmed';
+
+/**
+ * VIN and registration are body-only, transient inputs. Offline WMI decoding needs no registration.
+ */
+export type ResolveVehicleProfileRequest = {
+    /**
+     * Optional 17-character VIN; never echoed or retained.
+     */
+    vin?: null | string;
+    /**
+     * Optional registration, 1..16 characters; no registry lookup is performed.
+     */
+    registration?: null | string;
 };
 
 /**
@@ -620,6 +765,22 @@ export type TechnicianResponse = {
      * False when the technician takes no new bookings; appointments made before still name them.
      */
     isActive: boolean;
+    /**
+     * Vehicle-aware competence level 0..4; absent when the flag is off or the caller has no API role (the four competence fields are employee data).
+     */
+    hvLevel?: null | number;
+    /**
+     * Inclusive local-date expiry; omitted when unlimited or the flag is off.
+     */
+    hvLevelValidUntil?: null | string;
+    /**
+     * False includes migrated levels, which still count.
+     */
+    hvLevelConfirmed?: null | boolean;
+    /**
+     * Normalized OEM codes; data only in Phase 1.
+     */
+    brandSpecialisms?: null | Array<string>;
 };
 
 /**
@@ -713,9 +874,63 @@ export type UploadBookingTriageImageResponse = {
 };
 
 /**
+ * Workshop-relevant vehicle class; Heavy adds lift and task competence requirements.
+ */
+export type VehicleClass = 'Car' | 'LightCommercial' | 'Heavy' | 'Unknown';
+
+/**
+ * Vehicle facts independent of identifiers. Unknown powertrain is conservatively treated as high voltage.
+ */
+export type VehicleProfile = {
+    /**
+     * Resolved powertrain; Unknown conservatively inherits concrete HV rules.
+     */
+    powertrain: Powertrain;
+    /**
+     * Normalized OEM code, or UNKNOWN.
+     */
+    manufacturer: string;
+    /**
+     * Resolved workshop class; Unknown carries no heavy-vehicle assertion.
+     */
+    vehicleClass: VehicleClass;
+    /**
+     * Server-assigned attribute sources and private declaration accountability.
+     */
+    provenance: ProfileProvenance;
+};
+
+/**
+ * Advisor-declared facts; source, actor and reason are assigned by the server. Omission means Unknown.
+ */
+export type VehicleProfileRequest = {
+    /**
+     * Powertrain observed at intake; a concrete value requires a reason.
+     */
+    powertrain?: 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
+    /**
+     * Normalized OEM code, maximum 32 ASCII letters/digits/hyphens.
+     */
+    manufacturer?: null | string;
+    /**
+     * Car, light commercial, heavy, or Unknown.
+     */
+    vehicleClass?: 'Car' | 'LightCommercial' | 'Heavy' | 'Unknown';
+    /**
+     * Private audit reason, 1..500 characters after trimming, required for concrete powertrain.
+     */
+    declarationReason?: null | string;
+    /**
+     * UseDecoded acknowledges a discrepancy and retains decoded values and their provenance.
+     */
+    conflictChoice?: 'UseDecoded' | null;
+};
+
+/**
  * The vehicle to be serviced.
  */
 export type VehicleRequest = {
+    profile?: null | VehicleProfileRequest;
     /**
      * Vehicle identification number: 17 characters, digits and letters other than I, O and Q (case-insensitive).
      */
@@ -754,6 +969,7 @@ export type VehicleResponse = {
      * Model.
      */
     model: string;
+    profile?: null | VehicleProfile;
 };
 
 /**
@@ -878,19 +1094,39 @@ export type GetAvailabilityData = {
          * The dealership's local calendar date, exactly `yyyy-MM-dd`, from yesterday to the end of the booking horizon.
          */
         date: string;
+        /**
+         * Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.
+         */
+        powertrain?: 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
+        /**
+         * Optional OEM code; manufacturer preferences are deferred.
+         */
+        manufacturer?: string;
+        /**
+         * Optional class; Heavy requires a heavy lift and HeavyVehicle certification.
+         */
+        vehicleClass?: 'Car' | 'LightCommercial' | 'Heavy' | 'Unknown';
+        /**
+         * Explicit live HV work requiring level 4 and an EV bay.
+         */
+        needsLiveDiagnosis?: boolean;
     };
     url: '/api/v1/dealerships/{dealershipId}/availability';
 };
 
 export type GetAvailabilityErrors = {
     /**
-     * The service type id or the date is missing or malformed, or the date is outside the bookable range (`validation-error`, `errors` keyed `serviceTypeId` or `date`).
+     * The service type id or the date is missing or malformed, or the date is outside the bookable range, or a vehicle parameter is not exactly one member name (a comma list, a repeated parameter or a number) or `needsLiveDiagnosis` is not `true`/`false` (`validation-error`, `errors` keyed `serviceTypeId`, `date`, `powertrain`, `manufacturer`, `vehicleClass` or `needsLiveDiagnosis`).
      */
     400: HttpValidationProblemDetails;
     /**
      * No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).
      */
     404: ProblemDetails;
+    /**
+     * A vehicle-aware input (`powertrain`, `manufacturer`, `vehicleClass`, or `needsLiveDiagnosis=true`) while vehicle-aware requirements are disabled in this deployment (`vehicle-aware-requirements-disabled`, with `rejectedFields`): it is refused rather than ignored.
+     */
+    422: ProblemDetails;
     /**
      * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
      */
@@ -1016,7 +1252,7 @@ export type BookAppointmentErrors = {
      */
     413: ProblemDetails;
     /**
-     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`.
+     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.
      */
     422: ProblemDetails;
     /**
@@ -1375,3 +1611,84 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type ResolveVehicleProfileData = {
+    /**
+     * Transient vehicle identifiers for offline manufacturer decoding. No registry lookup is performed.
+     */
+    body: ResolveVehicleProfileRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/vehicle-profiles/resolve';
+};
+
+export type ResolveVehicleProfileErrors = {
+    /**
+     * Malformed identifier (validation-error).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Authentication required.
+     */
+    401: ProblemDetails;
+    /**
+     * BookingsWrite role required.
+     */
+    403: ProblemDetails;
+    /**
+     * The request body exceeds the configured limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Too many requests (rate-limited, Retry-After).
+     */
+    429: ProblemDetails;
+};
+
+export type ResolveVehicleProfileError = ResolveVehicleProfileErrors[keyof ResolveVehicleProfileErrors];
+
+export type ResolveVehicleProfileResponses = {
+    /**
+     * Vehicle facts with per-attribute provenance, without identifiers.
+     */
+    200: VehicleProfile;
+};
+
+export type ResolveVehicleProfileResponse = ResolveVehicleProfileResponses[keyof ResolveVehicleProfileResponses];
+
+export type GetFeaturesData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/features';
+};
+
+export type GetFeaturesErrors = {
+    /**
+     * Too many requests from this client (rate-limited, with Retry-After); never cached.
+     */
+    429: ProblemDetails;
+};
+
+export type GetFeaturesError = GetFeaturesErrors[keyof GetFeaturesErrors];
+
+export type GetFeaturesResponses = {
+    /**
+     * Only the vehicleAwareRequirements boolean; no personal data, dealership data, secrets or other settings.
+     */
+    200: FeatureSwitchesResponse;
+};
+
+export type GetFeaturesResponse = GetFeaturesResponses[keyof GetFeaturesResponses];

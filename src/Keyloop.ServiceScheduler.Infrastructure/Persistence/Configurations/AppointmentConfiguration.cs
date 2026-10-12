@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Conversions;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -41,6 +42,17 @@ internal sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appoin
             vehicle.Property(v => v.Make).HasColumnName("vehicle_make").HasMaxLength(60);
             vehicle.Property(v => v.Model).HasColumnName("vehicle_model").HasMaxLength(60);
         });
+
+        builder.ComplexProperty(a => a.VehicleProfile, profile =>
+        {
+            profile.Property(p => p.Powertrain).HasColumnName("vehicle_powertrain").HasConversion<string>().HasMaxLength(32);
+            profile.Property(p => p.Manufacturer).HasColumnName("vehicle_manufacturer").HasMaxLength(32);
+            profile.Property(p => p.VehicleClass).HasColumnName("vehicle_class").HasConversion<string>().HasMaxLength(32);
+            profile.Property(p => p.Provenance).HasColumnName("vehicle_profile_provenance").HasColumnType("jsonb")
+                .HasConversion(p => VehicleJson.ProvenanceToJson(p), p => VehicleJson.ProvenanceFromJson(p));
+        });
+        builder.Property(a => a.AllocationDecision).HasColumnType("jsonb")
+            .HasConversion(p => VehicleJson.DecisionToJson(p!), p => VehicleJson.DecisionFromJson(p));
 
         builder.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(a => a.Notes).HasMaxLength(Appointment.MaxNotesLength);

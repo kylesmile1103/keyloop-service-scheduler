@@ -13,6 +13,11 @@ public static class SchedulerTelemetry
 
     public static readonly Meter Meter = InfrastructureTelemetry.Meter;
 
+    public static readonly Counter<long> AllocationDecidedBy = Meter.CreateCounter<long>("scheduler.allocation.decided_by", "{allocation}");
+    public static readonly Counter<long> RequirementRuleFired = Meter.CreateCounter<long>("scheduler.requirements.rule_fired", "{rule}");
+    public static readonly Counter<long> ProfileSource = Meter.CreateCounter<long>("scheduler.intake.profile_source", "{profile}");
+    public static readonly Counter<long> AllocationBelowHvMinimum = Meter.CreateCounter<long>("scheduler.allocation.below_hv_minimum", "{event}");
+
     /// <summary>Tags: outcome, and reason when unavailable. Never customer text.</summary>
     public static readonly Counter<long> TriageRequests = Meter.CreateCounter<long>("scheduler.triage.requests", "{request}");
     public static readonly Histogram<double> TriageDuration = Meter.CreateHistogram<double>("scheduler.triage.duration", "s");

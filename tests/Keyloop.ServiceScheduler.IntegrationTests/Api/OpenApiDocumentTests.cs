@@ -45,7 +45,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         var tags = root.GetProperty("tags").EnumerateArray().ToList();
-        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule"]);
+        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule", "Features"]);
         tags.ShouldAllBe(tag => !string.IsNullOrWhiteSpace(tag.GetProperty("description").GetString()));
 
         // Scalar then targets the current origin, and the build-time document cannot differ by host.
@@ -124,7 +124,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         // seed, so Scalar's "Test request" works against a seeded database as is. The date is a string (it binds as one, so the
         // validator can reject any other form with a field error), documented as an RFC 3339 full-date.
         var parameters = availability.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
-        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date", "X-Request-Id"], ignoreOrder: true);
+        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date", "powertrain", "manufacturer", "vehicleClass", "needsLiveDiagnosis", "X-Request-Id"], ignoreOrder: true);
         foreach (var (name, location, format, example) in new[]
                  {
                      ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),
@@ -141,6 +141,21 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             schema.GetProperty("type").GetString().ShouldBe("string", name);
             schema.GetProperty("format").GetString().ShouldBe(format, name);
         }
+
+        // The vehicle-aware parameters bind as text so the validator can reject lists, numbers and malformed flags with a field
+        // error, but the contract types them as the enums and the boolean they are.
+        foreach (var (name, values) in new (string, string[])[]
+                 {
+                     ("powertrain", ["Ice", "MildHybrid", "FullHybrid", "PluginHybrid", "BatteryElectric", "FuelCell", "Unknown"]),
+                     ("vehicleClass", ["Car", "LightCommercial", "Heavy", "Unknown"]),
+                 })
+        {
+            var schema = parameters[name].GetProperty("schema");
+            schema.GetProperty("type").GetString().ShouldBe("string", name);
+            schema.GetProperty("enum").EnumerateArray().Select(v => v.GetString()).ShouldBe(values, name);
+        }
+
+        parameters["needsLiveDiagnosis"].GetProperty("schema").GetProperty("type").GetString().ShouldBe("boolean");
 
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var (schema, properties) in new (string, string[])[]
@@ -218,15 +233,18 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var (schema, properties) in new (string, string[])[]
                  {
-                     ("BookAppointmentRequest", ["serviceTypeId", "startUtc", "customer", "vehicle", "preferredBayId", "preferredTechnicianId", "notes"]),
+                     ("BookAppointmentRequest", ["needsLiveDiagnosis", "serviceTypeId", "startUtc", "customer", "vehicle", "preferredBayId", "preferredTechnicianId", "notes"]),
                      ("CustomerRequest", ["name", "email", "phone"]),
-                     ("VehicleRequest", ["vin", "registration", "make", "model"]),
+                     ("VehicleRequest", ["profile", "vin", "registration", "make", "model"]),
                  })
         {
             var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
             props.Select(p => p.Name).ShouldBe(properties, schema);
             props.Where(p => !Describes(p.Value, "description")).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
-            props.Where(p => !p.Value.TryGetProperty("$ref", out _) && Example(p.Value) is null).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without an example");
+            // The one exception is vehicle.profile: refused while vehicle-aware requirements are disabled (the default), so the example
+            // booking sends it as null and its description carries an example instead.
+            props.Where(p => !p.Value.TryGetProperty("$ref", out _) && Example(p.Value) is null && (schema, p.Name) != ("VehicleRequest", "profile"))
+                .Select(p => p.Name).ShouldBeEmpty($"{schema} properties without an example");
         }
 
         foreach (var (schema, properties) in new (string, string[])[]
@@ -234,12 +252,12 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("AppointmentResponse",
                      [
                          "id", "dealershipId", "serviceType", "bay", "technician", "startUtc", "endUtc", "startLocal", "endLocal", "status", "customer",
-                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc",
+                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc", "allocation",
                      ]),
                      ("ServiceTypeSummary", ["id", "code", "name", "durationMinutes"]),
                      ("ResourceSummary", ["id", "name"]),
                      ("CustomerResponse", ["name", "email", "phone"]),
-                     ("VehicleResponse", ["vin", "registration", "make", "model"]),
+                     ("VehicleResponse", ["vin", "registration", "make", "model", "profile"]),
                  })
         {
             var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
@@ -371,7 +389,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("WorkshopScheduleResponse", ["dealership", "date", "operatingWindow", "slotGranularityMinutes", "bays", "technicians"]),
                      ("DealershipSummary", ["id", "name", "timeZoneId"]),
                      ("BayScheduleResponse", ["id", "name", "capabilities", "isActive", "appointments"]),
-                     ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive"]),
+                     ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive", "hvLevel", "hvLevelValidUntil", "hvLevelConfirmed", "brandSpecialisms"]),
                      ("ScheduledAppointmentResponse",
                      [
                          "id", "startUtc", "endUtc", "startLocal", "endLocal", "status", "serviceType", "technician", "vin", "registration", "customerName",
@@ -402,9 +420,14 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
     private static JsonNode? Example(JsonElement schema) =>
         schema.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0
             ? JsonNode.Parse(examples[0].GetRawText())
-            : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText()) : null;
+            : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText())
+                : schema.TryGetProperty("oneOf", out var branches) ? branches.EnumerateArray().Select(Example).FirstOrDefault(e => e is not null) : null;
 
-    /// <summary>The object Scalar would send: each property's example, with nested objects built from their own schemas' examples.</summary>
+    /// <summary>
+    /// The object Scalar would send: each property's example, with nested objects built from their own schemas' examples. A nullable
+    /// member (a <c>oneOf</c> whose first branch is <c>null</c>) without an example is sent as null, the first branch: that is how
+    /// <c>vehicle.profile</c>, refused while vehicle-aware requirements are disabled, stays out of the example booking.
+    /// </summary>
     private static JsonObject ExampleOf(JsonElement schemas, string schema)
     {
         var example = new JsonObject();
@@ -413,11 +436,15 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             var reference = property.Value.TryGetProperty("$ref", out var r) ? r.GetString() : null;
             example[property.Name] = reference is not null
                 ? ExampleOf(schemas, reference["#/components/schemas/".Length..])
-                : Example(property.Value) ?? throw new ShouldAssertException($"{schema}.{property.Name} has no example");
+                : Example(property.Value) ?? (FirstBranchIsNull(property.Value) ? null : throw new ShouldAssertException($"{schema}.{property.Name} has no example"));
         }
 
         return example;
     }
+
+    private static bool FirstBranchIsNull(JsonElement schema) =>
+        schema.TryGetProperty("oneOf", out var branches) && branches.GetArrayLength() > 0
+        && branches[0].TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "null";
 
     private static void ShouldBeDocumented(JsonElement operation, string operationId, string tag)
     {

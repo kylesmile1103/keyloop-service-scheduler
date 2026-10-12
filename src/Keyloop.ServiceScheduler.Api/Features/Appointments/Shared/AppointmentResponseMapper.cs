@@ -25,13 +25,14 @@ public static class AppointmentResponseMapper
         Same(appointment.BayId, bay.Id, nameof(bay));
         Same(appointment.TechnicianId, technician.Id, nameof(technician));
 
-        return AppointmentMapper.ToResponse(
+        var response = AppointmentMapper.ToResponse(
             appointment,
             AppointmentMapper.ToSummary(serviceType),
             AppointmentMapper.ToSummary(bay),
             AppointmentMapper.ToSummary(technician),
             startLocal: LocalTimeConverter.FormatLocal(appointment.Slot.StartUtc, zone),
             endLocal: LocalTimeConverter.FormatLocal(appointment.Slot.EndUtc, zone));
+        return response with { Vehicle = response.Vehicle with { Profile = appointment.AllocationDecision is null ? null : appointment.VehicleProfile } };
     }
 
     private static void Same(Guid referenced, Guid given, string paramName)

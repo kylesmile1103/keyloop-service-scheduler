@@ -1,5 +1,6 @@
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Domain.Resources;
 
@@ -44,6 +45,8 @@ public sealed class ServiceBay : Entity
 
     /// <summary>Capabilities beyond what the service needs; the allocation policy prefers the bay that wastes the fewest.</summary>
     public int SurplusCapabilitiesFor(ServiceType serviceType) => Capabilities.Count - serviceType.RequiredBayCapabilities.Count;
+
+    public bool Satisfies(JobRequirements requirements) => IsActive && requirements.BayCapabilities.IsSubsetOf(Capabilities);
 
     public void Deactivate() => IsActive = false;
 

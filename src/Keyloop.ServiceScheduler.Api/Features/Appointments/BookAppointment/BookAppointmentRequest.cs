@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
@@ -18,8 +20,14 @@ public sealed record BookAppointmentRequest(
     VehicleRequest Vehicle,
     Guid? PreferredBayId = null,
     Guid? PreferredTechnicianId = null,
-    string? Notes = null)
+    string? Notes = null,
+    bool NeedsLiveDiagnosis = false)
 {
+    /// <summary>Explicit live HV working flag: requires level 4 and an EV bay when vehicle-aware requirements are enabled.</summary>
+    /// <example>false</example>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool NeedsLiveDiagnosis { get; init; } = NeedsLiveDiagnosis;
+
     /// <summary>The service to book, from the catalogue (the example is the seeded Interim Service).</summary>
     /// <example>3153f30d-5700-8f07-a25d-4a4ea44dfeef</example>
     public Guid ServiceTypeId { get; init; } = ServiceTypeId;
@@ -70,8 +78,17 @@ public sealed record CustomerRequest(string Name, string Email, string Phone)
 }
 
 /// <summary>The vehicle to be serviced.</summary>
-public sealed record VehicleRequest(string Vin, string Registration, string Make, string Model)
+public sealed record VehicleRequest(string Vin, string Registration, string Make, string Model, VehicleProfileRequest? Profile = null)
 {
+    /// <summary>
+    /// Optional advisor declaration, for example <c>{"powertrain":"Ice","declarationReason":"Engine checked at intake"}</c>. Omission keeps
+    /// powertrain Unknown; the server resolves manufacturer from VIN. Only with vehicle-aware requirements enabled: otherwise any profile
+    /// is refused (422 <c>vehicle-aware-requirements-disabled</c>), which is why the example request sends none.
+    /// </summary>
+    /// <example>null</example>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public VehicleProfileRequest? Profile { get; init; } = Profile;
+
     /// <summary>Vehicle identification number: 17 characters, digits and letters other than I, O and Q (case-insensitive).</summary>
     /// <example>WVWZZZ1KZAW123456</example>
     public string Vin { get; init; } = Vin;

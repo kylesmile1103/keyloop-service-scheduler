@@ -91,7 +91,12 @@ export function bookedFrom(
     endLocal: bstLocal(endUtc),
     status: "Confirmed",
     customer: body.customer,
-    vehicle: body.vehicle,
+    vehicle: {
+      vin: body.vehicle.vin,
+      registration: body.vehicle.registration,
+      make: body.vehicle.make,
+      model: body.vehicle.model,
+    },
     notes: body.notes ?? null,
   }
 }

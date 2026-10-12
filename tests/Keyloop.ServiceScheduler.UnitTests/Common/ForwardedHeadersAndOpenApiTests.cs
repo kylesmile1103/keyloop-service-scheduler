@@ -42,7 +42,7 @@ public class ForwardedHeadersAndOpenApiTests
         await SchedulerOpenApi.TransformDocument(document, context, CancellationToken.None);
 
         document.Tags.ShouldNotBeNull().Select(tag => tag.Name)
-            .ShouldBe([ApiTags.Dealerships, ApiTags.Catalog, ApiTags.Availability, ApiTags.Appointments, "Identity", ApiTags.Schedule, "Alpha", "Zeta"]);
+            .ShouldBe([ApiTags.Dealerships, ApiTags.Catalog, ApiTags.Availability, ApiTags.Appointments, "Identity", ApiTags.Schedule, ApiTags.Features, "Alpha", "Zeta"]);
         document.Tags.Take(5).ShouldAllBe(tag => !string.IsNullOrWhiteSpace(tag.Description));
     }
 }

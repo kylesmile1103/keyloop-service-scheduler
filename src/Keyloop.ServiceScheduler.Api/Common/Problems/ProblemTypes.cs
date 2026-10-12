@@ -19,6 +19,8 @@ public static class ProblemTypes
     public const string BeyondBookingHorizon = Base + "beyond-booking-horizon";
     public const string SlotNotAligned = Base + "slot-not-aligned";
     public const string NoQualifiedResources = Base + "no-qualified-resources";
+    public const string VehicleProfileConflict = Base + "vehicle-profile-conflict";
+    public const string VehicleAwareRequirementsDisabled = Base + "vehicle-aware-requirements-disabled";
     public const string IdempotencyKeyReuse = Base + "idempotency-key-reuse";
     public const string SlotUnavailable = Base + "slot-unavailable";
     public const string SlotConflict = Base + "slot-conflict";
@@ -43,6 +45,8 @@ public static class ProblemTypes
         [BeyondBookingHorizon] = "Beyond booking horizon",
         [SlotNotAligned] = "Slot not aligned",
         [NoQualifiedResources] = "No qualified resources",
+        [VehicleProfileConflict] = "Vehicle profile conflict",
+        [VehicleAwareRequirementsDisabled] = "Vehicle-aware requirements disabled",
         [IdempotencyKeyReuse] = "Idempotency key reused",
         [SlotUnavailable] = "Slot unavailable",
         [SlotConflict] = "Slot conflict",

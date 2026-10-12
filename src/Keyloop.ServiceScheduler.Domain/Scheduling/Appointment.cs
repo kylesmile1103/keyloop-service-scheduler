@@ -83,6 +83,12 @@ public sealed class Appointment : AggregateRoot
 
     public VehicleDetails Vehicle { get; private set; }
 
+    public VehicleProfile VehicleProfile { get; private set; } = VehicleProfile.Unknown;
+
+    public AllocationDecision? AllocationDecision { get; private set; }
+
+    public bool NeedsLiveDiagnosis { get; private set; }
+
     public AppointmentStatus Status { get; private set; }
 
     public string? Notes { get; private set; }
@@ -116,7 +122,8 @@ public sealed class Appointment : AggregateRoot
         CustomerDetails customer,
         VehicleDetails vehicle,
         string? notes,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        JobRequirements? requirements = null, VehicleProfile? profile = null, AllocationDecision? allocation = null, bool needsLiveDiagnosis = false)
     {
         Guard.NotEmpty(id, nameof(id));
         ArgumentNullException.ThrowIfNull(dealership);
@@ -143,7 +150,8 @@ public sealed class Appointment : AggregateRoot
             throw new DomainRuleViolationException(NoQualifiedResources, NoQualifiedResourcesDetail);
         }
 
-        if (!bay.Supports(serviceType) || !technician.IsCertifiedFor(serviceType))
+        if (requirements is null ? !bay.Supports(serviceType) || !technician.IsCertifiedFor(serviceType)
+            : !bay.Satisfies(requirements) || !technician.Satisfies(requirements, LocalTimeConverter.ToLocalDate(slot.StartUtc, dealership.TimeZone)))
         {
             throw new DomainRuleViolationException(
                 NoQualifiedResources,
@@ -158,8 +166,11 @@ public sealed class Appointment : AggregateRoot
         BookingWindowPolicy.EnsureWithinOperatingHours(dealership, slot, window);
 
         var appointment = new Appointment(id, dealership.Id, serviceType.Id, bay.Id, technician.Id, slot, customer, vehicle, normalisedNotes, nowUtc);
+        appointment.VehicleProfile = profile ?? VehicleProfile.Unknown;
+        appointment.AllocationDecision = allocation;
+        appointment.NeedsLiveDiagnosis = needsLiveDiagnosis;
         appointment.Raise(new AppointmentBooked(
-            id, dealership.Id, serviceType.Id, bay.Id, technician.Id, slot.StartUtc, slot.EndUtc, vehicle.Vin.Masked, nowUtc));
+            id, dealership.Id, serviceType.Id, bay.Id, technician.Id, slot.StartUtc, slot.EndUtc, vehicle.Vin.Masked, nowUtc, profile, allocation));
         return appointment;
     }
 

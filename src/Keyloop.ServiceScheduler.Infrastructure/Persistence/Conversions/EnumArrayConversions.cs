@@ -73,4 +73,6 @@ internal static class EnumArrayConversions
     public static ValueComparer<IReadOnlySet<TEnum>> Comparer<TEnum>()
         where TEnum : struct, Enum =>
         new((a, b) => SetEquals(a, b), v => SetHashCode(v), v => Snapshot(v));
+    public static ValueComparer<TEnum[]> ArrayComparer<TEnum>() where TEnum : struct, Enum =>
+        new((a, b) => a != null && b != null && a.SequenceEqual(b), v => v.Aggregate(0, (hash, value) => hash ^ value.GetHashCode()), v => v.ToArray());
 }

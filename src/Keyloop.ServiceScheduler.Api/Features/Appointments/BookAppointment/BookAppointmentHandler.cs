@@ -1,4 +1,7 @@
 using System.Data;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
@@ -56,7 +59,7 @@ public sealed class BookAppointmentHandler(
     BookingWindowPolicy windowPolicy,
     IOptions<SchedulingOptions> options,
     TimeProvider clock,
-    ILogger<BookAppointmentHandler> logger)
+    ILogger<BookAppointmentHandler> logger, RequirementPolicyReader policies, CurrentActor actor)
 {
     /// <summary>How long a successful booking's response is replayed for its <c>Idempotency-Key</c>.</summary>
     public static readonly TimeSpan IdempotencyKeyLifetime = TimeSpan.FromHours(24);
@@ -93,7 +96,10 @@ public sealed class BookAppointmentHandler(
                 return replay;
             }
 
-            // 2. The rules that need no lock: unknown ids (404), the horizon bound, opening hours, lead time, slot grid, qualified resources (422).
+            // 2. The rules that need no lock: vehicle-aware inputs the configuration cannot honour, unknown ids (404), the horizon bound,
+            //    opening hours, lead time, slot grid, qualified resources (422).
+            VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements,
+                ("needsLiveDiagnosis", request.NeedsLiveDiagnosis), ("vehicle.profile", request.Vehicle.Profile is not null));
             var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == command.DealershipId, ct)
                 ?? throw new NotFoundException(ProblemResources.Dealership, command.DealershipId);
             var serviceType = await db.ServiceTypes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == request.ServiceTypeId, ct)
@@ -108,12 +114,27 @@ public sealed class BookAppointmentHandler(
             var window = BookingWindowPolicy.OperatingWindowFor(dealership, slot);
             windowPolicy.EnsureBookable(slot.StartUtc);
             BookingWindowPolicy.EnsureAligned(slot.StartUtc, window, options.Value.SlotGranularityMinutes);
-            var (compatibleBays, certifiedTechnicians) = await QualifiedResourcesAsync(dealership.Id, serviceType, ct);
+            var localDate = LocalTimeConverter.ToLocalDate(slot.StartUtc, dealership.TimeZone);
+            var profile = options.Value.VehicleAwareRequirements ? VehicleProfileResolution.Resolve(Vin.Create(request.Vehicle.Vin), request.Vehicle.Profile, actor.Name) : null;
+            var requirements = profile is null ? null : RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealership.Id, ct), request.NeedsLiveDiagnosis);
+            if (requirements is not null)
+            {
+                foreach (var rule in requirements.FiredRules)
+                {
+                    SchedulerTelemetry.RequirementRuleFired.Add(1, new KeyValuePair<string, object?>("rule", rule));
+                }
+                var provenance = profile!.Provenance;
+                foreach (var source in new[] { provenance.Powertrain, provenance.Manufacturer, provenance.VehicleClass }.Distinct())
+                {
+                    SchedulerTelemetry.ProfileSource.Add(1, new KeyValuePair<string, object?>("source", source.ToString()));
+                }
+            }
+            var (allBays, allTechnicians, compatibleBays, certifiedTechnicians) = await QualifiedResourcesAsync(dealership.Id, serviceType, requirements, localDate, ct);
 
             // Minted once per request, never per run: it is how a retried run recognises that an earlier run committed.
             var booking = new Booking(
                 command, fingerprint, Guid.CreateVersion7(clock.GetUtcNow()), dealership, serviceType, slot, window, compatibleBays, certifiedTechnicians,
-                ToCustomer(request.Customer), ToVehicle(request.Vehicle));
+                ToCustomer(request.Customer), ToVehicle(request.Vehicle), requirements, profile, localDate, allBays, allTechnicians);
 
             // 3. The transaction (see the remarks). A second pass happens only when a duplicate key's stored row turns out expired.
             using var appointmentScope = logger.AppointmentScope(booking.AppointmentId);
@@ -324,11 +345,26 @@ public sealed class BookAppointmentHandler(
         }
 
         var load = await reader.LoadCountsAsync(dealershipId, booking.Window, ct);
-        var bay = AllocationPolicy.ChooseBay(freeBays, booking.ServiceType, load, request.PreferredBayId)!;
-        var technician = AllocationPolicy.ChooseTechnician(freeTechnicians, booking.ServiceType, load, request.PreferredTechnicianId)!;
+        ServiceBay bay;
+        Technician technician;
+        AllocationDecision? decision = null;
+        if (booking.Requirements is { } resolved)
+        {
+            var allocation = AllocationPolicy.Allocate(booking.AllBays, booking.AllTechnicians, resolved, booking.LocalDate, busyBays, busyTechnicians,
+                load, request.PreferredBayId, request.PreferredTechnicianId)!;
+            bay = allocation.Bay;
+            technician = allocation.Technician;
+            decision = allocation.Decision;
+            AllocationSafety.MeetsHvMinimum(technician, resolved, booking.LocalDate, booking.AppointmentId, logger);
+        }
+        else
+        {
+            bay = AllocationPolicy.ChooseBay(freeBays, booking.ServiceType, load, request.PreferredBayId)!;
+            technician = AllocationPolicy.ChooseTechnician(freeTechnicians, booking.ServiceType, load, request.PreferredTechnicianId)!;
+        }
         var appointment = Appointment.Book(
             booking.AppointmentId, booking.Dealership, booking.ServiceType, bay, technician, booking.Slot, booking.Window, booking.Customer,
-            booking.Vehicle, request.Notes, now);
+            booking.Vehicle, request.Notes, now, booking.Requirements, booking.Profile, decision, booking.Requirements is not null && request.NeedsLiveDiagnosis);
         db.Appointments.Add(appointment);
 
         if (booking.Command.IdempotencyKey is { } newKey)
@@ -380,31 +416,34 @@ public sealed class BookAppointmentHandler(
         SchedulerTelemetry.LockWait.Record(waitedMs, new KeyValuePair<string, object?>("dealership.id", dealershipId.ToString()));
     }
 
-    private async Task<(IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians)> QualifiedResourcesAsync(
-        Guid dealershipId, ServiceType serviceType, CancellationToken ct)
+    private async Task<(IReadOnlyList<ServiceBay> AllBays, IReadOnlyList<Technician> AllTechnicians, IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians)> QualifiedResourcesAsync(
+        Guid dealershipId, ServiceType serviceType, JobRequirements? requirements, DateOnly localDate, CancellationToken ct)
     {
-        var bays = await db.ServiceBays.AsNoTracking().Where(b => b.DealershipId == dealershipId && b.IsActive).ToListAsync(ct);
-        var technicians = await db.Technicians.AsNoTracking().Where(t => t.DealershipId == dealershipId && t.IsActive).ToListAsync(ct);
-        var compatibleBays = bays.Where(b => b.Supports(serviceType)).ToList();
-        var certifiedTechnicians = technicians.Where(t => t.IsCertifiedFor(serviceType)).ToList();
+        var bays = await db.ServiceBays.AsNoTracking().Where(b => b.DealershipId == dealershipId).ToListAsync(ct);
+        var technicians = await db.Technicians.AsNoTracking().Where(t => t.DealershipId == dealershipId).ToListAsync(ct);
+        var activeBays = bays.Where(b => b.IsActive).ToArray();
+        var activeTechnicians = technicians.Where(t => t.IsActive).ToArray();
+        var compatibleBays = activeBays.Where(b => requirements is null ? b.Supports(serviceType) : b.Satisfies(requirements)).ToList();
+        var certifiedTechnicians = activeTechnicians.Where(t => requirements is null ? t.IsCertifiedFor(serviceType) : t.Satisfies(requirements, localDate)).ToList();
         if (compatibleBays.Count == 0 || certifiedTechnicians.Count == 0)
         {
-            // What no active resource has at all; empty on a side that qualifies (or whose requirements exist only on separate bays).
-            throw new DomainRuleViolationException(
-                "no-qualified-resources",
-                NoQualifiedResourcesDetail,
-                new Dictionary<string, object?>
-                {
-                    ["missingCapabilities"] = compatibleBays.Count > 0
-                        ? Array.Empty<BayCapability>()
-                        : serviceType.RequiredBayCapabilities.Except(bays.SelectMany(b => b.Capabilities)).Order().ToArray(),
-                    ["missingCertifications"] = certifiedTechnicians.Count > 0
-                        ? Array.Empty<Certification>()
-                        : serviceType.RequiredCertifications.Except(technicians.SelectMany(t => t.Certifications)).Order().ToArray(),
-                });
+            var extensions = new Dictionary<string, object?>
+            {
+                ["missingCapabilities"] = compatibleBays.Count > 0 ? Array.Empty<BayCapability>()
+                    : (requirements?.BayCapabilities ?? serviceType.RequiredBayCapabilities).Except(activeBays.SelectMany(b => b.Capabilities)).Order().ToArray(),
+                ["missingCertifications"] = certifiedTechnicians.Count > 0 ? Array.Empty<Certification>()
+                    : (requirements?.Certifications ?? serviceType.RequiredCertifications).Except(activeTechnicians.SelectMany(t => t.Certifications)).Order().ToArray(),
+            };
+            if (requirements is not null)
+            {
+                extensions["minimumHvLevel"] = requirements.MinimumHvLevel;
+                extensions["requiredBrand"] = requirements.RequiredBrand;
+                extensions["firedRules"] = requirements.FiredRules.ToArray();
+            }
+            throw new DomainRuleViolationException("no-qualified-resources", NoQualifiedResourcesDetail, extensions);
         }
 
-        return (compatibleBays, certifiedTechnicians);
+        return (bays, technicians, compatibleBays, certifiedTechnicians);
     }
 
     /// <summary>
@@ -423,8 +462,8 @@ public sealed class BookAppointmentHandler(
 
         var serviceType = booking.ServiceType;
         var day = await reader.ReadAsync(booking.Dealership, booking.Window, activeOnly: true, ct);
-        var bays = day.Bays.Where(b => b.IsActive && b.Supports(serviceType)).ToList();
-        var technicians = day.Technicians.Where(t => t.IsActive && t.IsCertifiedFor(serviceType)).ToList();
+        var bays = day.Bays.Where(b => b.IsActive && (booking.Requirements is null ? b.Supports(serviceType) : b.Satisfies(booking.Requirements))).ToList();
+        var technicians = day.Technicians.Where(t => t.IsActive && (booking.Requirements is null ? t.IsCertifiedFor(serviceType) : t.Satisfies(booking.Requirements, booking.LocalDate))).ToList();
         var busyByBay = day.Appointments.ToLookup(a => a.BayId, a => a.Slot);
         var busyByTechnician = day.Appointments.ToLookup(a => a.TechnicianId, a => a.Slot);
 
@@ -493,7 +532,8 @@ public sealed class BookAppointmentHandler(
         IReadOnlyList<ServiceBay> CompatibleBays,
         IReadOnlyList<Technician> CertifiedTechnicians,
         CustomerDetails Customer,
-        VehicleDetails Vehicle);
+        VehicleDetails Vehicle,
+        JobRequirements? Requirements, VehicleProfile? Profile, DateOnly LocalDate, IReadOnlyList<ServiceBay> AllBays, IReadOnlyList<Technician> AllTechnicians);
 
     /// <summary>The execution strategy's state across runs: whether the current run had reached its commit when it failed.</summary>
     private sealed class BookingRun(Booking booking)
