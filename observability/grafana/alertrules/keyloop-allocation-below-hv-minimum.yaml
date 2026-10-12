@@ -18,13 +18,13 @@ spec:
     severity: page
   annotations:
     summary: An allocation selected a technician below the resolved HV minimum.
-    description: ADR-029 requires qualified allocation. Inspect critical event 1020, policy version, fired rules and local-date expiry. Stop affected bookings until the qualification defect is corrected.
+    description: ADR-029 requires qualified allocation. Inspect critical event 1020 (appointment and technician ids, local date, policy version, fired rules, required and effective levels). Stop affected bookings until the qualification defect is corrected.
     runbook_url: ${RUNBOOK_BASE_URL}#allocation-below-hv-minimum
     __dashboardUid__: keyloop-booking-engine
-    __panelId__: '1'
+    __panelId__: '18'
   panelRef:
     dashboardUID: keyloop-booking-engine
-    panelID: 1
+    panelID: 18
   notificationSettings:
     type: SimplifiedRouting
     receiver: ${ALERT_RECEIVER}

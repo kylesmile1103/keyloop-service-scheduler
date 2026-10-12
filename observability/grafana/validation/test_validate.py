@@ -270,7 +270,7 @@ class Tooling(unittest.TestCase):
         resources = [load("Dashboard", n) for n in v.DASHBOARDS] + [load("AlertRule", n) for n in v.ALERTS]
         spec = v.read_yaml(ROOT / "validation/behaviour-tests.yaml")
         tests, targets = v.behaviour_tests(spec, resources)
-        self.assertEqual(targets, 10)
+        self.assertEqual(targets, 11)
         spec["scenarios"] = [s for s in spec["scenarios"] if "alert/keyloop-api-readiness" not in s["expect"]]
         with self.assertRaisesRegex(ValueError, "keyloop-api-readiness"):
             v.behaviour_tests(spec, resources)

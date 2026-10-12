@@ -355,11 +355,7 @@ public sealed class BookAppointmentHandler(
             bay = allocation.Bay;
             technician = allocation.Technician;
             decision = allocation.Decision;
-            if (technician.EffectiveHvLevel(booking.LocalDate) < resolved.MinimumHvLevel)
-            {
-                SchedulerTelemetry.AllocationBelowHvMinimum.Add(1);
-                logger.AllocationBelowHvMinimum(booking.AppointmentId, resolved.MinimumHvLevel, technician.EffectiveHvLevel(booking.LocalDate));
-            }
+            AllocationSafety.MeetsHvMinimum(technician, resolved, booking.LocalDate, booking.AppointmentId, logger);
         }
         else
         {

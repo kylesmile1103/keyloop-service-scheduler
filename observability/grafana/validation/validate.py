@@ -31,7 +31,7 @@ DASHBOARDS = {"keyloop-booking-engine", "keyloop-api-health", "keyloop-notificat
 # (readiness). A changed threshold, pending period, window or severity must be a deliberate edit here.
 ALERTS = {
     "keyloop-allocation-below-hv-minimum": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
-                                               panel=("keyloop-booking-engine", 1)),
+                                               panel=("keyloop-booking-engine", 18)),
     "keyloop-booking-deadlocks": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
                                       panel=("keyloop-booking-engine", 1)),
     "keyloop-booking-constraint-backstop": dict(severity="ticket", pending="0s", window="10m", condition=("gt", 0),
@@ -53,7 +53,8 @@ ALERTS = {
 # Object's start pings are rare series that are often born holding their only event). Every alert query that
 # uses increase() is must-be-zero as well.
 BORN_AWARE_PANELS = {("keyloop-booking-engine", 1): "$__range", ("keyloop-booking-engine", 2): "$__range",
-                     ("keyloop-booking-engine", 6): "$__range", ("keyloop-notifications", 1): "$__range",
+                     ("keyloop-booking-engine", 6): "$__range", ("keyloop-booking-engine", 18): "$__range",
+                     ("keyloop-notifications", 1): "$__range",
                      ("keyloop-api-health", 11): "$__rate_interval"}
 # Promoted OTLP resource labels on every Mimir series. target_info keeps only job and instance of the
 # identifying attributes (service.name/namespace/instance.id), unless the stack keeps them explicitly.

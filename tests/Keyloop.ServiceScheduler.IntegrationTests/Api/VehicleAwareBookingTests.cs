@@ -171,8 +171,16 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         }
         else
         {
+            var text = await response.Content.ReadAsStringAsync(Ct);
             using var body = await response.ReadProblemAsync(Ct);
             body.RootElement.GetProperty("type").GetString().ShouldEndWith("/vehicle-profile-conflict");
+            body.RootElement.GetProperty("conflictingAttributes").EnumerateArray().Select(a => a.GetString()).ShouldBe(["manufacturer"]);
+            // The answer names the attribute only: never the identifiers, the declared value or the private reason.
+            foreach (var secret in new[] { request.Vehicle.Vin, request.Vehicle.Registration, "BMW", "Checked engine" })
+            {
+                text.ShouldNotContain(secret);
+            }
+
             (await _factory.WithDbAsync(db => db.Appointments.CountAsync(Ct))).ShouldBe(0);
         }
     }
@@ -237,6 +245,63 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         }
         string.Join('\n', _logs.Entries.Select(e => e.Message)).ShouldNotContain(reason);
         string.Join('\n', spanTags).ShouldNotContain(reason);
+    }
+
+    /// <summary>
+    /// Each resolution counts every fired rule once and each distinct provenance source once, the allocation's deciding criterion once
+    /// after commit, and nothing on an early idempotent replay; a refused resource gap still counts its resolution. No tag carries the
+    /// declaration text, the actor or an identifier.
+    /// </summary>
+    [Fact]
+    public async Task Vehicle_aware_telemetry_counts_each_resolution_once_and_carries_no_private_text()
+    {
+        const string reason = "Private intake reason: owner Priya Shah says it is fully electric";
+        using var metrics = new MetricsCollector();
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        var request = TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("BRAKES-PADS-DISCS"), TestData.LondonTime(10));
+        request = request with { Vehicle = request.Vehicle with { Profile = new VehicleProfileRequest(Powertrain.BatteryElectric, DeclarationReason: reason) } };
+        var key = new Dictionary<string, string> { ["Idempotency-Key"] = "telemetry-bev-brakes" };
+
+        using var response = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), request, SchedulerJsonContext.Default.BookAppointmentRequest, key, Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
+        var booked = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        var allocation = booked.Allocation.ShouldNotBeNull();
+        allocation.FiredRules.ShouldBe(["hv-routine"]);
+
+        void ShouldHaveCounted()
+        {
+            Counts("scheduler.requirements.rule_fired", "rule").ShouldBe([("hv-routine", 1L)]);
+            // Powertrain declared, manufacturer decoded from the WVW VIN, class not given: three distinct sources, one count each.
+            Counts("scheduler.intake.profile_source", "source").ShouldBe([("Declared", 1L), ("Unknown", 1L), ("VinDecoded", 1L)]);
+            Counts("scheduler.allocation.decided_by", "criterion").ShouldBe([(allocation.DecidedBy.ToString(), 1L)]);
+            metrics.Sum("scheduler.allocation.below_hv_minimum").ShouldBe(0);
+        }
+
+        ShouldHaveCounted();
+        using var replay = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), request, SchedulerJsonContext.Default.BookAppointmentRequest, key, Ct);
+        replay.StatusCode.ShouldBe(HttpStatusCode.Created);
+        replay.Headers.Contains("Idempotent-Replayed").ShouldBeTrue();
+        ShouldHaveCounted();
+
+        // A refused resource gap is still one resolution: its rules are counted, nothing is allocated.
+        var gap = TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("EV-BATTERY-CHECK"), TestData.LondonTime(11)) with { NeedsLiveDiagnosis = true };
+        using var refused = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), gap, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
+        refused.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        Counts("scheduler.requirements.rule_fired", "rule").ShouldBe(
+            [("hv-components", 1L), ("hv-live-diagnosis", 1L), ("hv-routine", 1L), ("legacy-hv-component", 1L)]);
+        metrics.Sum("scheduler.allocation.decided_by").ShouldBe(1);
+
+        var tags = string.Join('\n', new[] { "scheduler.intake.profile_source", "scheduler.requirements.rule_fired", "scheduler.allocation.decided_by" }
+            .SelectMany(i => metrics.Of(i)).SelectMany(m => m.Tags).Select(t => $"{t.Key}:{t.Value}"));
+        foreach (var secret in new[] { reason, "Priya", "test-user", request.Vehicle.Vin, request.Vehicle.Registration })
+        {
+            tags.ShouldNotContain(secret);
+        }
+
+        (string, long)[] Counts(string instrument, string tag) =>
+            [.. metrics.Of(instrument).GroupBy(m => Convert.ToString(m.Tag(tag), System.Globalization.CultureInfo.InvariantCulture)!)
+                .Select(g => (g.Key, (long)g.Sum(m => m.Value))).OrderBy(c => c.Key, StringComparer.Ordinal)];
     }
 
     [Theory]

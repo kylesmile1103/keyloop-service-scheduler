@@ -7,7 +7,7 @@ This is the local authoring deliverable for Task 23. No resources have been push
 | Path | Purpose |
 | --- | --- |
 | `folders/keyloop-service-scheduler.yaml` | Folder `Keyloop Service Scheduler` |
-| `dashboards/keyloop-booking-engine.yaml` | 17 panels: invariants, outcomes, latency, locks, traces and logs |
+| `dashboards/keyloop-booking-engine.yaml` | 18 panels: invariants (including the HV qualification stat), outcomes, latency, locks, traces and logs |
 | `dashboards/keyloop-api-health.yaml` | 13 panels: RED by route, 429s, limiter results, readiness, export presence and logs |
 | `dashboards/keyloop-notifications.yaml` | 10 panels: backlog gauges, sends/failures/retries by kind, attempt age, provider duration and logs |
 | `dashboards/keyloop-frontend.yaml` | 8 panels: browser TraceQL metrics/search, `ui.book_appointment`, `ui.stress_test` and browser-to-API descendants |
@@ -46,7 +46,7 @@ scripts/validate-dashboards.sh
 The wrapper runs these stages, and any failure exits non-zero:
 
 1. Self-tests (`validation/test_validate.py`): each guard below rejects the defect it exists for.
-2. Structure: YAML with duplicate-key rejection, the local JSON Schema, the folder annotation, layout, links, datasource variables and the `job`/environment scope of every selector in all 48 panels.
+2. Structure: YAML with duplicate-key rejection, the local JSON Schema, the folder annotation, layout, links, datasource variables and the `job`/environment scope of every selector in all 49 panels.
 3. Alert contract: each of the eight rules' threshold, pending period, query window, severity, evaluation settings, and dashboard/runbook links are pinned in `validate.py` (`ALERTS`), from plan section 5.2 and ARCHITECTURE section 12.3. Changing one is a deliberate edit there.
 4. Metric and label inventory over panel, variable and alert queries: every series exists in `validation/metrics.json`; every matcher and `by`/`without`/`on`/`ignoring` label is a catalogued point label or a promoted resource label of the queried series; every `histogram_quantile` aggregates `sum by (le, ...)` over a `_bucket` series. Custom instrument kinds and units are checked against the generic and non-generic `Create...` declarations in every telemetry folder listed in `validate.py` (`TELEMETRY`): Api `Common/Telemetry/SchedulerTelemetry.cs` for booking, availability and cancellation, and Infrastructure `Telemetry/InfrastructureTelemetry.cs` for notifications (ADR-025). A missing folder fails the check. Every custom instrument name must also appear in ARCHITECTURE section 12. Framework instruments are checked against ServiceDefaults' `AddAspNetCoreInstrumentation` registration and the built-in ASP.NET Core meter catalogue, with pinned upstream citations in `validation/metrics.json`; they are not application-created instruments. `target_info` is checked as an OTLP-generated resource series.
 5. PromQL behaviour: `validation/behaviour-tests.yaml` scenarios run the committed counter queries in promtool, including each series' first export, new and reused `instance` labels, other environments and jobs, and per-label alert instances.
