@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Net;
 using System.Threading.RateLimiting;
 using Keyloop.ServiceScheduler.Api.Common.Http;
@@ -13,6 +14,20 @@ namespace Keyloop.ServiceScheduler.UnitTests.Common;
 // The 429 response itself (problem body, Retry-After) is covered over HTTP by the integration suite's rate-limiting test.
 public class SchedulerRateLimitingTests
 {
+    [Fact]
+    public void Authenticated_users_get_separate_partitions_while_the_same_user_shares_a_partition_across_ips()
+    {
+        var first = Request("/api/v1/dealerships", "198.51.100.20");
+        first.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, "advisor@keyloop.test")], "test"));
+        var second = Request("/api/v1/dealerships", "198.51.100.21");
+        second.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, "ADVISOR@KEYLOOP.TEST")], "test"));
+        SchedulerRateLimiting.GlobalPartition(first, Settings()).PartitionKey.ShouldBe(SchedulerRateLimiting.GlobalPartition(second, Settings()).PartitionKey);
+        second.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, "other@keyloop.test")], "test"));
+        SchedulerRateLimiting.BookingPartition(first, Settings()).PartitionKey.ShouldNotBe(SchedulerRateLimiting.BookingPartition(second, Settings()).PartitionKey);
+        second.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Email, "advisor@keyloop.test")]));
+        SchedulerRateLimiting.GlobalPartition(second, Settings()).PartitionKey.ShouldBe("198.51.100.21");
+    }
+
     [Fact]
     public void Global_policy_partitions_by_client_ip_with_the_global_permits()
     {

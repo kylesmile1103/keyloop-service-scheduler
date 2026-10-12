@@ -10,6 +10,8 @@ public static class ProblemTypes
 {
     public const string Base = "https://api.keyloop.example/problems/";
 
+    public const string Unauthenticated = Base + "unauthenticated";
+    public const string Forbidden = Base + "forbidden";
     public const string ValidationError = Base + "validation-error";
     public const string NotFound = Base + "not-found";
     public const string OutsideOperatingHours = Base + "outside-operating-hours";
@@ -32,6 +34,8 @@ public static class ProblemTypes
 
     private static readonly FrozenDictionary<string, string> Titles = new Dictionary<string, string>
     {
+        [Unauthenticated] = "Authentication required",
+        [Forbidden] = "Forbidden",
         [ValidationError] = "Validation failed",
         [NotFound] = "Resource not found",
         [OutsideOperatingHours] = "Outside operating hours",

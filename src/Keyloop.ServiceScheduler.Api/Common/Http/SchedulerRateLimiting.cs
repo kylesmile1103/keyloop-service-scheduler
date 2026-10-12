@@ -1,4 +1,5 @@
 using System.Globalization;
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using System.Threading.RateLimiting;
 using Keyloop.ServiceScheduler.Api.Common.OpenApi;
 using Keyloop.ServiceScheduler.Api.Common.Options;
@@ -76,7 +77,8 @@ public static class SchedulerRateLimiting
     internal static TimeSpan RetryAfter(RateLimitLease lease) =>
         lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) && retryAfter > TimeSpan.Zero ? retryAfter : Window / SegmentsPerWindow;
 
-    private static string ClientKey(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    private static string ClientKey(HttpContext http) => SchedulerRoles.Email(http.User) is { } email
+        ? $"user:{email.ToLowerInvariant()}" : http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     private static RateLimitPartition<string> SlidingWindow(string client, int permitsPerMinute) =>
         RateLimitPartition.GetSlidingWindowLimiter(client, _ => new SlidingWindowRateLimiterOptions

@@ -1,10 +1,10 @@
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Sets the request's <see cref="CurrentActor"/> for the audit trail. Authentication is deferred (ARCHITECTURE §11.3), so every
-/// request is <c>anonymous:&lt;client-ip&gt;</c>; once auth is wired this becomes the authenticated principal.
+/// Sets the authenticated email, or anonymous client IP, on the audit trail (ADR-027).
 /// </summary>
 public sealed class CurrentActorMiddleware(CurrentActor actor) : IMiddleware
 {
@@ -12,7 +12,7 @@ public sealed class CurrentActorMiddleware(CurrentActor actor) : IMiddleware
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
-        actor.Name = $"anonymous:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+        actor.Name = SchedulerRoles.Email(context.User) is { } email ? $"user:{email}" : $"anonymous:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
         return next(context);
     }
 }

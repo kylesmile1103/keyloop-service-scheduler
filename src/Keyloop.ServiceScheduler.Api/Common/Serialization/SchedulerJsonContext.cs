@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
@@ -95,4 +96,6 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 // Task 28a: the date-range appointments read (shared summaries and status are registered above).
 [JsonSerializable(typeof(AppointmentListItemResponse))]
 [JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
+[JsonSerializable(typeof(CurrentUserResponse))]
+[JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;
