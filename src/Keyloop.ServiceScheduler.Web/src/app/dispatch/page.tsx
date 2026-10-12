@@ -282,7 +282,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           onCancelled={() => {
             opener.current = null
           }}
-          roster={schedule.data}
         />
       </Tabs>
 

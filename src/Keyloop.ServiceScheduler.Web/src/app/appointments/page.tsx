@@ -306,7 +306,6 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
         date={date}
         timeZone={timeZone}
         initialFocus={selected?.intent === "cancel" ? "reason" : "title"}
-        roster={schedule.data}
         returnFocus={() => (opener.current?.isConnected ? opener.current : list.current)}
         onCancelled={() => {
           // Its row is about to leave the list: focus goes to the list instead.
