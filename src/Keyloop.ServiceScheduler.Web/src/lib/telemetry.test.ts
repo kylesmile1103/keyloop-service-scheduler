@@ -137,9 +137,9 @@ describe("with telemetry enabled", () => {
   it("marks the span as failed, records the exception and rethrows", async () => {
     const boom = new Error("boom")
 
-    await expect(withSpan("ui.stress_test", async () => Promise.reject(boom))).rejects.toBe(boom)
+    await expect(withSpan("ui.book_appointment", async () => Promise.reject(boom))).rejects.toBe(boom)
 
-    const [span] = finished("ui.stress_test")
+    const [span] = finished("ui.book_appointment")
     expect(span.status).toEqual({ code: SpanStatusCode.ERROR, message: "boom" })
     expect(span.events.map((e) => e.name)).toContain("exception")
   })

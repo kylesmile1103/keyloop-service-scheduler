@@ -6,8 +6,8 @@ type Client = typeof client
 export const REQUEST_ID_HEADER = "X-Request-Id"
 
 /**
- * Gives each request its own id (a UUID) for the API's logs and traces (§12.2), unless the caller chose one: the stress panel
- * can mint the ids itself to know them before the answers arrive (it should mint UUIDs too). An interceptor runs once per
+ * Gives each request its own id (a UUID) for the API's logs and traces (§12.2), unless the caller already set one (it should be
+ * a UUID too). An interceptor runs once per
  * request, after the `Request` is built and before any fetch is called, including a per-request `fetch` such as the span
  * helper's in lib/telemetry.ts, which would bypass a wrapper around the configured fetch.
  */
