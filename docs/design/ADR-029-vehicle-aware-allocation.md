@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposed (2026-10-12), for stakeholder review before any implementation |
+| **Status** | Accepted (2026-10-12, stakeholder approval). Scope approved for build: Phases 0 and 1, plus the Clef powertrain suggestion once the Clef migration has merged (see "Decisions taken at acceptance") |
 | **Deciders** | Khai Pham (stakeholder); design drafted with Claude Opus 5.5 |
 | **Builds on** | ADR-001 (vertical slices), ADR-002 (Appointment aggregate), ADR-003 (lock + exclusion constraints), ADR-006 (capabilities as enums), ADR-016 (reflection budget), ADR-026 (closed-set triage with Jev) and ADR-028 (the move to Clef, in progress), ADR-027 (Access + roles, in progress) |
 | **Touches** | Domain (requirements, allocation), availability and booking slices, intake triage, reference data, the dispatch board, telemetry |
@@ -81,11 +81,11 @@ Provenance is part of the value, not a log line. It lets the UI show *"EV (from 
 
 **Precedence:** RegistryLookup and VinDecoded beat Declared when they disagree, and the disagreement is shown, not silently resolved. A model suggestion becomes `SuggestedConfirmed` only through an explicit click by a signed-in Service advisor or Admin (ADR-027), and it never overrides decoded or registry data.
 
-**Unknown is a real value, and it is conservative.** For a service the policy marks HV-sensitive, `Powertrain = Unknown` resolves as if the vehicle were high-voltage. That costs availability, never safety. The UI says why and asks for the VIN.
+**Unknown is a real value, and it is conservative.** `Powertrain = Unknown` resolves as if the vehicle were high-voltage. That costs availability, never safety, and booking is not blocked: the UI says why and asks for the VIN. A signed-in advisor may instead **declare** the powertrain with a reason; it is stored with provenance `Declared`, the advisor's identity and the reason, and audited, so the accountability for overriding the conservative default sits with a named person.
 
 ### 2. Competence on resources
 
-- `Technician` gains `HvLevel` (0 to 4) and `BrandSpecialisms` (a set of manufacturer codes, GIN-indexed `text[]` like ADR-006). The existing `Certification` enum stays for task skills (Brakes, Diagnostics, MOT, ...); the boolean `HighVoltageElectrical` certification is migrated to an explicit level, which the dealership confirms.
+- `Technician` gains `HvLevel` (0 to 4) and `BrandSpecialisms` (a set of manufacturer codes, GIN-indexed `text[]` like ADR-006). The existing `Certification` enum stays for task skills (Brakes, Diagnostics, MOT, ...); the boolean `HighVoltageElectrical` certification is migrated to **level 3, marked "migrated, unconfirmed"**: that certification already gated HV component work (the battery and charging services), so level 3 is the faithful translation and anything lower would make today's EV services unbookable. The admin area shows a confirmation prompt until a person confirms or corrects each level.
 - `ServiceBay` keeps its capabilities. `EvHighVoltage` already exists; nothing new is needed for bays in phase 1.
 
 ### 3. Requirement resolution: typed policy rules
@@ -102,16 +102,27 @@ JobRequirements
   Explanation          : list of the rules that fired, in order
 ```
 
-A `RequirementResolver` (pure domain service) applies the dealership's ordered `RequirementRule`s to `(ServiceType, VehicleProfile)`. Rules are **typed records stored as reference data**, not expressions:
+A `RequirementResolver` (pure domain service) applies the dealership's ordered `RequirementRule`s to `(ServiceType, VehicleProfile, appointment date)`. Rules are **typed records stored as reference data, versioned as a policy** (each appointment records the policy version that allocated it), not expressions.
 
-| Rule (example policy for Reading) | When | Adds |
+HV exposure differs by job, so the HV rule is a **service-by-powertrain matrix**, not one blanket level. The seeded default policy (each dealership may tighten it):
+
+| Service on an HV vehicle (hybrid, plug-in hybrid, battery electric, fuel cell, or Unknown) | Minimum HV level | Extra requirement | Why |
+|---|---|---|---|
+| Four-wheel alignment, MOT test | 1 (awareness) | | Never near HV components |
+| Interim service, full service, brake pads and discs, diagnostic fault finding | 2 | | Routine work alongside HV cabling; braking interacts with regeneration |
+| Air-con regas | 3 | | On electrified vehicles the A/C compressor is itself an HV component |
+| EV battery health check, EV charging fault diagnosis | 3 | bay `EvHighVoltage` | HV components, system switched off |
+| Any HV job flagged `NeedsLiveDiagnosis` | 4 | bay `EvHighVoltage` | Live working |
+
+Other rules in the default policy:
+
+| Rule | When | Adds |
 |---|---|---|
-| HV vehicle, any job | Powertrain in {FullHybrid, PluginHybrid, BatteryElectric, FuelCell, Unknown when HV-sensitive} | `MinimumHvLevel >= 2` |
-| HV system work | Service in {EV-BATTERY-CHECK, EV-CHARGING-FAULT} | `MinimumHvLevel >= 3`, bay `EvHighVoltage` |
-| Live HV diagnosis | Service = EV-CHARGING-FAULT and job flag `NeedsLiveDiagnosis` | `MinimumHvLevel >= 4` |
 | Heavy vehicle | VehicleClass = Heavy | bay `HeavyDutyLift`, certification `HeavyVehicle` |
 | Warranty or OEM tooling | Job flagged Warranty, or service in an OEM-tooling list | `RequiredBrand = vehicle manufacturer` |
-| Franchise preference | Manufacturer in the dealership's franchises | `PreferredBrand = manufacturer` (soft) |
+| Franchise preference (phase 2) | Manufacturer in the dealership's franchises | `PreferredBrand = manufacturer` (soft) |
+
+**Competences expire, and they are checked on the appointment's date.** IMI registration requires continuing professional development, so `HvLevel` carries `ValidUntil` (and brand specialisms may too). `Technician.Satisfies(requirements, appointmentDate)` uses the level valid **on the local date of the appointment**, not today's: a technician whose level lapses before the job cannot be booked onto it, and the board flags future appointments a lapse would affect.
 
 Why typed rules and not a rules engine: the rule vocabulary is small and closed (a handful of conditions, a handful of effects), every effect maps onto an existing invariant, and typed records keep the reflection budget (ADR-016), exhaustive `switch` coverage, and JSON source generation. A general rules engine (NRules, JSON logic) would add reflection, a second language for policy, and failure modes that tests cannot enumerate.
 
@@ -132,6 +143,10 @@ Why typed rules and not a rules engine: the rule vocabulary is small and closed 
 
 Lexicographic, not weighted: weights invite tuning without evidence and make explanations fuzzy. Each criterion is a comparer, and the allocation returns **which criterion decided**, so the explanation is exact: *"Ben Okafor: only free technician at HV level 3 with Diagnostics"*, *"Amelia Clarke: brand specialist (VW) for a VW vehicle; Chloe Nguyen also qualified"*.
 
+**"Why not" is part of the answer.** When the advisor's preferred bay or technician is not chosen, the response names the rule that excluded it: *"Chloe Nguyen: needs HV level 2 for brake pads and discs on a battery-electric vehicle"*, or *"busy 10:00 to 11:30"*. Dispatchers lose trust in a system that silently overrides them. The same text appears in the board's details sheet.
+
+**Continuity is opt-in.** Criterion 3 (the technician who last serviced this VIN) uses per-vehicle history, a profiling-like behaviour, so it is off unless a dealership switches it on (off in the demo).
+
 ### 5. The AI's bounded role in intake (Clef, ADR-028)
 
 New typed questions in the same single Clef request, each with a confirmation step and an explicit downstream effect:
@@ -150,7 +165,9 @@ Photos (dashboard warning lights, the charging error screen, a service reminder)
 
 - The booking handler resolves `JobRequirements` **before** taking the dealership lock (pure computation, reference data already loaded), then re-checks qualification and freeness inside the lock exactly as today. No new lock, no new contended row: ADR-003 is untouched.
 - `Appointment` stores the `VehicleProfile` (with provenance) and the `AllocationDecision` (deciding criterion and fired rules). The `AppointmentBooked` history event carries both, so an audit can answer *"why was this technician allowed to do this job"* a year later.
+- The `AllocationDecision` also records the **policy version** that allocated the job, so an audit reads the policy in force then, not today's.
 - If competence data changes after booking (a technician's HV level expires), existing appointments are flagged on the board, not silently moved: reassignment is a human decision (and an admin task, Task 30).
+- **Known limitation: two-person live working.** Live HV work often requires a second trained person present. An appointment books one technician today, so the level 4 rule documents the requirement and the board shows a warning; multi-technician appointments are an extension point, not something this ADR fakes.
 
 ```mermaid
 sequenceDiagram
@@ -230,8 +247,8 @@ classDiagram
 
 | Table | Change | Notes |
 |---|---|---|
-| `technicians` | `hv_level smallint not null default 0 check (0..4)`, `brand_specialisms text[] not null default '{}'` + GIN | Migration maps `HighVoltageElectrical` to a level the dealership confirms (default 3), never higher |
-| `requirement_rules` | `dealership_id`, `order`, typed condition columns (powertrain set, service codes, vehicle class, flags), typed effect columns | Reference data, seeded per dealership, edited in the admin area (Task 30) |
+| `technicians` | `hv_level smallint not null default 0 check (0..4)`, `hv_level_valid_until date null`, `hv_level_confirmed boolean not null default false`, `brand_specialisms text[] not null default '{}'` + GIN | Migration maps `HighVoltageElectrical` to level 3, unconfirmed |
+| `requirement_rules` | `dealership_id`, `policy_version`, `order`, typed condition columns (powertrain set, service codes, vehicle class, flags), typed effect columns | Reference data, seeded per dealership, edited in the admin area (Task 30); a change creates a new policy version |
 | `appointments` | `vehicle_powertrain`, `vehicle_manufacturer`, `vehicle_class`, `vehicle_profile_provenance jsonb`, `allocation_decision jsonb` | Source-generated JSON (ADR-016); no change to the exclusion constraints |
 | `wmi_manufacturers` | `wmi char(3) primary key`, `manufacturer` | Small static table, or a source-generated lookup compiled from a vetted CSV |
 
@@ -277,20 +294,24 @@ classDiagram
 | Phase | Scope | Flag | Exit criterion |
 |---|---|---|---|
 | 0 | Competence data: HV levels and brand specialisms on technicians, seeded and editable (Task 30) | none (data only) | Dealership confirms levels |
-| 1 | Vehicle profile on booking and availability; RequirementResolver with HV and heavy rules; hard filter; explanations | `Scheduling:VehicleAwareRequirements` | Property tests, concurrency proof, golden allocation table green |
+| 1 | Vehicle profile on booking and availability; offline VIN manufacturer decode (WMI table, no third party); RequirementResolver with the HV matrix and heavy rule; competence expiry on the appointment date; hard filter; explanations including "why not"; policy version on the decision | `Scheduling:VehicleAwareRequirements` | Property tests, concurrency proof, golden allocation table green |
 | 2 | Soft criteria: brand specialist, continuity | `Scheduling:SoftPreferences` | Allocation golden table; dispatcher feedback |
 | 3 | Clef questions (powertrain, safety, needs-diagnosis, complexity, warranty) with photos | `Triage:VehicleQuestions` | Extended golden set at or above the agreed thresholds |
-| 4 | VIN WMI decode and DVLA lookup behind `IVehicleDataSource` (Keyloop vehicle master data in production) | `Vehicle:RegistryLookup` | Privacy review; quota and latency within budget |
+| 4 | DVLA lookup behind `IVehicleDataSource` (Keyloop vehicle master data in production); off on the public demo | `Vehicle:RegistryLookup` | Privacy review; quota and latency within budget |
 
 Each phase ships independently, behind a flag, with its own ADR amendment if a decision changes.
 
-## Open questions for the stakeholder
+## Decisions taken at acceptance (stakeholder, 2026-10-12)
 
-1. **HV policy per job type.** Is "level 2 for any work on an HV vehicle, level 3 for HV components, level 4 for live diagnosis" the policy we want to demonstrate? It is configurable per dealership either way.
-2. **Unknown powertrain.** Conservative (treat as HV for HV-sensitive services), as proposed, or block booking until the profile is known?
-3. **Migration of the existing `HighVoltageElectrical` certification.** Map to level 3 by default and ask each dealership to confirm?
-4. **Registry lookups on the public demo.** Allow DVLA lookups for signed-in roles only (proposed), or keep phase 4 out of the demo entirely?
-5. **Continuity.** Should "last technician for this VIN" be on by default, or opt-in per dealership?
+| Question | Decision |
+|---|---|
+| HV policy per job type | A service-by-powertrain matrix (section 3), not one blanket level: alignment and MOT at level 1, routine service, brakes and diagnosis at 2, air-con regas and battery or charging work at 3 (the latter in an EV bay), live diagnosis at 4. Per dealership, seeded with this default. |
+| Unknown powertrain | Treated as high-voltage, never blocking; the UI asks for the VIN. An advisor may declare the powertrain with a reason, stored as `Declared` with the advisor's identity, and audited. |
+| Existing `HighVoltageElectrical` certification | Migrated to level 3, marked unconfirmed, with a confirmation prompt in the admin area. |
+| Registry lookups on the public demo | Off. Phase 1 ships the offline WMI manufacturer decode only; the DVLA adapter stays behind its flag. |
+| Continuity (last technician for this VIN) | Opt-in per dealership, off in the demo. |
+| Added at review | Competence expiry checked on the appointment's date; "why not" explanations; versioned policy recorded on each allocation; two-person live working documented as a limitation. |
+| Scope to build now | Phases 0 and 1, then the Clef `powertrain` suggestion once the Clef migration has merged. Phases 2 to 4 and the other Clef questions stay documented next steps. Sequenced after Task 27 (auth) and the Clef merge, alongside Task 30 (admin editing), because competences need an edit screen. |
 
 ## References
 
