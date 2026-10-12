@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/under-maintenance/components/under-maintenance-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { Construction } from "lucide-react"
 
 import { ErrorPage } from "../components/error-page"

@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/internal-server-error/components/internal-server-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { TraceIdRow } from "@/components/problem-alert"
 
 import { ErrorPage } from "../components/error-page"

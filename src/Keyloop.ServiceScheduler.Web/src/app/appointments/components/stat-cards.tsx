@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/stat-cards.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { CalendarClock, CircleCheck, ClipboardList, UserX } from "lucide-react"
 
 import type { AppointmentStatus } from "@/api/types.gen"

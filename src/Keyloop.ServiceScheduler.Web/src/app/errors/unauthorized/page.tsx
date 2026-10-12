@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/unauthorized/components/unauthorized-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { KeyRound, LogIn } from "lucide-react"
 
 import { buttonVariants } from "@/components/ui/button"

@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/not-found/components/not-found-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { useLocation } from "react-router-dom"
 
 import { DispatchBoardLink, ErrorPage } from "../components/error-page"

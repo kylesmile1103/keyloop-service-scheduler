@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/dashboard/components/section-cards.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { useQuery } from "@tanstack/react-query"
 import type { LucideIcon } from "lucide-react"
 import { CalendarClock, ClipboardList, Gauge, UsersRound } from "lucide-react"

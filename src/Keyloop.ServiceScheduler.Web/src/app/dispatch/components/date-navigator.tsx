@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/date-picker.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { labelDayButton } from "react-day-picker"

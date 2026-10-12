@@ -1,8 +1,9 @@
 /*
- * Adopted from the shadcn dashboard template (MIT; notice in the README): the dialog, date field and select layout of
- * `vite-version/src/app/calendar/components/event-form.tsx`, and the react-hook-form + zod + `Field` pattern of
- * `vite-version/src/app/users/components/user-form-dialog.tsx`. Adapted to the generated API client, the two-step stepper,
- * slot chips instead of free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
+ * Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/event-form.tsx` and
+ * `src/app/users/components/user-form-dialog.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the
+ * README's licence section): the event form's dialog, date field and select layout, and the user form dialog's
+ * react-hook-form + zod + `Field` pattern. Adapted to the generated API client, the two-step stepper, slot chips instead of
+ * free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
  */
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"

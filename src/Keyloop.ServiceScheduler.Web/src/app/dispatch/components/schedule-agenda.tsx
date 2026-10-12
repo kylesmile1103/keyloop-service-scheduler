@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`
+// (its list view), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { ChevronDown } from "lucide-react"
 import { Fragment, useId } from "react"
 
