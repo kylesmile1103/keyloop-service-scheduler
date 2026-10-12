@@ -11,3 +11,12 @@
 **/obj/
 **/*.user
 **/appsettings.*.local.json
+# Credential files a developer may keep inside the two allowed projects. The allow-list above would send them; these lines win
+# because they come later. BuildKit reads this file, not the root .dockerignore, when the build names this Dockerfile.
+**/.env
+**/.env.*
+**/.npmrc
+**/*.pem
+**/*.key
+**/*.pfx
+**/secrets.json
