@@ -6,8 +6,8 @@ metadata:
     grafana.app/folder: keyloop-service-scheduler
 spec:
   title: Keyloop Scheduler - Notifications
-  description: Transactional outbox health, throughput and send latency. G2 backlog gauges are planned and deliberately retain No data until implemented; they are
-    not approximated with counters.
+  description: Transactional outbox health, throughput and send latency. The G2 backlog gauges are declared in the unmerged Task 19 tree and show No data until integrated;
+    they are not approximated with counters.
   tags:
   - keyloop
   - scheduler
@@ -80,25 +80,6 @@ spec:
         text: api
         value: api
       options: []
-    - name: job
-      label: Job
-      type: query
-      datasource:
-        type: prometheus
-        uid: ${ds_metrics}
-      query:
-        query: label_values(target_info{service_namespace="$namespace", service_name="$service"}, job)
-        refId: job
-      definition: label_values(target_info{service_namespace="$namespace", service_name="$service"}, job)
-      refresh: 2
-      sort: 1
-      multi: false
-      includeAll: false
-      allValue: null
-      current:
-        text: keyloop-scheduler/api
-        value: keyloop-scheduler/api
-      options: []
     - name: env
       label: Environment
       type: query
@@ -106,9 +87,9 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       query:
-        query: label_values(target_info{service_namespace="$namespace", service_name="$service"}, deployment_environment_name)
+        query: label_values(target_info{job="${namespace}/${service}"}, deployment_environment_name)
         refId: env
-      definition: label_values(target_info{service_namespace="$namespace", service_name="$service"}, deployment_environment_name)
+      definition: label_values(target_info{job="${namespace}/${service}"}, deployment_environment_name)
       refresh: 2
       sort: 1
       multi: true
@@ -142,7 +123,8 @@ spec:
   - id: 1
     title: Dead letters in range, must be 0
     description: Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written. Terminal
-      failure after retries or expired leases; investigate event 1203. Empty or 0 is healthy.
+      failure after retries or expired leases; investigate event 1203. Empty or 0 is healthy. Counts a series' first export, like the dead-letter alert; a lower bound
+      after a restart in the range.
     type: stat
     gridPos:
       x: 0
@@ -169,7 +151,10 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum(increase(scheduler_notifications_failed_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range]))
+      expr: sum((increase(scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range])
+        and scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"} offset $__range)
+        or (max_over_time(scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range])
+        unless scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"} offset $__range))
         or vector(0)
       legendFormat: ''
       instant: true
@@ -189,8 +174,8 @@ spec:
         values: false
   - id: 2
     title: Sent in range
-    description: Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written. Sender-accepted
-      messages, not proof of inbox delivery.
+    description: 'Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written.
+      Sender-accepted messages, not proof of inbox delivery. Approximate: the value a series carries at its first export is not counted.'
     type: stat
     gridPos:
       x: 8
@@ -215,8 +200,8 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum(increase(scheduler_notifications_sent_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range])) or
-        vector(0)
+      expr: sum(increase(scheduler_notifications_sent_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range]))
+        or vector(0)
       legendFormat: ''
       instant: true
       range: false
@@ -235,8 +220,8 @@ spec:
         values: false
   - id: 3
     title: Retries in range
-    description: Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written. Scheduled
-      retries, not an extra enqueued message; event 1202.
+    description: 'Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written.
+      Scheduled retries, not an extra enqueued message; event 1202. Approximate: the value a series carries at its first export is not counted.'
     type: stat
     gridPos:
       x: 16
@@ -263,7 +248,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum(increase(scheduler_notifications_retried_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range]))
+      expr: sum(increase(scheduler_notifications_retried_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__range]))
         or vector(0)
       legendFormat: ''
       instant: true
@@ -320,7 +305,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum by (kind) (rate(scheduler_notifications_sent_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
+      expr: sum by (kind) (rate(scheduler_notifications_sent_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
       legendFormat: sent {{kind}}
       instant: false
       range: true
@@ -332,7 +317,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum by (kind) (rate(scheduler_notifications_failed_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
+      expr: sum by (kind) (rate(scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
       legendFormat: failed {{kind}}
       instant: false
       range: true
@@ -344,7 +329,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum by (kind) (rate(scheduler_notifications_retried_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
+      expr: sum by (kind) (rate(scheduler_notifications_retried_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"}[$__rate_interval]))
       legendFormat: retried {{kind}}
       instant: false
       range: true
@@ -363,8 +348,8 @@ spec:
   - id: 5
     title: Outbox pending depth
     description: Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written. G2
-      planned gauge, currently absent in Task 19 code. No data means instrumentation is missing; do not read it as an empty queue. Counts must include future retries
-      and leased Pending rows. Sum assumes one active reporting API instance; replicated database-wide gauges must not be summed.
+      gauge, declared in the unmerged Task 19 tree. Before integration, No data means instrumentation is missing; do not read it as an empty queue. Counts must include
+      future retries and leased Pending rows. Sum assumes one active reporting API instance; replicated database-wide gauges must not be summed.
     type: timeseries
     gridPos:
       x: 0
@@ -402,7 +387,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum by (kind) (scheduler_notifications_outbox_pending{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"})
+      expr: sum by (kind) (scheduler_notifications_outbox_pending{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", kind=~"${kind:regex}"})
       legendFormat: '{{kind}}'
       instant: false
       range: true
@@ -422,7 +407,7 @@ spec:
     title: Oldest pending age
     description: Production dispatch is disabled (Enabled=false, Provider=None) until the Cloudflare adapter/configuration lands; outbox rows are still written. Task
       19 G2 names this scheduler.notifications.oldest_pending_age (seconds), superseding the plan's outbox_oldest_pending_age spelling. Gauge must refresh even with
-      sending disabled. No data is an instrumentation gap, not 0.
+      sending disabled. Declared in the unmerged Task 19 tree, 0 when nothing is Pending. No data is an instrumentation gap, not 0.
     type: timeseries
     gridPos:
       x: 12
@@ -460,7 +445,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: max(scheduler_notifications_oldest_pending_age_seconds{job=~"${job:regex}", deployment_environment_name=~"${env:regex}"})
+      expr: max(scheduler_notifications_oldest_pending_age_seconds{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"})
       legendFormat: oldest pending
       instant: false
       range: true
@@ -517,7 +502,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: histogram_quantile(0.5, sum by (le, kind) (rate(scheduler_notifications_outbox_age_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+      expr: histogram_quantile(0.5, sum by (le, kind) (rate(scheduler_notifications_outbox_age_seconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}",
         kind=~"${kind:regex}"}[$__rate_interval])))
       legendFormat: p50 {{kind}}
       instant: false
@@ -530,7 +515,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: histogram_quantile(0.95, sum by (le, kind) (rate(scheduler_notifications_outbox_age_seconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+      expr: histogram_quantile(0.95, sum by (le, kind) (rate(scheduler_notifications_outbox_age_seconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}",
         kind=~"${kind:regex}"}[$__rate_interval])))
       legendFormat: p95 {{kind}}
       instant: false
@@ -586,7 +571,7 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: histogram_quantile(0.95, sum by (le, kind) (rate(scheduler_notifications_dispatch_duration_milliseconds_bucket{job=~"${job:regex}", deployment_environment_name=~"${env:regex}",
+      expr: histogram_quantile(0.95, sum by (le, kind) (rate(scheduler_notifications_dispatch_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}",
         kind=~"${kind:regex}"}[$__rate_interval])))
       legendFormat: p95 {{kind}}
       instant: false
@@ -632,10 +617,11 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: (sum(increase(scheduler_booking_requests_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}", outcome="confirmed"}[$__range])) or vector(0))
-        + (sum(increase(scheduler_appointments_cancellations_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}"}[$__range])) or vector(0)) - (sum(increase(scheduler_notifications_sent_total{job=~"${job:regex}",
-        deployment_environment_name=~"${env:regex}"}[$__range])) or vector(0)) - (sum(increase(scheduler_notifications_failed_total{job=~"${job:regex}", deployment_environment_name=~"${env:regex}"}[$__range]))
-        or vector(0))
+      expr: (sum(increase(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", outcome="confirmed"}[$__range]))
+        or vector(0)) + (sum(increase(scheduler_appointments_cancellations_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range]))
+        or vector(0)) - (sum(increase(scheduler_notifications_sent_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])) or
+        vector(0)) - (sum(increase(scheduler_notifications_failed_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])) or
+        vector(0))
       legendFormat: ''
       instant: true
       range: false

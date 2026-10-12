@@ -8,13 +8,13 @@ Expected: no booking deadlocks. The rule checks the last 10 minutes, without a p
 
 Inspect the failing booking trace and recent code changes against SYSTEM_DESIGN section 7.3 and ADR-003: one dealership advisory lock, no second contended operation, and `READ COMMITTED`. Find the transactions and lock order involved. Preserve the PostgreSQL exclusion constraints and the adversarial concurrency proof. An idempotency-key operation is the documented scoped exception; an outbox insert must remain uncontended on the booking path. Capture the trace id and constraint-free lock evidence for the owner of the faulty code.
 
-`increase()` needs at least two samples. An event before the first export or a short-lived process can escape this rule; inspect event 1004 directly as well. A displayed zero from `or vector(0)` is compatible with absent telemetry.
+OTel creates the counter series on its first deadlock, so that series' first exported sample is already 1. The rule therefore adds the value of any series first seen in the window to `increase()` over the others, and the first deadlock of a process fires it. Two gaps remain: a process that dies before its first export, and a restart that reuses the same `instance` label within about 15 minutes of the previous process's last export while that process had already counted a deadlock, which can delay or miss the alert. The planned Cloudflare `instance` is the Durable Object id, which every restart of that container reuses. Conversely, an export gap longer than 5 minutes in a process that has already counted a deadlock makes the old count look new and fires the rule again, so compare the time of event 1004 with the alert. Inspect event 1004 directly as well. A displayed zero from `or vector(0)` is compatible with absent telemetry. Recording `Add(0)` for the counter when the process starts would close the restart gap; that is an API code change for its owner.
 
 ## Constraint backstop
 
 Expected: no exclusion backstop under the locked booking path. The rule checks the last 10 minutes, with one alert instance per `constraint` when present. Inspect log event `1003 ConstraintBackstopFired` and the Booking engine dashboard's constraint breakdown.
 
-Use the constraint name to distinguish bay overlap from technician overlap. Identify scripts, administrative writes, or other writers that bypassed the dealership advisory lock, then inspect the booking's locked pre-check and insert trace. The exclusion constraint prevented double booking; keep it intact. Expected contention returns `slot_unavailable` before insert and should not increment this counter. Preserve the trace and writer identity for investigation. The first-export caveat in Booking deadlocks applies here too.
+Use the constraint name to distinguish bay overlap from technician overlap. Identify scripts, administrative writes, or other writers that bypassed the dealership advisory lock, then inspect the booking's locked pre-check and insert trace. The exclusion constraint prevented double booking; keep it intact. Expected contention returns `slot_unavailable` before insert and should not increment this counter. Preserve the trace and writer identity for investigation. The first-export handling and its two gaps in Booking deadlocks apply here too, per constraint.
 
 ## API 5xx
 
@@ -30,14 +30,22 @@ Compare booking latency by outcome with lock wait p95, hottest dealerships, and 
 
 ## Outbox age
 
-Trigger: oldest Pending row older than 300 seconds, continuously for 10 minutes. This is the G2 ObservableGauge `scheduler.notifications.oldest_pending_age` in seconds, not the age-at-send histogram. The gauge is absent from Task 19 code at authoring time. Missing data is `Ok` for evaluation but is a release acceptance failure until the gauge has been verified.
+Trigger: oldest Pending row older than 300 seconds, continuously for 10 minutes. This is the G2 ObservableGauge `scheduler.notifications.oldest_pending_age` in seconds, not the age-at-send histogram. The unmerged Task 19 tree declares the gauge; it is not in this branch. Missing data is `Ok` for evaluation but is a release acceptance failure until the gauge has been verified.
 
 Open Notifications. Check pending depth, oldest age, sends, retries, and dead letters by kind. Confirm the dispatcher and provider configuration, which default to disabled/None in Production until the adapter and operational configuration are approved. Rows are enqueued even when sending is disabled. Inspect notification events `1202` (retry), `1203` (terminal failure), `1204` (cycle failure), and `1205` (claim lost). These ids reflect the unmerged Task 19 code and require verification on integration.
 
 Verify the backlog observer refreshes when dispatch is off, includes delayed retries and leased Pending rows, and reports zero for an empty queue. A failed observation must not publish a fabricated healthy zero. Compare database-wide gauge values across API instances: summing identical snapshots duplicates depth, so use a single observer or revise the aggregation after topology is known. At-least-once delivery means an uncertain provider acknowledgement can already represent a sent message. Do not blindly resend or clear claims; retain the outbox id as the correlation reference for a separately approved recovery.
 
+## Notification dead letters
+
+Expected: no dead letters. The rule checks the last 15 minutes per `kind`, without a pending period, and counts a kind's first exported sample like Booking deadlocks. Severity is ticket: a customer did not receive a confirmation or cancellation email, which is not an outage.
+
+Open Notifications and inspect event `1203` (terminal failure) with its outbox id and kind. Check the sender configuration, the provider's response category and the recipient policy (a suppressed reserved-domain recipient is `scheduler.notifications.suppressed`, not a dead letter). At-least-once delivery means a lost provider acknowledgement can already represent a sent message: do not resend blindly. Any resend is a separately approved recovery that keeps the outbox id as its correlation reference.
+
 ## Readiness
 
 Trigger: a reported non-2xx response from `/health` or `/alive` during the last 5 minutes. It evaluates each minute without a pending period. This is evidence of an observed failed poll. It cannot detect a completely down process, a lost exporter, or an unpolled endpoint. Missing OTLP is expected while the demo container sleeps; no absence-based outage rule is defined.
+
+As planned for Cloudflare (edge branch `51ec189`), the Worker answers public `/health` and `/alive` from static assets and the Durable Object only pings `localhost/alive` while the container starts. Nothing calls `/health` on the container, and `/alive` does not touch the database, so this rule currently covers failed start pings only. Pointing the Durable Object ping at `/health`, or adding another in-network poller, makes it a database readiness signal; that is a separate edge change.
 
 Open API health and inspect responses by health route/status. `/health` checks database connectivity and applied migrations; `/alive` checks process liveness. Check startup log events `1103`/`1104`, database health, and ingress readiness behavior. A `429` also fails the observed poll, so check rate limiting and whether health polling is unexpectedly exposed through a shared limit. A real uptime requirement needs the separately approved Synthetic Monitoring check; regular probes wake the container and affect cost. Never reinterpret `target_info` or an invented OTLP `up` series as an external readiness probe.

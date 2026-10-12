@@ -1,0 +1,142 @@
+# PromQL behaviour tests for the counter queries that must count a series' first export, run by validate.py with promtool.
+#
+# OTel creates a counter series on its first Add, so the first exported sample already holds the event and
+# increase() alone reads 0 for it. Each scenario feeds synthetic Mimir series to promtool and evaluates the
+# committed expressions: alert/<name> as "A > threshold" (1 means the rule fires) and dashboard/<uid>/<panel>
+# as the panel value. `window` replaces $__range, $__rate_interval is 4m, and dashboard variables resolve to the
+# labels below. Series keys add or override labels; values use promtool notation with one sample per minute
+# ("_" = no sample).
+# Every must-be-zero alert and registered panel must appear here with at least one detection. Scenarios named
+# "known" pin the limitations that runbooks.md (Booking deadlocks) documents, so a change to them is deliberate.
+
+labels:
+  job: keyloop-scheduler/api
+  deployment_environment_name: Production
+  instance: a
+
+scenarios:
+- name: deadlock counter never fired
+  window: 10m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: 0+1x40
+  expect:
+    alert/keyloop-booking-deadlocks: {30m: 0}
+    dashboard/keyloop-booking-engine/1: {30m: 0}
+
+- name: first deadlock of a process is its first exported sample
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total: _x10 1x30
+    scheduler_booking_deadlocks_total{deployment_environment_name="Staging", instance="s"}: _x10 1x30
+    scheduler_booking_deadlocks_total{job="other/api", instance="o"}: _x10 1x30
+  expect:
+    alert/keyloop-booking-deadlocks: {12m: 1, 19m: 1, 22m: 0}
+    dashboard/keyloop-booking-engine/1: {12m: 1, 19m: 1, 22m: 0}
+
+- name: second deadlock in a running process
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total: _x10 1x19 2x10
+  expect:
+    alert/keyloop-booking-deadlocks: {28m: 0, 33m: 1, 38m: 1, 40m: 0}
+
+- name: deadlock after a restart with a new instance label
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total{instance="a"}: _x5 1x10
+    scheduler_booking_deadlocks_total{instance="b"}: _x25 1x10
+  expect:
+    alert/keyloop-booking-deadlocks: {24m: 0, 27m: 1}
+    dashboard/keyloop-booking-engine/1: {24m: 0, 27m: 1}
+
+- name: deadlock after a restart that reuses the instance label once the old series went stale
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total: _x5 1x10 _x15 1x10
+  expect:
+    alert/keyloop-booking-deadlocks: {28m: 0, 33m: 1}
+    dashboard/keyloop-booking-engine/1: {33m: 1}
+
+- name: known gap, a restart reusing the instance label within 5 minutes with the same count is missed
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total: 1x10 _x2 1x10
+  expect:
+    alert/keyloop-booking-deadlocks: {14m: 0, 26m: 0}
+
+- name: known re-fire, an export gap longer than 5 minutes makes an old count look new
+  window: 10m
+  series:
+    scheduler_booking_deadlocks_total: 1x10 _x7 1x10
+  expect:
+    alert/keyloop-booking-deadlocks: {20m: 0, 27m: 1}
+
+- name: constraint backstop never fired
+  window: 10m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: 0+1x40
+  expect:
+    alert/keyloop-booking-constraint-backstop: {30m: 0}
+    dashboard/keyloop-booking-engine/2: {30m: 0}
+    dashboard/keyloop-booking-engine/6: {30m: 0}
+
+- name: backstop on a new constraint series beside an old one
+  window: 10m
+  series:
+    scheduler_booking_constraint_backstop_total{constraint="ex_appointments_bay_no_overlap"}: 1x40
+    scheduler_booking_constraint_backstop_total{constraint="ex_appointments_technician_no_overlap"}: _x20 1x20
+  expect:
+    alert/keyloop-booking-constraint-backstop:
+      15m: {'{constraint="ex_appointments_bay_no_overlap"}': 0}
+      22m: {'{constraint="ex_appointments_bay_no_overlap"}': 0, '{constraint="ex_appointments_technician_no_overlap"}': 1}
+    dashboard/keyloop-booking-engine/2: {15m: 0, 22m: 1}
+    dashboard/keyloop-booking-engine/6:
+      22m: {'{constraint="ex_appointments_bay_no_overlap"}': 0, '{constraint="ex_appointments_technician_no_overlap"}': 1}
+
+- name: dead letters never happened
+  window: 15m
+  series:
+    scheduler_notifications_sent_total{kind="BookingConfirmation"}: 0+1x40
+  expect:
+    alert/keyloop-notifications-dead-letters: {30m: 0}
+    dashboard/keyloop-notifications/1: {30m: 0}
+
+- name: first dead letter of a kind beside an older one
+  window: 15m
+  series:
+    scheduler_notifications_failed_total{kind="BookingConfirmation"}: 2x40
+    scheduler_notifications_failed_total{kind="Cancellation"}: _x20 1x20
+  expect:
+    alert/keyloop-notifications-dead-letters:
+      30m: {'{kind="BookingConfirmation"}': 0, '{kind="Cancellation"}': 1}
+      37m: {'{kind="BookingConfirmation"}': 0, '{kind="Cancellation"}': 0}
+    dashboard/keyloop-notifications/1: {30m: 1, 37m: 0}
+
+- name: health polls answer 2xx only
+  window: 5m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: 0+1x40
+    http_server_request_duration_seconds_count{http_route="/api/v1/dealerships", http_response_status_code="500"}: _x10 1x20
+  expect:
+    alert/keyloop-api-readiness: {12m: 0, 30m: 0}
+
+- name: first failed health poll is the first sample of its status series
+  window: 5m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: 0+1x40
+    http_server_request_duration_seconds_count{http_route="/health", http_response_status_code="503"}: _x10 1x20
+  expect:
+    alert/keyloop-api-readiness: {9m: 0, 11m: 1, 14m: 1, 16m: 0}
+
+- name: a process's single start ping and first failed poll show on the readiness panel
+  window: 5m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: _x10 1x20
+    http_server_request_duration_seconds_count{http_route="/health", http_response_status_code="503"}: _x20 1x10
+  expect:
+    alert/keyloop-api-readiness: {11m: 0, 21m: 1, 27m: 0}
+    dashboard/keyloop-api-health/11:
+      11m: {'{http_route="/alive", http_response_status_code="200"}': 1}
+      16m: {'{http_route="/alive", http_response_status_code="200"}': 0}
+      21m: {'{http_route="/alive", http_response_status_code="200"}': 0, '{http_route="/health", http_response_status_code="503"}': 1}
+      26m: {'{http_route="/alive", http_response_status_code="200"}': 0, '{http_route="/health", http_response_status_code="503"}': 0}

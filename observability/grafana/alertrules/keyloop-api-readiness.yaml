@@ -19,7 +19,8 @@ spec:
   annotations:
     summary: A polled /health or /alive endpoint returned a non-2xx response.
     description: Inspect database health, migration state and startup logs. This rule sees reported probe answers only; asleep, completely down or non-exporting processes
-      need an approved external check for outage detection.
+      need an approved external check for outage detection. In the planned Cloudflare topology nothing polls /health on the container and the Durable Object only
+      pings /alive at start, so this rule covers failed start pings until an in-network /health poller exists.
     runbook_url: ${RUNBOOK_BASE_URL}#readiness
     __dashboardUid__: keyloop-api-health
     __panelId__: '11'
@@ -43,8 +44,11 @@ spec:
         editorMode: code
         instant: true
         range: false
-        expr: sum(increase(http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}", http_route=~"/health|/alive",
-          http_response_status_code!~"2.."}[5m])) or vector(0)
+        expr: sum((increase(http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}", http_route=~"/health|/alive",
+          http_response_status_code!~"2.."}[5m]) and http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}", http_route=~"/health|/alive",
+          http_response_status_code!~"2.."} offset 5m) or (max_over_time(http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}",
+          http_route=~"/health|/alive", http_response_status_code!~"2.."}[5m]) unless http_server_request_duration_seconds_count{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}",
+          http_route=~"/health|/alive", http_response_status_code!~"2.."} offset 5m)) or vector(0)
         intervalMs: 60000
         maxDataPoints: 43200
     C:

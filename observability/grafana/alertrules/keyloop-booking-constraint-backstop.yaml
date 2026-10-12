@@ -42,8 +42,10 @@ spec:
         editorMode: code
         instant: true
         range: false
-        expr: sum by (constraint) (increase(scheduler_booking_constraint_backstop_total{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"}[10m])) or
-          vector(0)
+        expr: sum by (constraint) ((increase(scheduler_booking_constraint_backstop_total{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"}[10m]) and
+          scheduler_booking_constraint_backstop_total{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"} offset 10m) or (max_over_time(scheduler_booking_constraint_backstop_total{job="${API_JOB}",
+          deployment_environment_name="${ENVIRONMENT}"}[10m]) unless scheduler_booking_constraint_backstop_total{job="${API_JOB}", deployment_environment_name="${ENVIRONMENT}"}
+          offset 10m)) or on() vector(0)
         intervalMs: 60000
         maxDataPoints: 43200
     C:

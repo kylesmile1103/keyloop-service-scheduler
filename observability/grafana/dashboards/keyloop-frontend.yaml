@@ -90,9 +90,9 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       query:
-        query: label_values(target_info{service_namespace="$namespace", service_name="$api_service"}, deployment_environment_name)
+        query: label_values(target_info{job="${namespace}/${api_service}"}, deployment_environment_name)
         refId: env
-      definition: label_values(target_info{service_namespace="$namespace", service_name="$api_service"}, deployment_environment_name)
+      definition: label_values(target_info{job="${namespace}/${api_service}"}, deployment_environment_name)
       refresh: 2
       sort: 1
       multi: true
