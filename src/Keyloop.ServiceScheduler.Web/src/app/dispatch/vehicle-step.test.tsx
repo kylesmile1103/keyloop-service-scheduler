@@ -15,6 +15,7 @@ import {
   allocation,
   assessmentService,
   certificationGap,
+  decodedMercedes,
   decodedVolkswagen,
   diagnosticsService,
   equipmentAndCertificationGap,
@@ -383,6 +384,118 @@ describe("a declared manufacturer the VIN contradicts", () => {
     expect((await bodyOf(first)).vehicle.profile).not.toHaveProperty("conflictChoice")
     expect((await bodyOf(second)).vehicle.profile).toMatchObject({ manufacturer: "BMW", conflictChoice: "UseDecoded" })
     expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+  })
+
+  it("holds a choice made without a look-up for that VIN only: Try again resends it as it was, a new VIN asks again", async () => {
+    // The checker's failure-and-edit probe (review round 0): the look-up fails, the API's conflict is answered with Use
+    // decoded data, that resend is lost, and the VIN is then changed to a Mercedes one.
+    let lookupFails = true
+    const failure = () => new Response("Temporary network failure", { status: 503 })
+    const answers = [problemResponse(422, profileConflict), failure(), failure()]
+    let attempts = 0
+    const api = vehicleApi({
+      resolveVehicle: (body) =>
+        lookupFails ? new Response("Lookup temporarily unavailable", { status: 503 }) : body.vin?.startsWith("WDD") ? decodedMercedes : decodedVolkswagen,
+      book: (_, body) => answers[attempts++] ?? bookedFrom(body),
+    })
+    const { scope } = await declareBmwWithVolkswagenVin(api)
+    fireEvent.blur(within(scope).getByRole("textbox", { name: "VIN" }))
+    expect(await within(scope).findByText(/Couldn’t read the VIN/)).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    const conflict = await within(scope).findByRole("alert")
+    expect(conflict).toHaveTextContent("The declared vehicle doesn’t match its VIN")
+    fireEvent.click(within(conflict).getByRole("button", { name: "Use decoded data" }))
+    const lost = (await within(scope).findByText("Couldn’t book the appointment")).closest<HTMLElement>("[role=alert]")!
+
+    // A legitimate resend: the very same request, with the same key.
+    fireEvent.click(within(lost).getByRole("button", { name: "Try again" }))
+    await waitFor(() => expect(bookings(api.requests)).toHaveLength(3))
+    const [first, chosen, resent] = bookings(api.requests)
+    expect((await bodyOf(chosen)).vehicle.profile).toMatchObject({ manufacturer: "BMW", conflictChoice: "UseDecoded" })
+    expect(await bodyOf(resent)).toEqual(await bodyOf(chosen))
+    expect(resent.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+    expect(chosen.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+    // Settled: Book is back from "Booking…".
+    await within(scope).findByRole("button", { name: "Book" })
+
+    // Another VIN: the choice was not made for it, so the advisor is asked again before Book.
+    lookupFails = false
+    fireEvent.change(within(scope).getByRole("textbox", { name: "VIN" }), { target: { value: "WDD12345678901234" } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Look up" }))
+    expect(await within(scope).findByText("The VIN says MERCEDES-BENZ, but BMW is declared. The VIN is the stronger evidence.")).toBeInTheDocument()
+    expect(within(scope).getByRole("button", { name: "Use decoded data" })).toBeInTheDocument()
+    expect(within(scope).queryByText(/Booking uses MERCEDES-BENZ from the VIN/)).not.toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+    const last = await bodyOf(bookings(api.requests)[3])
+    expect(last.vehicle.vin).toBe("WDD12345678901234")
+    expect(last.vehicle.profile).toEqual({ powertrain: "Unknown", vehicleClass: "Unknown", manufacturer: "BMW" })
+  })
+
+  it("holds a choice made without a look-up once the look-up for that VIN answers, which says what the VIN decodes", async () => {
+    let lookupFails = true
+    let attempts = 0
+    const api = vehicleApi({
+      resolveVehicle: () => (lookupFails ? new Response("", { status: 503 }) : decodedVolkswagen),
+      book: () => (++attempts === 1 ? problemResponse(422, profileConflict) : new Response("", { status: 503 })),
+    })
+    const { scope } = await declareBmwWithVolkswagenVin(api)
+    fireEvent.blur(within(scope).getByRole("textbox", { name: "VIN" }))
+    expect(await within(scope).findByText(/Couldn’t read the VIN/)).toBeInTheDocument()
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    fireEvent.click(within(await within(scope).findByRole("alert")).getByRole("button", { name: "Use decoded data" }))
+    await within(scope).findByText("Couldn’t book the appointment")
+
+    lookupFails = false
+    fireEvent.click(within(scope).getByRole("button", { name: "Look up" }))
+    // The same VIN always decodes the same: the choice made for it stands, and says what it now knows.
+    expect(await within(scope).findByText("Booking uses VOLKSWAGEN from the VIN; the declared BMW is set aside.")).toBeInTheDocument()
+  })
+
+  it("clears a choice made before Book when the declaration or the VIN changes, and asks again", async () => {
+    const api = vehicleApi()
+    const { scope } = await declareBmwWithVolkswagenVin(api)
+    fireEvent.click(within(scope).getByRole("button", { name: "Look up" }))
+    fireEvent.click(await within(scope).findByRole("button", { name: "Use decoded data" }))
+    expect(within(scope).getByText("Booking uses VOLKSWAGEN from the VIN; the declared BMW is set aside.")).toBeInTheDocument()
+
+    const declared = within(scope).getByRole("textbox", { name: "Manufacturer code (optional)" })
+    fireEvent.change(declared, { target: { value: "AUDI" } })
+    expect(await within(scope).findByText("The VIN says VOLKSWAGEN, but AUDI is declared. The VIN is the stronger evidence.")).toBeInTheDocument()
+    // Back to the declaration it was chosen for: cleared means cleared, so it is asked again.
+    fireEvent.change(declared, { target: { value: "BMW" } })
+    expect(await within(scope).findByText("The VIN says VOLKSWAGEN, but BMW is declared. The VIN is the stronger evidence.")).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Use decoded data" }))
+    fireEvent.change(within(scope).getByRole("textbox", { name: "VIN" }), { target: { value: "WVWZZZ1KZAW654322" } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Look up" }))
+    expect(await within(scope).findByText("The VIN says VOLKSWAGEN, but BMW is declared. The VIN is the stronger evidence.")).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+    expect((await bodyOf(bookings(api.requests)[0])).vehicle.profile).not.toHaveProperty("conflictChoice")
+  })
+
+  it("takes the API's conflict away once the VIN it was about is changed, so its choice cannot answer for another VIN", async () => {
+    let attempts = 0
+    const api = vehicleApi({ book: (_, body) => (++attempts === 1 ? problemResponse(422, profileConflict) : bookedFrom(body)) })
+    const { scope } = await declareBmwWithVolkswagenVin(api)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    expect(await within(scope).findByRole("alert")).toHaveTextContent("The declared vehicle doesn’t match its VIN")
+
+    fireEvent.change(within(scope).getByRole("textbox", { name: "VIN" }), { target: { value: "WDD12345678901234" } })
+    expect(within(scope).queryByText("The declared vehicle doesn’t match its VIN")).not.toBeInTheDocument()
+    expect(within(scope).queryByRole("button", { name: "Use decoded data" })).not.toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+    expect((await bodyOf(bookings(api.requests)[1])).vehicle).toMatchObject({
+      vin: "WDD12345678901234",
+      profile: { powertrain: "Unknown", vehicleClass: "Unknown", manufacturer: "BMW" },
+    })
+    expect((await bodyOf(bookings(api.requests)[1])).vehicle.profile).not.toHaveProperty("conflictChoice")
   })
 
   it("Edit the declaration puts focus on the manufacturer the advisor declared", async () => {

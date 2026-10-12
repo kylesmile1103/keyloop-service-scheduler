@@ -74,6 +74,7 @@ import { type AvailabilityVehicle, knownManufacturer, liveDiagnosisApplies, manu
 import { bookingTriageStatusQuery, useBookingTriage } from "../hooks/use-booking-triage"
 import { type BookedExplanation, explainBooking } from "../lib/allocation"
 import { localTime } from "../lib/appointment-text"
+import { choiceHolds, choiceOfRequest, type DecodedChoice, decodedOf, normalVin, sameEntry } from "../lib/decoded-choice"
 import {
   bookingSchemaFor,
   type BookingForm,
@@ -357,8 +358,10 @@ function BookingFlow({
       if (problem?.status === 429) startLookupWaiting(Math.max(1, Math.ceil(Number(problem.retryAfterSeconds ?? 1))))
     },
   })
-  const wholeVin = vin.trim().toUpperCase()
-  const resolvedHere = resolved && resolved.identity === current.identity && resolved.vin === wholeVin ? resolved.profile : null
+  // The look-up's answer for a VIN, when it was read for that VIN and for the caller signed in now.
+  const lookedUpFor = (value: string) => (resolved && resolved.identity === current.identity && resolved.vin === value ? resolved.profile : null)
+  const wholeVin = normalVin(vin)
+  const resolvedHere = lookedUpFor(wholeVin)
   const resolveForThisVin = resolve.variables?.body.vin === wholeVin
   const resolveProblem = parseProblem(resolve.error)
   const lookup: Lookup =
@@ -383,11 +386,14 @@ function BookingFlow({
     resolve.mutate({ body: { vin: value } })
   }
 
-  // A declared manufacturer that disagrees with the VIN: the advisor's choice to book with the decoded data holds for that
-  // declaration and that decoded value only, so editing either asks again.
+  // A declared manufacturer that disagrees with the VIN: "Use decoded data" holds for the VIN, the declaration and the decoded
+  // attributes it was chosen for, or for the VIN and declaration when no look-up had answered (`DecodedChoice`). A change of
+  // any of them clears it, for good, so the advisor is asked again; the request is checked against it as it is built.
   const declaredCode = manufacturerCode(declaredManufacturer)
-  const [decision, setDecision] = useState<{ declared: string; decoded: string | null } | null>(null)
-  const useDecoded = decision !== null && decision.declared === declaredCode && (decision.decoded === null || decision.decoded === decoded)
+  const entered: DecodedChoice = { vin: wholeVin, declared: { powertrain, vehicleClass, manufacturer: declaredCode }, decoded: decodedOf(resolvedHere) }
+  const [decision, setDecision] = useState<DecodedChoice | null>(null)
+  const useDecoded = choiceHolds(decision, entered)
+  if (decision !== null && !useDecoded) setDecision(null)
 
   // What the free starts are counted for: never the VIN, the registration or the reason (ADR-029, §8.7).
   const liveApplies = liveDiagnosisApplies(service, powertrain)
@@ -497,6 +503,14 @@ function BookingFlow({
   // The last refusal, kept while this booking is tried again (Try again, a suggested start, Book): the alert and the
   // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
   const failure = useMutationFailure(book)
+  // The API's conflict is about the VIN and declaration it refused: once either is changed, its "Use decoded data" would
+  // answer for another vehicle, so the alert goes (Book asks the API again, and the look-up asks before Book).
+  const failedProblem = parseProblem(failure)
+  const staleConflict =
+    failedProblem !== null &&
+    problemSlug(failedProblem) === "vehicle-profile-conflict" &&
+    book.variables !== undefined &&
+    !sameEntry(choiceOfRequest(book.variables.body, null), entered)
 
   // A discard took the focused field with it: focus goes to the notice that says why, unless something else holds it (a
   // dialog opened over this one). A layout effect: before the dialog's focus guard puts lost focus on the dialog itself.
@@ -575,7 +589,7 @@ function BookingFlow({
     goTo(1)
   }
 
-  function submit(event?: FormEvent, choice: { useDecoded?: boolean } = {}) {
+  function submit(event?: FormEvent, choice: { decision?: DecodedChoice } = {}) {
     // Bound, before the form's checks run, to the account this dialog was drawn for, and only while the identity in the
     // cache is that account: `/me` may have changed since the last render (Book, Enter in a field, a suggested start).
     // The send checks again once the checks pass, and sends nothing if the booking was discarded meanwhile (this flow
@@ -591,10 +605,12 @@ function BookingFlow({
         // Built with the switch as the cache holds it now: nothing of the vehicle step goes to a server that would refuse it.
         // Live HV diagnosis goes only where it applies (the switch is hidden elsewhere, so it is not what the advisor sees).
         const live = values.needsLiveDiagnosis === true && liveDiagnosisApplies(serviceFor(values.serviceTypeId), values.vehicle.profile?.powertrain ?? "Unknown")
-        const body = toBookingRequest(
-          { ...values, needsLiveDiagnosis: live },
-          { vehicleAware: cachedVehicleAware(queryClient), useDecoded: choice.useDecoded ?? useDecoded }
-        )
+        const input = { ...values, needsLiveDiagnosis: live }
+        const options = { vehicleAware: cachedVehicleAware(queryClient) }
+        const plain = toBookingRequest(input, options)
+        // "Use decoded data" goes only with the VIN and declaration it was chosen for, checked against what is sent.
+        const chosen = choiceHolds(choice.decision ?? decision, choiceOfRequest(plain, decodedOf(lookedUpFor(plain.vehicle.vin))))
+        const body = chosen ? toBookingRequest(input, { ...options, useDecoded: true }) : plain
         if (send({ path: { dealershipId }, body, headers: { "Idempotency-Key": idempotencyKey.current } })) lastRequest.current = body
       },
       (errors) => {
@@ -622,10 +638,15 @@ function BookingFlow({
     submit()
   }
 
-  /** "Use decoded data": the advisor books with what the VIN says; the same booking is sent again with `UseDecoded`. */
-  function chooseDecoded(resend: boolean) {
-    setDecision({ declared: declaredCode, decoded })
-    if (resend && !book.isPending) submit(undefined, { useDecoded: true })
+  /**
+   * "Use decoded data": the advisor books with what the VIN says. Before Book it answers for what is entered; on the API's
+   * conflict, for the request the API refused, which is sent again with `UseDecoded` under the same key.
+   */
+  function chooseDecoded(fromRefusal: boolean) {
+    const refused = fromRefusal ? book.variables?.body : undefined
+    const chosen = refused ? choiceOfRequest(refused, decodedOf(lookedUpFor(normalVin(refused.vehicle.vin)))) : entered
+    setDecision(chosen)
+    if (refused && !book.isPending) submit(undefined, { decision: chosen })
   }
 
   /** "Edit the declaration": back to the manufacturer the advisor declared, the earlier choice undone. */
@@ -753,7 +774,7 @@ function BookingFlow({
                 : null
             }
             problem={
-              failure && !fieldErrorsOnly(failure) ? (
+              failure && !fieldErrorsOnly(failure) && !staleConflict ? (
                 <BookingProblem
                   error={failure}
                   alertRef={alertRef}

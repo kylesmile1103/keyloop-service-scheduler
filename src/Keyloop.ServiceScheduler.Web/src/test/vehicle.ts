@@ -24,6 +24,9 @@ export const decodedVolkswagen: VehicleProfile = {
   provenance: { powertrain: "Unknown", manufacturer: "VinDecoded", vehicleClass: "Unknown", declaredBy: null, declarationReason: null },
 }
 
+/** The same for a WDD VIN: Mercedes-Benz. */
+export const decodedMercedes: VehicleProfile = { ...decodedVolkswagen, manufacturer: "MERCEDES-BENZ" }
+
 /** The same for a VIN whose first three characters the API does not know. */
 export const undecoded: VehicleProfile = {
   powertrain: "Unknown",
