@@ -26,8 +26,8 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Triage;
 /// <para>
 /// Why the impact-only qualifier does not split the accident entries: the categories cannot say whether a light, pane or wheel was
 /// damaged in the impact, but choosing the assessment means Clef read the description as collision damage. On the live run, whenever
-/// the description was a collision (fixtures 26, 32, 37, 43, 46), Clef's category beside this service named the damage the service
-/// inspects, never the separate issue. Replacing glass or tyres and repairing lights stays outside the assessment, which its own copy
+/// the description named crash or body damage (fixtures 26, 32, 37, 43, 46), Clef's category beside this service named that damage,
+/// which the service inspects, never the separate issue. Replacing glass or tyres and repairing lights stays outside the assessment, which its own copy
 /// ("not the repair itself") already tells the person. The cost: a crash plus an unrelated, non-impact light, glass or tyre problem
 /// loses its notice, and so does a non-impact repair misrouted to the assessment instead of no-match (fixture 48, a windscreen
 /// replacement, confirm at 0.485 with GLASS at 0.62; fixture 49, a blown bulb, LIGHTS below the threshold).
