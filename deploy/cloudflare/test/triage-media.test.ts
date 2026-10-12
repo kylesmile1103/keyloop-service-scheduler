@@ -1,6 +1,7 @@
 import { build } from "esbuild";
 import { convertV4MiniflareOptions, Miniflare, Response as MiniflareResponse } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import worker from "../src/index.ts";
 import { handleTriageMedia, MAX_IMAGE_BYTES } from "../src/triage-media.ts";
 import { fakeEnv } from "./helpers.ts";
 
@@ -50,6 +51,18 @@ describe("private R2 image relay", () => {
     expect((await mf.dispatchFetch("https://media.test/expire")).status).toBe(204);
     expect(await bucket.head(`${key}-old`)).toBeNull();
     expect(await bucket.head(key)).not.toBeNull();
+  });
+  it("runs the sweep from the Worker's own scheduled export", async () => {
+    // The cron trigger (cloudflare.config.ts, asserted by validate:build:integrations) invokes this export, not the test route.
+    const bucket = await mf.getR2Bucket("TRIAGE_IMAGES");
+    await bucket.put(`${key}-cron-stale`, bytes, { customMetadata: { expires: "1000000000" } });
+    await bucket.put(`${key}-cron-unlabelled`, bytes);
+    await bucket.put(`${key}-cron-live`, bytes, { customMetadata: { expires: expiry() } });
+    const env = { ...fakeEnv().env, TRIAGE_ENABLED: "true", TRIAGE_IMAGES: bucket } as unknown as Env;
+    await worker.scheduled({ cron: "0 * * * *", scheduledTime: Date.now(), noRetry() {} } as ScheduledController, env);
+    expect(await bucket.head(`${key}-cron-stale`)).toBeNull();
+    expect(await bucket.head(`${key}-cron-unlabelled`)).toBeNull();
+    expect(await bucket.head(`${key}-cron-live`)).not.toBeNull();
   });
   it("bounds actual bytes and rejects unsupported types and unbounded retention", async () => {
     // Exercise the actual request stream directly: Node can reset a TCP upload when a Worker rejects an unread body.

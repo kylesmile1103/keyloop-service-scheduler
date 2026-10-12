@@ -71,6 +71,8 @@ if (action === "build" && result.status === 0) {
   assert.equal(Boolean(worker.env.AI_TOKEN), integrations);
   assert.equal(Boolean(worker.env.TRIAGE_IMAGES), integrations);
   assert.equal(worker.env.TRIAGE_ENABLED.value, integrations ? "true" : "false");
+  // Only the hourly sweep deletes abandoned photo uploads (reads delete just the expired object they find).
+  assert.deepEqual(worker.triggers ?? [], integrations ? [{ type: "scheduled", schedule: "0 * * * *" }] : []);
   if (integrations) {
     assert.equal(worker.env.EMAIL_API_TOKEN.secretName, "keyloop_prod_email_api_token");
     assert.equal(worker.env.GRAFANA_OTLP_BASIC_BROWSER.secretName, "grafana-otlp-basic-browser");
