@@ -10,7 +10,7 @@ This is the local authoring deliverable for Task 23. No resources have been push
 | `dashboards/keyloop-booking-engine.yaml` | 17 panels: invariants, outcomes, latency, locks, traces and logs |
 | `dashboards/keyloop-api-health.yaml` | 13 panels: RED by route, 429s, limiter results, readiness, export presence and logs |
 | `dashboards/keyloop-notifications.yaml` | 10 panels: backlog gauges, sends/failures/retries by kind, attempt age, provider duration and logs |
-| `dashboards/keyloop-frontend.yaml` | 8 panels: browser TraceQL metrics/search, `ui.book_appointment`, `ui.stress_test` and browser-to-API descendants |
+| `dashboards/keyloop-frontend.yaml` | 8 panels: browser TraceQL metrics/search, `ui.book_appointment`, `ui.booking_triage` and browser-to-API descendants |
 | `alertrules/*.yaml` | Seven Grafana-managed alert templates: deadlocks, constraint backstop, 5xx, booking p95, oldest Pending age, dead letters, observed readiness |
 | `runbooks.md` | Alert-specific investigation steps; publish at a reviewed HTTPS URL before preparing rules |
 | `validation/` | Local JSON Schema, metric and label contract, PromQL behaviour tests, offline checks with their self-tests, and alert preparation |
