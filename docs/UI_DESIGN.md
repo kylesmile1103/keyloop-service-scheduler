@@ -73,7 +73,7 @@ Keyloop also uses a Tailwind-like grey ramp for body copy (`#111827`, `#374151`)
 - **Signal blue**: interaction. Links, the signal outline button, selected indicators (active tab bar, active nav bar), focus rings, info feedback.
 - **Cyan**: the brand accent, for the floating Book action and the toast action only.
 - **Status hues** (fusion purple, sky, amber, green, rose, slate): appointment state only (section 4.3).
-- **Feedback** (green, amber, red): outcomes of actions, and the 201 / 409 / 5xx tallies in the stress panel.
+- **Feedback** (green, amber, red): outcomes of actions.
 - **OWNERSHIP gradient**: the domain tag in the header. Nothing else.
 
 ### 3.3 Fusion domain gradients
@@ -208,7 +208,7 @@ How the shadcn tokens are used here:
 |---|---|---|
 | `--signal`, `--signal-foreground` | `text-signal`, `border-signal`, `bg-signal`, `text-signal-foreground` | links, the signal outline button, the 3 px active-tab and active-nav indicators, the active segment of the lane toggle, the switch "on" track |
 | `--brand-accent`, `--brand-accent-foreground` | `bg-brand-accent`, `text-brand-accent-foreground` | the mobile floating Book action, the toast action. Nowhere else |
-| `--destructive-foreground` | `text-destructive-foreground` | text on a solid `bg-destructive` (the 5xx tally pill, the "now" time label) |
+| `--destructive-foreground` | `text-destructive-foreground` | text on a solid `bg-destructive` (the "now" time label) |
 | `--*-subtle` | `bg-success-subtle`, `bg-warning-subtle`, `bg-info-subtle`, `bg-destructive-subtle` | banners, conflict alerts, table pills |
 | `--overlay` | `bg-overlay` | the scrim behind dialogs and sheets (17.3) |
 | `--domain-*` | `.domain-tag .domain-tag-ownership` | the header tag |
@@ -300,27 +300,27 @@ Requirements: **4.5:1** for text, **3:1** for control boundaries, focus indicato
 | `destructive` | `destructive/15 on popover` | destructive button hover (bg-destructive/15) | 5.05 | 5.00 | 4.5:1 |
 | `destructive-foreground` | `destructive` | solid destructive fill: 5xx pill, "now" time label | 6.65 | 7.84 | 4.5:1 |
 | **Feedback** | | | | | |
-| `destructive` | `card` | text-destructive on a card (alert title, tally figure) | 6.65 | 7.10 | 4.5:1 |
+| `destructive` | `card` | text-destructive on a card (alert title) | 6.65 | 7.10 | 4.5:1 |
 | `destructive` | `background` | text-destructive on the page | 6.65 | 7.84 | 4.5:1 |
 | `destructive` | `destructive-subtle` | banner, alert, pill: bg-destructive-subtle text-destructive | 5.80 | 5.93 | 4.5:1 |
 | `foreground` | `destructive-subtle` | body text inside the destructive banner | 12.10 | 12.02 | 4.5:1 |
 | `foreground/80 on destructive-subtle` | `destructive-subtle` | trace id (text-foreground/80) inside the destructive banner | 6.69 | 8.20 | 4.5:1 |
 | `muted-foreground` | `destructive-subtle` | "Trace ID" label inside the destructive banner | 5.10 | 6.36 | 4.5:1 |
-| `success` | `card` | text-success on a card (alert title, tally figure) | 5.65 | 9.46 | 4.5:1 |
+| `success` | `card` | text-success on a card (alert title) | 5.65 | 9.46 | 4.5:1 |
 | `success` | `background` | text-success on the page | 5.65 | 10.44 | 4.5:1 |
 | `success` | `success-subtle` | banner, alert, pill: bg-success-subtle text-success | 5.15 | 7.74 | 4.5:1 |
 | `foreground` | `success-subtle` | body text inside the success banner | 12.66 | 11.79 | 4.5:1 |
 | `foreground/80 on success-subtle` | `success-subtle` | trace id (text-foreground/80) inside the success banner | 6.91 | 8.12 | 4.5:1 |
 | `muted-foreground` | `success-subtle` | "Trace ID" label inside the success banner | 5.34 | 6.23 | 4.5:1 |
 | `success-foreground` | `success` | solid pill: bg-success text-success-foreground | 5.65 | 10.44 | 4.5:1 |
-| `warning` | `card` | text-warning on a card (alert title, tally figure) | 5.72 | 9.36 | 4.5:1 |
+| `warning` | `card` | text-warning on a card (alert title) | 5.72 | 9.36 | 4.5:1 |
 | `warning` | `background` | text-warning on the page | 5.72 | 10.33 | 4.5:1 |
 | `warning` | `warning-subtle` | banner, alert, pill: bg-warning-subtle text-warning | 5.14 | 7.64 | 4.5:1 |
 | `foreground` | `warning-subtle` | body text inside the warning banner | 12.47 | 11.75 | 4.5:1 |
 | `foreground/80 on warning-subtle` | `warning-subtle` | trace id (text-foreground/80) inside the warning banner | 6.86 | 8.13 | 4.5:1 |
 | `muted-foreground` | `warning-subtle` | "Trace ID" label inside the warning banner | 5.26 | 6.22 | 4.5:1 |
 | `warning-foreground` | `warning` | solid pill: bg-warning text-warning-foreground | 5.72 | 10.33 | 4.5:1 |
-| `info` | `card` | text-info on a card (alert title, tally figure) | 5.73 | 6.20 | 4.5:1 |
+| `info` | `card` | text-info on a card (alert title) | 5.73 | 6.20 | 4.5:1 |
 | `info` | `background` | text-info on the page | 5.73 | 6.85 | 4.5:1 |
 | `info` | `info-subtle` | banner, alert, pill: bg-info-subtle text-info | 5.06 | 5.22 | 4.5:1 |
 | `foreground` | `info-subtle` | body text inside the info banner | 12.26 | 12.11 | 4.5:1 |
@@ -403,9 +403,9 @@ Requirements: **4.5:1** for text, **3:1** for control boundaries, focus indicato
 | `chart-4` | `card` | chart series 4 | 3.73 | 5.47 | 3.0:1 |
 | `chart-5` | `card` | chart series 5 | 4.32 | 4.62 | 3.0:1 |
 | `chart-1` | `muted` | utilisation meter fill on its bg-muted track | 3.81 | 4.84 | 3.0:1 |
-| `success` | `card` | stress tally bar segment and icon (success) | 5.65 | 9.46 | 3.0:1 |
-| `warning` | `card` | stress tally bar segment and icon (warning) | 5.72 | 9.36 | 3.0:1 |
-| `destructive` | `card` | stress tally bar segment and icon (destructive) | 6.65 | 7.10 | 3.0:1 |
+| `success` | `card` | status icon on a card (success) | 5.65 | 9.46 | 3.0:1 |
+| `warning` | `card` | status icon on a card (warning) | 5.72 | 9.36 | 3.0:1 |
+| `destructive` | `card` | status icon on a card (destructive) | 6.65 | 7.10 | 3.0:1 |
 | `success` | `success-subtle` | outcome icon on its tile (bg-success-subtle) | 5.15 | 7.74 | 3.0:1 |
 | `warning` | `warning-subtle` | outcome icon on its tile (bg-warning-subtle) | 5.14 | 7.64 | 3.0:1 |
 | `info` | `info-subtle` | outcome icon on its tile (bg-info-subtle) | 5.06 | 5.22 | 3.0:1 |
@@ -717,25 +717,9 @@ Service Hub's kanban card, one per appointment, in a time-ordered list grouped b
 
 Every problem shows its `traceId` (copyable) so it can be found in the Aspire dashboard.
 
-### 11.17 Tables and the stress panel
+### 11.17 Tables
 
 - **Table**: header row `h-9 bg-muted/50 text-xs font-medium text-muted-foreground`; rows `h-11 border-b border-border`; numbers right-aligned with `tabular-nums`; mono for slugs and trace ids. Row hover `hover:bg-muted/50`.
-- **Outcome legend (Service Hub's traffic light)**: every outcome is an icon, a word and a colour, never a colour alone.
-
-  | Outcome | Icon | Tile | Word |
-  |---|---|---|---|
-  | 201 | `CircleCheck` | `bg-success-subtle text-success` | Booked |
-  | 409 | `TriangleAlert` | `bg-warning-subtle text-warning` | Slot taken |
-  | 5xx | `CircleX` | `bg-destructive-subtle text-destructive` | Server error |
-  | 429 | `Clock` | `bg-info-subtle text-info` | Rate limited |
-  | any other code | `CircleQuestionMark` | `bg-secondary text-secondary-foreground` | the problem title |
-
-  The tile is the status icon tile of 11.10 in the feedback colours: `inline-flex size-9 items-center justify-center rounded-chip`, icon `size-5`.
-- **Status code pills** (stress results): `rounded-full px-2 h-6 text-xs font-semibold tabular-nums` with the legend's colour pair: 201 `bg-success-subtle text-success`, 409 `bg-warning-subtle text-warning`, 5xx `bg-destructive-subtle text-destructive`, 429 `bg-info-subtle text-info`, any other code `bg-secondary text-secondary-foreground`; the code is always written ("409").
-- **Tallies**: one tile per outcome. The 201, 409 and 5xx tiles always show, 5xx even at 0; a 429 or other-code tile appears after them only when that outcome occurred. Each tile leads with its outcome tile (icon), then the figure `font-heading text-3xl font-bold tabular-nums` in `text-success`, `text-warning`, `text-destructive`, `text-info` or `text-foreground`, and the label underneath in `text-xs text-muted-foreground` ("409 slot-unavailable").
-- **Stacked bar**: `h-3 rounded-full overflow-hidden flex gap-0.5` (a 2 px surface gap between segments), segments `bg-success`, `bg-warning`, `bg-destructive`, `bg-info`, `bg-muted-foreground` sized by count, with the counts written in the tiles (the bar never carries numbers alone). Its legend repeats icon, word and count.
-- **Latency**: p50, p95 and max as small stat tiles (`text-xl font-semibold tabular-nums` + "ms").
-- **Mobile**: tiles stack, the table becomes stacked rows (pill, slug, duration, trace id with copy), no horizontal overflow.
 - **Appointments table** (the Appointments page, adopted from the template's tasks data table):
   - Each row's first cell carries the status marker bar (the 3 px `-border` colour of 11.12, drawn as a `before:` bar inside the cell), so the list reads as the board's status map; the first column's text starts 16 px from the card's edge, in line with the card header and toolbar.
   - Sortable headers are compact ghost buttons (`text-xs font-medium text-muted-foreground`, `ArrowUp` / `ArrowDown` / `ChevronsUpDown` at `size-3.5`); the header cell carries `aria-sort`.
@@ -754,7 +738,7 @@ The template-adoption addendum of tasks 16 and 17 copies files from the shadcn d
 
 | Template file | Becomes | Adapt |
 |---|---|---|
-| `dashboard/components/section-cards.tsx` | KPI strip (11.11), stress tally tiles (11.17) | Delete the wrapper's `*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:bg-gradient-to-t` classes (principle 6: no gradients on cards) and use `Card size="sm" className="shadow-xs"`. Delete the `TrendingUp`/`TrendingDown` badges and the trend footer: the API has no history, so a trend would be invented. `CardAction` holds the optional status icon tile (11.10) or, on a tally tile, the outcome tile (11.17). The figure uses the 11.11 classes, not the template's `CardTitle text-2xl font-semibold`. |
+| `dashboard/components/section-cards.tsx` | KPI strip (11.11) | Delete the wrapper's `*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:bg-gradient-to-t` classes (principle 6: no gradients on cards) and use `Card size="sm" className="shadow-xs"`. Delete the `TrendingUp`/`TrendingDown` badges and the trend footer: the API has no history, so a trend would be invented. `CardAction` holds the optional status icon tile (11.10) or, on a tally tile, the outcome tile (11.17). The figure uses the 11.11 classes, not the template's `CardTitle text-2xl font-semibold`. |
 | `calendar/components/calendars.tsx` | the lane filter (bays or technicians) | No colour dots and no `text-white`: lanes have no colour, because hue is reserved for status (principle 2, section 13). Each lane row: a `Checkbox` (17.3), the lane name, its capability icons (`Zap`, `Ruler`) and its appointment count in `tabular-nums text-muted-foreground`. Desktop: a toolbar popover or collapsible panel; mobile: inside the Filters sheet. |
 | `calendar/components/date-picker.tsx`, `calendar-sidebar.tsx` | the date control (11.4) and the Book action | Selected day `bg-primary text-primary-foreground`, today `ring-1 ring-signal`, closed days disabled and `line-through`. The sidebar's quick action becomes **Book appointment**: the view's one primary button (the floating accent action on mobile). |
 | `calendar/components/calendar-main.tsx` (list view) | the mobile agenda (11.13) | Regroup by lane; each row becomes the 11.13 job card; drop the template's event colours. |
@@ -1024,7 +1008,7 @@ Document:
 - **Audit (4.4)**: rebuilt and widened from 112 to 155 pairs: default outline, link focus, destructive focus, invalid fields, muted text on `sidebar-accent`, `primary-foreground/80`, input on `accent`, `secondary` and each status tint, ring on every surface, status markers and the now line on the hour bands, the meter, outcome icons on their tiles, the switch, selection and the hover states. Figures are now 8-bit quantised and truncated, so they reproduce from the hex values.
 - **Agenda card (11.13)**: rebuilt from the fields the schedule endpoint returns: VIN and plate added; make and model removed (they come from `GET /appointments/{id}` in the details sheet, never fetched per card). The card names the other resource (technician in bay mode, bay in technician mode) and the lane header names the grouped one, so every card shows both. The lane name is not repeated on each card (the verifier's sketch repeated it), because inside a lane group it would be the same word on every card.
 - **Provenance in the app (11.1)**: a visible sidebar-footer line, and the wordmark is a plain `span`, never a link. Not adopted: `aria-label="Keyloop (demo)"` on the wordmark span, because ARIA 1.2 does not allow naming a generic `span`, so screen readers may ignore it; the visible line reaches everyone, screenshots included.
-- **Traffic light (9, 11.17)**: specified as check, triangle and cross with words and tiles, plus 429 and any other code. `CircleX` is now the failure icon everywhere (stress panel, `ProblemAlert`, error toasts), not only in the stress panel, so an icon means one thing across the app; `CircleAlert` is kept for field errors.
+- **Traffic light (9, 11.17)**: specified as check, triangle and cross with words and tiles, plus 429 and any other code. `CircleX` is now the failure icon everywhere (`ProblemAlert`, error toasts; the stress panel it was first drawn for was removed on 2026-10-12), so an icon means one thing across the app; `CircleAlert` is kept for field errors.
 - **Problems (11.16)**: 404, 429 (with `Retry-After`) and any other 4xx added.
 - **Colour checks (17.2)**: both commands scan `.ts` too and catch `white`/`black` and `var(--kl-*)`/`var(--domain-*)`; tested against fixtures (a `.ts` status map with `bg-blue-500 text-white` and `#ff0000` is now caught) and against the current source (only the two scrims, which the recipes fix).
 - **Template adoption (11.19)**: rules for `section-cards`, `calendars`, the date picker, the calendar list view, the booking form, the optional chart, and the 404 and error-boundary routes (added to 12.1).
