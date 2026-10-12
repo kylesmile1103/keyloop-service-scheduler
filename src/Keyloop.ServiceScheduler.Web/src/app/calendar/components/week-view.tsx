@@ -47,7 +47,7 @@ export function WeekView({ days, byDay, dealership, today, selectedId, onSelect,
             */}
             <div className="flex min-h-11 flex-wrap items-center justify-between gap-1 border-b px-1.5 py-1.5 @[9rem]/day:px-2 @max-[8rem]/day:gap-0.5 @max-[8rem]/day:px-1 @max-[8rem]/day:py-1">
               {/* Focusable by script only: "+N more" in the month moves focus here once the week is on screen. */}
-              <h3 data-day-heading={date} tabIndex={-1} className="min-w-0 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <h3 data-day-heading={date} tabIndex={-1} className="min-w-0 rounded-sm text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                 <DayLink date={date} today={today} dealershipId={dealership.id} className="@max-[8rem]/day:flex-col @max-[8rem]/day:justify-center @max-[8rem]/day:gap-0">
                   <span className={cn("text-muted-foreground @max-[8rem]/day:text-xs @max-[8rem]/day:leading-4", date === today && "font-semibold text-foreground")}>
                     {formatDay(date, "short").slice(0, 3)}
