@@ -4952,7 +4952,7 @@
                 "type": "null"
               },
               {
-                "description": "Read-time review against recorded requirements on the local appointment date. Omitted with the flag off. No appointment is rewritten.",
+                "description": "Read-time review against recorded requirements on the local appointment date. Only `Confirmed`, `CheckedIn` and `InProgress`\nappointments, which still hold their bay and technician, are flagged; `Completed`, `Cancelled` and `NoShow` never are.\nOmitted with the flag off and when nothing needs review. No appointment is rewritten.",
                 "$ref": "#/components/schemas/CompetenceWarningResponse"
               }
             ]
@@ -6209,7 +6209,7 @@
                 "type": "null"
               },
               {
-                "description": "Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role.",
+                "description": "Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role,\nand only on `Confirmed`, `CheckedIn` and `InProgress` appointments, which still hold their bay and technician; never on\n`Completed` or `NoShow`.",
                 "$ref": "#/components/schemas/CompetenceWarningResponse"
               }
             ]
