@@ -2,23 +2,32 @@
 // `aspire run`) generates and keeps the secrets, starts PostgreSQL with a persistent volume and pgweb, the API (which migrates and seeds
 // in Development) behind its health check, and, once it exists, the dispatch board; `aspire publish` turns the same model into Docker
 // Compose.
+using Aspire.Hosting.Docker.Resources;
 using Aspire.Hosting.Docker.Resources.ServiceNodes;
 using Microsoft.Extensions.Configuration;
+
+const string PostgresUserName = "scheduler";
 
 var builder = DistributedApplication.CreateBuilder(args);
 
 // The publish target (Addendum C §C6, Task 18). In run mode it is not part of the model.
 builder.AddDockerComposeEnvironment("compose")
-    // This dedicated subnet is the only network trusted by appsettings.Demo.json. Keep both values in sync.
-    .ConfigureComposeFile(compose => compose.Networks["aspire"].Ipam = new Ipam
+    .ConfigureComposeFile(compose =>
     {
-        Config = [new Dictionary<string, string> { ["subnet"] = "172.30.14.0/24" }],
-    });
+        // This dedicated subnet is the only network appsettings.Demo.json trusts; AppHostModelTests fails when the two differ. It contains
+        // the bridge gateway, from which Docker delivers traffic for published host ports, so the API stays unpublished (expose only).
+        compose.Networks["aspire"].Ipam = new Ipam { Config = [new Dictionary<string, string> { ["subnet"] = "172.30.14.0/24" }] };
+
+        // `aspire publish` writes every deployment input to .env with an empty value and ignores parameter defaults there, so the user
+        // name's default travels in the Compose interpolation instead: an unset or empty POSTGRES_USER resolves to the run-mode user.
+        ComposeInputs.DefaultTo(compose, "POSTGRES_USER", PostgresUserName);
+    })
+    .ConfigureEnvFile(inputs => inputs["POSTGRES_USER"].Description = $"Parameter postgres-user (empty means {PostgresUserName})");
 
 // Secrets (§C1): the password is generated on the first run and kept in this project's user secrets (Parameters:postgres-password),
 // so the persistent container's credentials stay valid across runs and nobody types a secret. In publish mode both parameters become
-// deployment inputs; the user name carries its default there, the password does not.
-var pgUser = builder.AddParameter("postgres-user", "scheduler", publishValueAsDefault: true);
+// deployment inputs; the user name keeps its default through the Compose file above, the password has none.
+var pgUser = builder.AddParameter("postgres-user", PostgresUserName, publishValueAsDefault: true);
 var pgPassword = builder.AddParameter("postgres-password", new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);
 
 // PostgreSQL 17, the version the integration tests run against (Testcontainers postgres:17). The tag is set before the data volume
@@ -112,3 +121,34 @@ if (Directory.Exists(Path.Combine(builder.AppHostDirectory, "../Keyloop.ServiceS
 }
 
 builder.Build().Run();
+
+/// <summary>Defaults for Compose deployment inputs, which <c>aspire publish</c> leaves empty in the generated <c>.env</c>.</summary>
+internal static class ComposeInputs
+{
+    /// <summary>
+    /// Rewrites every <c>${name}</c> in the services' environments to <c>${name:-value}</c>, so Compose substitutes
+    /// <paramref name="value"/> when the input is unset or empty. Fails the publish if the generated file references the input
+    /// nowhere, or anywhere else, rather than writing a bundle that would start with an empty value.
+    /// </summary>
+    public static void DefaultTo(ComposeFile compose, string name, string value)
+    {
+        var reference = $"${{{name}}}";
+        var withDefault = $"${{{name}:-{value}}}";
+        var rewritten = 0;
+        foreach (var environment in compose.Services.Values.Select(service => service.Environment))
+        {
+            foreach (var (key, text) in environment.Where(entry => entry.Value.Contains(reference, StringComparison.Ordinal)).ToList())
+            {
+                environment[key] = text.Replace(reference, withDefault, StringComparison.Ordinal);
+                rewritten++;
+            }
+        }
+
+        if (rewritten == 0 || compose.ToYaml().Contains(reference, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The generated Compose file references {reference} {(rewritten == 0 ? "nowhere" : "outside a service environment")}; "
+                + "update ComposeInputs.DefaultTo in AppHost.cs.");
+        }
+    }
+}

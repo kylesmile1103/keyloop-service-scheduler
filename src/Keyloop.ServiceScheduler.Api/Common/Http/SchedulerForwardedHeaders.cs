@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Forwarded headers from the TLS-terminating ingress (<c>Security:ForwardedHeaders</c>, on in UAT and Production): the first
+/// Forwarded headers from the ingress (<c>Security:ForwardedHeaders</c>, on in UAT, Production and Demo): the first
 /// middleware, so everything after it (HTTPS redirection, rate-limit partitions, <see cref="CurrentActorMiddleware"/>) sees the
 /// client address and scheme. The framework's loopback defaults are replaced by the configured, validated peers.
 /// </summary>

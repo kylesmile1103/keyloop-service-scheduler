@@ -156,16 +156,25 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
                 await App.StartAsync(ct);
                 await App.ResourceNotifications.WaitForResourceHealthyAsync("api", ct);
             }
-            catch
+            catch (Exception startupFailure)
             {
-                if (App is not null)
+                try
                 {
-                    await DisposeAsync();
+                    if (App is not null)
+                    {
+                        await DisposeAsync();
+                    }
+                    else
+                    {
+                        await builder.DisposeAsync();
+                    }
                 }
-                else
+                catch (Exception cleanupFailure)
                 {
-                    await builder.DisposeAsync();
+                    // The reason the AppHost did not start stays first; a failed stop (e.g. its deadline) must not replace it.
+                    throw new AggregateException("The AppHost did not start, and cleaning it up failed as well.", startupFailure, cleanupFailure);
                 }
+
                 throw;
             }
         }

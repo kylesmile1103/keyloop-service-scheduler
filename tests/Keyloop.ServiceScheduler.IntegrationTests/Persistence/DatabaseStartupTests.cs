@@ -4,7 +4,9 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -14,22 +16,40 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    // A bare server (no database yet), and the empty database that Aspire's AddDatabase (run mode) or POSTGRES_DB (Compose) creates.
     [Theory]
-    [InlineData("Development")]
-    [InlineData("Demo")]
-    public async Task Startup_creates_a_missing_database_migrates_and_seeds_it(string environment)
+    [InlineData("Development", false)]
+    [InlineData("Development", true)]
+    [InlineData("Demo", false)]
+    [InlineData("Demo", true)]
+    public async Task Startup_migrates_and_seeds_a_missing_or_empty_database(string environment, bool databaseExists)
     {
         var name = $"startup_{Guid.NewGuid():N}";
         var connectionString = new NpgsqlConnectionStringBuilder(pg.ConnectionString) { Database = name }.ConnectionString;
+        var logs = new CapturingLoggerProvider();
         try
         {
+            if (databaseExists)
+            {
+                await AdminAsync($"CREATE DATABASE {new NpgsqlCommandBuilder().QuoteIdentifier(name)}");
+            }
+
             await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
                 .UseEnvironment(environment)
                 .UseSetting("ConnectionStrings:schedulerdb", connectionString)
-                .ConfigureServices(services => services.AddSingleton<TimeProvider>(TestData.Clock())));
+                .UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command", "Information")
+                .ConfigureServices(services => services
+                    .AddSingleton<TimeProvider>(TestData.Clock())
+                    .AddSingleton<ILoggerProvider>(logs)));
             using var client = factory.CreateClient();
 
             (await client.GetAsync("/health", Ct)).StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
+            // Nothing is logged as an error, and the only failed command EF reports is the history read that MigrateAsync makes itself
+            // before it creates the table: the initializer adds none, whether the database was missing or empty.
+            logs.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => $"{e.Category}: {e.Message}").ShouldBeEmpty();
+            FailedCommands(logs).ShouldBeLessThanOrEqualTo(1, string.Join(Environment.NewLine, logs.Entries
+                .Where(e => e.EventId.Id == RelationalEventId.CommandError.Id).Select(e => e.Message)));
+            var failedAtStartup = FailedCommands(logs);
             (await client.GetAsync("/scalar/v1", Ct)).StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
             using var scope = factory.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SchedulerDbContext>();
@@ -42,6 +62,7 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
             // A second startup initialization must neither reapply migrations nor duplicate the demo week.
             await DatabaseInitializer.InitializeAsync(factory.Services, Ct);
             (await db.Appointments.CountAsync(Ct)).ShouldBe(appointments);
+            FailedCommands(logs).ShouldBe(failedAtStartup);
 
             if (environment == "Demo")
             {
@@ -74,11 +95,18 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
         }
         finally
         {
-            await using var admin = new NpgsqlConnection(pg.ConnectionString);
-            await admin.OpenAsync(Ct);
-            var quoted = new NpgsqlCommandBuilder().QuoteIdentifier(name);
-            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {quoted} WITH (FORCE)", admin);
-            await drop.ExecuteNonQueryAsync(Ct);
+            await AdminAsync($"DROP DATABASE IF EXISTS {new NpgsqlCommandBuilder().QuoteIdentifier(name)} WITH (FORCE)");
         }
+    }
+
+    private static int FailedCommands(CapturingLoggerProvider logs) =>
+        logs.Entries.Count(e => e.EventId.Id == RelationalEventId.CommandError.Id);
+
+    private async Task AdminAsync(string sql)
+    {
+        await using var admin = new NpgsqlConnection(pg.ConnectionString);
+        await admin.OpenAsync(Ct);
+        await using var command = new NpgsqlCommand(sql, admin);
+        await command.ExecuteNonQueryAsync(Ct);
     }
 }

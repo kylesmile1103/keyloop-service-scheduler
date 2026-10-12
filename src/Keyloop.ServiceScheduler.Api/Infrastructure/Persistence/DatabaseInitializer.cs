@@ -2,6 +2,8 @@ using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
@@ -29,9 +31,22 @@ public static class DatabaseInitializer
 
         if (options.MigrateOnStartup)
         {
-            // EF's history repository handles both a missing database and a missing history table. A direct SQL probe here would
-            // require the database to exist before MigrateAsync gets the chance to create it (Development/Demo on a bare server).
-            var pending = (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+            // Npgsql reads the migration history by trying the query, so on a fresh database the read fails: on a bare server at the
+            // connection (logged as an Error), in an empty database (as AddDatabase and POSTGRES_DB create it) on the missing history
+            // table (Information, since Program.cs lowers CommandError). MigrateAsync makes that read once itself, so the initializer
+            // does not: it creates a missing database first, as MigrateAsync would (the existence check expects the failed connection),
+            // probes for the history table and takes the pending list from the model until that table exists.
+            var creator = db.GetService<IRelationalDatabaseCreator>();
+            var created = !await creator.ExistsAsync(ct);
+            if (created)
+            {
+                await creator.CreateAsync(ct);
+            }
+
+            var historyExists = !created && await db.Database
+                .SqlQuery<bool>($"""SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL AS "Value" """)
+                .SingleAsync(ct);
+            var pending = historyExists ? (await db.Database.GetPendingMigrationsAsync(ct)).ToList() : db.Database.GetMigrations().ToList();
             await db.Database.MigrateAsync(ct);
             logger.MigrationsApplied(pending.Count, pending.Count == 0 ? "none" : string.Join(", ", pending));
         }

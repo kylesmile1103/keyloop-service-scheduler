@@ -1,6 +1,10 @@
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace Keyloop.ServiceScheduler.AspireTests;
 
@@ -35,6 +39,52 @@ public sealed class AppHostModelTests
     }
 
     [Fact]
+    public async Task Published_bundle_starts_as_scheduler_with_only_the_documented_inputs()
+    {
+        using var bundle = await PublishedBundle.CreateAsync(TestContext.Current.CancellationToken);
+
+        // Addendum C6's manual start: the generated .env plus API_IMAGE and POSTGRES_PASSWORD. POSTGRES_USER is deliberately not supplied.
+        using var compose = await bundle.ResolveAsync(
+            new Dictionary<string, string> { ["API_IMAGE"] = "keyloop-scheduler-api:model-test", ["POSTGRES_PASSWORD"] = "model-test-password" },
+            TestContext.Current.CancellationToken);
+
+        var services = compose.RootElement.GetProperty("services");
+        services.GetProperty("postgres").GetProperty("environment").GetProperty("POSTGRES_USER").GetString().ShouldBe("scheduler");
+        var api = services.GetProperty("api").GetProperty("environment");
+        api.GetProperty("ConnectionStrings__schedulerdb").GetString().ShouldNotBeNull().ShouldContain("Username=scheduler;");
+        api.GetProperty("SCHEDULERDB_USERNAME").GetString().ShouldBe("scheduler");
+    }
+
+    [Fact]
+    public async Task Published_network_is_exactly_what_Demo_trusts_and_the_api_stays_unpublished_on_it()
+    {
+        using var bundle = await PublishedBundle.CreateAsync(TestContext.Current.CancellationToken);
+        using var compose = await bundle.ResolveAsync(
+            new Dictionary<string, string> { ["API_IMAGE"] = "keyloop-scheduler-api:model-test", ["POSTGRES_PASSWORD"] = "model-test-password" },
+            TestContext.Current.CancellationToken);
+
+        // The API's effective Demo settings, merged the way the API merges them.
+        var trust = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(bundle.RepositoryRoot, "src/Keyloop.ServiceScheduler.Api/appsettings.json"), optional: false, reloadOnChange: false)
+            .AddJsonFile(Path.Combine(bundle.RepositoryRoot, "src/Keyloop.ServiceScheduler.Api/appsettings.Demo.json"), optional: false, reloadOnChange: false)
+            .Build()
+            .GetSection("Security:ForwardedHeaders");
+        trust.GetSection("KnownProxies").GetChildren().ShouldBeEmpty();
+        var trustedNetworks = trust.GetSection("KnownNetworks").GetChildren().Select(n => n.Value).ToList();
+
+        var subnets = compose.RootElement.GetProperty("networks").GetProperty("aspire").GetProperty("ipam").GetProperty("config")
+            .EnumerateArray().Select(c => c.GetProperty("subnet").GetString()).ToList();
+        subnets.ShouldNotBeEmpty();
+        trustedNetworks.ShouldBe(subnets);
+
+        // The trusted network contains the bridge gateway, through which Docker delivers traffic from published host ports. Publishing the
+        // API's port would therefore let any host client spoof X-Forwarded-For (rate-limit partition, audit actor); only expose is allowed.
+        var apiService = compose.RootElement.GetProperty("services").GetProperty("api");
+        apiService.TryGetProperty("ports", out _).ShouldBeFalse();
+        apiService.GetProperty("networks").EnumerateObject().Select(n => n.Name).ShouldBe(["aspire"]);
+    }
+
+    [Fact]
     public async Task Api_leaves_forwarded_header_trust_to_its_validated_security_options()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -44,6 +94,89 @@ public sealed class AppHostModelTests
 
         api.Annotations.OfType<DisableForwardedHeadersAnnotation>().ShouldHaveSingleItem();
         api.Annotations.OfType<HealthCheckAnnotation>().Select(h => h.Key).ShouldContain("api_http_/health_200_check");
+    }
+
+    /// <summary>
+    /// A real <c>aspire publish</c> of the AppHost (the CLI runs the same pipeline step) into a temporary directory, resolved by
+    /// <c>docker compose config</c> exactly as an operator's <c>docker compose up</c> would resolve it.
+    /// </summary>
+    private sealed class PublishedBundle : IDisposable
+    {
+        private PublishedBundle(string directory, string repositoryRoot) => (Directory, RepositoryRoot) = (directory, repositoryRoot);
+
+        public string Directory { get; }
+
+        public string RepositoryRoot { get; }
+
+        public static async Task<PublishedBundle> CreateAsync(CancellationToken ct)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(60));
+            var output = System.IO.Directory.CreateTempSubdirectory("keyloop-compose-");
+            try
+            {
+                // The password is supplied so that nothing evaluates, and so persists, its generated default.
+                var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+                var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
+                    ["--operation", "publish", "--step", "publish", "--output-path", output.FullName, $"--Parameters:postgres-password={password}"],
+                    timeout.Token);
+                var repositoryRoot = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../.."));
+                await using (var app = await builder.BuildAsync(timeout.Token))
+                {
+                    await app.RunAsync(timeout.Token); // publish mode: runs the pipeline step, then stops the application
+                }
+
+                File.Exists(Path.Combine(output.FullName, "docker-compose.yaml")).ShouldBeTrue("the publish pipeline wrote no Compose file");
+                File.Exists(Path.Combine(output.FullName, ".env")).ShouldBeTrue("the publish pipeline wrote no .env file");
+                return new PublishedBundle(output.FullName, repositoryRoot);
+            }
+            catch
+            {
+                output.Delete(recursive: true);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// <c>docker compose config</c> over the generated files with the generated <c>.env</c> and only <paramref name="inputs"/>: every
+        /// variable the <c>.env</c> declares is removed from the inherited environment first, so nothing from the caller's shell leaks in.
+        /// </summary>
+        public async Task<JsonDocument> ResolveAsync(IReadOnlyDictionary<string, string> inputs, CancellationToken ct)
+        {
+            var envFile = Path.Combine(Directory, ".env");
+            var start = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var argument in new[]
+            {
+                "compose", "--project-name", "keyloop-publish-model", "--env-file", envFile,
+                "-f", Path.Combine(Directory, "docker-compose.yaml"), "config", "--format", "json",
+            })
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            foreach (var line in await File.ReadAllLinesAsync(envFile, ct))
+            {
+                var separator = line.IndexOf('=', StringComparison.Ordinal);
+                if (!line.StartsWith('#') && separator > 0)
+                {
+                    start.Environment.Remove(line[..separator].Trim());
+                }
+            }
+
+            foreach (var (name, value) in inputs)
+            {
+                start.Environment[name] = value;
+            }
+
+            using var process = Process.Start(start).ShouldNotBeNull();
+            var output = process.StandardOutput.ReadToEndAsync(ct);
+            var error = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            process.ExitCode.ShouldBe(0, $"docker compose config failed: {await error}");
+            return JsonDocument.Parse(await output);
+        }
+
+        public void Dispose() => System.IO.Directory.Delete(Directory, recursive: true);
     }
 
     private static async Task<Dictionary<string, object>> EnvironmentAsync(IDistributedApplicationTestingBuilder builder, IResource resource, CancellationToken ct)
