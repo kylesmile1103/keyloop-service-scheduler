@@ -10,7 +10,7 @@ import type {
   TriageBookingResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
-import { shiftDate } from "@/app/dispatch/lib/calendar-date"
+import { shiftDate } from "@/lib/calendar-date"
 import { munich, reading } from "@/test/dealerships"
 import { jsonResponse, mockApi, problemResponse } from "@/test/mock-api"
 import {

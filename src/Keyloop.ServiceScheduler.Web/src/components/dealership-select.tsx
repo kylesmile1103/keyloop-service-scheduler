@@ -25,8 +25,8 @@ const placeholders: Record<DealershipListStatus, string> = {
 }
 
 /**
- * Which workshop the board shows. Each option names the dealership's time zone: the board's times are that dealership's
- * local times.
+ * Which workshop a page shows. Each option names the dealership's time zone: the page's times are that dealership's local
+ * times.
  */
 export function DealershipSelect({ dealerships = [], value, onValueChange, status, className }: DealershipSelectProps) {
   const items = dealerships.map((dealership) => ({ value: dealership.id, label: dealership.name }))

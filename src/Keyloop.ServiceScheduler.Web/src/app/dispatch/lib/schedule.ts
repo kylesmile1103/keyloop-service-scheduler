@@ -5,8 +5,9 @@ import type {
   ScheduledAppointmentResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
+import { bookedMinutes, windowMinutes } from "@/lib/booked-time"
+import { todayIn } from "@/lib/calendar-date"
 
-import { todayIn } from "./calendar-date"
 import { activeStatuses } from "./status"
 
 /** Which resources are the board's rows: the bays (the default) or the technicians. */
@@ -74,25 +75,17 @@ export interface ScheduleKpis {
   busyNow: { busy: number; active: number } | null
 }
 
-/** Statuses whose minutes count as booked bay time: a no-show never used the bay. */
-const occupying = new Set(["Confirmed", "CheckedIn", "InProgress", "Completed"])
-
 /** The KPI strip's figures, computed from the schedule alone (Addendum B §B4). */
 export function scheduleKpis(schedule: WorkshopScheduleResponse, now: Date): ScheduleKpis {
   const appointments = boardAppointments(schedule)
   const window = schedule.operatingWindow
   if (!window) return { appointments: appointments.length, utilisation: null, busyNow: null }
 
-  const opens = Date.parse(window.startUtc)
-  const closes = Date.parse(window.endUtc)
-  const minutes = (from: number, to: number) => Math.max(0, Math.min(to, closes) - Math.max(from, opens)) / 60_000
-
   const activeBays = schedule.bays.filter((bay) => bay.isActive)
-  const bookedMinutes = activeBays
-    .flatMap((bay) => bay.appointments)
-    .filter((appointment) => occupying.has(appointment.status))
-    .reduce((total, appointment) => total + minutes(Date.parse(appointment.startUtc), Date.parse(appointment.endUtc)), 0)
-  const utilisation = { bookedMinutes, capacityMinutes: activeBays.length * minutes(opens, closes) }
+  const utilisation = {
+    bookedMinutes: bookedMinutes(activeBays.flatMap((bay) => bay.appointments), window),
+    capacityMinutes: activeBays.length * windowMinutes(window),
+  }
 
   let busyNow: ScheduleKpis["busyNow"] = null
   if (todayIn(schedule.dealership.timeZoneId, now) === schedule.date) {

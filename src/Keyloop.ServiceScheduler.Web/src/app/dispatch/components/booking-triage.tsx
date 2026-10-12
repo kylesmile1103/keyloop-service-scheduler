@@ -4,20 +4,20 @@ import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, ScanSearch 
 import { useId, useLayoutEffect, useRef } from "react"
 
 import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate } from "@/api/types.gen"
+import { CapabilityBadges } from "@/components/capability-badges"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatDay, weekdayOf } from "@/lib/calendar-date"
+import { featureList } from "@/lib/features"
+import { openingHoursOn } from "@/lib/opening-hours"
 import { parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
-import { formatDay, weekdayOf } from "../lib/calendar-date"
-import { featureList } from "../lib/features"
-import { openingHoursOn } from "../lib/opening-hours"
-import { CapabilityBadges } from "./capability-badges"
 
 /** Said wherever suggestions are offered (Task 26): who makes them, and that a person checks them. */
 const disclosure = "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking."

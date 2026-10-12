@@ -8,7 +8,7 @@ import {
   toPickerDate,
   todayIn,
   weekdayOf,
-} from "./calendar-date"
+} from "@/lib/calendar-date"
 
 describe("calendar dates (yyyy-MM-dd, the API's local date)", () => {
   it("knows today in the dealership's zone, not the browser's", () => {

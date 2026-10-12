@@ -6,10 +6,9 @@ import type { DealershipResponse } from "@/api/types.gen"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
+import { formatDay, fromPickerDate, shiftDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
+import { openingHoursOn } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
-
-import { formatDay, fromPickerDate, shiftDate, toPickerDate, weekdayOf } from "../lib/calendar-date"
-import { openingHoursOn } from "../lib/opening-hours"
 
 interface DateNavigatorProps {
   /** The board's date and today's, `yyyy-MM-dd` on the dealership's calendar. */

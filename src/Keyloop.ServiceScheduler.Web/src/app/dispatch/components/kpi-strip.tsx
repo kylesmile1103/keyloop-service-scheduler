@@ -7,9 +7,9 @@ import { getAvailabilityOptions, getServiceTypesOptions } from "@/api/@tanstack/
 import type { AppointmentStatus, WorkshopScheduleResponse } from "@/api/types.gen"
 import { Card, CardAction, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { formatDay } from "@/lib/calendar-date"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 
-import { formatDay } from "../lib/calendar-date"
 import { boardAppointments, scheduleKpis } from "../lib/schedule"
 import { boardStatuses, statusMeta } from "../lib/status"
 import { formatLocalTime } from "../lib/time-grid"

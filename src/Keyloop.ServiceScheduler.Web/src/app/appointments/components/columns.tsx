@@ -1,14 +1,14 @@
 import type { ColumnDef, FilterFn, Row, SortFn } from "@tanstack/react-table"
 
 import { PlateChip } from "@/app/dispatch/components/appointment-block"
-import { InitialsAvatar } from "@/app/dispatch/components/initials-avatar"
 import { StatusBadge } from "@/app/dispatch/components/status-badge"
 import { localTime } from "@/app/dispatch/lib/appointment-text"
 import { boardStatuses } from "@/app/dispatch/lib/status"
+import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header"
+import { InitialsAvatar } from "@/components/initials-avatar"
 import type { DataTableFeatures } from "@/lib/data-table"
 
 import { type AppointmentRow, durationMinutes, matchesFacet, matchesSearch } from "../lib/appointments"
-import { DataTableColumnHeader } from "./data-table-column-header"
 import { DataTableRowActions } from "./data-table-row-actions"
 
 type Features = DataTableFeatures

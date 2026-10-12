@@ -25,6 +25,7 @@ import type {
   ServiceTypeResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
+import { CapabilityBadges } from "@/components/capability-badges"
 import { IllustratedState } from "@/components/illustrated-state"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +43,9 @@ import { toast } from "@/components/ui/toast"
 import { useCountdown } from "@/hooks/use-countdown"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
+import { featureLabel } from "@/lib/features"
+import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
 import {
   describeFailure,
   fieldErrors,
@@ -56,12 +60,8 @@ import { cn } from "@/lib/utils"
 import { bookingTriageStatusQuery, useBookingTriage } from "../hooks/use-booking-triage"
 import { localTime } from "../lib/appointment-text"
 import { bookingSchema, type BookingForm, type BookingFormInput, stepOneFields, toBookingRequest } from "../lib/booking-schema"
-import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "../lib/calendar-date"
-import { featureLabel } from "../lib/features"
-import { nextOpenDate, openingHoursOn } from "../lib/opening-hours"
 import { AvailabilityChips, SuggestedSlotChips } from "./availability-chips"
 import { BookingTriageIntake } from "./booking-triage"
-import { CapabilityBadges } from "./capability-badges"
 
 export interface BookingDialogProps {
   open: boolean

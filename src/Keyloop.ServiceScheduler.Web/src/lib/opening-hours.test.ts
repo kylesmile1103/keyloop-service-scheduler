@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { firstOpenDate, hourMarks, nextOpenDate, openingHoursOn, weekdayIn } from "@/lib/opening-hours"
 import { munich, reading } from "@/test/dealerships"
-import { firstOpenDate, hourMarks, nextOpenDate, openingHoursOn, weekdayIn } from "./opening-hours"
 
 describe("weekdayIn", () => {
   it("names the weekday as the API does", () => {

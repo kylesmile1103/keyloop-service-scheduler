@@ -1,9 +1,9 @@
 import { useCallback, useEffect } from "react"
 import { useNavigation, useSearchParams } from "react-router-dom"
 
+import { isCalendarDate } from "@/lib/calendar-date"
 import { DATE_PARAM } from "@/lib/workshop-params"
 
-import { isCalendarDate } from "../lib/calendar-date"
 import type { LaneMode } from "../lib/schedule"
 
 export { DATE_PARAM }

@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-faceted-filter.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+
 import type { Column, RowData } from "@tanstack/react-table"
 import { PlusCircle } from "lucide-react"
 import type { ReactNode } from "react"
@@ -8,28 +11,40 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
-import { type DataTableFeatures, selectedValues } from "@/lib/data-table"
+import { countOf, type DataTableFeatures, type Noun, selectedValues } from "@/lib/data-table"
 import { cn } from "@/lib/utils"
 
-import type { FacetOption } from "../lib/appointments"
+/** A choice in a faceted filter: what the filter compares (an id, a status, a flag) and what the user reads. */
+export interface FacetOption {
+  value: string
+  label: string
+}
 
 /** A faceted filter's choice, with an optional mark drawn before its label (a status's swatch). */
 export interface FilterChoice extends FacetOption {
   mark?: ReactNode
 }
 
+/** One faceted filter of a list: the column it filters, its name in the toolbar and the filter sheet, and its choices. */
+export interface Facet {
+  id: string
+  title: string
+  options: readonly FilterChoice[]
+}
+
 interface FacetChoicesProps<TData extends RowData> {
   column: Column<DataTableFeatures, TData, unknown> | undefined
   options: readonly FilterChoice[]
+  /** What the list holds, for each choice's spoken count ("3 appointments"). */
+  noun: Noun
   className?: string
 }
 
 /**
- * A faceted filter's choices as checkboxes, each with how many appointments it holds given the other filters (a facet
- * leaves its own filter out, so the alternatives keep their counts). Shared by the toolbar's popovers and the phone's
- * filter sheet.
+ * A faceted filter's choices as checkboxes, each with how many rows it holds given the other filters (a facet leaves its
+ * own filter out, so the alternatives keep their counts). Shared by the toolbar's popovers and the phone's filter sheet.
  */
-export function FacetChoices<TData extends RowData>({ column, options, className }: FacetChoicesProps<TData>) {
+export function FacetChoices<TData extends RowData>({ column, options, noun, className }: FacetChoicesProps<TData>) {
   const counts = column?.getFacetedUniqueValues()
   const selected = selectedValues(column)
 
@@ -50,7 +65,7 @@ export function FacetChoices<TData extends RowData>({ column, options, className
               {/* Read with the label: "Bay 1 - Standard (3 appointments)". */}
               <span className="min-w-0 flex-1 truncate">
                 {option.label}
-                <span className="sr-only">{` (${count} ${count === 1 ? "appointment" : "appointments"})`}</span>
+                <span className="sr-only">{` (${countOf(count, noun)})`}</span>
               </span>
               <span aria-hidden="true" className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {count}
@@ -67,14 +82,15 @@ interface DataTableFacetedFilterProps<TData extends RowData> {
   column: Column<DataTableFeatures, TData, unknown> | undefined
   title: string
   options: readonly FilterChoice[]
+  noun: Noun
 }
 
 /**
  * One column's faceted filter in the toolbar: a dashed button naming the column (and, once chosen, the choices), opening a
- * popover of checkboxes with counts. Adopted from the template's tasks table, with the command palette replaced by a plain
- * checkbox list: a dealership's day has a handful of statuses, bays, technicians and services, too few to need a search.
+ * popover of checkboxes with counts. The template's command palette is replaced by a plain checkbox list: a dealership has
+ * a handful of statuses, bays, technicians and services, too few to need a search.
  */
-export function DataTableFacetedFilter<TData extends RowData>({ column, title, options }: DataTableFacetedFilterProps<TData>) {
+export function DataTableFacetedFilter<TData extends RowData>({ column, title, options, noun }: DataTableFacetedFilterProps<TData>) {
   const selected = selectedValues(column)
   const chosen = options.filter((option) => selected.includes(option.value))
 
@@ -117,7 +133,7 @@ export function DataTableFacetedFilter<TData extends RowData>({ column, title, o
         <PopoverHeader className="px-2 pt-1">
           <PopoverTitle className="text-sm">{title}</PopoverTitle>
         </PopoverHeader>
-        <FacetChoices column={column} options={options} className="max-h-72 overflow-y-auto" />
+        <FacetChoices column={column} options={options} noun={noun} className="max-h-72 overflow-y-auto" />
         <Separator />
         <Button
           type="button"

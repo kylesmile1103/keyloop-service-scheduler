@@ -1,9 +1,8 @@
 import type { BayCapability, Certification } from "@/api/types.gen"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { featureList } from "@/lib/features"
 import { cn } from "@/lib/utils"
-
-import { featureList } from "../lib/features"
 
 interface CapabilityBadgesProps {
   /** A bay's equipment. */

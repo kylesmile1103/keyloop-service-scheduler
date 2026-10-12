@@ -1,13 +1,13 @@
 import { Warehouse } from "lucide-react"
 import type { CSSProperties } from "react"
 
+import { InitialsAvatar } from "@/components/initials-avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 import { appointmentLabel, firstName, timeRange } from "../lib/appointment-text"
 import type { BoardAppointment, LaneMode } from "../lib/schedule"
 import { statusMeta } from "../lib/status"
-import { InitialsAvatar } from "./initials-avatar"
 
 interface AppointmentBlockProps {
   appointment: BoardAppointment

@@ -5,16 +5,16 @@ import { useNavigation, useSearchParams } from "react-router-dom"
 import { getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { toast } from "@/components/ui/toast"
+import { useNow } from "@/hooks/use-now"
+import { todayIn } from "@/lib/calendar-date"
+import { nextOpenDate } from "@/lib/opening-hours"
 import { DEALERSHIP_PARAM } from "@/lib/workshop-params"
-
-import { todayIn } from "../lib/calendar-date"
-import { nextOpenDate } from "../lib/opening-hours"
-import { useNow } from "./use-now"
 
 export { DEALERSHIP_PARAM }
 
 /**
- * The dealership the board shows, kept in the address so a reload or a shared link opens the same workshop.
+ * The dealership a page shows (the dispatch board, the appointments list, the resources pages), kept in the address so a
+ * reload or a shared link opens the same workshop.
  *
  * Until the list has loaded nothing is selected. Then the dealership the address names is selected; without one, a
  * dealership with work to show is (see `useDefaultDealership`), and the address is updated in place (no extra history

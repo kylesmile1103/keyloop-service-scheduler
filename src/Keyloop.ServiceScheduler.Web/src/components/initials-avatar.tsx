@@ -1,6 +1,11 @@
 import { cn } from "@/lib/utils"
 
-import { initials } from "../lib/appointment-text"
+/** Initials for an avatar: first and last name ("Amelia Clarke" → "AC"). */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : words
+  return letters.map((word) => word.charAt(0).toUpperCase()).join("")
+}
 
 const sizes = {
   /** Timeline blocks. */

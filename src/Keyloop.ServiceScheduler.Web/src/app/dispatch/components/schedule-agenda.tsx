@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react"
 import { Fragment, useId } from "react"
 
+import { InitialsAvatar } from "@/components/initials-avatar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
@@ -9,7 +10,6 @@ import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { statusMeta } from "../lib/status"
 import { formatLocalTime } from "../lib/time-grid"
 import { PlateChip } from "./appointment-block"
-import { InitialsAvatar } from "./initials-avatar"
 import { StatusBadge } from "./status-badge"
 
 interface ScheduleAgendaProps {

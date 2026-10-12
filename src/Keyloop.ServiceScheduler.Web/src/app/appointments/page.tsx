@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { type ColumnVisibilityState, functionalUpdate, type ReactTable, useTable } from "@tanstack/react-table"
+import { type ColumnVisibilityState, functionalUpdate, useTable } from "@tanstack/react-table"
 import { ChevronRight, RefreshCw, RotateCw } from "lucide-react"
 import { type ReactNode, type Ref, useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
@@ -8,14 +8,17 @@ import { getDealershipsOptions, getServiceTypesOptions, getWorkshopScheduleOptio
 import type { DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { AppointmentSheet } from "@/app/dispatch/components/appointment-sheet"
 import { DateNavigator } from "@/app/dispatch/components/date-navigator"
-import { type DealershipListStatus, DealershipSelect } from "@/app/dispatch/components/dealership-select"
 import { useBoardParams } from "@/app/dispatch/hooks/use-board-params"
-import { useNow } from "@/app/dispatch/hooks/use-now"
-import { useSelectedDealership } from "@/app/dispatch/hooks/use-selected-dealership"
-import { formatDay, todayIn } from "@/app/dispatch/lib/calendar-date"
-import { daySentence, nextOpenDate } from "@/app/dispatch/lib/opening-hours"
 import { statusMeta } from "@/app/dispatch/lib/status"
 import { formatLocalTime } from "@/app/dispatch/lib/time-grid"
+import type { Facet, FilterChoice } from "@/components/data-table/data-table-faceted-filter"
+import { DataTablePagination } from "@/components/data-table/data-table-pagination"
+import { DataTableToolbar } from "@/components/data-table/data-table-toolbar"
+import { FiltersSheet, type SortChoice } from "@/components/data-table/filters-sheet"
+import { NoMatch } from "@/components/data-table/no-match"
+import { ResultCount } from "@/components/data-table/result-count"
+import { SearchField } from "@/components/data-table/search-field"
+import { type DealershipListStatus, DealershipSelect } from "@/components/dealership-select"
 import { FailedState } from "@/components/failed-state"
 import { IllustratedState } from "@/components/illustrated-state"
 import { BaseLayout } from "@/components/layouts/base-layout"
@@ -24,26 +27,44 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
-import { type DataTableFeatures, dataTableFeatures, isFiltered, PAGE_SIZES, resetFilters } from "@/lib/data-table"
+import { useSelectedDealership } from "@/hooks/use-selected-dealership"
+import { formatDay, todayIn } from "@/lib/calendar-date"
+import { dataTableFeatures, PAGE_SIZES } from "@/lib/data-table"
+import { daySentence, nextOpenDate } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
 import { carrySearch, WORKSHOP_PARAMS } from "@/lib/workshop-params"
 
 import { AppointmentCards } from "./components/appointment-cards"
 import { AppointmentsTable } from "./components/appointments-table"
 import { appointmentColumns, canSearchColumn, searchFilter } from "./components/columns"
-import type { FilterChoice } from "./components/data-table-faceted-filter"
-import { DataTablePagination } from "./components/data-table-pagination"
-import { DataTableToolbar } from "./components/data-table-toolbar"
-import { FiltersSheet } from "./components/filters-sheet"
-import { SearchField } from "./components/search-field"
 import { StatCards } from "./components/stat-cards"
-import { type AppointmentRow, appointmentRows, type FacetId, filterOptions } from "./lib/appointments"
+import {
+  APPOINTMENT_SEARCH,
+  APPOINTMENTS,
+  type AppointmentRow,
+  appointmentRows,
+  FACETS,
+  type FacetId,
+  filterOptions,
+} from "./lib/appointments"
 import { type OpenAppointment, OpenAppointmentContext, type RowIntent } from "./lib/row-actions"
 
 /** Stable empties: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: AppointmentRow[] = []
 const NO_OPTIONS: Record<FacetId, FilterChoice[]> = { status: [], bay: [], technician: [], service: [] }
+
+/** The phone's sort choices: the table's column headers, as one select. */
+const SORTS: readonly SortChoice[] = [
+  { value: "time", label: "Time, earliest first", sorting: [{ id: "time", desc: false }] },
+  { value: "time-desc", label: "Time, latest first", sorting: [{ id: "time", desc: true }] },
+  { value: "status", label: "Status", sorting: [{ id: "status", desc: false }] },
+  { value: "customer", label: "Customer, A to Z", sorting: [{ id: "customer", desc: false }] },
+  { value: "service", label: "Service, A to Z", sorting: [{ id: "service", desc: false }] },
+  { value: "bay", label: "Bay", sorting: [{ id: "bay", desc: false }] },
+  { value: "technician", label: "Technician, A to Z", sorting: [{ id: "technician", desc: false }] },
+]
 
 export default function AppointmentsPage() {
   const dealershipsOptions = getDealershipsOptions()
@@ -157,6 +178,7 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
 
   const rows = useMemo(() => (schedule.data ? appointmentRows(schedule.data) : NO_ROWS), [schedule.data])
   const options = useMemo(() => (schedule.data ? withStatusMarks(filterOptions(schedule.data, catalogue.data)) : NO_OPTIONS), [schedule.data, catalogue.data])
+  const facets = useMemo<Facet[]>(() => FACETS.map((facet) => ({ ...facet, options: options[facet.id] })), [options])
 
   const columnVisibility = useColumnVisibility()
 
@@ -232,26 +254,30 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
           <EmptyDay date={date} today={today} />
         ) : phone ? (
           <div className="flex flex-col gap-3">
-            <SearchField value={String(table.state.globalFilter ?? "")} onChange={(value) => table.setGlobalFilter(value)} />
+            <SearchField
+              value={String(table.state.globalFilter ?? "")}
+              onChange={(value) => table.setGlobalFilter(value)}
+              {...APPOINTMENT_SEARCH}
+            />
             <div className="flex items-center justify-between gap-3">
-              <FiltersSheet table={table} options={options} />
-              <ResultCount table={table} />
+              <FiltersSheet table={table} facets={facets} sorts={SORTS} noun={APPOINTMENTS} title="Filter appointments" />
+              <ResultCount table={table} noun={APPOINTMENTS} />
             </div>
             {table.getRowModel().rows.length > 0 ? (
               <AppointmentCards rows={table.getRowModel().rows.map((row) => row.original)} timeZone={timeZone} selectedId={current} />
             ) : (
-              <NoMatch table={table} />
+              <NoMatch table={table} noun={APPOINTMENTS} />
             )}
             <DataTablePagination table={table} compact />
           </div>
         ) : (
           <>
             <div className="border-b px-4 py-3">
-              <DataTableToolbar table={table} options={options} />
+              <DataTableToolbar table={table} facets={facets} search={APPOINTMENT_SEARCH} noun={APPOINTMENTS} />
             </div>
             <AppointmentsTable table={table} selectedId={current} />
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t px-4 py-2.5">
-              <ResultCount table={table} />
+              <ResultCount table={table} noun={APPOINTMENTS} />
               <DataTablePagination table={table} />
             </div>
           </>
@@ -307,9 +333,6 @@ function withStatusMarks(options: Record<FacetId, FilterChoice[]>): Record<Facet
   }
 }
 
-/** The table instance the list's parts share. */
-type AppointmentsTableInstance = ReactTable<DataTableFeatures, AppointmentRow>
-
 interface ListFrameProps {
   ref: Ref<HTMLElement>
   phone: boolean
@@ -360,35 +383,6 @@ function ListHeader({ headingId, dealership, date, today, schedule, updatedAt, f
           {`Updated ${formatLocalTime(new Date(updatedAt).toISOString(), dealership.timeZoneId)}`}
         </p>
       )}
-    </div>
-  )
-}
-
-/** "6 appointments", or "2 of 6 appointments" while the search or a filter narrows the list; announced as it changes. */
-function ResultCount({ table }: { table: AppointmentsTableInstance }) {
-  const total = table.getCoreRowModel().rows.length
-  const shown = table.getFilteredRowModel().rows.length
-  const noun = total === 1 ? "appointment" : "appointments"
-  return (
-    <p role="status" className="text-sm text-muted-foreground tabular-nums">
-      {isFiltered(table) ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}
-    </p>
-  )
-}
-
-/** The phone's "nothing matches" (the table has its own row for it). */
-function NoMatch({ table }: { table: AppointmentsTableInstance }) {
-  return (
-    <div className="flex flex-col items-center gap-2 rounded-chip border border-dashed border-border px-4 py-6 text-center">
-      <p className="text-sm text-muted-foreground">No appointments match the search and filters.</p>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 cursor-pointer"
-        onClick={() => resetFilters(table)}
-      >
-        Reset filters
-      </Button>
     </div>
   )
 }

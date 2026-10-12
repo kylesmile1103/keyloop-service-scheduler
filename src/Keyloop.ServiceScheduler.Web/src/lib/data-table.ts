@@ -63,6 +63,17 @@ export const dataTableFeatures = tableFeatures({
 
 export type DataTableFeatures = typeof dataTableFeatures
 
+/** How a list names what it holds, for its counts: one appointment, two technicians. */
+export interface Noun {
+  one: string
+  other: string
+}
+
+/** "1 technician", "6 technicians". */
+export function countOf(count: number, noun: Noun): string {
+  return `${count} ${count === 1 ? noun.one : noun.other}`
+}
+
 /** The page sizes a data table offers; a table with no more rows than the smallest needs no paging at all. */
 export const PAGE_SIZES = [10, 20, 30, 50] as const
 

@@ -1,6 +1,5 @@
 import type { DayOfWeek, DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
-
-import { formatDay, shiftDate, weekdayOf } from "./calendar-date"
+import { formatDay, shiftDate, weekdayOf } from "@/lib/calendar-date"
 
 export interface OpeningHours {
   /** Local wall-clock time, `HH:mm`. */
