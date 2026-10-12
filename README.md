@@ -39,9 +39,9 @@ For an isolated manual check, supply a temporary PostgreSQL password and `--AppH
 
 ## Optional booking intake triage
 
-The backend exposes `GetBookingTriageStatus` (`GET /api/v1/booking-triage`) and `TriageBookingRequest` (`POST /api/v1/dealerships/{id}/booking-triage`, body `{ "description": "Brakes squeal, it's an EV, need it Thursday." }`). The response includes `suggest`, `confirm` or `no-match`, up to three bookable service candidates with probabilities and an optional local date. Confirm a service before requesting availability; the operation never books or stores the description. Disabled or unavailable suggestions return `503 triage-unavailable` and leave manual selection available. See [SYSTEM_DESIGN §8.10](docs/SYSTEM_DESIGN.md#810-booking-intake-triage).
+The backend exposes `GetBookingTriageStatus` (`GET /api/v1/booking-triage`) and `TriageBookingRequest` (`POST /api/v1/dealerships/{id}/booking-triage`, body `{ "description": "Brakes squeal, it's an EV, need it Thursday." }`). The response includes `suggest`, `confirm` or `no-match`, up to three bookable service candidates with probabilities and an optional local date. Confirm a service before requesting availability; the operation never books or stores the description. Disabled or unavailable suggestions return `503 triage-unavailable` and leave manual selection available. See [ARCHITECTURE §8.10](docs/ARCHITECTURE.md#810-booking-intake-triage).
 
-On the dispatch board, the booking dialog's first step shows the intake only when the status says it is enabled: *Describe the issue*, *Suggest a service*, and the line "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking." Suggested services appear as cards marked *Likely* or *Possible* with their percentage and the equipment and certifications they need; *Use this* sets the service (and the day asked for, when that day is still to come and the workshop is open then), clears any start time already picked, and moves on to the free start times. Nothing is applied without that click. A failure shows the usual problem alert and leaves the service select as it was. *Copy the description into Notes* is ticked by default and never overwrites notes typed by hand; untick it to keep the description out of the booking. See [SYSTEM_DESIGN §15](docs/SYSTEM_DESIGN.md#15-dispatch-board-ui-harness).
+On the dispatch board, the booking dialog's first step shows the intake only when the status says it is enabled: *Describe the issue*, *Suggest a service*, and the line "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking." Suggested services appear as cards marked *Likely* or *Possible* with their percentage and the equipment and certifications they need; *Use this* sets the service (and the day asked for, when that day is still to come and the workshop is open then), clears any start time already picked, and moves on to the free start times. Nothing is applied without that click. A failure shows the usual problem alert and leaves the service select as it was. *Copy the description into Notes* is ticked by default and never overwrites notes typed by hand; untick it to keep the description out of the booking. See [ARCHITECTURE §15](docs/ARCHITECTURE.md#15-dispatch-board-ui-harness).
 
 An operator must first load Unified Billing credits, provision an account-scoped **Workers AI Read** token, and configure the `keyloop-scheduler` AI Gateway with authentication on (required for Unified Billing), log collection off, zero data retention on and a rate limit. Only after that approval, the developer can run these two commands themselves (the placeholders are intentionally not credentials):
 
@@ -52,7 +52,7 @@ dotnet user-secrets set 'Parameters:cloudflare-ai-token' '<workers-ai-read-token
 
 The AppHost passes `Triage__*` only when both optional parameters are present, and starts without them. Never put the token in appsettings. The four-second total timeout, 0.95 suggestion confidence, 0.10 candidate floor, 0.60 date confidence and 500-character limit are configurable in `Triage`; `Security:RateLimiting:TriagePermitsPerMinute` defaults to 10. Cloudflare container deployment uses `KEYLOOP_TRIAGE_ENABLED=false` by default, with optional account/gateway settings and the `keyloop_prod_ai_token` Secrets Store binding when enabled. Public enablement requires stakeholder approval.
 
-All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` category runs only with the stakeholder's approval, `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes [`docs/media/triage-live-golden-set.md`](docs/media/triage-live-golden-set.md); ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. The first run (2026-10-12) scored 24/25 at the original 0.70 threshold, with p50 430 ms, p95 860 ms and about 1,940 input tokens per triage; its one miss, a vague description, led to the 0.95 threshold, and the rerun at 0.95 scores 25/25 (SYSTEM_DESIGN §14).
+All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` category runs only with the stakeholder's approval, `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes [`docs/media/triage-live-golden-set.md`](docs/media/triage-live-golden-set.md); ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. The first run (2026-10-12) scored 24/25 at the original 0.70 threshold, with p50 430 ms, p95 860 ms and about 1,940 input tokens per triage; its one miss, a vague description, led to the 0.95 threshold, and the rerun at 0.95 scores 25/25 (ARCHITECTURE §14).
 
 ## Run the tests
 
@@ -206,9 +206,9 @@ AppHost, Web and AspireTests are integration targets for this draft, as describe
 
 ## Design summary
 
-[SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) contains the domain, availability algorithm, C4 diagrams, trade-offs and ADRs. Availability shrinks each individual resource's free gaps by the full service duration before combining feasible starts; it does not pool short gaps across different technicians or bays. Allocation honours qualified free preferences, then chooses by surplus qualifications, daily load, ordinal name and id.
+[ARCHITECTURE.md](docs/ARCHITECTURE.md) contains the domain, availability algorithm, C4 diagrams, trade-offs and ADRs. Availability shrinks each individual resource's free gaps by the full service duration before combining feasible starts; it does not pool short gaps across different technicians or bays. Allocation honours qualified free preferences, then chooses by surplus qualifications, daily load, ordinal name and id.
 
-The concurrency model in [§7](docs/SYSTEM_DESIGN.md#7-concurrency-and-data-integrity), ADR-003 and ADR-004 is:
+The concurrency model in [§7](docs/ARCHITECTURE.md#7-concurrency-and-data-integrity), ADR-003 and ADR-004 is:
 
 1. PostgreSQL stores a generated `tstzrange(start_utc, end_utc, '[)')`; adjacent appointments do not overlap.
 2. Partial GiST exclusion constraints independently forbid overlapping bays and technicians in `Confirmed`, `CheckedIn` and `InProgress`.
@@ -227,7 +227,7 @@ Post-commit audit notifications stay in doubt until a read settles the result. I
 
 ## Environments and configuration
 
-The environment model comes from [SYSTEM_DESIGN §10](docs/SYSTEM_DESIGN.md#10-environments-and-configuration). Deployment rows describe the specified target posture, not a completed deployment.
+The environment model comes from [ARCHITECTURE §10](docs/ARCHITECTURE.md#10-environments-and-configuration). Deployment rows describe the specified target posture, not a completed deployment.
 
 | Concern | Development | SystemTest | UAT | Production | Demo, local Compose only |
 |---|---|---|---|---|---|
@@ -293,7 +293,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected API failures remain Error. EF's failed-commit `TransactionError` also stays Error.
 5. **Browser correlation:** inspect `ui.book_appointment` and `ui.stress_test`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
 
-`/alive` is the process probe. Task 18a makes `/health` require connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/SYSTEM_DESIGN.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
+`/alive` is the process probe. Task 18a makes `/health` require connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
 
 ### Grafana Cloud
 
@@ -301,7 +301,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 
 ## Runtime reflection budget
 
-The source-generation policy is [ADR-016 / §9.1](docs/SYSTEM_DESIGN.md#91-runtime-reflection-budget-and-nativeaot-readiness). Run:
+The source-generation policy is [ADR-016 / §9.1](docs/ARCHITECTURE.md#91-runtime-reflection-budget-and-nativeaot-readiness). Run:
 
 ```bash
 scripts/aot-readiness.sh
@@ -362,7 +362,7 @@ It is intentionally deferred. A compiled model must be regenerated whenever the 
 
 Claude **Fable 5.1** designed the architecture and written plan, following the stakeholder's design-first instruction. Claude **Opus 5.5** implemented and reviewed through subagent-driven development: task briefs, implementer reports, independent reviews, fix rounds and scoped re-reviews. The early runner/primitive work also used Sonnet-labelled agents in the ledger; git trailers attribute those earlier commits to Fable, so a trailer is not proof of the precise model behind every subagent. When the stakeholder requested parallel work, the controller created separate backend, concurrency and frontend lanes, with one implementer per worktree.
 
-The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [SYSTEM_DESIGN.md §18](docs/SYSTEM_DESIGN.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
+The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [ARCHITECTURE.md §18](docs/ARCHITECTURE.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
 
 At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`37e31c0`, `e7e7b69`, `eb0d46f`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`0ce37bf` through `33b3c65`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes await integration in the ledger snapshot used for this draft.
 

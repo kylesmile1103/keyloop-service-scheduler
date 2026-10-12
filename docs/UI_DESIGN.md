@@ -1,4 +1,4 @@
-# Service Scheduler design system
+# Service Scheduler UI design
 
 The visual and interaction rules for the dispatch-board web app (`src/Keyloop.ServiceScheduler.Web`). The tokens live in `src/index.css` (applied from `keyloop-theme.css`); this document says what each token is for and how the components use them. When this document and a component disagree, fix the component.
 
@@ -893,7 +893,7 @@ Target: **WCAG 2.2 AA**, in both themes.
 
 Paths are relative to `src/Keyloop.ServiceScheduler.Web` unless they start with `docs/` or `design/`.
 
-1. Copy this file to `docs/DESIGN_SYSTEM.md`.
+1. Copy this file to `docs/UI_DESIGN.md`.
 2. Apply `keyloop-theme.css` to `src/index.css` exactly as its header says (steps A to G: replace the `@theme inline`, `:root`, `.dark` and `@layer base` blocks; add the `@layer components` block; keep the rest).
 3. Swap the fonts (header step H): replace the Inter import in `src/main.tsx` with the four imports in section 5.1, then `pnpm remove @fontsource-variable/inter` and `pnpm add @fontsource-variable/plus-jakarta-sans@^5.3.0 @fontsource-variable/ibm-plex-sans@^5.3.0 @fontsource/ibm-plex-mono@^5.3.0`.
 4. Keep fonts out of the CSS bundle (header step I). In `vite.config.ts`, add to the object the `defineConfig` callback returns:

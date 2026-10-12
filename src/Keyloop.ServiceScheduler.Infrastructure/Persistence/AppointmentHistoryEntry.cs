@@ -6,7 +6,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Serialization;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
-/// <summary>One row of the append-only audit trail (<c>appointment_history</c>, SYSTEM_DESIGN §5.6), written in the same transaction as the change.</summary>
+/// <summary>One row of the append-only audit trail (<c>appointment_history</c>, ARCHITECTURE §5.6), written in the same transaction as the change.</summary>
 public sealed class AppointmentHistoryEntry
 {
     // EF Core materialisation.

@@ -37,7 +37,7 @@ interface BookingTriageProps {
 }
 
 /**
- * Booking intake triage in step 1 (SYSTEM_DESIGN §8.10, §15): the issue in the customer's words, "Suggest a service", and
+ * Booking intake triage in step 1 (ARCHITECTURE §8.10, §15): the issue in the customer's words, "Suggest a service", and
  * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
  * possible ones (nothing chosen when the model is unsure), or a plain "no match". Using one sets the service and, when that
  * day is still to come and the workshop is open then, the day asked for; the free starts for them come next. A failure
@@ -403,7 +403,7 @@ function isValidation(error: unknown): boolean {
 }
 
 /**
- * Why there are no suggestions, in the shared problem alert (DESIGN_SYSTEM 11.16): a rate limit waits (Suggest a service
+ * Why there are no suggestions, in the shared problem alert (UI_DESIGN 11.16): a rate limit waits (Suggest a service
  * counts down), a refusal says what the API said, and any other failure (`503 triage-unavailable`, the network) offers
  * Try again with the same description. Manual selection below works throughout.
  */

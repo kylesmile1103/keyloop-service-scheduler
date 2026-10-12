@@ -18,12 +18,12 @@ interface AppointmentBlockProps {
   style: CSSProperties
   /** Its details sheet is open. */
   selected: boolean
-  /** Just booked: the block draws the booked halo for 3 s (DESIGN_SYSTEM 10). */
+  /** Just booked: the block draws the booked halo for 3 s (UI_DESIGN 10). */
   booked?: boolean
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
 }
 
-/** A registration as Service Hub's job cards write it: an outlined plate in mono capitals (DESIGN_SYSTEM 11.8). */
+/** A registration as Service Hub's job cards write it: an outlined plate in mono capitals (UI_DESIGN 11.8). */
 export function PlateChip({
   registration,
   labelled = true,

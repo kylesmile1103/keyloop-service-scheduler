@@ -1,6 +1,6 @@
 namespace Keyloop.ServiceScheduler.Api.Common.Contracts;
 
-// A wire record shared by more than one feature family (SYSTEM_DESIGN §8.4): the availability and workshop-schedule responses,
+// A wire record shared by more than one feature family (ARCHITECTURE §8.4): the availability and workshop-schedule responses,
 // so the contract has one OperatingWindowResponse schema and the generated client one type.
 
 /// <summary>The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times.</summary>

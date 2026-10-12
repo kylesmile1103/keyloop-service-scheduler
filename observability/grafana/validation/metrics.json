@@ -8,7 +8,7 @@
       "dealership_id"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.booking.duration",
@@ -18,7 +18,7 @@
       "outcome"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.booking.lock_wait",
@@ -28,7 +28,7 @@
       "dealership_id"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.booking.constraint_backstop",
@@ -38,7 +38,7 @@
       "constraint"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.booking.deadlocks",
@@ -46,7 +46,7 @@
     "unit": "{event}",
     "labels": [],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.availability.duration",
@@ -56,7 +56,7 @@
       "dealership_id"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.availability.slots_returned",
@@ -64,7 +64,7 @@
     "unit": "{slot}",
     "labels": [],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.appointments.cancellations",
@@ -74,7 +74,7 @@
       "previous_status"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.sent",
@@ -84,7 +84,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.failed",
@@ -94,7 +94,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.retried",
@@ -104,7 +104,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.dispatch_duration",
@@ -114,7 +114,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.outbox_age",
@@ -124,7 +124,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.outbox_pending",
@@ -134,7 +134,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 brief G2; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "Task 19 brief G2; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.oldest_pending_age",
@@ -142,7 +142,7 @@
     "unit": "s",
     "labels": [],
     "source": "notifications",
-    "evidence": "Task 19 brief G2, superseding the plan's outbox_oldest_pending_age spelling; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
+    "evidence": "Task 19 brief G2, superseding the plan's outbox_oldest_pending_age spelling; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "http.server.request.duration",
@@ -155,7 +155,7 @@
       "error_type"
     ],
     "source": "framework",
-    "evidence": "docs/SYSTEM_DESIGN.md section 12.1; ServiceDefaults AddAspNetCoreInstrumentation; https://learn.microsoft.com/en-us/aspnet/core/metrics/http?view=aspnetcore-10.0"
+    "evidence": "docs/ARCHITECTURE.md section 12.1; ServiceDefaults AddAspNetCoreInstrumentation; https://learn.microsoft.com/en-us/aspnet/core/metrics/http?view=aspnetcore-10.0"
   },
   {
     "instrument": "aspnetcore.rate_limiting.requests",
@@ -166,7 +166,7 @@
       "aspnetcore_rate_limiting_policy"
     ],
     "source": "framework",
-    "evidence": "SYSTEM_DESIGN section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/RateLimiting/src/RateLimitingMetrics.cs"
+    "evidence": "ARCHITECTURE section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/RateLimiting/src/RateLimitingMetrics.cs"
   },
   {
     "instrument": "aspnetcore.diagnostics.exceptions",
@@ -177,7 +177,7 @@
       "aspnetcore_diagnostics_exception_result"
     ],
     "source": "framework",
-    "evidence": "SYSTEM_DESIGN section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/Diagnostics/src/DiagnosticsMetrics.cs"
+    "evidence": "ARCHITECTURE section 12.1 built-in ASP.NET Core; ServiceDefaults AddAspNetCoreInstrumentation; https://github.com/dotnet/aspnetcore/blob/v10.0.0/src/Middleware/Diagnostics/src/DiagnosticsMetrics.cs"
   },
   {
     "instrument": "target_info",

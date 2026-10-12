@@ -2,7 +2,7 @@ using Keyloop.ServiceScheduler.Domain.Common;
 
 namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 
-// Persisted to appointment_history (SYSTEM_DESIGN §5.6). Events carry no customer PII and only the masked VIN.
+// Persisted to appointment_history (ARCHITECTURE §5.6). Events carry no customer PII and only the masked VIN.
 
 public sealed record AppointmentBooked(
     Guid AppointmentId,

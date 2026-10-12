@@ -3,7 +3,7 @@ using System.Collections.Frozen;
 namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 
 /// <summary>
-/// The RFC 9457 problem type catalogue (SYSTEM_DESIGN §8.7). <c>type</c> is <see cref="Base"/> + slug; clients branch on it, so the
+/// The RFC 9457 problem type catalogue (ARCHITECTURE §8.7). <c>type</c> is <see cref="Base"/> + slug; clients branch on it, so the
 /// slugs are stable API. Domain rule codes are slugs too (<see cref="ForRule"/>).
 /// </summary>
 public static class ProblemTypes

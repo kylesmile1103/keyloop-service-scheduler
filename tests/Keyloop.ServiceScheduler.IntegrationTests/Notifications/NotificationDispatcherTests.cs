@@ -521,7 +521,7 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     public async Task Demo_seeding_with_dispatch_disabled_reports_no_false_backlog()
     {
         // Demo (the published Compose bundle) migrates and seeds at startup with dispatch off. Every seeded customer is @example.com, so
-        // every staged email is Suppressed at once: the backlog gauges, and the oldest_pending_age alert (SYSTEM_DESIGN §12.3), see no
+        // every staged email is Suppressed at once: the backlog gauges, and the oldest_pending_age alert (ARCHITECTURE §12.3), see no
         // backlog that would never drain. Each suppression is still counted and logged once.
         var connectionString = await pg.CreateEmptyDatabaseAsync("demo_notification_backlog", Ct);
         using var logs = new CapturingLoggerProvider();

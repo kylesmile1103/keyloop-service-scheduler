@@ -41,7 +41,7 @@ const data = {
 }
 
 /**
- * The app frame's navigation. The brand lives in the header (DESIGN_SYSTEM 11.1); only the phone's sidebar sheet, which
+ * The app frame's navigation. The brand lives in the header (UI_DESIGN 11.1); only the phone's sidebar sheet, which
  * covers the header, repeats the glyph and the "Keyloop" wordmark (as text, not a link). The footer says plainly what
  * this app is.
  */
@@ -85,7 +85,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
         <NavUser />
-        {/* Provenance (DESIGN_SYSTEM 11.1): not dismissible, so no screenshot or video frame can pass for a Keyloop product. */}
+        {/* Provenance (UI_DESIGN 11.1): not dismissible, so no screenshot or video frame can pass for a Keyloop product. */}
         <p className="px-2 pb-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           Take-home demo · inspired by Keyloop&apos;s public design language · not an official Keyloop product
         </p>

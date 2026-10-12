@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// The per-dealership booking lock (SYSTEM_DESIGN §7.3 layer 2, ADR-003): a transaction-scoped PostgreSQL advisory lock that
+/// The per-dealership booking lock (ARCHITECTURE §7.3 layer 2, ADR-003): a transaction-scoped PostgreSQL advisory lock that
 /// serialises check-then-insert for one dealership and is released at commit or rollback.
 /// </summary>
 public static class DealershipLock

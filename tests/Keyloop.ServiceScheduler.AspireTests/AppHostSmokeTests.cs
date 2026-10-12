@@ -9,7 +9,7 @@ using Aspire.Hosting.Testing;
 namespace Keyloop.ServiceScheduler.AspireTests;
 
 /// <summary>
-/// The composed application (Addendum C §C7, SYSTEM_DESIGN §14.3, ADR-013): the AppHost itself, booted by Aspire.Hosting.Testing, with
+/// The composed application (Addendum C §C7, ARCHITECTURE §14.3, ADR-013): the AppHost itself, booted by Aspire.Hosting.Testing, with
 /// PostgreSQL from its parameters, the API migrating and seeding in Development behind its health check, web proxy discovery, the dashboard's Scalar link
 /// and the <em>Reseed demo data</em> command. Category <c>Aspire</c>: it needs Docker and takes about half a minute; CI runs it in its
 /// own step. Only one AppHost may run on a machine at a time. It lives in this project rather than the integration tests because

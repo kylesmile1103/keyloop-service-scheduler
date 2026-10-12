@@ -6,7 +6,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
 /// Fixed, accessible multipart content in British English. Rendered at dispatch, so a failure (for example an unknown time zone) fails
-/// only its outbox row, never a booking or cancel (SYSTEM_DESIGN §8.9). No runtime template compiler, external assets or tracking. Every
+/// only its outbox row, never a booking or cancel (ARCHITECTURE §8.9). No runtime template compiler, external assets or tracking. Every
 /// value is one the recipient gave or the dealership configured: no visitor-typed free text (proposal 2.4).
 /// </summary>
 internal static class NotificationTemplate

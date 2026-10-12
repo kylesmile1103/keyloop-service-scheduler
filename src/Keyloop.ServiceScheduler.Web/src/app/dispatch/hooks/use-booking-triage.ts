@@ -21,7 +21,7 @@ export interface TriageAnswer {
 }
 
 /**
- * Booking intake triage (SYSTEM_DESIGN §8.10) for one booking: whether suggestions are on, the description, the last
+ * Booking intake triage (ARCHITECTURE §8.10) for one booking: whether suggestions are on, the description, the last
  * answer and the candidate chosen in it, and the "copy into Notes" choice. It lives with the booking flow rather than in
  * step 1, so all of it is still there when the person comes back from step 2.
  *

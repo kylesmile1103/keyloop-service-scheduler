@@ -4,7 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Health;
 
-/// <summary>Readiness requires a reachable database with every application migration applied (SYSTEM_DESIGN §12.3).</summary>
+/// <summary>Readiness requires a reachable database with every application migration applied (ARCHITECTURE §12.3).</summary>
 internal sealed class SchedulerReadinessCheck(IServiceScopeFactory scopes) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)

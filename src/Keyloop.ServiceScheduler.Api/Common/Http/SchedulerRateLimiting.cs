@@ -12,7 +12,7 @@ using Microsoft.OpenApi;
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Rate limiting per client IP with one-minute sliding windows (SYSTEM_DESIGN §11.2): the <c>global</c> limiter applies to every
+/// Rate limiting per client IP with one-minute sliding windows (ARCHITECTURE §11.2): the <c>global</c> limiter applies to every
 /// request except health probes; the stricter <see cref="BookingPolicy"/> write policy is added to the state-changing endpoints
 /// (booking and cancellation) with <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>. A rejection is a 429
 /// <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>. <c>Security:RateLimiting:Enabled=false</c>

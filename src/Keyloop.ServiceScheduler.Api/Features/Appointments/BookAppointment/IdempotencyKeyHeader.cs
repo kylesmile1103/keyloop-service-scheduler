@@ -3,7 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
-/// The booking endpoint's idempotency headers (SYSTEM_DESIGN §7.5). The request's optional <c>Idempotency-Key</c> is 1 to 64
+/// The booking endpoint's idempotency headers (ARCHITECTURE §7.5). The request's optional <c>Idempotency-Key</c> is 1 to 64
 /// characters of <c>[A-Za-z0-9_-]</c> (a UUID fits); anything else, including an empty value or two headers (which arrive joined by a
 /// comma), is a 400 <c>validation-error</c> keyed <see cref="Name"/>. A replayed response carries <see cref="ReplayedName"/>: <c>true</c>.
 /// </summary>

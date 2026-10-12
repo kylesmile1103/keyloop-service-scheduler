@@ -393,7 +393,7 @@ function NoMatch({ table }: { table: AppointmentsTableInstance }) {
   )
 }
 
-/** A day the dealership does not open (DESIGN_SYSTEM 12.1): no list, a way to the next open day. */
+/** A day the dealership does not open (UI_DESIGN 12.1): no list, a way to the next open day. */
 function ClosedDay({
   dealership,
   date,
@@ -425,7 +425,7 @@ function ClosedDay({
   )
 }
 
-/** An open day with nothing booked (DESIGN_SYSTEM 12.1): booking lives on the board, so the action goes there, on this day. */
+/** An open day with nothing booked (UI_DESIGN 12.1): booking lives on the board, so the action goes there, on this day. */
 function EmptyDay({ date, today }: { date: string; today: string }) {
   const { search } = useLocation()
   const dayName = formatDay(date, "long").replace(/ \d{4}$/, "")
@@ -448,7 +448,7 @@ function EmptyDay({ date, today }: { date: string; today: string }) {
   )
 }
 
-/** The list's shape while it loads (DESIGN_SYSTEM 11.18): rows of the table, or job cards on a phone. */
+/** The list's shape while it loads (UI_DESIGN 11.18): rows of the table, or job cards on a phone. */
 function ListSkeleton({ phone, framed = true }: { phone: boolean; framed?: boolean }) {
   const body = phone ? (
     <div aria-hidden="true" className="flex flex-col gap-2">

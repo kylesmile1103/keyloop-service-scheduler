@@ -20,7 +20,7 @@ export function appointmentLabel(appointment: BoardAppointment, timeZone: string
 }
 
 /**
- * What a job card says to assistive technology (DESIGN_SYSTEM 11.13): the block's words plus the customer, whom the card
+ * What a job card says to assistive technology (UI_DESIGN 11.13): the block's words plus the customer, whom the card
  * shows: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed".
  */
 export function jobCardLabel(appointment: BoardAppointment, timeZone: string): string {

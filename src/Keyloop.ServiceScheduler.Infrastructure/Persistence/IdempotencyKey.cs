@@ -1,7 +1,7 @@
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// A memoised successful booking response for an <c>Idempotency-Key</c> (SYSTEM_DESIGN §7.5). The key is the primary key
+/// A memoised successful booking response for an <c>Idempotency-Key</c> (ARCHITECTURE §7.5). The key is the primary key
 /// (<c>pk_idempotency_keys</c>), so a concurrent duplicate fails with 23505 and is replayed or rejected by the handler.
 /// </summary>
 public sealed class IdempotencyKey
@@ -23,6 +23,6 @@ public sealed class IdempotencyKey
 
     public required DateTime CreatedAtUtc { get; init; }
 
-    /// <summary>Purge horizon (24 h after creation); indexed for the purge job (SYSTEM_DESIGN §17).</summary>
+    /// <summary>Purge horizon (24 h after creation); indexed for the purge job (ARCHITECTURE §17).</summary>
     public required DateTime ExpiresAtUtc { get; init; }
 }

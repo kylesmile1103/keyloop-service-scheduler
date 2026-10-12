@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). `docs/SYSTEM_DESIGN.md` is the source of truth and must stay consistent with the code:
+The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). `docs/ARCHITECTURE.md` is the source of truth and must stay consistent with the code:
 
-- `docs/SYSTEM_DESIGN.md` - domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
-- Code comments that cite "Addendum A/B/C §..." refer to the author's planning addenda (A reflection/AOT, B OpenAPI/UI, C Aspire), which are local notes and not in the repository; the ADRs in `docs/SYSTEM_DESIGN.md` §18 are their committed equivalents.
+- `docs/ARCHITECTURE.md` - domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
+- Code comments that cite "Addendum A/B/C §..." refer to the author's planning addenda (A reflection/AOT, B OpenAPI/UI, C Aspire), which are local notes and not in the repository; the ADRs in `docs/ARCHITECTURE.md` §18 are their committed equivalents.
 
 ## Commands
 
@@ -86,7 +86,7 @@ For a fresh, isolated AppHost verification, supply a temporary password and disa
 
 ## Working rules specific to this repo
 
-- Keep `docs/SYSTEM_DESIGN.md` and the code in agreement; if a design decision changes, update the ADR table in the same commit.
+- Keep `docs/ARCHITECTURE.md` and the code in agreement; if a design decision changes, update the ADR table in the same commit.
 - Test names describe behaviour (`Rejects_off_grid_start_422`); domain tests use `FakeTimeProvider` at `2026-10-12T08:00:00Z` and book on `2026-10-13`.
 - The AppHost smoke test lives in `tests/Keyloop.ServiceScheduler.AspireTests`, not in the integration tests: Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016). It supplies the database password, clears optional triage parameters and strips persistence, so it never evaluates or writes the persisted password default and never mounts `keyloop-scheduler-pgdata` (configuration can still load user secrets). Create/build/start/API and web readiness share a five-minute deadline; failed setup and failed stop both dispose the application, with stop bounded to 30 seconds. The web check requests `/api/v1/dealerships` through Vite and asserts JSON with the exact seeded names. On macOS, create `/tmp/kl15c` and set `TMPDIR=/tmp/kl15c` for every `dotnet test` to keep MTP pipe paths short.
 - Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened - a failure is a design defect.

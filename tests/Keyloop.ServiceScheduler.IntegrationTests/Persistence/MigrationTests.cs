@@ -52,7 +52,7 @@ public sealed class MigrationTests(PostgresFixture pg) : IAsyncLifetime
             var extensions = await db.Database.SqlQuery<string>($"""SELECT extname::text AS "Value" FROM pg_extension WHERE extname = 'btree_gist'""").ToListAsync(Ct);
             extensions.ShouldBe(["btree_gist"]);
 
-            // The partial predicate keeps terminal statuses out of the constraint (SYSTEM_DESIGN §7.3).
+            // The partial predicate keeps terminal statuses out of the constraint (ARCHITECTURE §7.3).
             var bayDefinition = await db.Database.SqlQuery<string>($"""
                 SELECT pg_get_constraintdef(oid) AS "Value" FROM pg_constraint WHERE conname = {PostgresErrorClassifier.BayConstraint}
                 """).SingleAsync(Ct);

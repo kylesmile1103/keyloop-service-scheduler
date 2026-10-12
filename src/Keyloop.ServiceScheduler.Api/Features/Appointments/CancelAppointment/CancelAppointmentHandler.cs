@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 
 /// <summary>
-/// Cancels an appointment (SYSTEM_DESIGN §5.5, §7.3 layer 3): <c>Confirmed</c> or <c>CheckedIn</c> → <c>Cancelled</c>, with a reason. Its
+/// Cancels an appointment (ARCHITECTURE §5.5, §7.3 layer 3): <c>Confirmed</c> or <c>CheckedIn</c> → <c>Cancelled</c>, with a reason. Its
 /// slot is re-bookable at once, since terminal statuses are outside the exclusion constraints. No lock is taken on the normal path: the
 /// row's <c>xmin</c> is the optimistic concurrency token, so a cancel that read a version another request has since changed fails with
 /// <see cref="DbUpdateConcurrencyException"/> (409 <c>concurrency-conflict</c>) instead of overwriting it. An illegal transition is

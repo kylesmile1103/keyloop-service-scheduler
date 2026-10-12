@@ -27,7 +27,7 @@ REPO = ROOT.parents[1]
 TELEMETRY = (Path("src/Keyloop.ServiceScheduler.Api/Common/Telemetry"),
              Path("src/Keyloop.ServiceScheduler.Infrastructure/Telemetry"))
 DASHBOARDS = {"keyloop-booking-engine", "keyloop-api-health", "keyloop-notifications", "keyloop-frontend"}
-# Pinned from grafana-observability-plan.md section 5.2, SYSTEM_DESIGN section 12.3 and the Task 23 scope
+# Pinned from grafana-observability-plan.md section 5.2, ARCHITECTURE section 12.3 and the Task 23 scope
 # (readiness). A changed threshold, pending period, window or severity must be a deliberate edit here.
 ALERTS = {
     "keyloop-booking-deadlocks": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
@@ -429,7 +429,7 @@ def check_manifests(root=ROOT, repo=REPO, alerts_dir=None):
     metrics = json.loads((root / "validation/metrics.json").read_text())
     series = {name: m for m in metrics for name in series_names(m)}
     declarations = telemetry_declarations(repo)
-    design = (repo / "docs/SYSTEM_DESIGN.md").read_text().split("## 12. Observability", 1)[1].split("\n## 13.", 1)[0]
+    design = (repo / "docs/ARCHITECTURE.md").read_text().split("## 12. Observability", 1)[1].split("\n## 13.", 1)[0]
     defaults = (repo / "src/Keyloop.ServiceScheduler.ServiceDefaults/Extensions.cs").read_text()
     used, missing = set(), set()
     query_count = 0
@@ -454,7 +454,7 @@ def check_manifests(root=ROOT, repo=REPO, alerts_dir=None):
                     expected_kind = {"counter": "Counter", "histogram": "Histogram", "gauge": "ObservableGauge"}[metric["kind"]]
                     require(kind == expected_kind, f"Kind mismatch for {instrument}")
                     require(unit_declared(body, metric["unit"]), f"Unit mismatch for {instrument}")
-                    require(instrument in design, f"{instrument} missing from SYSTEM_DESIGN section 12")
+                    require(instrument in design, f"{instrument} missing from ARCHITECTURE section 12")
                 else:
                     missing.add(instrument)
     if missing:

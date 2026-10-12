@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 
 /// <summary>
-/// The dispatch board for one dealership and local date (FR-9): a projection over the dealership-day (SYSTEM_DESIGN §5.3), read with
+/// The dispatch board for one dealership and local date (FR-9): a projection over the dealership-day (ARCHITECTURE §5.3), read with
 /// <see cref="DayScheduleReader"/> from the dealership already loaded. Every bay and technician is listed, active or not, so that
 /// appointments on a resource taken out of service stay visible; each bay holds its appointments overlapping the operating window in
 /// every status except <see cref="AppointmentStatus.Cancelled"/>, ordered by start. A closed day has no window and no appointments.

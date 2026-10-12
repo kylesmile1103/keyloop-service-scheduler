@@ -1,6 +1,6 @@
 /**
  * Reading what went wrong with an API call. Every application error from the API is an RFC 9457 problem with a `traceId`
- * (SYSTEM_DESIGN §8.7); anything else is a failure outside the API (no answer at all, or a proxy's bare status).
+ * (ARCHITECTURE §8.7); anything else is a failure outside the API (no answer at all, or a proxy's bare status).
  */
 
 /**
@@ -99,7 +99,7 @@ export function failureKey(error: unknown): string {
 const catalogue = "https://api.keyloop.example/problems/"
 
 /**
- * The problem's slug from the catalogue (SYSTEM_DESIGN §8.7): the last path segment of its `type`, such as
+ * The problem's slug from the catalogue (ARCHITECTURE §8.7): the last path segment of its `type`, such as
  * `invalid-state-transition`. Empty for a problem outside the catalogue (the framework's RFC links) or without a type, so
  * branching on the slug never matches by accident.
  */

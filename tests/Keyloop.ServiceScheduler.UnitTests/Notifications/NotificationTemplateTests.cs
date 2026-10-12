@@ -3,7 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 
 /// <summary>
-/// The fixed confirmation and cancellation content (SYSTEM_DESIGN §8.9). Rendering happens at dispatch, never inside the booking or
+/// The fixed confirmation and cancellation content (ARCHITECTURE §8.9). Rendering happens at dispatch, never inside the booking or
 /// cancel transaction, and a render failure only fails its outbox row; these tests also pin that the renderer is total over every
 /// seeded zone, both daylight-saving changes and the longest values the domain accepts.
 /// </summary>

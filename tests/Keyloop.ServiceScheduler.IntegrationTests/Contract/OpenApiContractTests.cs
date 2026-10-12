@@ -223,7 +223,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             var properties = problem["properties"]!.AsObject();
             properties.Select(p => p.Key).ShouldBe(members, ignoreOrder: true, customMessage: schema);
 
-            // Every problem this API writes carries the W3C trace id of the request (SYSTEM_DESIGN §8.7, §12.2), so the client may rely on it.
+            // Every problem this API writes carries the W3C trace id of the request (ARCHITECTURE §8.7, §12.2), so the client may rely on it.
             Text(properties["traceId"]!["type"]).ShouldBe("string", schema);
             Text(properties["traceId"]!["description"]).ShouldNotBeNullOrWhiteSpace(schema);
             Required(problem).ShouldContain("traceId", schema);

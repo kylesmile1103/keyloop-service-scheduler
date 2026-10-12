@@ -1,7 +1,7 @@
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Security headers on every response (SYSTEM_DESIGN §11.2), plus <c>Cache-Control: no-store</c> under <c>/api</c>. Set when the
+/// Security headers on every response (ARCHITECTURE §11.2), plus <c>Cache-Control: no-store</c> under <c>/api</c>. Set when the
 /// response starts, so they survive the exception handler clearing the response and also reach problem, 404 and 429 responses.
 /// HSTS is added separately (<c>UseHsts</c>) outside Development, SystemTest and Demo.
 /// </summary>

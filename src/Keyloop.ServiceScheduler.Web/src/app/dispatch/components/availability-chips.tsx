@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import { localTime } from "../lib/appointment-text"
 import { formatDay } from "../lib/calendar-date"
 
-/** A slot chip (DESIGN_SYSTEM 11.6): 40 px, 44 px on touch; selected chips take the primary fill. */
+/** A slot chip (UI_DESIGN 11.6): 40 px, 44 px on touch; selected chips take the primary fill. */
 const chip =
   "group/slot inline-flex min-h-10 min-w-20 cursor-pointer flex-col items-center justify-center rounded-chip border border-input bg-card px-2 py-1 text-sm leading-tight font-medium tabular-nums outline-none transition-colors duration-100 pointer-coarse:min-h-11 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 

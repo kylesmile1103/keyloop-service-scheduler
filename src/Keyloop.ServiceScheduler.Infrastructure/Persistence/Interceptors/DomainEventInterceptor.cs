@@ -11,7 +11,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 /// <summary>
 /// Turns the domain events of saved aggregates into <c>appointment_history</c> and <c>notification_outbox</c> rows inside the same SaveChanges (so the audit row
 /// commits or rolls back with the change), and tells <see cref="IDomainEventObserver"/>s about the events only after the
-/// transaction has committed (SYSTEM_DESIGN §5.6). Outbox rows that the recipient policy suppressed when they were staged are counted
+/// transaction has committed (ARCHITECTURE §5.6). Outbox rows that the recipient policy suppressed when they were staged are counted
 /// and logged (1305) at the same moment, so a suppression is reported once and only for a committed change.
 /// </summary>
 /// <remarks>
@@ -25,7 +25,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 /// never notified unless the caller establishes that the commit happened, with <see cref="ResolveInDoubtCommitAsync"/> (the write
 /// handlers, booking and cancellation, do when they verify a failed commit or re-check under a lock), so observers hear about every
 /// committed change once and about nothing else. Events still in doubt when the caller gives up (its retries exhausted) are never
-/// notified; the history row committed with the change remains its record (SYSTEM_DESIGN §7.3).
+/// notified; the history row committed with the change remains its record (ARCHITECTURE §7.3).
 /// </para>
 /// </remarks>
 public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger)
@@ -315,7 +315,7 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
 
     /// <summary>
     /// Counts and logs (1305) the committed rows the recipient policy suppressed when they were staged; the dispatcher does the same for a
-    /// row it suppresses at claim. The outbox id, appointment id, kind and fixed reason only, never the address (SYSTEM_DESIGN §11.1).
+    /// row it suppresses at claim. The outbox id, appointment id, kind and fixed reason only, never the address (ARCHITECTURE §11.1).
     /// </summary>
     private void RecordSuppressed(IReadOnlyList<NotificationOutboxEntry> suppressed)
     {

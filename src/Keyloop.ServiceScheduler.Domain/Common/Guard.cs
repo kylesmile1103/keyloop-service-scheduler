@@ -13,7 +13,7 @@ internal static class Guard
         return trimmed;
     }
 
-    /// <summary>Rejects <see cref="DateTimeKind.Local"/> and <see cref="DateTimeKind.Unspecified"/> instants (SYSTEM_DESIGN §6.4: UTC everywhere).</summary>
+    /// <summary>Rejects <see cref="DateTimeKind.Local"/> and <see cref="DateTimeKind.Unspecified"/> instants (ARCHITECTURE §6.4: UTC everywhere).</summary>
     public static DateTime Utc(DateTime value, string paramName) =>
         value.Kind == DateTimeKind.Utc
             ? value

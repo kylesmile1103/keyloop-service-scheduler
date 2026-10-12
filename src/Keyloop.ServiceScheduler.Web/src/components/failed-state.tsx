@@ -11,12 +11,12 @@ interface FailedStateProps {
   error: unknown
   onRetry: () => void
   retrying: boolean
-  /** The headline's level in the page outline (DESIGN_SYSTEM 12.1): 2 for a page's main view, 3 inside a card under its own heading. */
+  /** The headline's level in the page outline (UI_DESIGN 12.1): 2 for a page's main view, 3 inside a card under its own heading. */
   level?: 2 | 3
 }
 
 /**
- * A whole view that failed to load (DESIGN_SYSTEM 12.1): the error-connection state with the API's words and trace id. It
+ * A whole view that failed to load (UI_DESIGN 12.1): the error-connection state with the API's words and trace id. It
  * stays while Try again reads again; the button disables itself meanwhile but keeps focus, ready for another try if that
  * one fails too.
  */

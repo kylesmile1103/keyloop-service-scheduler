@@ -19,7 +19,7 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 /// <summary>
 /// <c>GET /api/v1/appointments/{appointmentId}</c> and <c>POST /api/v1/appointments/{appointmentId}/cancel</c>: reading a booking back
-/// (including through the booking's <c>Location</c>), the cancel transition with its audit row, telemetry and problems (SYSTEM_DESIGN
+/// (including through the booking's <c>Location</c>), the cancel transition with its audit row, telemetry and problems (ARCHITECTURE
 /// §5.5, §8.7), the slot it frees (Review Focus 3), and optimistic concurrency on the row's <c>xmin</c> (§7.3 layer 3). The workshop is
 /// Test Motors (Europe/London) with two standard bays, two general technicians and a 60-minute interim service; the clock is Monday
 /// 2026-10-12 08:00Z and the booking day Tuesday 2026-10-13.

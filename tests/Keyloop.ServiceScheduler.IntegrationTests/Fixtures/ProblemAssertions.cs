@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>Assertions for RFC 9457 responses from the catalogue (SYSTEM_DESIGN §8.7).</summary>
+/// <summary>Assertions for RFC 9457 responses from the catalogue (ARCHITECTURE §8.7).</summary>
 public static class ProblemAssertions
 {
     public const string TypeBase = "https://api.keyloop.example/problems/";

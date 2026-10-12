@@ -2,7 +2,7 @@ import { context, propagation, SpanStatusCode, trace, type Attributes, type Span
 import type { SpanProcessor } from "@opentelemetry/sdk-trace-base"
 
 /**
- * Browser tracing (SYSTEM_DESIGN §12.2, Addendum C §C5). The dispatch board sends its own spans to the Aspire dashboard
+ * Browser tracing (ARCHITECTURE §12.2, Addendum C §C5). The dispatch board sends its own spans to the Aspire dashboard
  * over OTLP/HTTP, and `traceparent` rides on same-origin `/api` calls, so one trace runs from a click through the API to
  * PostgreSQL.
  *

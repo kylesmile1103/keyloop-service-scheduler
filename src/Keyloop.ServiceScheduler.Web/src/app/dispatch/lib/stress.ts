@@ -15,7 +15,7 @@ export type StressOutcome = {
   appointmentId?: string
 }
 
-/** The traffic light's outcomes (DESIGN_SYSTEM 11.17): booked, slot taken, rate limited, server error, no answer, anything else. */
+/** The traffic light's outcomes (UI_DESIGN 11.17): booked, slot taken, rate limited, server error, no answer, anything else. */
 export type OutcomeKind = "booked" | "taken" | "rate-limited" | "server" | "failed" | "other"
 
 export function outcomeKind(status: number): OutcomeKind {
@@ -97,7 +97,7 @@ interface FireOptions {
 /**
  * Fires `n` bookings for the same dealership at once (`Promise.all`, no idempotency keys: each request is its own booking
  * intention) through the generated SDK, and reports every answer. The proof expects exactly one `201` and `n - 1` `409`s
- * for a slot with one free bay and technician (SYSTEM_DESIGN §7, Task 13). Never rejects: a request that gets no answer is
+ * for a slot with one free bay and technician (ARCHITECTURE §7, Task 13). Never rejects: a request that gets no answer is
  * recorded as status 0.
  */
 export async function fireParallelBookings(

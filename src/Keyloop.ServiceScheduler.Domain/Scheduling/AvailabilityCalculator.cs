@@ -11,7 +11,7 @@ public sealed record ResourceBusy(Guid ResourceId, IReadOnlyList<TimeSlot> Busy)
 public sealed record AvailabilitySlot(DateTime StartUtc, DateTime EndUtc, int FreeBays, int FreeTechnicians);
 
 /// <summary>
-/// Availability for one service on one operating window (SYSTEM_DESIGN §6.1–§6.2). Each resource's free time is shrunk to its
+/// Availability for one service on one operating window (ARCHITECTURE §6.1–§6.2). Each resource's free time is shrunk to its
 /// <em>feasible-start</em> intervals before resources are combined, so a start counts only when a single bay and a single
 /// technician are each free for the full duration; the union of free sets would wrongly accept a slot that two bays cover only
 /// between them.

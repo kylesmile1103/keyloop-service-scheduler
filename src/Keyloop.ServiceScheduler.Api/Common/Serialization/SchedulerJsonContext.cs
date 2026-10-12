@@ -34,7 +34,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
     DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     UseStringEnumConverter = true,
     WriteIndented = false)]
-// Task 7: problem extension values (SYSTEM_DESIGN §8.7), by runtime type
+// Task 7: problem extension values (ARCHITECTURE §8.7), by runtime type
 [JsonSerializable(typeof(OperatingWindow))] // operatingWindow
 [JsonSerializable(typeof(DateTime))] // earliestStartUtc, latestStartUtc
 [JsonSerializable(typeof(int))] // slotGranularityMinutes, retryAfterSeconds

@@ -1,4 +1,4 @@
-// The development platform (SYSTEM_DESIGN §8.6, ADR-019, Addendum C): `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (or
+// The development platform (ARCHITECTURE §8.6, ADR-019, Addendum C): `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (or
 // `aspire run`) generates and keeps the secrets, starts PostgreSQL with a persistent volume and pgweb, the API (which migrates and seeds
 // in Development) behind its health check, and the dispatch board; `aspire publish` turns the same model into Docker
 // Compose.
@@ -150,7 +150,7 @@ else
         .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
 }
 
-// The dispatch board (SYSTEM_DESIGN §8.6, ADR-019). Discovery and readiness apply in both modes.
+// The dispatch board (ARCHITECTURE §8.6, ADR-019). Discovery and readiness apply in both modes.
 var web = builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
     .WithPnpm(installArgs: ["--frozen-lockfile"])
     .WithReference(api)
@@ -165,7 +165,7 @@ if (builder.ExecutionContext.IsRunMode)
 else
 {
     // Aspire emits WEB_IMAGE for this Dockerfile. nginx needs the container endpoint URL, and listens on 8080, not Vite's port.
-    // Web publishes the browser port: nginx supplies the last forwarding hop trusted by the internal API (SYSTEM_DESIGN §10).
+    // Web publishes the browser port: nginx supplies the last forwarding hop trusted by the internal API (ARCHITECTURE §10).
     web.WithEnvironment("API_UPSTREAM", api.GetEndpoint("http"))
         .PublishAsDockerFile(container => container
             .WithEndpoint("http", endpoint => endpoint.TargetPort = 8080));

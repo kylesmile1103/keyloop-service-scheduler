@@ -15,7 +15,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 /// <summary>
-/// The optional <c>Idempotency-Key</c> on booking (SYSTEM_DESIGN §7.5). The key is looked up before any rule or availability check,
+/// The optional <c>Idempotency-Key</c> on booking (ARCHITECTURE §7.5). The key is looked up before any rule or availability check,
 /// and again under the dealership lock, so a retry of a booking that committed is replayed (201, stored body,
 /// <c>Idempotent-Replayed: true</c>) instead of colliding with its own appointment; the unique key is the backstop for the one case
 /// the lock does not serialise (the same key at two dealerships). Only successful bookings are memoised.

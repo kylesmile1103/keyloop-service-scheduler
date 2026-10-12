@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Options;
 
-/// <summary>Booking rules that vary by environment (SYSTEM_DESIGN §10). Validated at startup by <see cref="SchedulingOptionsValidator"/>.</summary>
+/// <summary>Booking rules that vary by environment (ARCHITECTURE §10). Validated at startup by <see cref="SchedulingOptionsValidator"/>.</summary>
 public sealed class SchedulingOptions : IValidatableObject
 {
     public const string SectionName = "Scheduling";

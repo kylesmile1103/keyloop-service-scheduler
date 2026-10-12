@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 /// <summary>
-/// <c>GET /api/v1/dealerships/{dealershipId}/schedule?date=</c>: the dispatch board's read model (SYSTEM_DESIGN §5.3, FR-9), a
+/// <c>GET /api/v1/dealerships/{dealershipId}/schedule?date=</c>: the dispatch board's read model (ARCHITECTURE §5.3, FR-9), a
 /// projection over the dealership-day, with the local date strictly <c>yyyy-MM-dd</c>.
 /// </summary>
 public sealed class ScheduleEndpointTests(PostgresFixture pg) : IAsyncLifetime

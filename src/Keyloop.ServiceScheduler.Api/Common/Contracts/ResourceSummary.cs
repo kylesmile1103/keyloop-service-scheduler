@@ -1,6 +1,6 @@
 namespace Keyloop.ServiceScheduler.Api.Common.Contracts;
 
-// A wire record shared by more than one feature family (SYSTEM_DESIGN §8.4): the appointment and workshop-schedule responses,
+// A wire record shared by more than one feature family (ARCHITECTURE §8.4): the appointment and workshop-schedule responses,
 // so the contract has one ResourceSummary schema and the generated client one type.
 
 /// <summary>A bay or a technician, by id and display name.</summary>

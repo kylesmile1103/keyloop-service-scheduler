@@ -628,7 +628,7 @@ export type VehicleResponse = {
 
 /**
  * The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.
- * A projection over the day's appointments (SYSTEM_DESIGN §5.3); it is a snapshot, and booking checks again.
+ * A projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again.
  */
 export type WorkshopScheduleResponse = {
     /**

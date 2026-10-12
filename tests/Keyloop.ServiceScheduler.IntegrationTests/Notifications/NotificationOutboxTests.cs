@@ -197,7 +197,7 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     public async Task A_staged_suppression_is_counted_and_logged_only_once_its_transaction_has_committed()
     {
         // Like the domain events: a rolled-back staging counts nothing, a caller's transaction counts at its commit, an implicit one at
-        // once, and an in-doubt commit only when the caller settles it as committed (SYSTEM_DESIGN §5.6, §7.3).
+        // once, and an in-doubt commit only when the caller settles it as committed (ARCHITECTURE §5.6, §7.3).
         using var metrics = new MetricsCollector();
         var logger = new CapturingLogger<DomainEventInterceptor>();
         long Suppressed() => metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain"));

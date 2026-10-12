@@ -22,7 +22,7 @@ interface StatCardsProps {
 
 /**
  * The day in four figures, adopted from the template's users `stat-cards.tsx`: the appointments on the list, the active
- * ones, the completed ones and the no-shows. As on the board's KPI strip (DESIGN_SYSTEM 11.11, 11.19) there are no trend
+ * ones, the completed ones and the no-shows. As on the board's KPI strip (UI_DESIGN 11.11, 11.19) there are no trend
  * badges, because the API keeps no history to compare with; the completed and no-show cards carry their status's icon
  * tile, and the total a thin bar of the day by status, in the status markers the list's badges use.
  */
@@ -119,7 +119,7 @@ function StatCard({ label, icon: Icon, tile = "rounded-chip bg-secondary text-se
 }
 
 /**
- * The day by status as one thin bar of the status markers, in lifecycle order (DESIGN_SYSTEM 13: a chart of appointments by
+ * The day by status as one thin bar of the status markers, in lifecycle order (UI_DESIGN 13: a chart of appointments by
  * status uses the status markers). Decorative: the footer writes the same figures out.
  */
 function StatusMeter({ rows }: { rows: readonly AppointmentRow[] }) {

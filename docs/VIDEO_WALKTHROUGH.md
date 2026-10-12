@@ -80,7 +80,7 @@ half-open interval; availability is a snapshot, so booking must check again.
 
 ### 0:45–2:45 - Architecture
 
-Open [SYSTEM_DESIGN.md §8.2](SYSTEM_DESIGN.md#82-c4--containers-with-aspire-orchestration)
+Open [ARCHITECTURE.md §8.2](ARCHITECTURE.md#82-c4--containers-with-aspire-orchestration)
 in a rendered Markdown preview. Follow browser → Vite proxy → API → PostgreSQL;
 point to Aspire and its dashboard. Show the vertical-slice tree and generated
 contract with these commands:
@@ -177,7 +177,7 @@ cut to completion; do not substitute an invented test count or duration.
 
 ### 8:00–9:30 - AI collaboration narrative
 
-Open [SYSTEM_DESIGN.md §16](SYSTEM_DESIGN.md#16-genai-co-design-record), the
+Open [ARCHITECTURE.md §16](ARCHITECTURE.md#16-genai-co-design-record), the
 local implementation plan (the author's working notes, not in the repository),
 and the README's **AI Collaboration Narrative**. Show the real history:
 

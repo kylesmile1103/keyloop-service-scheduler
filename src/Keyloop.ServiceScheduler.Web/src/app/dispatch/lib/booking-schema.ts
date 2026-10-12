@@ -9,7 +9,7 @@ import type { BookAppointmentRequest } from "@/api/types.gen"
 const id = (message: string) => z.guid(message)
 
 /**
- * The booking dialog's form (Task 17), with the same rules as the API's validator (SYSTEM_DESIGN §8.7, the
+ * The booking dialog's form (Task 17), with the same rules as the API's validator (ARCHITECTURE §8.7, the
  * `BookAppointmentRequest` schema), so most mistakes are caught before a round trip. The server stays the authority: its
  * `400` field errors are mapped onto the same paths.
  */

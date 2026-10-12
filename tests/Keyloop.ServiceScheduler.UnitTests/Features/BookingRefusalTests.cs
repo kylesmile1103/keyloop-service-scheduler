@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// What a refused booking insert means (SYSTEM_DESIGN §7.4): the answer, and the telemetry it owes. A deadlock (which ADR-003 rules out)
+/// What a refused booking insert means (ARCHITECTURE §7.4): the answer, and the telemetry it owes. A deadlock (which ADR-003 rules out)
 /// is answered as 409 <c>slot-conflict</c> with <c>conflictingResource</c> <c>unknown</c>, counted and logged at Warning, not retried.
 /// </summary>
 public class BookingRefusalTests

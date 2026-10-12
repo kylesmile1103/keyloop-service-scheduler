@@ -5,7 +5,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
-/// What a refused insert means for the booking (SYSTEM_DESIGN §7.4): the attempt to answer with, and the telemetry the refusal owes.
+/// What a refused insert means for the booking (ARCHITECTURE §7.4): the attempt to answer with, and the telemetry the refusal owes.
 /// <see cref="For"/> is pure; <see cref="Record"/> writes the telemetry. A failure that is not a refusal (<see langword="null"/>)
 /// propagates to the execution strategy and, unless it is transient, to a 500.
 /// </summary>

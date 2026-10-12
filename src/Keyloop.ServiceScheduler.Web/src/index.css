@@ -326,7 +326,7 @@
   }
 }
 
-/* Only what a token cannot express. Everything else is Tailwind utilities on semantic tokens (docs/DESIGN_SYSTEM.md). */
+/* Only what a token cannot express. Everything else is Tailwind utilities on semantic tokens (docs/UI_DESIGN.md). */
 @layer components {
   /* Fusion domain tag, as on Service Hub's header: uppercase, 0.2em tracking, weight 600, 8px radius, carbon text on
      the domain gradient. The end padding subtracts the tracking that follows the last letter. */

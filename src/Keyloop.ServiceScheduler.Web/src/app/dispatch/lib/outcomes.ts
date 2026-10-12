@@ -5,7 +5,7 @@ import type { OutcomeKind } from "./stress"
 export interface OutcomeMeta {
   /** The outcome in a word, as the legend and the tiles say it. */
   word: string
-  /** Service Hub's traffic light (DESIGN_SYSTEM 9): check, triangle, cross, plus a clock and a question mark. */
+  /** Service Hub's traffic light (UI_DESIGN 9): check, triangle, cross, plus a clock and a question mark. */
   icon: LucideIcon
   /** The outcome tile and the status-code pill: the feedback tint with its ink. */
   tile: string
@@ -15,7 +15,7 @@ export interface OutcomeMeta {
   bar: string
 }
 
-/** One map from outcome to word, icon and tokens, so every view shows an outcome the same way (DESIGN_SYSTEM 11.17, 17.2). */
+/** One map from outcome to word, icon and tokens, so every view shows an outcome the same way (UI_DESIGN 11.17, 17.2). */
 export const outcomeMeta: Record<OutcomeKind, OutcomeMeta> = {
   booked: { word: "Booked", icon: CircleCheck, tile: "bg-success-subtle text-success", ink: "text-success", bar: "bg-success" },
   taken: { word: "Slot taken", icon: TriangleAlert, tile: "bg-warning-subtle text-warning", ink: "text-warning", bar: "bg-warning" },

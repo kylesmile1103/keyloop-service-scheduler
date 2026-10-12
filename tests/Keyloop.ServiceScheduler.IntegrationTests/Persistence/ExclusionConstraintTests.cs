@@ -8,7 +8,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
 /// <summary>
-/// The overlap invariant is enforced by the database itself (SYSTEM_DESIGN §7.3 layer 1): these writes bypass the booking handler
+/// The overlap invariant is enforced by the database itself (ARCHITECTURE §7.3 layer 1): these writes bypass the booking handler
 /// and its advisory lock, exactly like an out-of-band writer would.
 /// </summary>
 public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetime

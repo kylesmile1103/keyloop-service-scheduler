@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// Startup database work, gated per environment by <see cref="DatabaseOptions"/> (SYSTEM_DESIGN §10): migrations when
+/// Startup database work, gated per environment by <see cref="DatabaseOptions"/> (ARCHITECTURE §10): migrations when
 /// <c>MigrateOnStartup</c>; the reference catalogue and the demo week when <c>SeedDemoData</c>. UAT and Production set neither
 /// (migration bundles; no seed data), and SystemTest migrates but leaves seeding to the tests.
 /// </summary>

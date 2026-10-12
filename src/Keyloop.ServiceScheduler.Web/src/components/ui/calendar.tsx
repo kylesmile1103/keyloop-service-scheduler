@@ -122,7 +122,7 @@ function Calendar({
           "relative isolate z-0 rounded-r-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-muted",
           defaultClassNames.range_end
         ),
-        // Today is a signal ring, so it never reads as the selected day (DESIGN_SYSTEM 11.4).
+        // Today is a signal ring, so it never reads as the selected day (UI_DESIGN 11.4).
         today: cn(
           "rounded-(--cell-radius) text-foreground ring-1 ring-signal ring-inset data-[selected=true]:rounded-none",
           defaultClassNames.today

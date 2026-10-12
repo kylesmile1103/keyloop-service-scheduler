@@ -51,7 +51,7 @@ refuses availability-read.js 'a Production read rate above 120/min' \
 availability_p95='."http_req_duration{endpoint:GetAvailability,phase:workload}" == ["p(95)<100", "p(99)<500"]'
 capacity='.dropped_iterations == ["count<=0"] and .rate_limited == ["rate<=0.01"]'
 for scenario in availability-read.js mixed-workload.js soak.js; do
-  thresholds "$scenario" 'holds availability to the SYSTEM_DESIGN 4.2 p95 of 100ms' "$availability_p95"
+  thresholds "$scenario" 'holds availability to the ARCHITECTURE 4.2 p95 of 100ms' "$availability_p95"
   thresholds "$scenario" 'gates dropped iterations and throttling' "$capacity"
 done
 for scenario in mixed-workload.js soak.js; do

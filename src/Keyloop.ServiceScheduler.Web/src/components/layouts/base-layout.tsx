@@ -19,7 +19,7 @@ interface BaseLayoutProps {
   description?: string
   /** Page-level controls shown to the right of the title (dealership, date, actions). */
   actions?: React.ReactNode
-  /** The decorative header band (DESIGN_SYSTEM 12.3); the dispatch board only. */
+  /** The decorative header band (UI_DESIGN 12.3); the dispatch board only. */
   band?: boolean
 }
 
@@ -87,7 +87,7 @@ export function BaseLayout({ children, title, documentTitle, description, action
 
 /**
  * The OWNERSHIP glow (light) or the fusion-blue aurora (dark) behind the 56 px header: an 80 px band that fades out over its
- * last 24 px, so the page title, toolbar and cards sit on the plain work surface (DESIGN_SYSTEM 12.3). Decorative.
+ * last 24 px, so the page title, toolbar and cards sit on the plain work surface (UI_DESIGN 12.3). Decorative.
  */
 function HeaderBand() {
   const common =

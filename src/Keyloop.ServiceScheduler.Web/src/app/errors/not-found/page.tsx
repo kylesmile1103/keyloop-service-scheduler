@@ -5,7 +5,7 @@ import { IllustratedState } from "@/components/illustrated-state"
 import { BaseLayout } from "@/components/layouts/base-layout"
 import { buttonVariants } from "@/components/ui/button"
 
-/** The router's 404 (adopted from the template's `errors/not-found`, in the DESIGN_SYSTEM 12.1 layout). */
+/** The router's 404 (adopted from the template's `errors/not-found`, in the UI_DESIGN 12.1 layout). */
 export default function NotFoundPage() {
   const { pathname } = useLocation()
 

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// At-least-once delivery (SYSTEM_DESIGN §8.9). Claims commit before network I/O; expiring leases recover crashes and claim tokens fence
+/// At-least-once delivery (ARCHITECTURE §8.9). Claims commit before network I/O; expiring leases recover crashes and claim tokens fence
 /// stale acknowledgements. Rows on reserved domains are staged Suppressed and never claimed; the claim re-applies that rule to a Pending
 /// row that predates it or was written outside the application. An email is rendered only here, so neither a recipient nor a template
 /// problem can reach the booking or cancel that wrote the row.

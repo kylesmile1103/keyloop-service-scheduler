@@ -8,7 +8,7 @@ export type StatusTone = "confirmed" | "checked-in" | "in-progress" | "completed
 export interface StatusMeta {
   /** Plain words, as on the legend and in the details sheet. */
   label: string
-  /** A distinct shape per status, from DESIGN_SYSTEM 4.3: colour is never the only signal (Addendum B §B4). */
+  /** A distinct shape per status, from UI_DESIGN 4.3: colour is never the only signal (Addendum B §B4). */
   icon: LucideIcon
   tone: StatusTone
   /** Full class strings (Tailwind only sees literal class names). */
@@ -21,7 +21,7 @@ export interface StatusMeta {
     dot: string
     /** The solid left bar of a card on a neutral surface (the phone agenda). */
     bar: string
-    /** A status icon tile (DESIGN_SYSTEM 11.10): Service Hub's tinted square, the icon in the status ink. */
+    /** A status icon tile (UI_DESIGN 11.10): Service Hub's tinted square, the icon in the status ink. */
     tile: string
   }
 }
@@ -104,10 +104,10 @@ export const statusMeta: Record<AppointmentStatus, StatusMeta> = {
 /** The statuses the board shows, in lifecycle order; a cancelled appointment leaves the board (§8.7 GetWorkshopSchedule). */
 export const boardStatuses: readonly AppointmentStatus[] = ["Confirmed", "CheckedIn", "InProgress", "Completed", "NoShow"]
 
-/** Statuses that hold their bay and technician (the exclusion constraints' partial `WHERE`, SYSTEM_DESIGN §7.3). */
+/** Statuses that hold their bay and technician (the exclusion constraints' partial `WHERE`, ARCHITECTURE §7.3). */
 export const activeStatuses: readonly AppointmentStatus[] = ["Confirmed", "CheckedIn", "InProgress"]
 
-/** Only a confirmed or checked-in appointment can be cancelled (SYSTEM_DESIGN §5.5); the API refuses the rest with 409. */
+/** Only a confirmed or checked-in appointment can be cancelled (ARCHITECTURE §5.5); the API refuses the rest with 409. */
 export function canCancel(status: AppointmentStatus): boolean {
   return status === "Confirmed" || status === "CheckedIn"
 }

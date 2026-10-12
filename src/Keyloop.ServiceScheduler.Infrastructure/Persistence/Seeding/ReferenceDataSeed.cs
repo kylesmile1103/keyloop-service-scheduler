@@ -9,7 +9,7 @@ using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// The reference catalogue: two dealerships with their bays and technicians, and the service types (SYSTEM_DESIGN A-14: ids are
+/// The reference catalogue: two dealerships with their bays and technicians, and the service types (ARCHITECTURE A-14: ids are
 /// deterministic, <c>DeterministicGuid.Create("&lt;kind&gt;:&lt;slug&gt;")</c>, so demos and tests can address them).
 /// </summary>
 public static class ReferenceDataSeed

@@ -5,12 +5,12 @@ import { ModeToggle } from "@/components/mode-toggle"
 
 /**
  * Ghost buttons over the header band: when focused they take the work surface's colour and offset their ring, so the 1 px
- * focus border has the background on both sides (3.9:1 light) instead of the band's lavender (2.4:1). DESIGN_SYSTEM 12.3.
+ * focus border has the background on both sides (3.9:1 light) instead of the band's lavender (2.4:1). UI_DESIGN 12.3.
  */
 const onBand = "focus-visible:bg-background focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
 /**
- * The product's header (DESIGN_SYSTEM 11.1): the sidebar trigger, the OWNERSHIP domain tag (Keyloop Fusion's aftersales
+ * The product's header (UI_DESIGN 11.1): the sidebar trigger, the OWNERSHIP domain tag (Keyloop Fusion's aftersales
  * and service domain, this app's signature), the product title, then the "Keyloop" wordmark as plain text (never a link,
  * never a logo image) and the theme toggle. Below 640 px the wordmark moves into the mobile sidebar and the theme choice
  * into its footer, so the title has room.

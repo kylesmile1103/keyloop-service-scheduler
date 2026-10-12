@@ -19,7 +19,7 @@ interface IllustratedStateProps {
 
 /**
  * A whole view's empty or error state: the illustration, a headline, one line and one action, in a centred column. The
- * headline says what the picture shows, so the image is decorative (`alt=""`, DESIGN_SYSTEM 12.4). Inline problems (409,
+ * headline says what the picture shows, so the image is decorative (`alt=""`, UI_DESIGN 12.4). Inline problems (409,
  * 422, 400, 429) are alerts next to what the user is doing, never one of these.
  */
 export function IllustratedState({ illustration, title, level = 3, children, action, role, className }: IllustratedStateProps) {

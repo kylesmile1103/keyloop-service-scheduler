@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Keyloop Unified Service Scheduler API",
-    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/SYSTEM_DESIGN.md`, section 8.7 (API contract).",
+    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).",
     "version": "v1"
   },
   "paths": {
@@ -2193,7 +2193,7 @@
             "description": "Every technician of the dealership, active or not, ordered by name. Each appointment's `technician.id` is one of them."
           }
         },
-        "description": "The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.\nA projection over the day's appointments (SYSTEM_DESIGN §5.3); it is a snapshot, and booking checks again."
+        "description": "The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.\nA projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again."
       }
     }
   },

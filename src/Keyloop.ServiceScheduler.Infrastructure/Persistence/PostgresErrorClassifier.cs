@@ -16,7 +16,7 @@ public enum PostgresFailure
     Other,
 }
 
-/// <summary>The single place SQLSTATEs are interpreted (SYSTEM_DESIGN §7.4).</summary>
+/// <summary>The single place SQLSTATEs are interpreted (ARCHITECTURE §7.4).</summary>
 public static class PostgresErrorClassifier
 {
     public const string BayConstraint = "ex_appointments_bay_no_overlap";

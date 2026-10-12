@@ -20,7 +20,7 @@ public sealed class CancelAppointmentEndpoint : IEndpoint
             .WithName("CancelAppointment")
             .WithTags(ApiTags.Appointments)
             .AddEndpointFilter<ValidationFilter<CancelAppointmentRequest>>()
-            // A state-changing POST: the stricter write policy, on top of the global limiter (SYSTEM_DESIGN §11.1).
+            // A state-changing POST: the stricter write policy, on top of the global limiter (ARCHITECTURE §11.1).
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
             .Produces<AppointmentResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()

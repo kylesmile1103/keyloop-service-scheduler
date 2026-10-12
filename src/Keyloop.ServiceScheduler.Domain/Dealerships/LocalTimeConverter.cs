@@ -3,7 +3,7 @@ using Keyloop.ServiceScheduler.Domain.Common;
 
 namespace Keyloop.ServiceScheduler.Domain.Dealerships;
 
-/// <summary>Converts dealership wall-clock times to UTC instants and back (SYSTEM_DESIGN §6.4).</summary>
+/// <summary>Converts dealership wall-clock times to UTC instants and back (ARCHITECTURE §6.4).</summary>
 public static class LocalTimeConverter
 {
     /// <summary>The format of <see cref="FormatLocal"/>: local date and time to the minute, then the offset (<c>+01:00</c>, <c>+00:00</c>, <c>-04:00</c>).</summary>

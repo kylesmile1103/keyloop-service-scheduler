@@ -31,7 +31,7 @@ import { formatDay, todayIn } from "./lib/calendar-date"
 import { firstOpenDate } from "./lib/opening-hours"
 import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
 
-/** How often the board reads its schedule again while auto-refresh is on (SYSTEM_DESIGN §15). */
+/** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
 const AUTO_REFRESH_MS = 5000
 
 export default function DispatchPage() {
@@ -165,7 +165,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
 
   const onBooked = (appointment: AppointmentResponse) => {
     highlight(appointment.id, false)
-    // On a phone the sheet ends on its own success state; wide screens get the toast (DESIGN_SYSTEM 11.15).
+    // On a phone the sheet ends on its own success state; wide screens get the toast (UI_DESIGN 11.15).
     if (agenda) return
     const day = appointment.startLocal.slice(0, 10)
     const when = `${localTime(appointment.startLocal)}${day === today ? "" : ` on ${formatDay(day, "short")}`}`
@@ -274,7 +274,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       />
 
       {agenda && (
-        // The phone's Book action: Keyloop's cyan, clear of the home indicator (DESIGN_SYSTEM 14). The agenda leaves room under it.
+        // The phone's Book action: Keyloop's cyan, clear of the home indicator (UI_DESIGN 14). The agenda leaves room under it.
         <Button
           type="button"
           variant="accent"

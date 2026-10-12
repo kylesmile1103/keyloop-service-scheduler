@@ -7,7 +7,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The <c>Idempotency-Key</c> header's shape and the request fingerprint stored with a memoised booking (SYSTEM_DESIGN §7.5): same
+/// The <c>Idempotency-Key</c> header's shape and the request fingerprint stored with a memoised booking (ARCHITECTURE §7.5): same
 /// dealership and same body give the same fingerprint (a replay), anything else a different one (422 <c>idempotency-key-reuse</c>).
 /// </summary>
 public class IdempotencyFingerprintTests

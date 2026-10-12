@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# The Scheduler API image (SYSTEM_DESIGN §11.2 container hardening): multi-stage, no SDK in the runtime image, non-root, health check.
+# The Scheduler API image (ARCHITECTURE §11.2 container hardening): multi-stage, no SDK in the runtime image, non-root, health check.
 # Build from the repository root, which holds the shared build files:
 #   docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api .
 # The context is narrowed to what the build needs by Dockerfile.dockerignore next to this file.

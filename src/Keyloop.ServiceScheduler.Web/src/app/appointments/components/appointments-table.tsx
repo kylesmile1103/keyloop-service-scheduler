@@ -29,7 +29,7 @@ const stickyCell = cn(
 )
 
 /**
- * Each row's status marker bar (DESIGN_SYSTEM 11.12's 3 px left bar), drawn inside the sticky first cell so it stays with
+ * Each row's status marker bar (UI_DESIGN 11.12's 3 px left bar), drawn inside the sticky first cell so it stays with
  * it (a collapsed table border would scroll away). Full class names, so Tailwind sees them.
  */
 const statusBar: Record<AppointmentStatus, string> = {

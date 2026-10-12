@@ -8,7 +8,7 @@ namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 
 /// <summary>
 /// The booking aggregate: binds dealership, service type, customer, vehicle, bay, technician and slot, and owns the
-/// lifecycle in SYSTEM_DESIGN §5.5. Other aggregates are referenced by id only. Overlap with other appointments is a
+/// lifecycle in ARCHITECTURE §5.5. Other aggregates are referenced by id only. Overlap with other appointments is a
 /// per-resource invariant enforced by the booking handler's locked pre-check and the database exclusion constraints
 /// (§7.3), not here.
 /// </summary>
@@ -21,10 +21,10 @@ public sealed class Appointment : AggregateRoot
     private const string NoQualifiedResources = "no-qualified-resources";
     private const string NoShowBeforeSlotEnd = "no-show-before-slot-end";
 
-    // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (SYSTEM_DESIGN §8.7).
+    // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (ARCHITECTURE §8.7).
     private const string NoQualifiedResourcesDetail = "The selected bay or technician cannot perform this service at this dealership.";
 
-    // Machine tokens: they reach clients as the 409 invalid-state-transition "attempted" extension (SYSTEM_DESIGN §8.7).
+    // Machine tokens: they reach clients as the 409 invalid-state-transition "attempted" extension (ARCHITECTURE §8.7).
     private const string CancelAction = "cancel";
     private const string CheckInAction = "check-in";
     private const string StartAction = "start";
@@ -100,7 +100,7 @@ public sealed class Appointment : AggregateRoot
 
     /// <summary>
     /// Creates a <see cref="AppointmentStatus.Confirmed"/> appointment and raises <see cref="AppointmentBooked"/>. Re-asserts the
-    /// invariants the handler has already filtered for (SYSTEM_DESIGN §5.4): qualified, active resources of this dealership, and a
+    /// invariants the handler has already filtered for (ARCHITECTURE §5.4): qualified, active resources of this dealership, and a
     /// slot inside the operating window. Lead time and horizon belong to <see cref="BookingWindowPolicy"/>.
     /// </summary>
     /// <exception cref="ArgumentException">A programming error: empty id, non-UTC instant, slot length different from the service duration, or notes too long.</exception>

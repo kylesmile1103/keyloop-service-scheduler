@@ -61,7 +61,7 @@ interface Target {
 }
 
 /**
- * The concurrency proof from the browser (SYSTEM_DESIGN §15, the video's proof moment): N bookings for one slot fired at
+ * The concurrency proof from the browser (ARCHITECTURE §15, the video's proof moment): N bookings for one slot fired at
  * once through the generated SDK inside a `ui.stress_test` span. For a slot with one free bay and technician the database
  * lets exactly one through and refuses the rest with `409`; the tally shows it live (the 5xx tile always shows, ideally
  * 0), with latency and every answer listed with its copyable trace id. The tiles follow the template's section cards.

@@ -22,7 +22,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 /// <summary>
-/// <c>POST /api/v1/dealerships/{dealershipId}/appointments</c>: rule checks, allocation (SYSTEM_DESIGN §6.3), the locked pre-check and
+/// <c>POST /api/v1/dealerships/{dealershipId}/appointments</c>: rule checks, allocation (ARCHITECTURE §6.3), the locked pre-check and
 /// the exclusion-constraint backstop (§7.3–§7.4), suggestions, telemetry and rate limiting. The workshop is Test Motors (Europe/London,
 /// Monday–Saturday 08:00–18:00, so 07:00Z–17:00Z on the booking day) with two standard bays, two general technicians and a 60-minute
 /// interim service; the clock is Monday 2026-10-12 08:00Z and SystemTest has no lead time.

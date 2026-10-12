@@ -10,7 +10,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Configurations;
 
 internal sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
 {
-    /// <summary>Shadow property for the stored generated <c>tstzrange</c> that the exclusion constraints index (SYSTEM_DESIGN §7.3).</summary>
+    /// <summary>Shadow property for the stored generated <c>tstzrange</c> that the exclusion constraints index (ARCHITECTURE §7.3).</summary>
     public const string TimeRangeProperty = "TimeRange";
 
     public void Configure(EntityTypeBuilder<Appointment> builder)
@@ -51,7 +51,7 @@ internal sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appoin
             .HasColumnType("tstzrange")
             .HasComputedColumnSql("tstzrange(start_utc, end_utc, '[)')", stored: true);
 
-        // PostgreSQL's xmin system column as the optimistic concurrency token (SYSTEM_DESIGN §7.3 layer 3); Npgsql maps a uint
+        // PostgreSQL's xmin system column as the optimistic concurrency token (ARCHITECTURE §7.3 layer 3); Npgsql maps a uint
         // row version to xmin, so the migration creates no column for it.
         builder.Property(a => a.RowVersion).IsRowVersion();
 

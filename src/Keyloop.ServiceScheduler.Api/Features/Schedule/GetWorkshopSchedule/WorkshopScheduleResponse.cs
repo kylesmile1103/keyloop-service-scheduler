@@ -6,7 +6,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 
 /// <summary>
 /// The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.
-/// A projection over the day's appointments (SYSTEM_DESIGN §5.3); it is a snapshot, and booking checks again.
+/// A projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again.
 /// </summary>
 /// <param name="Dealership">The dealership, with the time zone every <c>…Local</c> value is expressed in.</param>
 /// <param name="Date">The local calendar date asked for, in the dealership's time zone.</param>

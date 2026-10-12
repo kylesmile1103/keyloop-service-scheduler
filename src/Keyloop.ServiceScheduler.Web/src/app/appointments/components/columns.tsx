@@ -126,7 +126,7 @@ export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
     id: "vin",
     accessorFn: (row) => row.vin,
     header: ({ column }) => <DataTableColumnHeader column={column} title="VIN" />,
-    // Shown whole: a VIN cut short identifies nothing (DESIGN_SYSTEM 11.8).
+    // Shown whole: a VIN cut short identifies nothing (UI_DESIGN 11.8).
     cell: ({ row }) => <span className="font-mono text-xs tracking-wide">{row.original.vin}</span>,
     sortFn: "alphanumeric",
     meta: { label: "VIN" },
@@ -145,7 +145,7 @@ export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
     cell: ({ row }) => <DataTableRowActions row={row.original} />,
     enableSorting: false,
     enableHiding: false,
-    // A 36 px button in a 44 px row (DESIGN_SYSTEM 11.17), its edge in line with the toolbar's View button. On a touch screen
+    // A 36 px button in a 44 px row (UI_DESIGN 11.17), its edge in line with the toolbar's View button. On a touch screen
     // the button is 44 px itself, so the cell drops its padding and the row keeps its height.
     meta: { className: "w-px py-1 pr-4 pl-1.5 text-right pointer-coarse:py-0" },
   },

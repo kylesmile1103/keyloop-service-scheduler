@@ -23,7 +23,7 @@ import type { Theme } from "@/contexts/theme-context"
 import { useTheme } from "@/hooks/use-theme"
 
 /**
- * Who is acting. Authentication is designed but deferred (SYSTEM_DESIGN §11.3): the API runs in anonymous mode and
+ * Who is acting. Authentication is designed but deferred (ARCHITECTURE §11.3): the API runs in anonymous mode and
  * records `anonymous:<client-ip>` as the audit actor, so the shell says so instead of showing a made-up user.
  */
 export function NavUser() {

@@ -40,7 +40,7 @@ export function RootFallback() {
 
 /**
  * Shown when a page fails to load or render - most often a code chunk that no longer exists after a new deployment
- * (adopted from the template's `errors/internal-server-error`, in the DESIGN_SYSTEM 12.1 layout). Says what failed and
+ * (adopted from the template's `errors/internal-server-error`, in the UI_DESIGN 12.1 layout). Says what failed and
  * offers the one action that fixes it: reloading the route, which also fetches the latest version after an update.
  */
 export function RootErrorBoundary() {

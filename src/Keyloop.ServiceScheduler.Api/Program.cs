@@ -192,7 +192,7 @@ app.UseMiddleware<RequestCorrelationMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-// Demo (the Aspire-published compose bundle) serves plain HTTP, so it has no HSTS either (SYSTEM_DESIGN §10).
+// Demo (the Aspire-published compose bundle) serves plain HTTP, so it has no HSTS either (ARCHITECTURE §10).
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("SystemTest") && !app.Environment.IsEnvironment("Demo"))
 {
     app.UseHsts();

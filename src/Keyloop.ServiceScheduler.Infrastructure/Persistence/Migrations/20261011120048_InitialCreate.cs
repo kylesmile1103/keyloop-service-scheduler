@@ -265,7 +265,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                 columns: new[] { "dealership_id", "employee_number" },
                 unique: true);
 
-            // Hand-written: EF Core cannot model these. The overlap invariant (SYSTEM_DESIGN §7.3 layer 1): partial GiST exclusion
+            // Hand-written: EF Core cannot model these. The overlap invariant (ARCHITECTURE §7.3 layer 1): partial GiST exclusion
             // constraints over the stored generated time_range; the WHERE list is Appointment.ActiveStatuses.
             migrationBuilder.Sql("""
                 ALTER TABLE appointments ADD CONSTRAINT ex_appointments_bay_no_overlap
@@ -276,7 +276,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                     WHERE (status IN ('Confirmed', 'CheckedIn', 'InProgress'));
                 """);
 
-            // The day-query index (SYSTEM_DESIGN §8.8); start_utc belongs to the Slot complex property, which EF cannot index.
+            // The day-query index (ARCHITECTURE §8.8); start_utc belongs to the Slot complex property, which EF cannot index.
             migrationBuilder.CreateIndex(
                 name: "ix_appointments_dealership_id_start_utc",
                 table: "appointments",

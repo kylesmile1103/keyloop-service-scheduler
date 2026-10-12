@@ -95,7 +95,7 @@ public static class TestData
     }
 
     /// <summary>
-    /// The contention fixture (SYSTEM_DESIGN §14.4): one bay {EvHighVoltage}, one technician {HighVoltageElectrical} and
+    /// The contention fixture (ARCHITECTURE §14.4): one bay {EvHighVoltage}, one technician {HighVoltageElectrical} and
     /// <c>EV-BATTERY-CHECK</c> (60 min), open Monday–Saturday 08:00–18:00 Europe/London.
     /// </summary>
     public static async Task<(Guid DealershipId, Guid ServiceTypeId, Guid BayId, Guid TechnicianId)> ContentionDealershipAsync(SchedulerDbContext db)

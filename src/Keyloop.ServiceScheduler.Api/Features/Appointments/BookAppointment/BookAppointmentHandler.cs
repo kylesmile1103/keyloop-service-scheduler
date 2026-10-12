@@ -21,7 +21,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
-/// Books one appointment (SYSTEM_DESIGN §6.3, §7.3–§7.5). In order: the <c>Idempotency-Key</c> is looked up without a lock (a retry of
+/// Books one appointment (ARCHITECTURE §6.3, §7.3–§7.5). In order: the <c>Idempotency-Key</c> is looked up without a lock (a retry of
 /// a committed booking is replayed before any rule could reject it); the lock-free rules are checked (404s and the 422s); the
 /// appointment id is minted, once per request; then one transaction at <c>READ COMMITTED</c> takes the dealership's advisory lock, looks
 /// for the minted id (an earlier run of this request may have committed although its commit reported a failure), looks the key up again
@@ -61,7 +61,7 @@ public sealed class BookAppointmentHandler(
     /// <summary>How long a successful booking's response is replayed for its <c>Idempotency-Key</c>.</summary>
     public static readonly TimeSpan IdempotencyKeyLifetime = TimeSpan.FromHours(24);
 
-    // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (SYSTEM_DESIGN §8.7).
+    // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (ARCHITECTURE §8.7).
     private const string NoQualifiedResourcesDetail =
         "This dealership has no active bay with every capability, or no active technician with every certification, that the service requires.";
 

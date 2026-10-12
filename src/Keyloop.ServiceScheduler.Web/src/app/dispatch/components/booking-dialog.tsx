@@ -2,7 +2,7 @@
  * Adopted from the shadcn dashboard template (MIT; notice in the README): the dialog, date field and select layout of
  * `vite-version/src/app/calendar/components/event-form.tsx`, and the react-hook-form + zod + `Field` pattern of
  * `vite-version/src/app/users/components/user-form-dialog.tsx`. Adapted to the generated API client, the two-step stepper,
- * slot chips instead of free time inputs, the full-screen sheet on phones and the design system (DESIGN_SYSTEM 11.14).
+ * slot chips instead of free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
  */
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -75,7 +75,7 @@ export interface BookingDialogProps {
    */
   initialDate: string
   today: string
-  /** Phones: a full-screen sheet that ends on a success state instead of closing (DESIGN_SYSTEM 11.14). */
+  /** Phones: a full-screen sheet that ends on a success state instead of closing (UI_DESIGN 11.14). */
   fullScreen: boolean
   /** A booking was made (the board refreshes and highlights it; on wide screens the dialog has closed). */
   onBooked: (appointment: AppointmentResponse) => void
@@ -259,7 +259,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
   const failure = useMutationFailure(book)
 
-  // The new step's heading takes focus, so keyboard and screen-reader users start at its top (DESIGN_SYSTEM 11.14).
+  // The new step's heading takes focus, so keyboard and screen-reader users start at its top (UI_DESIGN 11.14).
   useEffect(() => {
     if (moved.current) stepHeading.current?.focus()
   }, [step])
@@ -977,7 +977,7 @@ function ResourceSelect({ form, name, label, anyLabel, options }: ResourceSelect
   )
 }
 
-/** A field's error under it, with the field-error icon (DESIGN_SYSTEM 11.4). */
+/** A field's error under it, with the field-error icon (UI_DESIGN 11.4). */
 function FormError({ id, message }: { id?: string; message?: string }) {
   if (!message) return null
   return (
@@ -1005,7 +1005,7 @@ interface BookingProblemProps {
 }
 
 /**
- * Why a booking was refused, in place (DESIGN_SYSTEM 11.16): a taken slot with the API's suggested starts, a business rule
+ * Why a booking was refused, in place (UI_DESIGN 11.16): a taken slot with the API's suggested starts, a business rule
  * (with what is missing, or a way back to pick another time), a rate limit with its wait, or a failure with a safe retry.
  * Field errors (`400`) are on their fields; this shows only the ones no field owns.
  */

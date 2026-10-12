@@ -3,14 +3,14 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 
-/// <summary>The shared service meter and persistence/outbound instruments. Names, units and kinds are stable (SYSTEM_DESIGN §12.1).</summary>
+/// <summary>The shared service meter and persistence/outbound instruments. Names, units and kinds are stable (ARCHITECTURE §12.1).</summary>
 public static class InfrastructureTelemetry
 {
     public const string Name = "Keyloop.ServiceScheduler";
 
     public static readonly Meter Meter = new(Name);
 
-    // Notification instruments (SYSTEM_DESIGN §12.1) carry no recipient or other PII: tags are the kind and a fixed reason only.
+    // Notification instruments (ARCHITECTURE §12.1) carry no recipient or other PII: tags are the kind and a fixed reason only.
 
     /// <summary>Tags: <c>kind</c>. Accepted by the sender (not proof of inbox delivery).</summary>
     internal static readonly Counter<long> NotificationsSent = Meter.CreateCounter<long>("scheduler.notifications.sent", "{notification}");

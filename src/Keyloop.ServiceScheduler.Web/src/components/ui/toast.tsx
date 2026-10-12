@@ -138,7 +138,7 @@ function ToastClose({
 function ToastIcon({ type }: { type: string | undefined }) {
   let icon: React.ReactNode = null
 
-  // Service Hub's traffic light (DESIGN_SYSTEM 9): check, triangle, cross, each in its feedback ink.
+  // Service Hub's traffic light (UI_DESIGN 9): check, triangle, cross, each in its feedback ink.
   if (type === "success") {
     icon = <CircleCheckIcon className="text-success" aria-hidden="true" />
   }

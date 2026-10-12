@@ -19,7 +19,7 @@ internal static class NotificationOutcomes
     public const string ReservedDomain = "ReservedDomain";
 }
 
-/// <summary>Immutable appointment snapshot and durable delivery state (SYSTEM_DESIGN §8.9).</summary>
+/// <summary>Immutable appointment snapshot and durable delivery state (ARCHITECTURE §8.9).</summary>
 public sealed class NotificationOutboxEntry
 {
     private NotificationOutboxEntry() { }
@@ -42,7 +42,7 @@ public sealed class NotificationOutboxEntry
     /// <summary>
     /// Staged inside the booking or cancel's SaveChanges: in-memory work only, so it cannot fail or slow the change. The fixed recipient
     /// policy is applied here: a row for a reserved domain is staged <see cref="NotificationStatus.Suppressed"/>, never Pending, so it is
-    /// neither claimed nor counted as backlog, whether or not dispatch is enabled (SYSTEM_DESIGN §8.9, §12.3).
+    /// neither claimed nor counted as backlog, whether or not dispatch is enabled (ARCHITECTURE §8.9, §12.3).
     /// </summary>
     internal static NotificationOutboxEntry Create(NotificationKind kind, string recipient, NotificationSnapshot snapshot, DateTime occurredAtUtc)
     {

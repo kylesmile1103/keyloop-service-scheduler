@@ -19,7 +19,7 @@ interface AppointmentCardsProps {
 }
 
 /**
- * The list on a phone: one job card per appointment (Service Hub's card, DESIGN_SYSTEM 11.13), in the table's order. With
+ * The list on a phone: one job card per appointment (Service Hub's card, UI_DESIGN 11.13), in the table's order. With
  * no lane to group by, each card names both the bay and the technician. The whole card opens the details as a bottom
  * sheet, where a confirmed or checked-in appointment can be cancelled.
  */
@@ -42,7 +42,7 @@ export function AppointmentCards({ rows, timeZone, selectedId }: AppointmentCard
               onClick={(event) => open(row, "details", event.currentTarget)}
               className={cn(
                 "flex min-h-11 w-full cursor-pointer flex-col gap-1.5 rounded-chip border-l-3 bg-card p-3 text-left shadow-xs ring-1 ring-foreground/10 outline-none",
-                // A borderless target (DESIGN_SYSTEM 15): the focus ring stands off the card by 1 px of the page it sits on.
+                // A borderless target (UI_DESIGN 15): the focus ring stands off the card by 1 px of the page it sits on.
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                 "data-selected:ring-2 data-selected:ring-primary",
                 statusMeta[row.status].classes.bar

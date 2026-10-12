@@ -16,7 +16,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
 /// <summary>
-/// A commit that succeeded on the server but whose acknowledgement was lost (SYSTEM_DESIGN §7.4, transient row): the retrying execution
+/// A commit that succeeded on the server but whose acknowledgement was lost (ARCHITECTURE §7.4, transient row): the retrying execution
 /// strategy runs the unit of work again, and that must not book a second appointment or turn a cancellation that happened into a 409.
 /// Booking: the appointment id is minted once per request, the strategy verifies a failed commit by looking for it, and each run looks
 /// for it again after taking the lock. Cancellation: the strategy verifies by the row version the cancel wrote (its <c>xmin</c>), and

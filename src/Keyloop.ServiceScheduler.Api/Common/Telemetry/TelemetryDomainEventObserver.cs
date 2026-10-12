@@ -7,7 +7,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// <summary>
 /// Logs and counts committed domain events: 1001 BookingConfirmed (ids, start and the masked VIN only) and 1010
 /// AppointmentCancelled, which also increments <c>scheduler.appointments.cancellations</c> by previous status. The cancellation
-/// reason is free text that may carry PII, so it is never logged (SYSTEM_DESIGN §11.1).
+/// reason is free text that may carry PII, so it is never logged (ARCHITECTURE §11.1).
 /// </summary>
 public sealed class TelemetryDomainEventObserver(ILogger<TelemetryDomainEventObserver> logger) : IDomainEventObserver
 {

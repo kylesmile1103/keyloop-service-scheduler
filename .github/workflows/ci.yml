@@ -151,7 +151,7 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build -c Release -warnaserror --no-restore
-      # The Aspire tests have their own project (SYSTEM_DESIGN §14.3): Aspire.Hosting needs the reflection-based
+      # The Aspire tests have their own project (ARCHITECTURE §14.3): Aspire.Hosting needs the reflection-based
       # JSON that the integration test process disables. The model tests also run `docker compose config`.
       - name: Test PostgreSQL, API and web through Aspire
         run: |

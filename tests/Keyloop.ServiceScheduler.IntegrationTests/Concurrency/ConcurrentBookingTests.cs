@@ -18,7 +18,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Concurrency;
 
 /// <summary>
-/// The adversarial concurrency proof (SYSTEM_DESIGN §7.3, §14.4; the brief's acceptance criterion). Thirty distinct requests for the
+/// The adversarial concurrency proof (ARCHITECTURE §7.3, §14.4; the brief's acceptance criterion). Thirty distinct requests for the
 /// same slot on a dealership with exactly one qualifying bay and one qualifying technician (<see cref="TestData.ContentionDealershipAsync"/>:
 /// <c>EV-BATTERY-CHECK</c>, 60 minutes) are released at once through the in-memory test server against real PostgreSQL. Exactly one is
 /// booked; the other 29 are answered <c>409</c> with suggestions; nothing fails, deadlocks, trips the exclusion-constraint backstop or
@@ -87,7 +87,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         // Every contender is a distinct request (its own customer, deliverable address and VIN). Odd rounds send no Idempotency-Key, as
         // a plain client would; in even rounds each contender sends its own, so the keyed path runs under the same contention and "no
         // orphaned idempotency row" is a claim that can fail: the winner's key must be the only one memoised, pointing at the winner, and
-        // the 29 losers' keys must have rolled back with their refusals (SYSTEM_DESIGN §7.5). Rounds rather than mixed traffic: a keyed
+        // the 29 losers' keys must have rolled back with their refusals (ARCHITECTURE §7.5). Rounds rather than mixed traffic: a keyed
         // request makes one more round trip before the lock (the lock-free key lookup), so in a mixed crowd an unkeyed request nearly
         // always wins.
         var keyed = round % 2 == 0;
@@ -291,7 +291,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     /// <summary>
-    /// SYSTEM_DESIGN §14.4 assertions 1–3 on the responses: one <c>201</c> for the requested slot on the only bay and technician, whose
+    /// ARCHITECTURE §14.4 assertions 1–3 on the responses: one <c>201</c> for the requested slot on the only bay and technician, whose
     /// <c>Location</c> names the booked id and resolves (a <c>GET</c> of it, once the contention is over, answers <c>200</c> with the
     /// same body) and whose body is the winner's own request; twenty-nine <c>409</c> problems (<c>slot-unavailable</c> or
     /// <c>slot-conflict</c>), each with its own <c>traceId</c> and a non-empty <c>suggestedSlots</c> that never offers the requested
@@ -343,7 +343,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     /// <summary>
-    /// SYSTEM_DESIGN §14.4 assertion 4: the winner is the dealership's only appointment, active, on the only bay and technician, with
+    /// ARCHITECTURE §14.4 assertion 4: the winner is the dealership's only appointment, active, on the only bay and technician, with
     /// exactly one audit row; no audit row references a missing appointment; the only idempotency row (if any) is the winner's; the
     /// winner's booking confirmation is the dealership's only notification outbox row (ADR-020, proposal item A5), staged
     /// <c>Pending</c> for its deliverable address and untouched by a dispatcher.

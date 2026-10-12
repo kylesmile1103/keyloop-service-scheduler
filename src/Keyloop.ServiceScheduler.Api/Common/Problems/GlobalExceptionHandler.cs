@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 
 /// <summary>
-/// The only place exceptions become HTTP responses (SYSTEM_DESIGN §8.7): RFC 9457 problems with the catalogue's type and title,
+/// The only place exceptions become HTTP responses (ARCHITECTURE §8.7): RFC 9457 problems with the catalogue's type and title,
 /// <c>instance</c> = request path and <c>traceId</c> (added by the problem details writer). Anything unexpected is a 500
 /// <c>internal-error</c> whose body never carries exception details; it is logged here (event 1200) because the exception
 /// handler middleware does not log exceptions an <see cref="IExceptionHandler"/> handled.

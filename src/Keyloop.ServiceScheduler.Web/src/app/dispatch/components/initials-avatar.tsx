@@ -10,7 +10,7 @@ const sizes = {
 }
 
 /**
- * A technician's initials (first and last name) in Service Hub's round avatar (DESIGN_SYSTEM 11.9). Decorative: the name is
+ * A technician's initials (first and last name) in Service Hub's round avatar (UI_DESIGN 11.9). Decorative: the name is
  * always written next to it or in the element's accessible name. `ring` separates it from a status tint it overlaps.
  */
 export function InitialsAvatar({

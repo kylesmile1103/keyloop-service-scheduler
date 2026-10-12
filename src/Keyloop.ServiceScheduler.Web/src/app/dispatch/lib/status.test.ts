@@ -23,7 +23,7 @@ describe("appointment status presentation", () => {
     expect(new Set(every.map((status) => statusMeta[status].icon)).size).toBe(every.length)
   })
 
-  it("uses the design system's icons (DESIGN_SYSTEM 4.3): keys handed over for a check-in", () => {
+  it("uses the design system's icons (UI_DESIGN 4.3): keys handed over for a check-in", () => {
     expect(every.map((status) => statusMeta[status].icon)).toEqual([CalendarCheck, KeyRound, Wrench, CircleCheck, Ban, UserX])
   })
 
@@ -36,7 +36,7 @@ describe("appointment status presentation", () => {
       expect(classes.block).toContain(`text-status-${tone}-fg`)
       expect(classes.dot).toContain(`bg-status-${tone}-border`)
       expect(classes.bar).toContain(`border-status-${tone}-border`)
-      // The status icon tile (DESIGN_SYSTEM 11.10): the tint and the ink, on the 8 px chip radius.
+      // The status icon tile (UI_DESIGN 11.10): the tint and the ink, on the 8 px chip radius.
       expect(classes.tile).toContain(`bg-status-${tone}-bg`)
       expect(classes.tile).toContain(`text-status-${tone}-fg`)
       expect(classes.tile).toContain("rounded-chip")
@@ -47,7 +47,7 @@ describe("appointment status presentation", () => {
     expect(boardStatuses).toEqual(["Confirmed", "CheckedIn", "InProgress", "Completed", "NoShow"])
   })
 
-  it("allows cancelling only a confirmed or checked-in appointment (SYSTEM_DESIGN §5.5)", () => {
+  it("allows cancelling only a confirmed or checked-in appointment (ARCHITECTURE §5.5)", () => {
     expect(every.filter(canCancel)).toEqual(["Confirmed", "CheckedIn"])
   })
 })

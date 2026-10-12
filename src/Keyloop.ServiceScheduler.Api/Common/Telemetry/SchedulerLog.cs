@@ -33,7 +33,7 @@ internal static partial class SchedulerLog
 
     /// <summary>
     /// An exclusion constraint rejected a booking that had passed the locked pre-check: some writer bypassed the booking path
-    /// (SYSTEM_DESIGN §7.4). The constraint name says whether the bay or the technician overlapped.
+    /// (ARCHITECTURE §7.4). The constraint name says whether the bay or the technician overlapped.
     /// </summary>
     [LoggerMessage(EventId = 1003, EventName = "ConstraintBackstopFired", Level = LogLevel.Warning,
         Message = "Overlap constraint {Constraint} rejected a booking at dealership {DealershipId} that passed the locked pre-check; an out-of-band writer holds the slot")]

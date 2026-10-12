@@ -54,7 +54,7 @@ public sealed class BookingOverKestrelTests(PostgresFixture pg) : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge, body);
 
         // Kestrel's limit surfaces as BadHttpRequestException(413) while the body is read; GlobalExceptionHandler answers it with the
-        // framework's RFC 9110 type and title for the status (SYSTEM_DESIGN §8.7), plus instance and traceId like every problem.
+        // framework's RFC 9110 type and title for the status (ARCHITECTURE §8.7), plus instance and traceId like every problem.
         // Kestrel also closes the connection, since the rest of the body was never read.
         response.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/problem+json");
         using var problem = JsonDocument.Parse(body);

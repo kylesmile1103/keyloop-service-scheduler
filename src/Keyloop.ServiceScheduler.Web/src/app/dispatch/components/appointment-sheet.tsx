@@ -189,7 +189,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
           <Row term="Vehicle">
-            {/* A generic car, never captioned as the customer's own (DESIGN_SYSTEM 12.2). */}
+            {/* A generic car, never captioned as the customer's own (UI_DESIGN 12.2). */}
             <span className="flex items-start gap-3">
               <img
                 src={vehiclePlaceholder}

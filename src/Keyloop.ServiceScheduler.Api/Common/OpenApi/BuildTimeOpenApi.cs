@@ -15,7 +15,7 @@ internal static class BuildTimeOpenApi
 
     /// <summary>
     /// The environment of the build-time run, whatever the build machine's variables say: Development needs no secrets, database or
-    /// ingress addresses (UAT and Production refuse to start until forwarded-header trust is configured, SYSTEM_DESIGN §11.2), and the
+    /// ingress addresses (UAT and Production refuse to start until forwarded-header trust is configured, ARCHITECTURE §11.2), and the
     /// document does not depend on the environment.
     /// </summary>
     public const string EnvironmentName = "Development";

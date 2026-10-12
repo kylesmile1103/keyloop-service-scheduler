@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Options;
 
-/// <summary>CORS, rate limiting and forwarded headers (SYSTEM_DESIGN §11.2). Validated at startup by <see cref="SecurityOptionsValidator"/>.</summary>
+/// <summary>CORS, rate limiting and forwarded headers (ARCHITECTURE §11.2). Validated at startup by <see cref="SecurityOptionsValidator"/>.</summary>
 public sealed class SecurityOptions : IValidatableObject
 {
     public const string SectionName = "Security";

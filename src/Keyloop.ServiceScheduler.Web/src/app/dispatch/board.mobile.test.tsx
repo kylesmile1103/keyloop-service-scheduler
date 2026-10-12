@@ -13,7 +13,7 @@ beforeAll(async () => {
 })
 
 const readingBoard = `/dispatch?dealership=${reading.id}`
-// A job card names the customer as well as the technician, as its visible text does (DESIGN_SYSTEM 11.13).
+// A job card names the customer as well as the technician, as its visible text does (UI_DESIGN 11.13).
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed"
 const section = (name: string) => screen.findByRole("region", { name: new RegExp(`^${name}`) })
 

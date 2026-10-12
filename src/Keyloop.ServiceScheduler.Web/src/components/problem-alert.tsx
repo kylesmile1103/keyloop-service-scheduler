@@ -22,7 +22,7 @@ interface ProblemAlertProps {
   /**
    * `error` (the default) for a failure to load or save; `warning` for a refusal that reflects the current state or a
    * business rule, such as a `409` conflict or a `422`: the request was understood, and the screen should be read again
-   * or the request changed rather than retried; `info` for a rate limit, which passes on its own (DESIGN_SYSTEM 11.16).
+   * or the request changed rather than retried; `info` for a rate limit, which passes on its own (UI_DESIGN 11.16).
    */
   tone?: ProblemTone
   /** What the problem offers beyond its summary: suggested slots, missing requirements. */
@@ -119,7 +119,7 @@ export function ProblemAlert({
   )
 }
 
-/** "Trace ID", the id in mono (cut short to fit, whole in its tooltip) and a copy button (DESIGN_SYSTEM 11.8). */
+/** "Trace ID", the id in mono (cut short to fit, whole in its tooltip) and a copy button (UI_DESIGN 11.8). */
 export function TraceIdRow({ traceId, className }: { traceId: string; className?: string }) {
   return (
     <span className={cn("flex min-w-0 items-center gap-1.5", className)}>

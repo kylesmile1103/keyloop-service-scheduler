@@ -46,7 +46,7 @@ export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed
 
   return (
     // The template's section cards without their gradient wash or trend badges: the API has no history, so a trend would be
-    // invented (DESIGN_SYSTEM 11.11, 11.19).
+    // invented (UI_DESIGN 11.11, 11.19).
     <section aria-label="Day summary" className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
       <KpiCard
         label="Appointments"
@@ -114,7 +114,7 @@ interface KpiCardProps {
 }
 
 /**
- * One figure of the day (DESIGN_SYSTEM 11.11): the label, the figure in the display face, a context line, and a neutral icon
+ * One figure of the day (UI_DESIGN 11.11): the label, the figure in the display face, a context line, and a neutral icon
  * tile. None of the four is a single status, so no tile takes a status hue.
  */
 function KpiCard({ label, icon: Icon, value, meter, failed, footer, detail }: KpiCardProps) {

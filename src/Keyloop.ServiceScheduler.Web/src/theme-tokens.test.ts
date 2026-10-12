@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 // Read from disk: Vitest stubs CSS imports (even `?raw`) to an empty string.
 const css = readFileSync(path.resolve(import.meta.dirname, "index.css"), "utf8")
 
-// Appointment states (SYSTEM_DESIGN §5.5) and their token slugs (Addendum B §B4).
+// Appointment states (ARCHITECTURE §5.5) and their token slugs (Addendum B §B4).
 const statuses = ["confirmed", "checked-in", "in-progress", "completed", "no-show", "cancelled"] as const
 const themes = [
   { name: "light", selector: ":root" },
@@ -102,7 +102,7 @@ describe("Tailwind exposure", () => {
 })
 
 /**
- * Contrast-critical pairs from docs/DESIGN_SYSTEM.md section 4.4 (text 4.5:1; control boundaries, focus indicators and marks
+ * Contrast-critical pairs from docs/UI_DESIGN.md section 4.4 (text 4.5:1; control boundaries, focus indicators and marks
  * 3:1), asserted in both themes. `token/NN` is the token at NN % opacity composited over the pair's background, as
  * Tailwind's opacity modifier paints it. Rows marked with a theme occur only in that theme.
  */

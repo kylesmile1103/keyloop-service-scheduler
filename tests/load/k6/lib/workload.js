@@ -98,7 +98,7 @@ export function cancelLeftoverBookings(context) {
   }
 }
 
-// SYSTEM_DESIGN 4.2 sets availability p95 < 100 ms and booking p95 < 150 ms.
+// ARCHITECTURE 4.2 sets availability p95 < 100 ms and booking p95 < 150 ms.
 // The schedule p95 and every p99 are local budgets with no design target.
 export function readThresholds() {
   return {

@@ -46,7 +46,7 @@ internal static class SchedulerOpenApi
           `concurrency-conflict`).
         - **429** - rate limited (`rate-limited`, with `Retry-After`).
 
-        The full problem catalogue is in `docs/SYSTEM_DESIGN.md`, section 8.7 (API contract).
+        The full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).
         """;
 
     private static readonly (string Name, string Description)[] Tags =
@@ -160,7 +160,7 @@ internal static class SchedulerOpenApi
 
     /// <summary>
     /// Documents <c>traceId</c>, as required, on <c>ProblemDetails</c> and <c>HttpValidationProblemDetails</c>: every problem this API
-    /// writes carries it (SYSTEM_DESIGN §8.7; the problem-details service adds it), but the framework's schemas list only the RFC 9457
+    /// writes carries it (ARCHITECTURE §8.7; the problem-details service adds it), but the framework's schemas list only the RFC 9457
     /// members, so a generated client would not know it is there.
     /// </summary>
     internal static Task DocumentProblemTraceId(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)

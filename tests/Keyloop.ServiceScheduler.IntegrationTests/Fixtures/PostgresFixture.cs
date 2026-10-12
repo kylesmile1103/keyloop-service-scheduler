@@ -11,7 +11,7 @@ using Xunit.v3;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>One PostgreSQL 17 container for the whole test assembly (SYSTEM_DESIGN §14.2).</summary>
+/// <summary>One PostgreSQL 17 container for the whole test assembly (ARCHITECTURE §14.2).</summary>
 /// <remarks>
 /// Docker on the author's machine is Colima. Testcontainers finds its socket through the active Docker context without any
 /// configuration; if it ever cannot, run the tests with Colima's documented settings:

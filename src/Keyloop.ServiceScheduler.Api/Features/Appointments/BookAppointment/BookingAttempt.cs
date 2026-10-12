@@ -33,7 +33,7 @@ public abstract record BookingAttempt
     public sealed record KeyInUse(IdempotencyKey Stored) : BookingAttempt;
 }
 
-/// <summary>The <c>outcome</c> tag of <c>scheduler.booking.requests</c> and <c>scheduler.booking.duration</c>, and of the <c>booking.outcome</c> span tag (SYSTEM_DESIGN §12.1).</summary>
+/// <summary>The <c>outcome</c> tag of <c>scheduler.booking.requests</c> and <c>scheduler.booking.duration</c>, and of the <c>booking.outcome</c> span tag (ARCHITECTURE §12.1).</summary>
 public static class BookingOutcomes
 {
     public const string Confirmed = "confirmed";

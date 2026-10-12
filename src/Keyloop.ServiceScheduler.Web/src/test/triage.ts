@@ -6,7 +6,7 @@ import type {
 } from "@/api/types.gen"
 
 /**
- * Booking intake triage as the API answers it (SYSTEM_DESIGN §8.10): the status read, two seeded services to suggest, and
+ * Booking intake triage as the API answers it (ARCHITECTURE §8.10): the status read, two seeded services to suggest, and
  * answers built from them. The ids and requirements are the seeded catalogue's (ReferenceDataSeed).
  */
 

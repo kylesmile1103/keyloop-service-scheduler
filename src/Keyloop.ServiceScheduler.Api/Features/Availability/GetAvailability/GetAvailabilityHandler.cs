@@ -15,7 +15,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 
 /// <summary>
-/// Availability for one service on one local date (SYSTEM_DESIGN §6.1–§6.2): the dealership's operating window for that date, the
+/// Availability for one service on one local date (ARCHITECTURE §6.1–§6.2): the dealership's operating window for that date, the
 /// active bays and technicians that qualify for the service, the active appointments overlapping the window, and
 /// <see cref="AvailabilityCalculator"/> over them. Throws <see cref="NotFoundException"/> (404 <c>not-found</c>) for an unknown
 /// dealership or service type. Records <c>scheduler.availability.duration</c> and <c>scheduler.availability.slots_returned</c>

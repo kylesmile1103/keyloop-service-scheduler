@@ -5,7 +5,7 @@ import errorConnection from "@/assets/illustrations/error-connection.webp"
 import noAvailability from "@/assets/illustrations/no-availability.webp"
 
 /**
- * The state illustrations (DESIGN_SYSTEM 12.1): original artwork for this project, 1200 x 900 with a transparent margin, so
+ * The state illustrations (UI_DESIGN 12.1): original artwork for this project, 1200 x 900 with a transparent margin, so
  * they read on light and dark cards. Imported, so Vite fingerprints them (each is far above the 4 KB inline limit).
  */
 export const illustrations = {

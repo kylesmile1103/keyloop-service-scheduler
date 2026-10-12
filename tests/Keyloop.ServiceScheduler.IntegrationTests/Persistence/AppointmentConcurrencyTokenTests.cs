@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
 /// <summary>
-/// PostgreSQL's <c>xmin</c> is the appointment's optimistic concurrency token (SYSTEM_DESIGN §7.3 layer 3, mapped with
+/// PostgreSQL's <c>xmin</c> is the appointment's optimistic concurrency token (ARCHITECTURE §7.3 layer 3, mapped with
 /// <c>IsRowVersion()</c>): a transition saved from a stale read must fail rather than overwrite a newer one (first writer wins).
 /// </summary>
 public sealed class AppointmentConcurrencyTokenTests(PostgresFixture pg) : IAsyncLifetime

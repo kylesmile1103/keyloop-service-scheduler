@@ -48,7 +48,7 @@ public class AvailabilityCalculatorTests
     [Fact]
     public void Worked_example_from_spec()
     {
-        // SYSTEM_DESIGN §6.2 worked example.
+        // ARCHITECTURE §6.2 worked example.
         ResourceBusy[] bays = [Resource(Busy(9, 0, 10, 0)), Resource(Busy(8, 0, 9, 30), Busy(10, 30, 11, 0))];
         ResourceBusy[] technicians = [Resource(Busy(8, 30, 9, 0)), Resource(Busy(10, 0, 12, 0))];
 

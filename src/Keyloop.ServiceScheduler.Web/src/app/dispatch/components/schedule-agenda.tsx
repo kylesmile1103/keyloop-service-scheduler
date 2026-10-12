@@ -19,14 +19,14 @@ interface ScheduleAgendaProps {
   /** The current instant when the agenda shows today; `null` on any other day. */
   now: Date | null
   selectedId: string | null
-  /** A booking just made: its card draws the booked halo (DESIGN_SYSTEM 10). */
+  /** A booking just made: its card draws the booked halo (UI_DESIGN 10). */
   bookedId?: string | null
   onSelect: (appointment: BoardAppointment, card: HTMLElement) => void
 }
 
 /**
  * The board on a phone: the same lanes as the timeline, as collapsible sections of time-ordered job cards (the template
- * calendar's list view, regrouped by bay or technician, with Service Hub's job card anatomy, DESIGN_SYSTEM 11.13). Each lane
+ * calendar's list view, regrouped by bay or technician, with Service Hub's job card anatomy, UI_DESIGN 11.13). Each lane
  * header stays in view while its cards scroll; today's lists mark "now" between past and coming work.
  */
 export function ScheduleAgenda({ lanes, ...rest }: ScheduleAgendaProps) {
@@ -137,7 +137,7 @@ function JobCard({ appointment, mode, timeZone, selected, booked, onSelect }: Jo
       onClick={(event) => onSelect(appointment, event.currentTarget)}
       className={cn(
         "flex min-h-11 w-full cursor-pointer flex-col gap-1.5 rounded-chip border-l-3 bg-card p-3 text-left shadow-xs ring-1 ring-foreground/10 outline-none",
-        // A borderless target (DESIGN_SYSTEM 15): the focus ring stands off the card by 1 px of the page it sits on, which
+        // A borderless target (UI_DESIGN 15): the focus ring stands off the card by 1 px of the page it sits on, which
         // also tells it from the just-booked ring.
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         "data-selected:ring-2 data-selected:ring-primary",

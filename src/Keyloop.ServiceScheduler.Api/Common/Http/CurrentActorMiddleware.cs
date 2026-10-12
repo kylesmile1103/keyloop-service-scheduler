@@ -3,7 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Sets the request's <see cref="CurrentActor"/> for the audit trail. Authentication is deferred (SYSTEM_DESIGN §11.3), so every
+/// Sets the request's <see cref="CurrentActor"/> for the audit trail. Authentication is deferred (ARCHITECTURE §11.3), so every
 /// request is <c>anonymous:&lt;client-ip&gt;</c>; once auth is wired this becomes the authenticated principal.
 /// </summary>
 public sealed class CurrentActorMiddleware(CurrentActor actor) : IMiddleware

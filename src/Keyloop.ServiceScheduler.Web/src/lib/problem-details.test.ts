@@ -110,7 +110,7 @@ describe("the brief's problem helpers", () => {
   it("slug_from_type", () => {
     expect(problemSlug(alreadyCancelled)).toBe("invalid-state-transition")
     expect(problemSlug({ type: "https://api.keyloop.example/problems/concurrency-conflict/" })).toBe("concurrency-conflict")
-    // Framework-generated problems keep their RFC links (SYSTEM_DESIGN §8.7); they have no catalogue slug.
+    // Framework-generated problems keep their RFC links (ARCHITECTURE §8.7); they have no catalogue slug.
     expect(problemSlug({ type: "https://tools.ietf.org/html/rfc9110#section-15.5.5" })).toBe("")
     expect(problemSlug({ title: "No type" })).toBe("")
   })

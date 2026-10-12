@@ -57,7 +57,7 @@ class Telemetry(unittest.TestCase):
         (repo / defaults).parent.mkdir(parents=True)
         shutil.copy(v.REPO / defaults, repo / defaults)
         (repo / "docs").mkdir()
-        (repo / "docs/SYSTEM_DESIGN.md").write_text(design((v.REPO / "docs/SYSTEM_DESIGN.md").read_text()))
+        (repo / "docs/ARCHITECTURE.md").write_text(design((v.REPO / "docs/ARCHITECTURE.md").read_text()))
         return repo
 
     @staticmethod
@@ -78,7 +78,7 @@ class Telemetry(unittest.TestCase):
     def test_notification_names_are_checked_against_this_design(self):
         renamed = lambda text: text.replace("scheduler.notifications.retried", "scheduler.notifications.retries")
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, "scheduler.notifications.retried missing from SYSTEM_DESIGN section 12"):
+            with self.assertRaisesRegex(ValueError, "scheduler.notifications.retried missing from ARCHITECTURE section 12"):
                 self.check(self.tree(directory, design=renamed))
 
 
