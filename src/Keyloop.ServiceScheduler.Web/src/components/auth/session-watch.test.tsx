@@ -250,6 +250,27 @@ describe("a change of identity", () => {
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
   })
 
+  it("does not read an open booking's record again when the window regains focus, before /me has answered", async () => {
+    let me: CurrentUserResponse = serviceAdvisor
+    const api = mockBoardApi({ me: () => me, schedule: () => scheduleFor(me) })
+    renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
+    const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
+    const readsBefore = recordReads()
+
+    // Long enough for every read on screen to be stale: the window's focus reads them all again, /me among them, and the
+    // record would go out with the identity from before the sign-out.
+    vi.setSystemTime(new Date("2026-10-13T08:31:00Z"))
+    me = anonymous
+    refocus()
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText("*******").length).toBeGreaterThan(0))
+    expect(recordReads()).toBe(readsBefore)
+  })
+
   it("keeps the board as it is when /me answers again with the same caller", async () => {
     const api = mockBoardApi({ me: () => serviceAdvisor })
     renderBoard(list)

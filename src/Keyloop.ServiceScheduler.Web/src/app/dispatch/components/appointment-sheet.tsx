@@ -150,8 +150,15 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const detailsOptions = getAppointmentOptions({ path })
   // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes or
   // fails, the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
-  // rendered for the new state, and a visitor (or nobody known) must never send the read.
-  const details = useQuery({ ...detailsOptions, enabled: () => open && cachedCapabilities(queryClient).canViewDetails })
+  // rendered for the new state, and a visitor (or nobody known) must never send the read. Not read again when the window
+  // regains focus or the network returns: `/me` is read again at that same moment, so the cache would still name the
+  // caller from before (a sign-out in another tab); the record is read when the sheet opens, and on Try again.
+  const details = useQuery({
+    ...detailsOptions,
+    enabled: () => open && cachedCapabilities(queryClient).canViewDetails,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
   // Skeletons while the record may still come: until `/me` answers, and while a role's read is out.
   const recordLoading = detailsAccess === "checking" || (detailsAccess === "allowed" && details.isPending)
   // Kept while Try again reads the record again, so the alert and its focused button stay until the answer.
