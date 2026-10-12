@@ -1,0 +1,11 @@
+{
+  "name": "Keyloop scheduler approved reviewers",
+  "decision": "allow",
+  "include": [
+    { "email": { "email": "__REVIEWER_EMAIL_1__" } },
+    { "email": { "email": "__REVIEWER_EMAIL_2__" } }
+  ],
+  "exclude": [],
+  "require": [],
+  "session_duration": "1h"
+}
