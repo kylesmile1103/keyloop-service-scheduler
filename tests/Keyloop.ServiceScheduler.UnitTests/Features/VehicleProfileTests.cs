@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.Mapping;
 using Keyloop.ServiceScheduler.Domain.Resources;
@@ -45,6 +47,49 @@ public sealed class VehicleProfileTests
     {
         var request = new VehicleProfileRequest((Powertrain)invalid, VehicleClass: (VehicleClass)invalid, ConflictChoice: (ProfileConflictChoice)invalid);
         new VehicleProfileRequestValidator().Validate(request).IsValid.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("Heavy", true)]
+    [InlineData("heavy", true)]
+    [InlineData("HEAVY", true)]
+    [InlineData("Heavy, LightCommercial", false)]
+    [InlineData("Heavy,LightCommercial", false)]
+    [InlineData("Car,Heavy", false)]
+    [InlineData("2", false)]
+    [InlineData(" Heavy", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void Exact_enum_names_accept_one_member_and_nothing_else(string? text, bool accepted)
+    {
+        ExactEnumName.TryParse<VehicleClass>(text, out var value).ShouldBe(accepted);
+        if (accepted)
+        {
+            value.ShouldBe(VehicleClass.Heavy);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"vehicleClass\":\"Heavy, LightCommercial\"}")]
+    [InlineData("{\"vehicleClass\":2}")]
+    [InlineData("{\"vehicleClass\":\"2\"}")]
+    [InlineData("{\"powertrain\":\"Ice, BatteryElectric\"}")]
+    [InlineData("{\"powertrain\":4}")]
+    [InlineData("{\"powertrain\":null}")]
+    [InlineData("{\"conflictChoice\":0}")]
+    [InlineData("{\"conflictChoice\":\"UseDecoded,UseDecoded\"}")]
+    public void Declared_profile_JSON_rejects_lists_and_numbers(string json) =>
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize(json, SchedulerJsonContext.Default.VehicleProfileRequest));
+
+    [Fact]
+    public void Declared_profile_JSON_round_trips_member_names()
+    {
+        var request = JsonSerializer.Deserialize("{\"powertrain\":\"batteryelectric\",\"vehicleClass\":\"Heavy\",\"conflictChoice\":\"UseDecoded\"}",
+            SchedulerJsonContext.Default.VehicleProfileRequest).ShouldNotBeNull();
+        request.ShouldBe(new VehicleProfileRequest(Powertrain.BatteryElectric, VehicleClass: VehicleClass.Heavy, ConflictChoice: ProfileConflictChoice.UseDecoded));
+        JsonSerializer.Serialize(request, SchedulerJsonContext.Default.VehicleProfileRequest).ShouldBe(
+            "{\"powertrain\":\"BatteryElectric\",\"manufacturer\":null,\"vehicleClass\":\"Heavy\",\"declarationReason\":null,\"conflictChoice\":\"UseDecoded\"}");
+        JsonSerializer.Deserialize("{\"conflictChoice\":null}", SchedulerJsonContext.Default.VehicleProfileRequest).ShouldNotBeNull().ConflictChoice.ShouldBeNull();
     }
 
     [Theory]

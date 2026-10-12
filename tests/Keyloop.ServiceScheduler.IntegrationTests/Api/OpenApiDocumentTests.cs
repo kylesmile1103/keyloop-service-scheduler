@@ -142,6 +142,21 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             schema.GetProperty("format").GetString().ShouldBe(format, name);
         }
 
+        // The vehicle-aware parameters bind as text so the validator can reject lists, numbers and malformed flags with a field
+        // error, but the contract types them as the enums and the boolean they are.
+        foreach (var (name, values) in new (string, string[])[]
+                 {
+                     ("powertrain", ["Ice", "MildHybrid", "FullHybrid", "PluginHybrid", "BatteryElectric", "FuelCell", "Unknown"]),
+                     ("vehicleClass", ["Car", "LightCommercial", "Heavy", "Unknown"]),
+                 })
+        {
+            var schema = parameters[name].GetProperty("schema");
+            schema.GetProperty("type").GetString().ShouldBe("string", name);
+            schema.GetProperty("enum").EnumerateArray().Select(v => v.GetString()).ShouldBe(values, name);
+        }
+
+        parameters["needsLiveDiagnosis"].GetProperty("schema").GetProperty("type").GetString().ShouldBe("boolean");
+
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var (schema, properties) in new (string, string[])[]
                  {

@@ -33,7 +33,7 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
 
         VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements, ("powertrain", query.Powertrain is not null),
-            ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.NeedsLiveDiagnosis == true));
+            ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.LiveDiagnosis == true));
 
         // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
         var started = Stopwatch.GetTimestamp();
@@ -66,12 +66,13 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         var day = await reader.ReadAsync(dealership, window, activeOnly: true, ct);
         var profile = VehicleProfile.Unknown with
         {
-            Powertrain = query.Powertrain is null ? Powertrain.Unknown : Enum.Parse<Powertrain>(query.Powertrain, true),
+            // ValidationFilter has already rejected anything but one member name.
+            Powertrain = query.PowertrainValue ?? Powertrain.Unknown,
             Manufacturer = VehicleProfile.NormalizeManufacturer(query.Manufacturer),
-            VehicleClass = query.VehicleClass is null ? VehicleClass.Unknown : Enum.Parse<VehicleClass>(query.VehicleClass, true),
+            VehicleClass = query.VehicleClassValue ?? VehicleClass.Unknown,
         };
         var requirements = options.Value.VehicleAwareRequirements
-            ? RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealershipId, ct), query.NeedsLiveDiagnosis ?? false) : null;
+            ? RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealershipId, ct), query.LiveDiagnosis ?? false) : null;
         var bays = day.Bays.Where(b => b.IsActive && (requirements is null ? b.Supports(serviceType) : b.Satisfies(requirements))).ToList();
         var technicians = day.Technicians.Where(t => t.IsActive && (requirements is null ? t.IsCertifiedFor(serviceType) : t.Satisfies(requirements, date))).ToList();
         if (bays.Count == 0 || technicians.Count == 0)

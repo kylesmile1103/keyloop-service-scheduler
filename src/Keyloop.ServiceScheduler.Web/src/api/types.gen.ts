@@ -564,8 +564,6 @@ export type ProblemDetails = {
     rejectedFields?: Array<string>;
 };
 
-export type ProfileConflictChoice = 'UseDecoded';
-
 /**
  * Evidence for each attribute. Declaration accountability is private audit data, never telemetry or email content.
  */
@@ -899,7 +897,7 @@ export type VehicleProfileRequest = {
     /**
      * Powertrain observed at intake; a concrete value requires a reason.
      */
-    powertrain?: Powertrain;
+    powertrain?: 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
     /**
      * Normalized OEM code, maximum 32 ASCII letters/digits/hyphens.
      */
@@ -907,12 +905,15 @@ export type VehicleProfileRequest = {
     /**
      * Car, light commercial, heavy, or Unknown.
      */
-    vehicleClass?: VehicleClass;
+    vehicleClass?: 'Car' | 'LightCommercial' | 'Heavy' | 'Unknown';
     /**
      * Private audit reason, 1..500 characters after trimming, required for concrete powertrain.
      */
     declarationReason?: null | string;
-    conflictChoice?: null | ProfileConflictChoice;
+    /**
+     * UseDecoded acknowledges a discrepancy and retains decoded values and their provenance.
+     */
+    conflictChoice?: 'UseDecoded' | null;
 };
 
 /**
@@ -1086,7 +1087,7 @@ export type GetAvailabilityData = {
         /**
          * Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.
          */
-        powertrain?: string;
+        powertrain?: 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
         /**
          * Optional OEM code; manufacturer preferences are deferred.
          */
@@ -1094,7 +1095,7 @@ export type GetAvailabilityData = {
         /**
          * Optional class; Heavy requires a heavy lift and HeavyVehicle certification.
          */
-        vehicleClass?: string;
+        vehicleClass?: 'Car' | 'LightCommercial' | 'Heavy' | 'Unknown';
         /**
          * Explicit live HV work requiring level 4 and an EV bay.
          */
@@ -1105,7 +1106,7 @@ export type GetAvailabilityData = {
 
 export type GetAvailabilityErrors = {
     /**
-     * The service type id or the date is missing or malformed, or the date is outside the bookable range (`validation-error`, `errors` keyed `serviceTypeId` or `date`).
+     * The service type id or the date is missing or malformed, or the date is outside the bookable range, or a vehicle parameter is not exactly one member name (a comma list, a repeated parameter or a number) or `needsLiveDiagnosis` is not `true`/`false` (`validation-error`, `errors` keyed `serviceTypeId`, `date`, `powertrain`, `manufacturer`, `vehicleClass` or `needsLiveDiagnosis`).
      */
     400: HttpValidationProblemDetails;
     /**

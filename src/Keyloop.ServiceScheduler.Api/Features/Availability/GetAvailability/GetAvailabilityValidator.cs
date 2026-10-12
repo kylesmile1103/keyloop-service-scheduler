@@ -1,13 +1,14 @@
 using System.Globalization;
 using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Options;
+using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 
 /// <summary>
 /// Shape rules for <see cref="GetAvailabilityQuery"/>, applied by <c>ValidationFilter</c> (400 <c>validation-error</c>, keys
-/// <c>serviceTypeId</c> and <c>date</c>). The date range is deliberately loose, from yesterday to the booking horizon plus a day
+/// <c>serviceTypeId</c>, <c>date</c>, <c>powertrain</c>, <c>manufacturer</c>, <c>vehicleClass</c> and <c>needsLiveDiagnosis</c>). The date range is deliberately loose, from yesterday to the booking horizon plus a day
 /// in UTC terms, because the date is local to the dealership; <c>BookingWindowPolicy</c> applies the exact rule when booking.
 /// </summary>
 public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailabilityQuery>
@@ -16,10 +17,13 @@ public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailability
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
-        RuleFor(q => q.Powertrain).Must(p => p is null || (Enum.TryParse<Domain.Scheduling.Powertrain>(p, true, out var value)
-            && Enum.IsDefined(value) && !int.TryParse(p, out _))).WithMessage("powertrain must be a named powertrain value.");
-        RuleFor(q => q.VehicleClass).Must(p => p is null || (Enum.TryParse<Domain.Scheduling.VehicleClass>(p, true, out var value)
-            && Enum.IsDefined(value) && !int.TryParse(p, out _))).WithMessage("vehicleClass must be a named vehicle class.");
+        // Exactly one member name: Enum.TryParse would OR a comma list (also what a repeated parameter binds as) into another member.
+        RuleFor(q => q.Powertrain).Must((query, p) => p is null || query.PowertrainValue is not null)
+            .WithMessage($"powertrain must be exactly one of {ExactEnumName.Describe<Domain.Scheduling.Powertrain>()}.");
+        RuleFor(q => q.VehicleClass).Must((query, c) => c is null || query.VehicleClassValue is not null)
+            .WithMessage($"vehicleClass must be exactly one of {ExactEnumName.Describe<Domain.Scheduling.VehicleClass>()}.");
+        RuleFor(q => q.NeedsLiveDiagnosis).Must((query, flag) => flag is null || query.LiveDiagnosis is not null)
+            .WithMessage("needsLiveDiagnosis must be true or false.");
         RuleFor(q => q.Manufacturer).Must(m => m is null || (m.Trim().Length is >= 1 and <= 32
             && m.Trim().All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))).WithMessage("manufacturer must be an OEM code of at most 32 characters.");
         var horizonDays = options.Value.BookingHorizonDays;

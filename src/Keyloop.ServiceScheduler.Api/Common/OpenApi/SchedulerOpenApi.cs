@@ -2,6 +2,9 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -79,6 +82,7 @@ internal static class SchedulerOpenApi
             .AddDocumentTransformer(TransformDocument)
             .AddSchemaTransformer(TransformParameterSchema)
             .AddSchemaTransformer(TypeStringEnums)
+            .AddSchemaTransformer(DescribeExactEnumNames)
             .AddSchemaTransformer(DocumentProblemTraceId)
             .AddOperationTransformer(DocumentAccessSecurity)
             .AddOperationTransformer(AddResponseHeaders)
@@ -184,6 +188,32 @@ internal static class SchedulerOpenApi
     }
 
     /// <summary>
+    /// A request property read by <see cref="ExactEnumNameConverter{TEnum}"/> is still the string enum it was: Microsoft.AspNetCore.OpenApi
+    /// cannot see through a custom converter and would leave the schema untyped, so the type and the member names are written here
+    /// (with <c>null</c> as well for a nullable property).
+    /// </summary>
+    internal static Task DescribeExactEnumNames(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
+    {
+        // The attribute, not the converter instance: a nullable property's converter is the framework's wrapper around ours.
+        if (context.JsonPropertyInfo is { AttributeProvider: { } member } property
+            && member.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false).OfType<JsonConverterAttribute>()
+                .Any(a => a.ConverterType is { IsGenericType: true } converter && converter.GetGenericTypeDefinition() == typeof(ExactEnumNameConverter<>)))
+        {
+            var underlying = Nullable.GetUnderlyingType(property.PropertyType);
+            var values = Enum.GetNames(underlying ?? property.PropertyType).Select(name => (JsonNode)JsonValue.Create(name)).ToList();
+            if (underlying is not null)
+            {
+                values.Add(null!); // JSON null, as the framework lists it for a nullable enum
+            }
+
+            schema.Type = underlying is null ? JsonSchemaType.String : JsonSchemaType.String | JsonSchemaType.Null;
+            schema.Enum = values;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Documents <c>traceId</c>, as required, on <c>ProblemDetails</c> and <c>HttpValidationProblemDetails</c>: every problem this API
     /// writes carries it (ARCHITECTURE §8.7; the problem-details service adds it), but the framework's schemas list only the RFC 9457
     /// members, so a generated client would not know it is there.
@@ -231,17 +261,39 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
+    /// <summary>The custom <see cref="DataTypeAttribute"/> name that documents a text parameter as a boolean.</summary>
+    public const string BooleanDataType = "boolean";
+
     /// <summary>
     /// A parameter marked <c>[DataType(DataType.Date)]</c> is documented as an RFC 3339 full-date (<c>type: string, format: date</c>),
-    /// as a <see cref="DateOnly"/> parameter would be. Such parameters bind as text so that the validator can reject any other form
-    /// with a field error (e.g. <c>GetAvailabilityQuery.Date</c>); Microsoft.AspNetCore.OpenApi does not map the attribute itself.
+    /// as a <see cref="DateOnly"/> parameter would be; one marked <c>[EnumDataType(typeof(T))]</c> as the string enum of
+    /// <c>T</c>'s member names; one marked <c>[DataType(BooleanDataType)]</c> as a boolean. Such parameters bind as text so that the
+    /// validator can reject any other form with a field error (e.g. <c>GetAvailabilityQuery.Date</c>, <c>.Powertrain</c>,
+    /// <c>.NeedsLiveDiagnosis</c>); Microsoft.AspNetCore.OpenApi does not map these attributes itself.
     /// </summary>
     internal static Task TransformParameterSchema(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
-        if (context.ParameterDescription?.ParameterDescriptor is IParameterInfoParameterDescriptor { ParameterInfo: var parameter }
-            && parameter.GetCustomAttributes(typeof(DataTypeAttribute), inherit: true).OfType<DataTypeAttribute>().Any(a => a.DataType == DataType.Date))
+        if (context.ParameterDescription?.ParameterDescriptor is not IParameterInfoParameterDescriptor { ParameterInfo: var parameter })
+        {
+            return Task.CompletedTask;
+        }
+
+        var dataTypes = parameter.GetCustomAttributes(typeof(DataTypeAttribute), inherit: true).OfType<DataTypeAttribute>().ToList();
+        if (dataTypes.Any(a => a.DataType == DataType.Date))
         {
             schema.Format = "date";
+        }
+
+        // Text parameters the validator parses strictly (GetAvailabilityQuery): an enum's member names, and a boolean.
+        if (dataTypes.OfType<EnumDataTypeAttribute>().FirstOrDefault() is { EnumType: { IsEnum: true } enumType })
+        {
+            schema.Type = JsonSchemaType.String;
+            schema.Enum = [.. Enum.GetNames(enumType).Select(name => (JsonNode)JsonValue.Create(name))];
+        }
+
+        if (dataTypes.Any(a => a.DataType == DataType.Custom && a.CustomDataType == BooleanDataType))
+        {
+            schema.Type = JsonSchemaType.Boolean;
         }
 
         return Task.CompletedTask;

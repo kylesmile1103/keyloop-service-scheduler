@@ -244,6 +244,15 @@
             "in": "query",
             "description": "Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.",
             "schema": {
+              "enum": [
+                "Ice",
+                "MildHybrid",
+                "FullHybrid",
+                "PluginHybrid",
+                "BatteryElectric",
+                "FuelCell",
+                "Unknown"
+              ],
               "type": "string"
             },
             "example": "BatteryElectric"
@@ -262,6 +271,12 @@
             "in": "query",
             "description": "Optional class; Heavy requires a heavy lift and HeavyVehicle certification.",
             "schema": {
+              "enum": [
+                "Car",
+                "LightCommercial",
+                "Heavy",
+                "Unknown"
+              ],
               "type": "string"
             },
             "example": "Heavy"
@@ -308,7 +323,7 @@
             }
           },
           "400": {
-            "description": "The service type id or the date is missing or malformed, or the date is outside the bookable range (`validation-error`, `errors` keyed `serviceTypeId` or `date`).",
+            "description": "The service type id or the date is missing or malformed, or the date is outside the bookable range, or a vehicle parameter is not exactly one member name (a comma list, a repeated parameter or a number) or `needsLiveDiagnosis` is not `true`/`false` (`validation-error`, `errors` keyed `serviceTypeId`, `date`, `powertrain`, `manufacturer`, `vehicleClass` or `needsLiveDiagnosis`).",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -3019,12 +3034,6 @@
           }
         }
       },
-      "ProfileConflictChoice": {
-        "enum": [
-          "UseDecoded",
-          null
-        ]
-      },
       "ProfileProvenance": {
         "required": [
           "powertrain",
@@ -3533,8 +3542,18 @@
         "type": "object",
         "properties": {
           "powertrain": {
+            "enum": [
+              "Ice",
+              "MildHybrid",
+              "FullHybrid",
+              "PluginHybrid",
+              "BatteryElectric",
+              "FuelCell",
+              "Unknown"
+            ],
+            "type": "string",
             "description": "Powertrain observed at intake; a concrete value requires a reason.",
-            "$ref": "#/components/schemas/Powertrain"
+            "default": "Unknown"
           },
           "manufacturer": {
             "type": [
@@ -3544,8 +3563,15 @@
             "description": "Normalized OEM code, maximum 32 ASCII letters/digits/hyphens."
           },
           "vehicleClass": {
+            "enum": [
+              "Car",
+              "LightCommercial",
+              "Heavy",
+              "Unknown"
+            ],
+            "type": "string",
             "description": "Car, light commercial, heavy, or Unknown.",
-            "$ref": "#/components/schemas/VehicleClass"
+            "default": "Unknown"
           },
           "declarationReason": {
             "type": [
@@ -3555,15 +3581,15 @@
             "description": "Private audit reason, 1..500 characters after trimming, required for concrete powertrain."
           },
           "conflictChoice": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "description": "UseDecoded acknowledges a discrepancy and retains decoded values and their provenance.",
-                "$ref": "#/components/schemas/ProfileConflictChoice"
-              }
-            ]
+            "enum": [
+              "UseDecoded",
+              null
+            ],
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "UseDecoded acknowledges a discrepancy and retains decoded values and their provenance."
           }
         },
         "description": "Advisor-declared facts; source, actor and reason are assigned by the server. Omission means Unknown."

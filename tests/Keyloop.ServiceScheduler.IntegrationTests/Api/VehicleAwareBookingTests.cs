@@ -350,6 +350,83 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
     }
 
+    /// <summary>
+    /// A vehicle enum is one member name. The framework's converter and Enum.TryParse OR comma-separated members together and read
+    /// numbers: "Heavy, LightCommercial" was VehicleClass.Unknown (2 | 1), which booked a heavy vehicle on a standard lift.
+    /// </summary>
+    [Theory]
+    [InlineData("{\"vehicleClass\":\"Heavy, LightCommercial\"}")]
+    [InlineData("{\"vehicleClass\":\"Heavy,Car\"}")]
+    [InlineData("{\"vehicleClass\":2}")]
+    [InlineData("{\"vehicleClass\":\"2\"}")]
+    [InlineData("{\"powertrain\":\"Ice, BatteryElectric\",\"declarationReason\":\"Checked\"}")]
+    [InlineData("{\"powertrain\":4,\"declarationReason\":\"Checked\"}")]
+    [InlineData("{\"powertrain\":\" Ice\",\"declarationReason\":\"Checked\"}")]
+    [InlineData("{\"powertrain\":\"Ice\",\"declarationReason\":\"Checked\",\"conflictChoice\":0}")]
+    [InlineData("{\"powertrain\":\"Ice\",\"declarationReason\":\"Checked\",\"conflictChoice\":\"UseDecoded, UseDecoded\"}")]
+    public async Task Vehicle_profile_enums_accept_exactly_one_member_name(string profile)
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        var json = JsonSerializer.SerializeToNode(TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE"), TestData.LondonTime(10)),
+            SchedulerJsonContext.Default.BookAppointmentRequest)!.AsObject();
+        json["vehicle"]!["profile"] = System.Text.Json.Nodes.JsonNode.Parse(profile);
+
+        using var response = await client.PostAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId),
+            new StringContent(json.ToJsonString(), Encoding.UTF8, "application/json"), Ct);
+
+        await response.ShouldBeValidationErrorAsync([], Ct);
+        (await _factory.WithDbAsync(db => db.Appointments.CountAsync(Ct))).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Vehicle_profile_enum_names_still_match_ignoring_case()
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        var json = JsonSerializer.SerializeToNode(TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE"), TestData.LondonTime(10)),
+            SchedulerJsonContext.Default.BookAppointmentRequest)!.AsObject();
+        json["vehicle"]!["profile"] = System.Text.Json.Nodes.JsonNode.Parse("{\"vehicleClass\":\"heavy\"}");
+
+        using var response = await client.PostAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId),
+            new StringContent(json.ToJsonString(), Encoding.UTF8, "application/json"), Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
+        var booked = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        booked.Vehicle.Profile.ShouldNotBeNull().VehicleClass.ShouldBe(VehicleClass.Heavy);
+        booked.Bay.Id.ShouldBe(ReferenceDataSeed.BayId("reading", 3));
+    }
+
+    [Theory]
+    [InlineData("powertrain=Ice,MildHybrid", "powertrain")]
+    [InlineData("powertrain=Ice&powertrain=BatteryElectric", "powertrain")]
+    [InlineData("powertrain=4", "powertrain")]
+    [InlineData("powertrain=%20Ice", "powertrain")]
+    [InlineData("vehicleClass=Heavy,LightCommercial", "vehicleClass")]
+    [InlineData("vehicleClass=Heavy&vehicleClass=Car", "vehicleClass")]
+    [InlineData("needsLiveDiagnosis=yes", "needsLiveDiagnosis")]
+    [InlineData("needsLiveDiagnosis=true&needsLiveDiagnosis=false", "needsLiveDiagnosis")]
+    public async Task Availability_rejects_lists_numbers_and_malformed_flags_as_field_errors(string query, string field)
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync(AvailabilityUrl("INTERIM-SERVICE") + "&" + query, Ct);
+
+        await response.ShouldBeValidationErrorAsync([field], Ct);
+    }
+
+    [Theory]
+    [InlineData("powertrain=batteryelectric&vehicleClass=HEAVY&needsLiveDiagnosis=False")]
+    [InlineData("powertrain=Unknown&needsLiveDiagnosis=TRUE")]
+    public async Task Availability_accepts_single_names_and_booleans_ignoring_case(string query)
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        using var response = await client.GetAsync(AvailabilityUrl("INTERIM-SERVICE") + "&" + query, Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+    }
+
     [Fact]
     public async Task Latest_policy_is_used_and_the_booked_version_survives_a_later_policy_change()
     {
