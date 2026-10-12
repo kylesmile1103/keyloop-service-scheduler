@@ -189,6 +189,18 @@ describe("booking an appointment", () => {
     expect(within(scope).getByRole("button", { name: /^Date, / })).toHaveAccessibleName(`Date, ${starts}`)
   })
 
+  it("names a need once when the bay's equipment and the technician's certification share its name", async () => {
+    mockBoardApi({ serviceTypes: () => [interimServiceType, diagnosticsServiceType] })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    const option = await screen.findByRole("option", { name: /^Diagnostic Fault Finding/ })
+
+    expect(within(option).getAllByText("Diagnostics")).toHaveLength(1)
+    expect(within(option).getByText("Needs: Diagnostics.")).toBeInTheDocument()
+  })
+
   it("asks for a start time once the service is chosen", async () => {
     mockBoardApi()
     renderBoard(readingBoard)

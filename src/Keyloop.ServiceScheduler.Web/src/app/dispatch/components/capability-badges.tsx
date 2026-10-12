@@ -1,4 +1,3 @@
-
 import type { BayCapability, Certification } from "@/api/types.gen"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -44,6 +43,8 @@ export function CapabilityBadges({
     ...certified.map((certification) => ({ key: certification, id: `technician-${certification}`, ...certifications[certification] })),
   ]
     .filter((feature) => !distinctiveOnly || !commonest.has(feature.key))
+    // ...and then it is one need, said once: "Diagnostics", not "Diagnostics Diagnostics".
+    .filter((feature, index, all) => all.findIndex((other) => other.label === feature.label) === index)
     .sort((a, b) => Number(commonest.has(a.key)) - Number(commonest.has(b.key)))
   if (features.length === 0) return null
 
