@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
-import { phoneViewport, renderBoard } from "@/test/render-board"
+import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
 import { appointments, readingTuesday, withStatus } from "@/test/schedules"
 
 // The Appointments page on a phone (< 768 px): job cards instead of the table, the same filters in a bottom sheet.
@@ -51,6 +51,8 @@ describe("appointments list on a phone", () => {
     expect(interim).toHaveTextContent("Interim Service")
     expect(interim).toHaveTextContent("Bay 1 - Standard · Amelia Clarke")
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    // One page holds the day, so there is no previous/next.
+    expect(screen.queryByRole("navigation", { name: "Pages" })).not.toBeInTheDocument()
   })
 
   it("opens a card's details in a bottom sheet", async () => {
@@ -92,6 +94,26 @@ describe("appointments list on a phone", () => {
     fireEvent.click(screen.getByRole("button", { name: "Filters, 2 active" }))
     fireEvent.click(within(await screen.findByRole("dialog", { name: "Filter appointments" })).getByRole("button", { name: "Reset filters" }))
     expect(within(screen.getByRole("dialog", { name: "Filter appointments" })).getByRole("button", { name: "Show 6 appointments" })).toBeInTheDocument()
+  })
+
+  it("sorts the cards from the filter sheet, as the table's headers do", async () => {
+    mockBoardApi()
+    renderBoard(readingList)
+    const firstWords = async () => (await cards()).map((card) => card.getAttribute("aria-label")?.split(", ")[0])
+    const byTime = ["Interim Service", "EV Battery Health Check", "Brake Pads & Discs", "MOT Test", "Full Service", "Four-Wheel Alignment"]
+    expect(await firstWords()).toEqual(byTime)
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }))
+    const sheet = await screen.findByRole("dialog", { name: "Filter appointments" })
+    const sortBy = within(sheet).getByRole("combobox", { name: "Sort by" })
+    expect(sortBy).toHaveTextContent("Time, earliest first")
+    fireEvent.click(sortBy)
+    pointerClick(await screen.findByRole("option", { name: "Time, latest first" }))
+    await waitFor(() => expect(sortBy).toHaveTextContent("Time, latest first"))
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show 6 appointments" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Filter appointments" })).not.toBeInTheDocument())
+    expect(await firstWords()).toEqual([...byTime].reverse())
   })
 
   it("searches by customer, registration or VIN", async () => {

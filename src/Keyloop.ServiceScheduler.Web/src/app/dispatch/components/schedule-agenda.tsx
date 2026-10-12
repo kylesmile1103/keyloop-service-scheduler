@@ -137,7 +137,10 @@ function JobCard({ appointment, mode, timeZone, selected, booked, onSelect }: Jo
       onClick={(event) => onSelect(appointment, event.currentTarget)}
       className={cn(
         "flex min-h-11 w-full cursor-pointer flex-col gap-1.5 rounded-chip border-l-3 bg-card p-3 text-left shadow-xs ring-1 ring-foreground/10 outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring data-selected:ring-2 data-selected:ring-primary",
+        // A borderless target (DESIGN_SYSTEM 15): the focus ring stands off the card by 1 px of the page it sits on, which
+        // also tells it from the just-booked ring.
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "data-selected:ring-2 data-selected:ring-primary",
         "data-booked:animate-booked data-booked:ring-2 data-booked:ring-ring",
         statusMeta[appointment.status].classes.bar
       )}

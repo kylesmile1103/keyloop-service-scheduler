@@ -146,12 +146,14 @@ describe("filterOptions", () => {
 
 describe("appointmentStats", () => {
   it("counts the day's appointments, the active ones, the completed ones and the no-shows", () => {
+    // Every figure differs (6, 3, 2, 1), so each is pinned to its own statuses.
     let schedule = withStatus(readingTuesday, appointments.interim.id, "Completed")
+    schedule = withStatus(schedule, appointments.full.id, "Completed")
     schedule = withStatus(schedule, appointments.evBattery.id, "NoShow")
     schedule = withStatus(schedule, appointments.brakes.id, "InProgress")
     schedule = withStatus(schedule, appointments.mot.id, "CheckedIn")
 
-    expect(appointmentStats(appointmentRows(schedule))).toEqual({ total: 6, active: 4, completed: 1, noShows: 1 })
+    expect(appointmentStats(appointmentRows(schedule))).toEqual({ total: 6, active: 3, completed: 2, noShows: 1 })
   })
 
   it("is all zeros for an empty day", () => {

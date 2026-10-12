@@ -100,6 +100,9 @@ describe("appointments list", () => {
       "60 min",
     ])
     expect(columnTexts(list, "Duration")).toEqual(["60 min", "60 min", "90 min", "45 min", "120 min", "45 min"])
+    // Six appointments fit one page, so there are no page controls to frame them.
+    expect(screen.getByRole("status")).toHaveTextContent("6 appointments")
+    expect(screen.queryByRole("navigation", { name: "Pages" })).not.toBeInTheDocument()
     // Times are the dealership's own, and the page says which zone they are in.
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(document.title).toBe("Appointments – Keyloop Service Scheduler")
@@ -132,19 +135,39 @@ describe("appointments list", () => {
     expect(headers).toEqual(["Time", "Status", "Service", "Bay", "Technician", "Customer", "Registration", "Actions"])
   })
 
-  it("shows the day's figures above the list", async () => {
+  it("shows the day's figures above the list, whatever the filters", async () => {
+    // Every figure differs (6, 3, 2, 1), so each is pinned to its own statuses.
     let schedule = withStatus(readingTuesday, appointments.interim.id, "Completed")
+    schedule = withStatus(schedule, appointments.full.id, "Completed")
     schedule = withStatus(schedule, appointments.evBattery.id, "NoShow")
     schedule = withStatus(schedule, appointments.brakes.id, "InProgress")
     mockBoardApi({ schedule: () => schedule })
     renderBoard(readingList)
 
     const summary = await screen.findByRole("region", { name: "Day summary" })
-    const figure = (name: string) => within(summary).getByRole("group", { name })
-    await waitFor(() => expect(figure("Appointments")).toHaveTextContent("6"))
-    expect(figure("Active")).toHaveTextContent("4")
-    expect(figure("Completed")).toHaveTextContent("1")
-    expect(figure("No-shows")).toHaveTextContent("1")
+    /** A card's figure (its large number, exactly) and its share of the day. */
+    const expectFigure = (name: string, value: string, share: string) => {
+      const card = within(summary).getByRole("group", { name })
+      expect(within(card).getByText(value, { exact: true })).toBeInTheDocument()
+      expect(card).toHaveTextContent(share)
+    }
+    const expectTheDay = () => {
+      expectFigure("Appointments", "6", "2 confirmed, 1 in progress, 2 completed, 1 no-show")
+      expectFigure("Active", "3", "3 of 6 appointments")
+      expectFigure("Completed", "2", "2 of 6 appointments")
+      expectFigure("No-shows", "1", "1 of 6 appointments")
+    }
+    await waitFor(() => expect(within(summary).getByRole("group", { name: "Appointments" })).not.toHaveAttribute("aria-busy"))
+    expectTheDay()
+
+    // The figures are the whole day's: narrowing the list leaves them alone.
+    const list = await table()
+    const statusFilter = await openFilter("Status")
+    fireEvent.click(within(statusFilter).getByRole("checkbox", { name: /^Completed/ }))
+    fireEvent.keyDown(statusFilter, { key: "Escape" })
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search appointments" }), { target: { value: "olivia" } })
+    expect(columnTexts(list, "Customer")).toEqual(["Olivia Bennett"])
+    expectTheDay()
   })
 
   it("sorts by a column's header, and again the other way", async () => {
@@ -231,7 +254,7 @@ describe("appointments list", () => {
     expect(screen.getByRole("button", { name: "Bay filter" })).toBeInTheDocument()
   })
 
-  it("filters by technician and by service", async () => {
+  it("filters by technician and by service, and clears one filter from its own popover", async () => {
     mockBoardApi()
     renderBoard(readingList)
     const list = await table()
@@ -245,6 +268,15 @@ describe("appointments list", () => {
     fireEvent.click(within(serviceFilter).getByRole("checkbox", { name: /^Four-Wheel Alignment/ }))
     fireEvent.keyDown(serviceFilter, { key: "Escape" })
     expect(columnTexts(list, "Customer")).toEqual(["Harry Whitfield"])
+
+    // Clear filter empties that filter only: the technician filter still holds.
+    const again = await openFilter("Service")
+    fireEvent.click(within(again).getByRole("button", { name: "Clear filter" }))
+    expect(within(again).getByRole("checkbox", { name: /^Four-Wheel Alignment/ })).not.toBeChecked()
+    expect(columnTexts(list, "Customer")).toEqual(["Emily Clarkson", "Harry Whitfield"])
+    fireEvent.keyDown(again, { key: "Escape" })
+    expect(screen.getByRole("button", { name: "Service filter" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Technician filter, 1 selected" })).toBeInTheDocument()
   })
 
   it("says when nothing matches, and resets from there", async () => {
@@ -280,6 +312,7 @@ describe("appointments list", () => {
     const list = await table()
 
     expect(bodyRows(list)).toHaveLength(10)
+    expect(screen.getByRole("navigation", { name: "Pages" })).toBeInTheDocument()
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("12 appointments")
 
@@ -293,10 +326,15 @@ describe("appointments list", () => {
 })
 
 describe("appointments list: actions", () => {
-  it("opens the details sheet from a row's actions, and returns focus to them when it closes", async () => {
+  it("opens the details sheet from a row's actions, marks its row while open, and returns focus to them when it closes", async () => {
     mockBoardApi()
     renderBoard(readingList)
+    const list = await table()
     const actions = await actionsFor("Interim Service at 08:00, Sophie Turner")
+    // While the modal sheet is open the page is hidden from role queries, so the rows are read from the table itself.
+    const selectedRows = () =>
+      Array.from(list.querySelectorAll("tbody tr[data-state=selected]"), (row) => row.getAttribute("data-appointment-id"))
+    expect(selectedRows()).toEqual([])
 
     fireEvent.click(actions)
     fireEvent.click(await screen.findByRole("menuitem", { name: "View details" }))
@@ -304,10 +342,13 @@ describe("appointments list: actions", () => {
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
     expect(within(sheet).getByText("Tuesday 13 October 2026, 08:00–09:00 (Europe/London)")).toBeInTheDocument()
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
+    // The row whose details are open is highlighted, as the board's block is.
+    expect(selectedRows()).toEqual([appointments.interim.id])
 
     fireEvent.click(within(sheet).getByRole("button", { name: "Close" }))
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     await waitFor(() => expect(actions).toHaveFocus())
+    expect(selectedRows()).toEqual([])
   })
 
   it("opens the details sheet when a row is clicked", async () => {
@@ -322,8 +363,11 @@ describe("appointments list: actions", () => {
 
   it("cancels from a row's actions: the sheet opens on the reason, and the row leaves the list", async () => {
     let cancelled = false
+    // The day read after the cancellation is held, as on a slow network: the sheet closes while the row is still listed.
+    let answer: () => void = () => {}
+    const reread = new Promise<void>((resolve) => (answer = resolve))
     const api = mockBoardApi({
-      schedule: () => (cancelled ? without(readingTuesday, appointments.interim.id) : readingTuesday),
+      schedule: async () => (cancelled ? (await reread, without(readingTuesday, appointments.interim.id)) : readingTuesday),
       cancel: (_, body) => {
         cancelled = true
         return { ...interimDetails, status: "Cancelled", cancellationReason: String(body.reason) }
@@ -331,8 +375,10 @@ describe("appointments list: actions", () => {
     })
     renderBoard(readingList)
     const list = await table()
+    const region = screen.getByRole("region", { name: reading.name })
+    const actions = await actionsFor("Interim Service at 08:00, Sophie Turner")
 
-    fireEvent.click(await actionsFor("Interim Service at 08:00, Sophie Turner"))
+    fireEvent.click(actions)
     fireEvent.click(await screen.findByRole("menuitem", { name: "Cancel appointment" }))
 
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
@@ -345,10 +391,18 @@ describe("appointments list: actions", () => {
     const [cancel] = requestsTo(api.requests, "/cancel")
     expect(new URL(cancel.url).pathname).toBe(`/api/v1/appointments/${appointments.interim.id}/cancel`)
     expect(await cancel.clone().json()).toEqual({ reason: "Customer rang to rearrange" })
+
+    // The sheet has closed and the row is still listed, but it is about to leave: focus goes into the list, not back to the
+    // row's actions button, which would take focus to the page body with it.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    expect(bodyRows(list)).toHaveLength(6)
+    await waitFor(() => expect(region).toContainElement(document.activeElement as HTMLElement))
+    expect(actions).not.toHaveFocus()
+
+    answer()
     await waitFor(() => expect(bodyRows(list)).toHaveLength(5))
     expect(columnTexts(list, "Customer")).not.toContain("Sophie Turner")
-    // Its row has gone, so focus returns to the list rather than to the page body.
-    await waitFor(() => expect(screen.getByRole("region", { name: reading.name })).toContainElement(document.activeElement as HTMLElement))
+    expect(region).toContainElement(document.activeElement as HTMLElement)
   })
 
   it("shows the API's refusal of a cancellation with its trace id, and reads the day again", async () => {
@@ -424,6 +478,22 @@ describe("appointments list: the day and the dealership", () => {
     )
   })
 
+  it("keeps the board's own view in the link to the board while it is open, and carries only the day to the list", async () => {
+    mockBoardApi()
+    renderBoard(`/dispatch?dealership=${reading.id}&date=2026-10-14&lanes=technicians`)
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+
+    const workshop = screen.getByRole("navigation", { name: "Workshop" })
+    expect(within(workshop).getByRole("link", { name: "Dispatch board" })).toHaveAttribute(
+      "href",
+      `/dispatch?dealership=${reading.id}&date=2026-10-14&lanes=technicians`
+    )
+    expect(within(workshop).getByRole("link", { name: "Appointments" })).toHaveAttribute(
+      "href",
+      `/appointments?dealership=${reading.id}&date=2026-10-14`
+    )
+  })
+
   it("opens on a dealership with work to show when the address names none", async () => {
     mockBoardApi({ dealerships: () => [munich, reading] })
     const { router } = renderBoard("/appointments")
@@ -451,6 +521,15 @@ describe("appointments list: empty, closed, loading and failed days", () => {
 
     expect(await screen.findByRole("heading", { level: 3, name: "No appointments today" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Book on the dispatch board" })).toHaveAttribute("href", `/dispatch?dealership=${munich.id}`)
+  })
+
+  it("offers no booking on a past day with nothing booked", async () => {
+    mockBoardApi()
+    renderBoard(`/appointments?dealership=${munich.id}&date=2026-10-12`)
+
+    expect(await screen.findByRole("heading", { level: 3, name: "No appointments on Monday 12 October" })).toBeInTheDocument()
+    expect(screen.getByText("Nothing was booked that day.")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Book on the dispatch board" })).not.toBeInTheDocument()
   })
 
   it("shows a loading list until the day arrives", async () => {
