@@ -2,7 +2,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { containerEnv } from "../src/container-env";
 import { ApiContainer } from "../src/index";
 import { FakeContainerRuntime, fakeContainerState, settle } from "./container-runtime";
-import { fakeEnv, edgeRequest } from "./helpers";
+import { FAKE_API_OTLP_TOKEN, fakeEnv, edgeRequest } from "./helpers";
+import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "json" };
+import otlpEnvFixture from "./fixtures/container-env-otlp.json" with { type: "json" };
+
+// The core-only profile: notifications, email, triage, the OTLP relay and API telemetry off. The .NET integration test
+// CloudflareContainerEnvTests boots the API with the committed fixture, so both sides are pinned to the same contract.
+function coreEnv() {
+  const { env } = fakeEnv();
+  return Object.assign(env, {
+    NOTIFICATIONS_ENABLED: "false" as Env["NOTIFICATIONS_ENABLED"], EMAIL_SENDING_ENABLED: "false" as Env["EMAIL_SENDING_ENABLED"],
+    EMAIL_ALLOWED_ADDRESSES: "", OTLP_RELAY_ENABLED: "false" as Env["OTLP_RELAY_ENABLED"],
+    TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"], TRIAGE_ACCOUNT_ID: "",
+    AUTH_ADMIN: "admin@fixture.test", AUTH_SERVICE_ADVISOR: "advisor@fixture.test", AUTH_VIEWER: "@viewers.fixture.test",
+    API_OTLP_ENABLED: "false" as Env["API_OTLP_ENABLED"],
+  });
+}
+
+// The core profile with API telemetry export on (test/fixtures/container-env-otlp.json, which CloudflareContainerEnvTests boots).
+function otlpEnv() {
+  return Object.assign(coreEnv(), { API_OTLP_ENABLED: "true" as Env["API_OTLP_ENABLED"] });
+}
+
+const otlpKeys = (settings: Record<string, string>) => Object.keys(settings).filter(key => key.startsWith("OTEL_"));
 
 describe("container startup and Secrets Store", () => {
   it("builds the Cloudflare Production env including F2 and the allowlist", async () => {
@@ -21,6 +43,15 @@ describe("container startup and Secrets Store", () => {
     expect(settings).not.toHaveProperty("ASPNETCORE_HTTPS_PORT");
     expect(settings).not.toHaveProperty("EMAIL_API_TOKEN");
     expect(settings).not.toHaveProperty("GRAFANA_OTLP_BASIC_BROWSER");
+  });
+  it("selects no email provider while notifications are disabled, because the API refuses the reserved Cloudflare one", async () => {
+    const settings = await containerEnv(coreEnv());
+    expect(settings).toMatchObject({ Notifications__Enabled: "false", Notifications__Provider: "None" });
+    expect(settings).toEqual(coreEnvFixture);
+  });
+  it("keeps the Cloudflare provider for enabled notifications, so that start still fails loudly until its adapter exists", async () => {
+    const { env } = fakeEnv();
+    expect(await containerEnv(env)).toMatchObject({ Notifications__Enabled: "true", Notifications__Provider: "Cloudflare" });
   });
   it.each([null, "", "   "])("fails before starting with a missing DB secret", async value => {
     const { env, mocks } = fakeEnv();
@@ -66,6 +97,75 @@ describe("container startup and Secrets Store", () => {
     const { env } = fakeEnv();
     env.EMAIL_MAX_PER_RECIPIENT_PER_DAY = "1001";
     await expect(containerEnv(env)).rejects.toThrow("valid per-recipient email cap");
+  });
+  it("passes nothing OTLP-related while API telemetry is disabled, even with its identifiers configured", async () => {
+    const env = coreEnv();
+    expect(env.GRAFANA_OTLP_ENDPOINT).not.toBe("");
+    expect(env.GRAFANA_INSTANCE_ID).not.toBe("");
+    const settings = await containerEnv(env);
+    expect(otlpKeys(settings)).toEqual([]);
+    expect(otlpKeys(coreEnvFixture)).toEqual([]);
+    expect(env.API_OTLP_TOKEN.get).not.toHaveBeenCalled();
+  });
+  it("exports API telemetry to the Grafana gateway under the dashboards' job and environment", async () => {
+    const env = otlpEnv();
+    const settings = await containerEnv(env);
+    expect(settings).toEqual(otlpEnvFixture);
+    expect(settings).toMatchObject({
+      OTEL_EXPORTER_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
+      // job="keyloop-scheduler/api" is service.namespace/service.name; deployment.environment.name comes from the API's
+      // ASPNETCORE_ENVIRONMENT (ServiceDefaults), so the dashboards' Production default selects this deployment.
+      OTEL_SERVICE_NAME: "api",
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=keyloop-scheduler",
+      ASPNETCORE_ENVIRONMENT: "Production",
+    });
+    // OTEL headers are W3C-baggage style: the space is percent-encoded; base64's "+", "/" and "=" are legal value octets.
+    const prefix = "Authorization=Basic%20";
+    expect(settings.OTEL_EXPORTER_OTLP_HEADERS?.startsWith(prefix)).toBe(true);
+    const credential = settings.OTEL_EXPORTER_OTLP_HEADERS!.slice(prefix.length);
+    expect(credential).toMatch(/\+.*\/.*==$/);
+    expect(atob(credential)).toBe(`123456:${FAKE_API_OTLP_TOKEN}`);
+    expect(env.API_OTLP_TOKEN.get).toHaveBeenCalledTimes(1);
+    // Telemetry adds only the OTEL variables to the core profile.
+    const withoutOtlp = Object.fromEntries(Object.entries(otlpEnvFixture).filter(([key]) => !key.startsWith("OTEL_")));
+    expect(withoutOtlp).toEqual(coreEnvFixture);
+  });
+  it("normalises the gateway endpoint it passes on", async () => {
+    const env = otlpEnv();
+    env.GRAFANA_OTLP_ENDPOINT = "https://OTLP-GATEWAY-prod-eu-west-2.grafana.net/otlp";
+    expect((await containerEnv(env)).OTEL_EXPORTER_OTLP_ENDPOINT).toBe("https://otlp-gateway-prod-eu-west-2.grafana.net/otlp");
+  });
+  it.each([
+    ["GRAFANA_OTLP_ENDPOINT", "", "KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    ["GRAFANA_OTLP_ENDPOINT", "https://otlp-gateway-local.grafana.net/otlp/", "KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    ["GRAFANA_OTLP_ENDPOINT", "https://collector.example.com/otlp", "KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    ["GRAFANA_INSTANCE_ID", "", "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    ["GRAFANA_INSTANCE_ID", "stack-1", "KEYLOOP_GRAFANA_INSTANCE_ID"],
+  ] as const)("refuses to start API telemetry with %s=%j before reading its token", async (name, value, message) => {
+    const env = otlpEnv();
+    env[name] = value;
+    await expect(containerEnv(env)).rejects.toThrow(message);
+    expect(env.API_OTLP_TOKEN.get).not.toHaveBeenCalled();
+  });
+  it.each([null, "", "   "])("fails before starting with a missing API telemetry token (%j)", async value => {
+    const env = otlpEnv();
+    env.API_OTLP_TOKEN.get.mockResolvedValue(value);
+    await expect(containerEnv(env)).rejects.toThrow(/^Secrets Store secret keyloop_prod_api_otlp_token is unavailable$/);
+  });
+  it("sanitises an API telemetry token read exception", async () => {
+    const env = otlpEnv();
+    env.API_OTLP_TOKEN.get.mockRejectedValue(new Error(`provider said ${FAKE_API_OTLP_TOKEN}`));
+    const error = await containerEnv(env).catch((caught: unknown) => caught as Error);
+    expect(error.message).toBe("Secrets Store secret keyloop_prod_api_otlp_token is unavailable");
+    expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain(FAKE_API_OTLP_TOKEN);
+  });
+  it.each([`${FAKE_API_OTLP_TOKEN}\n`, `glc_two parts`, "glc_\u00e9t\u00e9"])("refuses a token that is not one printable ASCII word, without echoing it", async token => {
+    const env = otlpEnv();
+    env.API_OTLP_TOKEN.get.mockResolvedValue(token);
+    const error = await containerEnv(env).catch((caught: unknown) => caught as Error);
+    expect(error.message).toBe("Secrets Store secret keyloop_prod_api_otlp_token must hold only the Grafana token, without spaces or line breaks");
+    expect(error.message).not.toContain(token.trim());
   });
   it("registers the email relay on the container outbound handler", async () => {
     const { env, mocks } = fakeEnv();
@@ -132,6 +232,37 @@ describe("container lifecycle with the real Container class", () => {
     expect((await api.fetch(edgeRequest("/api"))).status).toBe(204);
     expect(mocks.DB_URL.get).toHaveBeenCalledTimes(reads);
     expect(runtime.starts).toHaveLength(1);
+  });
+
+  it("reads the API telemetry token only at container start, like the database secret (F5)", async () => {
+    const runtime = new FakeContainerRuntime(1_000);
+    const env = otlpEnv();
+    const api = new ApiContainer(fakeContainerState(runtime), env);
+    const warm = settle(api.fetch(edgeRequest("/api")));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await warm).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[0]!.env).toMatchObject({
+      OTEL_EXPORTER_OTLP_HEADERS: otlpEnvFixture.OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME: "api",
+    });
+    env.API_OTLP_TOKEN.get.mockRejectedValue(new Error("Secrets Store unavailable"));
+    const response = await api.fetch(edgeRequest("/api"));
+    expect(response.status).toBe(204);
+    expect(env.API_OTLP_TOKEN.get).toHaveBeenCalledTimes(1);
+    expect(runtime.starts).toHaveLength(1);
+    expect(runtime.proxied.every(request => !request.headers.has("authorization"))).toBe(true);
+  });
+
+  it("never starts the container, and keeps the token out of the failure, when the telemetry token is unusable", async () => {
+    const runtime = new FakeContainerRuntime(1_000);
+    const env = otlpEnv();
+    env.API_OTLP_TOKEN.get.mockResolvedValue(`${FAKE_API_OTLP_TOKEN} trailing`);
+    const api = new ApiContainer(fakeContainerState(runtime), env);
+    const outcome = await settle(api.fetch(edgeRequest("/api")));
+    const error = "error" in outcome ? outcome.error as Error : undefined;
+    expect(error?.message).toContain("keyloop_prod_api_otlp_token");
+    expect(error?.message).not.toContain(FAKE_API_OTLP_TOKEN);
+    expect(runtime.starts).toHaveLength(0);
+    expect(runtime.proxied).toHaveLength(0);
   });
 
   it("fails the request, not with a library text response, when Kestrel never listens within 60 s", async () => {

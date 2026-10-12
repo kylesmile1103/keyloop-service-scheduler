@@ -6,6 +6,16 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** complete Task 17b Chrome QA, the final whole-branch review, the clean-clone verification with coverage and screenshots, and record a hosted CI run. Public deployment is a separate stakeholder gate.
 
+## Submission deliverables
+
+| Deliverable | Where |
+|---|---|
+| System Design Document (Part 1) | [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md), the entry point that maps each required item to [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Working code (Part 2, backend) | This repository: build, run and test instructions below |
+| AI Collaboration Narrative | [AI Collaboration Narrative](#ai-collaboration-narrative) in this README |
+| Tests that validate the core business logic | [Run the tests](#run-the-tests), including the adversarial concurrency proof |
+| Video (5 to 10 minutes) | [Video](#video) and the [walkthrough guide](docs/VIDEO_WALKTHROUGH.md) |
+
 ## Prerequisites
 
 - .NET SDK **10.0.100**, the version in [global.json](global.json), which allows `latestFeature` roll-forward.
@@ -364,7 +374,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 
 ### Grafana Cloud
 
-**`TODO(grafana-cloud)`:** configure the .NET container's OTLP export with platform-managed credentials, verify metric translation against deployed data, publish the committed dashboards and runbooks, and prepare alerts for an approved contact point. The optional secret-free browser Worker relay and [dashboards as code](observability/grafana/README.md) are implemented and validated locally; enabling export and publishing Grafana resources remain pending.
+The .NET container's OTLP export to Grafana Cloud is an optional Worker setting, `KEYLOOP_API_OTLP_ENABLED`, with a Secrets Store token read only at container start; its series carry `job="keyloop-scheduler/api"` and `deployment_environment_name="Production"`, which the committed dashboards select ([edge README](deploy/cloudflare/README.md#optional-api-telemetry)). Enabling it on the live deployment, together with pushing the [dashboards as code](observability/grafana/README.md), is ordered in [Enable API telemetry](deploy/cloudflare/DEPLOY-RUNBOOK.md#enable-api-telemetry). **`TODO(grafana-cloud)`:** verify metric translation against deployed data, publish the runbooks, and prepare alerts for an approved contact point. The optional secret-free browser Worker relay is implemented and validated locally and stays off.
 
 ## Runtime reflection budget
 
