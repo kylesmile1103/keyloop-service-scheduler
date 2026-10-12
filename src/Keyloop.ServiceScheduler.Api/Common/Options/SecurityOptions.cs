@@ -39,7 +39,7 @@ public sealed class SecurityOptions : IValidatableObject
         && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
         && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && !origin.EndsWith('/');
 
-    /// <summary>Sliding-window limits per client IP; <see cref="Enabled"/> is false only in SystemTest.</summary>
+    /// <summary>Sliding-window limits per verified email, otherwise client IP; <see cref="Enabled"/> is false only in SystemTest.</summary>
     public sealed class RateLimitingOptions
     {
         [Range(1, 1000)]
