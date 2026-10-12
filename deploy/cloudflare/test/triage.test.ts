@@ -4,6 +4,8 @@ import { edgeSettings } from "../src/settings";
 import { fakeEnv } from "./helpers";
 
 const identifiers = {
+  KEYLOOP_ACCESS_TEAM_DOMAIN: "https://local-fixture.cloudflareaccess.com",
+  KEYLOOP_ACCESS_AUDIENCE: "local-validation-audience",
   KEYLOOP_SECRETS_STORE_ID: "00000000000000000000000000000000",
   KEYLOOP_API_IMAGE: "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:test",
 };

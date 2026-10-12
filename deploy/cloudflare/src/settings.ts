@@ -1,3 +1,4 @@
+import { accessSettings } from "./auth.ts";
 import { emailCaps, recipientAllowlist, triageSettings } from "./container-env.ts";
 import { grafanaTracesUrl } from "./otlp.ts";
 
@@ -25,6 +26,12 @@ function flag(source: Source, name: string): "true" | "false" {
 export function edgeSettings(source: Source) {
   const secretsStoreId = required(source, "KEYLOOP_SECRETS_STORE_ID");
   const apiImage = required(source, "KEYLOOP_API_IMAGE");
+  const authTeamDomain = required(source, "KEYLOOP_ACCESS_TEAM_DOMAIN");
+  const authAudience = required(source, "KEYLOOP_ACCESS_AUDIENCE");
+  const authAdmin = setting(source, "KEYLOOP_ACCESS_ADMIN", "");
+  const authServiceAdvisor = setting(source, "KEYLOOP_ACCESS_SERVICE_ADVISOR", "");
+  const authViewer = setting(source, "KEYLOOP_ACCESS_VIEWER", "");
+  accessSettings(authTeamDomain, authAudience, authAdmin, authServiceAdvisor, authViewer);
   const notificationsEnabled = flag(source, "KEYLOOP_NOTIFICATIONS_ENABLED");
   const emailSendingEnabled = flag(source, "KEYLOOP_EMAIL_SENDING_ENABLED");
   const otlpRelayEnabled = flag(source, "KEYLOOP_OTLP_RELAY_ENABLED");
@@ -48,7 +55,7 @@ export function edgeSettings(source: Source) {
   const caps = emailCaps(setting(source, "KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY", "10"),
     setting(source, "KEYLOOP_EMAIL_MAX_PER_DAY", "100"));
   return {
-    secretsStoreId, apiImage, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
+    secretsStoreId, apiImage, authTeamDomain, authAudience, authAdmin, authServiceAdvisor, authViewer, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
     emailAllowedAddresses, emailAllowedDomains, emailMaxPerRecipientPerDay: caps.perRecipient, emailMaxPerDay: caps.perDay,
     otlpRelayEnabled, grafanaOtlpEndpoint,
     triageEnabled, triageAccountId, triageGatewayId,

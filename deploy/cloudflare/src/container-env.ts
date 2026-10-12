@@ -1,8 +1,10 @@
+import { accessSettings } from "./auth.ts";
 import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.ts";
 import { requiredSecret } from "./secrets.ts";
 
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
   "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY" |
+  "AUTH_TEAM_DOMAIN" | "AUTH_AUDIENCE" | "AUTH_ADMIN" | "AUTH_SERVICE_ADVISOR" | "AUTH_VIEWER" |
   "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN">;
 
 export function triageSettings(enabled: string, account: string, gateway: string): void {
@@ -39,12 +41,15 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
 }
 
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
+  const access = accessSettings(env.AUTH_TEAM_DOMAIN, env.AUTH_AUDIENCE, env.AUTH_ADMIN, env.AUTH_SERVICE_ADVISOR, env.AUTH_VIEWER);
   triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
   const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS,
     env.NOTIFICATIONS_ENABLED === "true");
   const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
   const db = await requiredSecret(env.DB_URL, "keyloop_prod_db_url");
   const result: Record<string, string> = {
+    Auth__Mode: "CloudflareAccess",
+    Auth__TeamDomain: access.teamDomain,
     ASPNETCORE_ENVIRONMENT: "Production",
     ASPNETCORE_HTTP_PORTS: "8080",
     ConnectionStrings__schedulerdb: db,
@@ -73,5 +78,9 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
   }
   addresses.forEach((value, index) => { result[`Notifications__Recipients__AllowedAddresses__${index}`] = value; });
   domains.forEach((value, index) => { result[`Notifications__Recipients__AllowedDomains__${index}`] = value; });
+  access.audiences.forEach((value, index) => { result[`Auth__Audience__${index}`] = value; });
+  Object.entries(access.roles).forEach(([role, members]) => members.forEach((value, index) => {
+    result[`Auth__Roles__${role}__${index}`] = value;
+  }));
   return result;
 }

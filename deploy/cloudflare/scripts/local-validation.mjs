@@ -11,6 +11,11 @@ const taskEnv = {
   ...process.env,
   KEYLOOP_SECRETS_STORE_ID: "00000000000000000000000000000000",
   KEYLOOP_API_IMAGE: "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:local-validation",
+  KEYLOOP_ACCESS_TEAM_DOMAIN: "https://local-fixture.cloudflareaccess.com",
+  KEYLOOP_ACCESS_AUDIENCE: "local-validation-audience",
+  KEYLOOP_ACCESS_ADMIN: "",
+  KEYLOOP_ACCESS_SERVICE_ADVISOR: "",
+  KEYLOOP_ACCESS_VIEWER: "",
   KEYLOOP_NOTIFICATIONS_ENABLED: "false",
   KEYLOOP_EMAIL_SENDING_ENABLED: "false",
   KEYLOOP_EMAIL_TRANSPORT: integrations ? "rest" : "binding",
@@ -53,7 +58,7 @@ if (action === "build" && result.status === 0) {
   const output = new URL("../.cloudflare/output/v0/", import.meta.url);
   const worker = JSON.parse(await readFile(new URL("workers/default/worker.config.json", output), "utf8"));
   const container = JSON.parse(await readFile(new URL("containers/keyloop-scheduler-api/container.config.json", output), "utf8"));
-  assert.deepEqual(worker.assets, { notFoundHandling: "single-page-application", runWorkerFirst: ["/api", "/api/*", "/otlp", "/otlp/*"] });
+  assert.deepEqual(worker.assets, { notFoundHandling: "single-page-application", runWorkerFirst: ["/api", "/api/*", "/auth/*", "/otlp", "/otlp/*"] });
   assert.deepEqual(worker.domains, ["keyloop.kylesmile.me"]);
   assert.equal(worker.workersDev, false);
   assert.equal(worker.previewUrls, false);

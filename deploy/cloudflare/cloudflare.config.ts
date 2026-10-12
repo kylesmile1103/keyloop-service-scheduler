@@ -25,7 +25,7 @@ export default defineConfig({
     previewUrls: false,
     assets: {
       notFoundHandling: "single-page-application",
-      runWorkerFirst: ["/api", "/api/*", "/otlp", "/otlp/*"],
+      runWorkerFirst: ["/api", "/api/*", "/auth/*", "/otlp", "/otlp/*"],
     },
     observability: {
       enabled: true,
@@ -42,6 +42,11 @@ export default defineConfig({
       ...(settings.triageEnabled === "true" ? {
         AI_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_ai_token" }),
       } : {}),
+      AUTH_TEAM_DOMAIN: bindings.text(settings.authTeamDomain),
+      AUTH_AUDIENCE: bindings.text(settings.authAudience),
+      AUTH_ADMIN: bindings.text(settings.authAdmin),
+      AUTH_SERVICE_ADVISOR: bindings.text(settings.authServiceAdvisor),
+      AUTH_VIEWER: bindings.text(settings.authViewer),
       TRIAGE_ENABLED: bindings.text(settings.triageEnabled),
       TRIAGE_ACCOUNT_ID: bindings.text(settings.triageAccountId),
       TRIAGE_GATEWAY_ID: bindings.text(settings.triageGatewayId),
