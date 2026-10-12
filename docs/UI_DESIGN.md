@@ -750,15 +750,15 @@ The template-adoption addendum of tasks 16 and 17 copies files from the shadcn d
 | `users/page.tsx`, `users/components/data-table.tsx`, `users/components/stat-cards.tsx` | the resources pages (Technicians, Bays, Services) and their figures | The 11.17 resource-table anatomy over the shared data table parts (the template's select filters become faceted filters, its row selection, image avatars, role and status colours and add-user form are not kept), four 11.11 figure cards per page without trends, cards on a phone. Read-only: the row-actions slot stays empty until Task 30. |
 | `settings/appearance/page.tsx` | Appearance (`/settings/appearance`) | The theme only, as a radio group of cards (11.6's card anatomy) with a miniature of the board in each theme's tokens instead of the template's grey sketches; applies at once, so no Save button; the font, sidebar-width and content-width selects are not kept (the design system fixes them). |
 | `settings/account/page.tsx` | Account (`/settings/account`), a placeholder for Task 27b | The anonymous session said plainly (signed in as, roles, recorded as); the template's profile, password and delete-account forms are not kept. |
-| `errors/unauthorized`, `errors/forbidden`, `errors/internal-server-error`, `errors/under-maintenance` | the 401, 403, 500 and 503 pages | The 12.1 layout in the shell, as the 404: a headline in words (no numeric headline), one or two lines, one action (*Sign in* or *Go to the dispatch board*, *Try again* when the sending page passed itself); the template's placeholder image and "Contact Us" are not kept. |
-| `errors/not-found` | the router 404 page | The 12.1 layout with `empty-schedule.webp`: headline "Page not found", one line naming the path (`font-mono`), action **Go to the dispatch board** (primary). |
+| `errors/unauthorized`, `errors/forbidden`, `errors/internal-server-error`, `errors/under-maintenance` | the 401, 403, 500 and 503 pages | The 12.1 layout in the shell, as the 404, each with its own wave-2 picture: a headline in words (no numeric headline), one or two lines, one action (*Sign in* or *Go to the dispatch board*, *Try again* when the sending page passed itself); the template's placeholder image and "Contact Us" are not kept. |
+| `errors/not-found` | the router 404 page | The 12.1 layout with `not-found.webp`: headline "Page not found", one line naming the path (`font-mono`), action **Go to the dispatch board** (primary). |
 | `errors/internal-server-error` | the router error boundary | The 12.1 layout with `error-connection.webp`: headline "Something went wrong", the trace id row when the error carries one, action **Try again** (primary), which reloads the route. |
 
 ## 12. Illustrations, empty and error states
 
 ### 12.1 State illustrations
 
-Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). The six illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
+Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). A second set of ten (wave 2, same pipeline and style, its own README with prompts, alt text and verification) adds a picture per error page, the empty roster, the triage photo field and three for later tasks; the seven in use are copied the same way, and `empty-calendar.webp`, `dashboard-insights.webp` and `sign-in-to-book.webp` wait for the calendar, overview and sign-in work (Tasks 28b and 27b). State illustrations are registered once, with their alt text, in `src/lib/illustrations.ts`: that module holds only their fingerprinted addresses, so a picture is downloaded when a state that shows it renders. The illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
 
 | File | Pixels, bytes | State | Headline (example) | Action |
 |---|---|---|---|---|
@@ -767,16 +767,20 @@ Original artwork generated for this project with OpenAI image generation through
 | `no-availability.webp` | 1200 × 900, 108 KB | booking step 1: no slot for the service and day | "No free slot for Full Service" + the API's `unavailableReason` | **Try Wednesday 14 October** (signal) |
 | `error-connection.webp` | 1200 × 900, 82 KB | the schedule could not load at all (network, 5xx) | "Couldn’t load the schedule" + summary + trace id | **Try again** (primary) |
 | `booking-success.webp` | 1200 × 900, 151 KB | mobile full-screen booking sheet after success | "Booked" + service · bay · technician · time | **View on board** (primary), **Book another** (secondary) |
-| `empty-schedule.webp` | (reused) | router 404 (11.19) | "Page not found" + the path | **Go to the dispatch board** (primary) |
 | `error-connection.webp` | (reused) | router error boundary (11.19) | "Something went wrong" + trace id if any | **Try again** (primary) |
-| `closed-day.webp` | (reused) | 401 page, with a `KeyRound` tile | "Sign in to continue" + whether sign-in is enabled | **Sign in** (primary), or **Go to the dispatch board** while it is not |
-| `closed-day.webp` | (reused) | 403 page, with a `LockKeyhole` tile | "No access to this page" + who can give access | **Go to the dispatch board** (primary) |
-| `error-connection.webp` | (reused) | 500 page | "Something went wrong on the server" + trace id if any | **Try again** on the sending page, else **Go to the dispatch board** |
-| `closed-day.webp` | (reused) | 503 page, with a `Construction` tile | "Down for maintenance" + bookings kept | **Try again** on the sending page, else **Go to the dispatch board** |
+| `unauthorized.webp` | 1200 × 900, 106 KB | 401 page | "Sign in to continue" + whether sign-in is enabled | **Sign in** (primary), or **Go to the dispatch board** while it is not |
+| `forbidden.webp` | 1200 × 900, 114 KB | 403 page | "No access to this page" + who can give access | **Go to the dispatch board** (primary) |
+| `not-found.webp` | 1200 × 900, 93 KB | 404 page and the router's `*` route (11.19) | "Page not found" + the path | **Go to the dispatch board** (primary) |
+| `server-error.webp` | 1200 × 900, 156 KB | 500 page, also for every other 5xx but 503 | "Something went wrong on the server" + trace id if any | **Try again** on the sending page, else **Go to the dispatch board** |
+| `maintenance.webp` | 1200 × 900, 156 KB | 503 page | "Down for maintenance" + bookings kept | **Try again** on the sending page, else **Go to the dispatch board** |
+| `empty-technicians.webp` | 1200 × 900, 106 KB | Technicians and Bays lists of a dealership with none yet (11.17) | "No technicians yet" / "No bays yet" + one line | **Check again** (outline) |
+| `photo-evidence.webp` | 1200 × 900, 131 KB | the triage photo field in the booking dialog's step 1 (11.14), before the first photo | no headline: the field's label, then "A photo of the warning light, the damage or the paperwork helps find the right service." | the file input itself |
 
 Layout: a centred column inside the card or panel, `flex flex-col items-center gap-3 py-8 text-center`; the image `w-40 md:w-48 h-auto` with `width`/`height` attributes set to the file's pixels (no layout shift); headline `h3` (`font-heading text-lg font-semibold`; `h1` on the router error pages, which have no other title); one line of `text-sm text-muted-foreground` (`max-w-xs`); one action. Desktop booking success stays a toast (Addendum B §B4); only the mobile full-screen sheet uses the success illustration.
 
-Pages that share an illustration are told apart by an icon tile over its lower right corner: `size-11 md:size-12 rounded-chip bg-card text-foreground shadow-md ring-1 ring-foreground/10` with the icon at `size-5 md:size-6`, decorative (the headline says the same).
+Every error page has its own picture, so none needs telling apart: the icon tiles that once marked a shared `closed-day.webp` on the 401, 403 and 503 pages are gone. The Services list keeps `empty-schedule.webp` for an empty catalogue; the empty locker is for the people and bays a workshop has not set up.
+
+The triage photo field is the one illustration inside a form. Before the first photo the field is a dashed panel (`rounded-lg border border-dashed border-input p-3`, no fill): the picture at `w-20 sm:w-24` (`width`/`height` set as above) beside one line of `text-sm` saying what is worth photographing, the file input under them on a phone and beside the picture from `sm`. Once a photo is chosen the panel and the picture go and the field shows the input and the photo list; the input stays the same element, so focus that returns from the file picker stays in the dialog.
 
 Do not use illustrations for inline problems (409, 422, 400, 429): those are alerts in place, next to what the user is doing.
 
@@ -811,7 +815,7 @@ Decorative: empty `alt`, `aria-hidden`.
 
 ### 12.4 Alt text
 
-The images README is not copied into the web project, so the alt text lives here. In every state above the headline already says what the picture shows, so the image is decorative there: `alt=""`. Use the alt text below only where an illustration appears without an equivalent heading.
+The images READMEs are not copied into the web project, so the alt text lives here and, for the state illustrations, in `src/lib/illustrations.ts`. The first set's states have a headline that already says what the picture shows, so their image is decorative: `alt=""`. The wave-2 pictures are each state's own and show what the words do not (a key and an open padlock for sign-in, a barrier for no access, a closed road, an open bonnet, a car on a lift, an empty locker, a phone photographing a warning light), so they carry the alt text below (`described` on `IllustratedState`; the error pages and the empty Technicians and Bays lists always, and the photo field's picture). Use the first set's alt text only where an illustration appears without an equivalent heading.
 
 | File | Alt text |
 |---|---|
@@ -821,6 +825,13 @@ The images README is not copied into the web project, so the alt text lives here
 | `error-connection.webp` | Disconnected cable plugs beneath a coral warning triangle. |
 | `booking-success.webp` | Silver hatchback with a green check mark and lavender-to-peach sparks. |
 | `vehicle-placeholder.webp` | Generic silver hatchback viewed from the front at an angle. |
+| `unauthorized.webp` | Car key fob beside an open padlock inviting sign-in. |
+| `forbidden.webp` | Workshop bay behind a safety barrier with a wrench role badge. |
+| `server-error.webp` | Generic silver hatchback with an open bonnet, a steam wisp and a nearby wrench. |
+| `maintenance.webp` | Silver hatchback raised on a two-post lift beside cones and a progress indicator. |
+| `not-found.webp` | Directional road sign pointing toward a short road closed by a barrier. |
+| `empty-technicians.webp` | Tool pegboard beside an open, empty technician locker. |
+| `photo-evidence.webp` | Phone camera framing an amber warning triangle on a generic vehicle dashboard. |
 | `backdrop-light.webp`, `backdrop-dark.webp` | decorative: `alt=""` and `aria-hidden="true"` always |
 
 ## 13. Data visualisation
@@ -916,7 +927,7 @@ Paths are relative to `src/Keyloop.ServiceScheduler.Web` unless they start with 
    output. SIL Open Font License 1.1, Copyright 2017 IBM Corp. The full licence ships with the package
    (`node_modules/@fontsource/ibm-plex-mono/LICENSE`).
    ```
-6. Copy the eight `design/images/*.webp` files to `src/assets/illustrations/` (the alt text is in section 12.4).
+6. Copy the eight `design/images/*.webp` files, and the wave-2 files in use (12.1), to `src/assets/illustrations/` (the alt text is in section 12.4).
 7. Apply the component recipes in 17.3.
 8. Verify: `pnpm test && pnpm lint && pnpm typecheck && pnpm build`; then `grep -c "data:font" dist/assets/*.css` prints 0 for every file; the two `rg` checks in 17.2 print nothing; then look at the board in both themes at the five viewports of section 14.
 
@@ -1038,3 +1049,5 @@ Left open: the illustrations' visual fit is verified only in isolation (on light
 **v4, booking intake triage (Task 26, 2026-10-12).** The suggested-service cards in 11.6 (a radio group of cards with the likelihood word, percentage and meter, the day-asked-for chip) and the meter's second use in section 13. No new token: the cards reuse the slot chip's surface, border and focus, and the meter's pair is already in the audit.
 
 **v5, resources, settings and error pages (Task 29, 2026-10-12).** The resource tables and their cards in 11.17; the users app, the settings app's appearance and account pages and the errors app's 401, 403, 500 and 503 pages in the 11.19 adoption table; the new error pages and the icon tile that tells apart pages sharing an illustration in 12.1; the meter's use on the resources pages in 13; the sidebar's three groups in 11.1. `.light` now scopes the light tokens to an element as `.dark` scopes the dark ones (17.4), so the Appearance page draws a light preview inside the dark theme. No new token.
+
+**v6, wave-2 illustrations (FE integration, 2026-10-12).** Each error page gets its own picture (401 `unauthorized`, 403 `forbidden`, 404 `not-found`, 500 and other 5xx `server-error`, 503 `maintenance`), described by its alt text, and the icon tiles that marked the shared `closed-day` picture are removed (12.1). `empty-technicians` for the empty Technicians and Bays lists; `photo-evidence` in the triage photo field before the first photo, the one in-form illustration (`w-20 sm:w-24`). Alt text for the seven in 12.4. No new token.
