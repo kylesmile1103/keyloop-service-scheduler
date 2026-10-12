@@ -158,3 +158,21 @@ scenarios:
   expect:
     alert/keyloop-allocation-below-hv-minimum: {12m: 1, 19m: 1, 22m: 0}
     dashboard/keyloop-booking-engine/18: {12m: 1, 19m: 1, 22m: 0}
+
+- name: an Admin edit is shown when its series is born holding it, including after the demo wakes
+  window: 5m
+  series:
+    scheduler_admin_edits_total{resource="technician", action="edit"}: _x10 1x10 _x10 1x8
+    scheduler_admin_edits_total{resource="policy", action="publish"}: _x10 1x5 2x4
+    scheduler_admin_edits_total{resource="bay", action="create", deployment_environment_name="Staging", instance="s"}: _x10 1x29
+    scheduler_admin_edits_total{resource="bay", action="create", job="other/api", instance="o"}: _x10 1x29
+  expect:
+    # One process exports from 10m to 20m, then sleeps; a woken process reuses its labels from 31m, as the
+    # Cloudflare container does. 11m: both first edits are first exports. 18m: the second publish in the running
+    # process is increase(), extrapolated over the 4m window (4/3). 32m: the woken process's first edit is a first
+    # export again, and the slept process's publish series has gone.
+    dashboard/keyloop-booking-engine/19:
+      11m: {'{resource="technician", action="edit"}': 1, '{resource="policy", action="publish"}': 1}
+      15m: {'{resource="technician", action="edit"}': 0, '{resource="policy", action="publish"}': 0}
+      18m: {'{resource="technician", action="edit"}': 0, '{resource="policy", action="publish"}': 1.3333333333333333}
+      32m: {'{resource="technician", action="edit"}': 1}

@@ -237,6 +237,6 @@
       "action"
     ],
     "source": "scheduler",
-    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; Features/Admin/Shared/AdminVocabulary.cs (closed values); docs/ARCHITECTURE.md section 12.1"
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; src/Keyloop.ServiceScheduler.Infrastructure/Persistence/AdminVocabulary.cs (closed values); docs/ARCHITECTURE.md section 12.1"
   }
 ]

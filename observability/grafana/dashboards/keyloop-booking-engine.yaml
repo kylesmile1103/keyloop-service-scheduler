@@ -1041,7 +1041,8 @@ spec:
     title: Admin edits by resource and action
     description: Committed Admin resource and policy changes per rate window (Task 30a), grouped by resource (technician, bay, policy) and action (create, edit,
       deactivate, reactivate, confirm-hv, publish). Names, employee numbers and emails are never dimensions; the audit history holds who changed what. A
-      publish or deactivation explains new competence warnings and qualification refusals. Misses a series' first sample, like other range counts.
+      publish or deactivation explains new competence warnings and qualification refusals. Counts a series' first export, so the first edit of a
+      resource and action in a process (most edits on the demo, which sleeps between visits) is shown.
     type: timeseries
     gridPos:
       x: 6
@@ -1077,7 +1078,10 @@ spec:
         type: prometheus
         uid: ${ds_metrics}
       editorMode: code
-      expr: sum by (resource, action) (increase(scheduler_admin_edits_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      expr: sum by (resource, action) ((increase(scheduler_admin_edits_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]) and
+        scheduler_admin_edits_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__rate_interval) or
+        (max_over_time(scheduler_admin_edits_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]) unless
+        scheduler_admin_edits_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__rate_interval))
       legendFormat: '{{resource}} {{action}}'
       instant: false
       range: true
