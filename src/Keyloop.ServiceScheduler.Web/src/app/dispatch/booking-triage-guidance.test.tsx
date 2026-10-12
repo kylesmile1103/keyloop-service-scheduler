@@ -42,6 +42,56 @@ async function describeAndSuggest(scope: HTMLElement, text: string) {
   fireEvent.click(within(scope).getByRole("button", { name: "Suggest a service" }))
 }
 
+/** The status region that reads each answer out (always on the page). */
+const announcement = (scope: HTMLElement) =>
+  within(scope)
+    .getAllByRole("status")
+    .find((region) => region.classList.contains("sr-only") && region.closest("section[aria-label='Suggest a service from the issue']"))
+
+describe("the copy for the candidates the API returns", () => {
+  it("reads naturally for a single likely service", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: () => triageAnswer("suggest", [[diagnosticsServiceType, 0.53]]) })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "The AC can't turn on")
+
+    const group = await within(scope).findByRole("radiogroup", { name: "Suggested services" })
+    expect(within(group).getAllByRole("radio")).toHaveLength(1)
+    expect(within(scope).getByText("This service fits the description. Check it, then use it.")).toBeInTheDocument()
+    expect(within(scope).queryByText(/fits best/)).not.toBeInTheDocument()
+  })
+
+  it("reads naturally for a single possible service", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: () => triageAnswer("confirm", [[brakesServiceType, 0.45]]) })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "A noise when I stop")
+
+    await within(scope).findByRole("radio", { name: /^Brake Pads & Discs/ })
+    expect(within(scope).getByText("This service could fit. Choose it if it matches, then use it.")).toBeInTheDocument()
+    expect(announcement(scope)).toHaveTextContent("One service could fit: Brake Pads & Discs. Choose it if it matches, then choose Use this.")
+  })
+
+  it("shows every candidate the API returns, in its order, however small (the floors are the API's)", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.6], [diagnosticsServiceType, 0.31], [interimServiceType, 0.1]]),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Brakes and a light")
+
+    const group = await within(scope).findByRole("radiogroup", { name: "Suggested services" })
+    expect(within(group).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"))).toEqual([
+      "Brake Pads & Discs, 90 min, Likely 60%",
+      "Diagnostic Fault Finding, 60 min, Possible 31%",
+      "Interim Service, 60 min, Possible 10%",
+    ])
+    expect(within(scope).getByText("One service fits best. Check it, then use it.")).toBeInTheDocument()
+  })
+})
+
 describe("the accident damage assessment's help", () => {
   it("says what it is in the Service list, under the chosen service and on its suggested card", async () => {
     mockBoardApi({

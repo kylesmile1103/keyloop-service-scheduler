@@ -301,7 +301,7 @@ function announcement(response: TriageBookingResponse, dealership: DealershipRes
   }
   const names = candidates.map((candidate) => candidate.serviceType.name).join(", ")
   return candidates.length === 1
-    ? `1 service could fit: ${names}. ${asked}Choose it if it matches, then choose Use this.`
+    ? `One service could fit: ${names}. ${asked}Choose it if it matches, then choose Use this.`
     : `${candidates.length} services could fit: ${names}. ${asked}Choose one, then choose Use this.`
 }
 
@@ -310,7 +310,9 @@ function headline(response: TriageBookingResponse, count: number): string {
   if (response.recommendation === "no-match" || count === 0) {
     return "No service here matches the description. Choose the service yourself below."
   }
-  if (response.recommendation === "suggest") return "One service fits best. Check it, then use it."
+  if (response.recommendation === "suggest") {
+    return count === 1 ? "This service fits the description. Check it, then use it." : "One service fits best. Check it, then use it."
+  }
   return count === 1
     ? "This service could fit. Choose it if it matches, then use it."
     : "These services could fit. Choose the one that matches, then use it."
