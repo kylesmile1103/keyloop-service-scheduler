@@ -3,6 +3,7 @@ import type {
   AvailabilityResponse,
   BookAppointmentRequest,
   BookingTriageStatusResponse,
+  CurrentUserResponse,
   DealershipResponse,
   ScheduledAppointmentResponse,
   ServiceTypeResponse,
@@ -14,6 +15,7 @@ import type {
 } from "@/api/types.gen"
 import { shiftDate } from "@/lib/calendar-date"
 import { munich, reading } from "@/test/dealerships"
+import { serviceAdvisor } from "@/test/identities"
 import { jsonResponse, mockApi, problemResponse } from "@/test/mock-api"
 import {
   bays,
@@ -30,6 +32,8 @@ import { triageDisabled, triageUnavailable } from "@/test/triage"
 type Answer<T> = T | Response | Promise<T | Response>
 
 export interface BoardApiOptions {
+  /** `GET /me`, the signed-in identity. By default: a Service advisor, who may view, book and cancel. */
+  me?: () => Answer<CurrentUserResponse>
   dealerships?: () => Answer<DealershipResponse[]>
   /** The schedule for a dealership and date. By default: Reading's Tuesday (Sunday closed), München's Tuesday. */
   schedule?: (dealershipId: string, date: string) => Answer<WorkshopScheduleResponse>
@@ -190,9 +194,9 @@ async function answer<T>(value: Answer<T>, status = 200): Promise<Response> {
 }
 
 /**
- * Stubs `fetch` with the dispatch board's API, routed by path: dealerships, schedule, service types, availability, booking,
- * one appointment and its cancellation, and booking intake triage (its status and its suggestions). Each route can be
- * replaced; requests are recorded as with `mockApi`.
+ * Stubs `fetch` with the dispatch board's API, routed by path: the signed-in identity, dealerships, schedule, service types,
+ * availability, booking, one appointment and its cancellation, and booking intake triage (its status and its suggestions).
+ * Each route can be replaced; requests are recorded as with `mockApi`.
  */
 export function mockBoardApi(options: BoardApiOptions = {}) {
   return mockApi(async (request) => {
@@ -200,6 +204,7 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
     const path = url.pathname
     let match: RegExpExecArray | null
 
+    if (path === "/api/v1/me") return answer(options.me?.() ?? serviceAdvisor)
     if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
     if (path === "/api/v1/booking-triage") return answer(options.triageStatus?.() ?? triageDisabled)
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage\/images$/.exec(path)) && request.method === "POST") {

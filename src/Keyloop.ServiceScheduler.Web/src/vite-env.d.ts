@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_OTEL_EXPORTER_OTLP_HEADERS?: string
   readonly VITE_OTEL_RESOURCE_ATTRIBUTES?: string
   readonly VITE_OTEL_SERVICE_NAME?: string
+  /** Where the signed-in identity comes from (src/lib/session.ts); vite.config.ts compiles it in (see identityDefines). */
+  readonly VITE_IDENTITY_SOURCE?: "access" | "configuration"
 }
 
 interface ImportMeta {

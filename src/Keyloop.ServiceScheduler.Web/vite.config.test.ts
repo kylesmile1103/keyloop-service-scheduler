@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import viteConfig, { apiProxyTarget, devServerPort, inlineAsset, otelDefines } from "./vite.config"
+import viteConfig, { apiProxyTarget, devServerPort, identityDefines, inlineAsset, otelDefines } from "./vite.config"
 
 const aspireOtel = {
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://localhost:21268",
@@ -71,6 +71,27 @@ describe("otelDefines", () => {
 
   it("disables telemetry in test runs", () => {
     expect(Object.values(otelDefines("serve", "test", aspireOtel))).toEqual(['""', '""', '""', '""'])
+  })
+})
+
+describe("identityDefines", () => {
+  const source = (command: "serve" | "build", mode: string) => identityDefines(command, mode)["import.meta.env.VITE_IDENTITY_SOURCE"]
+
+  it("says the identity is configuration on the development dev server, which fronts the API's Development identity", () => {
+    expect(source("serve", "development")).toBe(JSON.stringify("configuration"))
+  })
+
+  it("says Cloudflare Access for every build and every other mode, tests included", () => {
+    expect(source("build", "production")).toBe(JSON.stringify("access"))
+    expect(source("build", "development")).toBe(JSON.stringify("access"))
+    expect(source("serve", "test")).toBe(JSON.stringify("access"))
+  })
+
+  it("is compiled into the app", () => {
+    const config = typeof viteConfig === "function" ? viteConfig({ command: "serve", mode: "development" }) : viteConfig
+    expect((config as { define?: Record<string, string> }).define?.["import.meta.env.VITE_IDENTITY_SOURCE"]).toBe(
+      JSON.stringify("configuration")
+    )
   })
 })
 

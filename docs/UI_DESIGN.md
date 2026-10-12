@@ -768,8 +768,8 @@ Original artwork generated for this project with OpenAI image generation through
 | `error-connection.webp` | 1200 × 900, 82 KB | the schedule could not load at all (network, 5xx) | "Couldn’t load the schedule" + summary + trace id | **Try again** (primary) |
 | `booking-success.webp` | 1200 × 900, 151 KB | mobile full-screen booking sheet after success | "Booked" + service · bay · technician · time | **View on board** (primary), **Book another** (secondary) |
 | `error-connection.webp` | (reused) | router error boundary (11.19) | "Something went wrong" + trace id if any | **Try again** (primary) |
-| `unauthorized.webp` | 1200 × 900, 106 KB | 401 page | "Sign in to continue" + whether sign-in is enabled | **Sign in** (primary), or **Go to the dispatch board** while it is not |
-| `forbidden.webp` | 1200 × 900, 114 KB | 403 page | "No access to this page" + who can give access | **Go to the dispatch board** (primary) |
+| `unauthorized.webp` | 1200 × 900, 106 KB | 401 page | "Sign in to continue" + what needs an account | **Sign in** (primary), back to the page that needed it; *How to sign in* on the development server |
+| `forbidden.webp` | 1200 × 900, 114 KB | 403 page | "No access to this page" + roles come from the workshop administrator | **Go to the dispatch board** (primary) |
 | `not-found.webp` | 1200 × 900, 93 KB | 404 page and the router's `*` route (11.19) | "Page not found" + the path | **Go to the dispatch board** (primary) |
 | `server-error.webp` | 1200 × 900, 156 KB | 500 page, also for every other 5xx but 503 | "Something went wrong on the server" + trace id if any | **Try again** on the sending page, else **Go to the dispatch board** |
 | `maintenance.webp` | 1200 × 900, 156 KB | 503 page | "Down for maintenance" + bookings kept | **Try again** on the sending page, else **Go to the dispatch board** |
