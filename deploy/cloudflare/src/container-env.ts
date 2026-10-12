@@ -1,11 +1,40 @@
 import { accessSettings } from "./auth.ts";
 import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.ts";
+import { grafanaOtlpBaseUrl } from "./otlp.ts";
 import { requiredSecret } from "./secrets.ts";
 
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
   "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY" |
   "AUTH_TEAM_DOMAIN" | "AUTH_AUDIENCE" | "AUTH_ADMIN" | "AUTH_SERVICE_ADVISOR" | "AUTH_VIEWER" |
-  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN">;
+  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN" |
+  "API_OTLP_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_INSTANCE_ID" | "API_OTLP_TOKEN">;
+
+// The committed Grafana dashboards select job="keyloop-scheduler/api", which OTLP translation builds as service.namespace/service.name,
+// and deployment_environment_name="Production", which ServiceDefaults sets from ASPNETCORE_ENVIRONMENT (observability/grafana/README.md).
+const API_OTLP_SERVICE_NAME = "api";
+const API_OTLP_SERVICE_NAMESPACE = "keyloop-scheduler";
+const API_OTLP_TOKEN_SECRET = "keyloop_prod_api_otlp_token";
+
+/** Validates API telemetry export and returns the gateway base URL when it is enabled. Shared with settings.ts. */
+export function apiOtlpSettings(enabled: string, endpoint: string, instanceId: string): string | null {
+  if (enabled !== "true" && enabled !== "false") throw new Error("Set KEYLOOP_API_OTLP_ENABLED to true or false");
+  if ((enabled === "true" || instanceId !== "") && !/^[0-9]{1,20}$/.test(instanceId)) {
+    throw new Error("Set KEYLOOP_GRAFANA_INSTANCE_ID to the Grafana Cloud stack's numeric instance ID");
+  }
+  if (enabled === "false") return null;
+  const base = grafanaOtlpBaseUrl(endpoint);
+  if (base === null) throw new Error("API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT as https://otlp-gateway-<region>.grafana.net/otlp");
+  return base;
+}
+
+// OTEL_EXPORTER_OTLP_HEADERS uses the W3C baggage format: the space is percent-encoded, while base64's "+", "/" and "=" are legal
+// value octets (.NET unescapes the list, then splits each pair at its first "="). The token never appears in a message.
+function apiOtlpHeaders(instanceId: string, token: string): string {
+  if (!/^[\x21-\x7e]+$/.test(token)) {
+    throw new Error(`Secrets Store secret ${API_OTLP_TOKEN_SECRET} must hold only the Grafana token, without spaces or line breaks`);
+  }
+  return `Authorization=Basic%20${btoa(`${instanceId}:${token}`)}`;
+}
 
 export function triageSettings(enabled: string, account: string, gateway: string): void {
   if (enabled !== "true" && enabled !== "false") throw new Error("Set KEYLOOP_TRIAGE_ENABLED to true or false");
@@ -43,6 +72,7 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
   const access = accessSettings(env.AUTH_TEAM_DOMAIN, env.AUTH_AUDIENCE, env.AUTH_ADMIN, env.AUTH_SERVICE_ADVISOR, env.AUTH_VIEWER);
   triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
+  const otlpEndpoint = apiOtlpSettings(env.API_OTLP_ENABLED, env.GRAFANA_OTLP_ENDPOINT, env.GRAFANA_INSTANCE_ID);
   const notificationsEnabled = env.NOTIFICATIONS_ENABLED === "true";
   const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS, notificationsEnabled);
   const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
@@ -80,6 +110,15 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     result.Triage__AccountId = env.TRIAGE_ACCOUNT_ID;
     result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
     result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");
+  }
+  // Disabled export passes nothing OTLP-related, so ServiceDefaults registers no exporter and the API behaves as before.
+  if (otlpEndpoint !== null) {
+    const token = await requiredSecret(env.API_OTLP_TOKEN, API_OTLP_TOKEN_SECRET);
+    result.OTEL_EXPORTER_OTLP_ENDPOINT = otlpEndpoint;
+    result.OTEL_EXPORTER_OTLP_PROTOCOL = "http/protobuf";
+    result.OTEL_EXPORTER_OTLP_HEADERS = apiOtlpHeaders(env.GRAFANA_INSTANCE_ID, token);
+    result.OTEL_SERVICE_NAME = API_OTLP_SERVICE_NAME;
+    result.OTEL_RESOURCE_ATTRIBUTES = `service.namespace=${API_OTLP_SERVICE_NAMESPACE}`;
   }
   addresses.forEach((value, index) => { result[`Notifications__Recipients__AllowedAddresses__${index}`] = value; });
   domains.forEach((value, index) => { result[`Notifications__Recipients__AllowedDomains__${index}`] = value; });

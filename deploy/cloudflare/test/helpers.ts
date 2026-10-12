@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 
+export const FAKE_API_OTLP_TOKEN = "glc_local-fake-otlp-token>ab?c";
+
 // Binding fakes are confined to this test boundary. Global fetch is denied by setup.ts.
 export function fakeEnv() {
   const env = {
@@ -23,6 +25,8 @@ export function fakeEnv() {
     EMAIL: { send: vi.fn().mockResolvedValue({ messageId: "provider-id" }) },
     EMAIL_API_TOKEN: { get: vi.fn().mockResolvedValue("local-test-email-value") },
     GRAFANA_OTLP_BASIC_BROWSER: { get: vi.fn().mockResolvedValue("bG9jYWw6dGVzdA==") },
+    // A fake Grafana token whose base64 credential holds "+", "/" and "=" padding, so the header encoding is exercised.
+    API_OTLP_TOKEN: { get: vi.fn().mockResolvedValue(FAKE_API_OTLP_TOKEN) },
     OTLP_RELAY_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
     NOTIFY_FROM: "notifications@keyloop.kylesmile.me" as const,
     NOTIFY_FROM_NAME: "Keyloop Service Scheduler (demo)" as const,
@@ -37,6 +41,8 @@ export function fakeEnv() {
     EMAIL_MAX_PER_DAY: "100",
     OTLP_RELAY_ENABLED: "true" as Env["OTLP_RELAY_ENABLED"],
     GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
+    API_OTLP_ENABLED: "false" as Env["API_OTLP_ENABLED"],
+    GRAFANA_INSTANCE_ID: "123456",
   };
   return { env: env satisfies Env, mocks: env };
 }
