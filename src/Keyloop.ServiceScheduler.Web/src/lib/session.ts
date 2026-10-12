@@ -48,6 +48,15 @@ export function capabilitiesOf(user: CurrentUserResponse | undefined): Capabilit
   }
 }
 
+/**
+ * The account whose writes an identity may send: the email (lower case, as the API compares it) of an account that may
+ * write, else `null`. A write, and a booking being entered, belong to this account: two roles that may write for the
+ * same email are the same writer, anything else is another one (`useWriteMutation`, the booking dialog's draft).
+ */
+export function writerOf(user: CurrentUserResponse | undefined): string | null {
+  return capabilitiesOf(user).canWrite ? (user?.email ?? "").toLowerCase() : null
+}
+
 /** The name to show for a signed-in user: the token's name, else the email. */
 export function nameOf(user: CurrentUserResponse): string {
   return user.displayName?.trim() || user.email || "Signed-in user"
@@ -152,4 +161,10 @@ export function identityAnswered(state: { status: string; fetchFailureCount: num
 export function cachedCapabilities(queryClient: QueryClient): Capabilities {
   const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
   return capabilitiesOf(identityAnswered(state) ? state?.data : undefined)
+}
+
+/** The writer the cached `/me` names at this moment (`writerOf`), for a write as it is sent: nobody unless its last read succeeded. */
+export function cachedWriter(queryClient: QueryClient): string | null {
+  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
+  return writerOf(identityAnswered(state) ? state?.data : undefined)
 }

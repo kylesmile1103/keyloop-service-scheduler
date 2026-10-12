@@ -336,6 +336,228 @@ describe("a write checked as it is sent", () => {
   })
 })
 
+/** Another account that may book and cancel: the same role as `admin`, another email. */
+const otherAdmin: CurrentUserResponse = { ...admin, email: "another.admin@keyloop.test", displayName: "Another Admin" }
+
+/** The same email with another role that may book: the draft is still this account's. */
+const sameEmailAdvisor: CurrentUserResponse = { ...admin, roles: ["ServiceAdvisor"] }
+
+const slotUnavailable = {
+  type: "https://api.keyloop.example/problems/slot-unavailable",
+  title: "Slot unavailable",
+  status: 409,
+  detail: "Every qualified bay or technician is busy at 10:15.",
+  suggestedSlots: [{ startUtc: "2026-10-13T09:30:00Z", endUtc: "2026-10-13T10:30:00Z", startLocal: "2026-10-13T10:30+01:00" }],
+}
+
+/** The booking dialog's form, submitted as Enter in one of its fields submits it. */
+function submitFromKeyboard(dialog: HTMLElement) {
+  act(() => dialog.querySelector("form")!.requestSubmit())
+}
+
+/** Lets the form's checks (they resolve on later ticks), the send and TanStack's notifications all run. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 150)))
+
+/**
+ * Nothing of the discarded draft anywhere: not on screen (text or a field's value), not in any query's data, not in any
+ * mutation's state, and no mutation left in the cache at all.
+ */
+function expectDraftNowhere(queryClient: QueryClient) {
+  const values = [customer.Name, customer.Email, customer.Phone, customer.VIN, customer.Registration]
+  const fields = [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")].map((field) => field.value)
+  for (const value of values) {
+    expect(document.body.textContent).not.toContain(value)
+    expect(fields).not.toContain(value)
+    expect(cached(queryClient)).not.toContain(value)
+  }
+  expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  expect(queryClient.isMutating()).toBe(0)
+}
+
+// Review round 2: a booking discarded because the caller changed is never sent, by any path, for any later caller. A
+// submission is bound to the account the dialog was drawn for before the form's checks run, and sent only if the identity
+// in the cache is still that account when they pass and the booking has not been discarded meanwhile.
+describe("a booking discarded because the caller changed", () => {
+  it.each<[string, CurrentUserResponse]>([
+    ["signs out", anonymous],
+    ["is another account that may book", otherAdmin],
+  ])("is never sent when the caller %s while Book's checks run, and nothing of it is kept", async (_, next) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    // The form's checks are still running: /me names the next caller before they pass.
+    me = next
+    queryClient.setQueryData(currentUserQueryKey(), next)
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(0)
+    expect(screen.queryAllByText("Booked")).toHaveLength(0)
+    expect(within(dialog).getByText(/The booking you were entering was discarded/)).toBeInTheDocument()
+    expectDraftNowhere(queryClient)
+  })
+
+  it("is never sent from Book once another account that may book is in the cache, before the dialog has drawn it", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+
+    me = otherAdmin
+    queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(0)
+    expect(screen.queryAllByText("Booked")).toHaveLength(0)
+    expectDraftNowhere(queryClient)
+  })
+
+  it.each<[string, CurrentUserResponse, "before" | "after"]>([
+    ["signs out after it is submitted", anonymous, "after"],
+    ["is another account that may book, already in the cache when it is submitted", otherAdmin, "before"],
+    ["signs out before it is submitted", anonymous, "before"],
+    ["is another account that may book, after it is submitted", otherAdmin, "after"],
+  ])("is never sent from the keyboard (Enter in a field) when the caller %s", async (_, next, when) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+
+    me = next
+    if (when === "before") queryClient.setQueryData(currentUserQueryKey(), next)
+    submitFromKeyboard(dialog)
+    if (when === "after") queryClient.setQueryData(currentUserQueryKey(), next)
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(0)
+    expect(screen.queryAllByText("Booked")).toHaveLength(0)
+    expectDraftNowhere(queryClient)
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["signed out", anonymous],
+    ["another account that may book", otherAdmin],
+  ])("is never sent again from Try again once the identity in the cache is %s, before the dialog has drawn it", async (_, next) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({
+      me: () => me,
+      serviceTypes: () => [interimServiceType],
+      book: () => new Response("", { status: 503, statusText: "Service Unavailable" }),
+    })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    const retry = within(await within(dialog).findByRole("alert")).getByRole("button", { name: "Try again" })
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+
+    me = next
+    queryClient.setQueryData(currentUserQueryKey(), next)
+    fireEvent.click(retry)
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+    expectDraftNowhere(queryClient)
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["signs out", anonymous],
+    ["is another account that may book", otherAdmin],
+  ])("is not sent by a Try again pressed in the same tick as the caller %s, and the stopped write leaves nothing", async (_, next) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({
+      me: () => me,
+      serviceTypes: () => [interimServiceType],
+      book: () => new Response("", { status: 503, statusText: "Service Unavailable" }),
+    })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    const retry = within(await within(dialog).findByRole("alert")).getByRole("button", { name: "Try again" })
+
+    // Pressed while the cache still names the Admin, then the identity changes before the request leaves (TanStack starts
+    // a mutation's request a few microtasks after it is asked for).
+    act(() => {
+      fireEvent.click(retry)
+      me = next
+      queryClient.setQueryData(currentUserQueryKey(), next)
+    })
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+    expectDraftNowhere(queryClient)
+  })
+
+  it("is never sent from a suggested start once another account that may book is in the cache", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType], book: () => problemResponse(409, slotUnavailable) })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    const chip = within(await within(dialog).findByRole("alert")).getByRole("button", { name: "Book at 10:30 instead" })
+
+    me = otherAdmin
+    queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
+    fireEvent.click(chip)
+    await settle()
+
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+    expectDraftNowhere(queryClient)
+  })
+
+  it("is still booked, once, when the same email changes to another role that may book while Book's checks run", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    me = sameEmailAdvisor
+    queryClient.setQueryData(currentUserQueryKey(), sameEmailAdvisor)
+
+    expect(await screen.findByText("Booked")).toBeInTheDocument()
+    await settle()
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+    expect(await posts(api.requests, "/appointments")[0].clone().json()).toMatchObject({ customer: { email: customer.Email } })
+  })
+
+  it("keeps the same email's draft and its idempotency key: Try again after a change of writing role books it with the original key", async () => {
+    let me: CurrentUserResponse = admin
+    let attempts = 0
+    const api = mockBoardApi({
+      me: () => me,
+      serviceTypes: () => [interimServiceType],
+      book: (_, body) => (++attempts === 1 ? new Response("", { status: 503, statusText: "Service Unavailable" }) : bookedFrom(body)),
+    })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    await enterBooking(dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    await within(dialog).findByRole("alert")
+
+    me = sameEmailAdvisor
+    refocus()
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey())).toEqual(sameEmailAdvisor))
+    await settle()
+    expect(within(dialog).getByRole("textbox", { name: "Email" })).toHaveValue(customer.Email)
+    fireEvent.click(within(within(dialog).getByRole("alert")).getByRole("button", { name: "Try again" }))
+
+    expect(await screen.findByText("Booked")).toBeInTheDocument()
+    const [first, second, ...more] = posts(api.requests, "/appointments")
+    expect(more).toHaveLength(0)
+    expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+  })
+})
+
 /** The suggestions section alone, as the booking dialog places it, with the dialog's blocked reason when it is blocked. */
 function TriageSection({ blocked }: { blocked: boolean }) {
   const triage = useBookingTriage(reading.id)

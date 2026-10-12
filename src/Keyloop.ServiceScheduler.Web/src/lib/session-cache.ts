@@ -1,6 +1,6 @@
 import type { Query, QueryClient } from "@tanstack/react-query"
 
-import { cachedCapabilities } from "@/lib/session"
+import { cachedWriter } from "@/lib/session"
 
 /**
  * Cache hygiene when the identity changes (ARCHITECTURE §15). The API answers the schedule, the range read and the
@@ -42,25 +42,29 @@ export class CallerChangedError extends Error {
   }
 }
 
-/** A write stopped before it was sent: the identity in the cache may not write (signed out, a role that cannot, unknown). */
+/**
+ * A write stopped before its request left: the identity in the cache is not the account the write is bound to (signed
+ * out, a role that cannot write, another account, or nobody known), so nothing was sent.
+ */
 export class WriteNotAllowedError extends Error {
   constructor() {
-    super("This account cannot change bookings, so nothing was sent.")
+    super("Who is signed in is not the account this change was made for, so nothing was sent.")
     this.name = "WriteNotAllowedError"
   }
 }
 
 /**
- * A check for one write, to call as it is sent and again after each step it awaits, before the next request: it throws
- * `CallerChangedError` once the caller has changed since the write began, and `WriteNotAllowedError` while the identity in
- * the cache may not write (`cachedCapabilities`), so no request leaves for a caller who cannot make it, whatever the
- * screen has drawn yet.
+ * A check for one write bound to `owner` (the account it is sent for, `writerOf`), to call as its request is about to
+ * leave and again after each step it awaits, before the next request: it throws `CallerChangedError` once the caller has
+ * changed since the write began (what it awaited answered the previous caller), and `WriteNotAllowedError` while the
+ * identity in the cache is not `owner` (`cachedWriter`), so no request leaves for another caller, whatever the screen has
+ * drawn yet.
  */
-export function writeGuard(queryClient: QueryClient): () => void {
+export function writeGuard(queryClient: QueryClient, owner: string | null): () => void {
   const generation = callerGeneration(queryClient)
   return () => {
     if (callerGeneration(queryClient) !== generation) throw new CallerChangedError()
-    if (!cachedCapabilities(queryClient).canWrite) throw new WriteNotAllowedError()
+    if (owner === null || cachedWriter(queryClient) !== owner) throw new WriteNotAllowedError()
   }
 }
 

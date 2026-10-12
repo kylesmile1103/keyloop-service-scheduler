@@ -44,7 +44,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { useCountdown } from "@/hooks/use-countdown"
-import { type CurrentUser, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
+import { useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
@@ -60,7 +60,6 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
-import { cachedCapabilities } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
 
@@ -102,13 +101,14 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: Book
   // Whether to offer suggestions, read while the dialog is still closed (see `bookingTriageStatusQuery`).
   useQuery(bookingTriageStatusQuery())
   const queryClient = useQueryClient()
-  const owner = draftOwner(useCurrentUser())
+  const owner = useCurrentUser().writer
   // The phone's success state, kept here so a discard knows a booking had been made.
   const [booked, setBooked] = useState<AppointmentResponse | null>(null)
-  // The booking being entered belongs to the account that opened the dialog. When the identity changes to one that may not
-  // book, or to another email, it is discarded in the same render (the flow starts again under a new key: its fields, the
-  // description and the photos' previews go, and their object URLs are revoked), and the dialog says so. A change between
-  // two roles that may book, for the same email, keeps it (`owner` does not change).
+  // The booking being entered belongs to the account that opened the dialog (`CurrentUser.writer`). When the identity
+  // changes to one that may not book, or to another email, it is discarded in the same render (the flow starts again under
+  // a new key: its fields, the description and the photos' previews go, and their object URLs are revoked), and the dialog
+  // says so. A change between two roles that may book, for the same email, keeps it (`owner` does not change). Its writes
+  // are bound to the same account (`useWriteMutation`), so nothing of a discarded booking is ever sent, by any path.
   const [draft, setDraft] = useState<{ owner: string | null; key: number; discard: Discard | null }>({ owner, key: 0, discard: null })
   if (owner !== draft.owner) {
     const held = draft.owner !== null
@@ -165,11 +165,6 @@ interface Discard {
   booked: boolean
   /** Book had been pressed and had no answer yet: it may have been booked. */
   bookWasPending: boolean
-}
-
-/** Whose booking the dialog holds: the email of an account that may book (Admin or Service advisor), else nobody. */
-function draftOwner(current: CurrentUser): string | null {
-  return current.status === "ready" && current.canWrite ? (current.user?.email ?? "").toLowerCase() : null
 }
 
 /** The booking request's mutation key, so the dialog can tell whether a Book is still out when it discards a draft. */
@@ -399,8 +394,12 @@ function BookingFlow({
   }
 
   function submit(event?: FormEvent) {
-    // The identity in the cache decides too, not only the last render: `/me` may have changed since.
-    if (blocked || !cachedCapabilities(queryClient).canWrite) {
+    // Bound, before the form's checks run, to the account this dialog was drawn for, and only while the identity in the
+    // cache is that account: `/me` may have changed since the last render (Book, Enter in a field, a suggested start).
+    // The send checks again once the checks pass, and sends nothing if the booking was discarded meanwhile (this flow
+    // unmounted) or the cache names another caller.
+    const send = blocked ? null : book.begin()
+    if (!send) {
       event?.preventDefault()
       return
     }
@@ -408,8 +407,7 @@ function BookingFlow({
     void form.handleSubmit(
       (values) => {
         const body = toBookingRequest(values)
-        lastRequest.current = body
-        book.mutate({ path: { dealershipId }, body, headers: { "Idempotency-Key": idempotencyKey.current } })
+        if (send({ path: { dealershipId }, body, headers: { "Idempotency-Key": idempotencyKey.current } })) lastRequest.current = body
       },
       (errors) => {
         if (stepOneFields.some((field) => errors[field])) goTo(1)
@@ -419,11 +417,15 @@ function BookingFlow({
     )(event)
   }
 
-  /** The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded. */
+  /**
+   * The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded.
+   * Sent only while the cache names the account this dialog was drawn for (`useWriteMutation`).
+   */
   function retry() {
-    if (!lastRequest.current || book.isPending || blocked || !cachedCapabilities(queryClient).canWrite) return
-    setAnswerDiscarded(false)
-    book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })
+    if (!lastRequest.current || book.isPending || blocked) return
+    if (book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })) {
+      setAnswerDiscarded(false)
+    }
   }
 
   function bookAt(slot: { startUtc: string }) {
