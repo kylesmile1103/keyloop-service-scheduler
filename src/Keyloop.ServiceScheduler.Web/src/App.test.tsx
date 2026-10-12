@@ -18,7 +18,7 @@ function renderAt(path: string) {
 // The board's route is lazy: load its code once up front, so each test's wait measures rendering, not the first,
 // cold compile of the page's modules (about 0.4 s, more on a busy machine).
 beforeAll(async () => {
-  await import("@/app/dispatch/page")
+  await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page")])
 })
 
 // The dispatch board lists dealerships as it opens.
@@ -29,13 +29,13 @@ beforeEach(() => {
 const pageHeading = (name: string) => screen.findByRole("heading", { level: 1, name })
 
 describe("app shell", () => {
-  it("opens on the dispatch board", async () => {
+  it("opens on the Overview", async () => {
     const { router } = renderAt("/")
 
-    expect(await pageHeading("Dispatch board")).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe("/dispatch")
-    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
-    expect(document.title).toBe("Dispatch board – Keyloop Service Scheduler")
+    expect(await pageHeading("Overview")).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/overview")
+    expect(await screen.findByRole("heading", { level: 2, name: "Bookings per day" })).toBeInTheDocument()
+    expect(document.title).toBe("Overview – Keyloop Service Scheduler")
   })
 
   it("names the product in the header: the Ownership domain tag, Service Scheduler and the Keyloop wordmark in plain text", async () => {
@@ -68,11 +68,14 @@ describe("app shell", () => {
     await pageHeading("Dispatch board")
     await screen.findByRole("heading", { level: 2, name: reading.name })
 
-    // Both pages show one dealership's day, so the links carry the dealership (and the day, when it is not today).
+    // The board and the list show one dealership's day, so their links carry the dealership (and the day, when it is not
+    // today); the Overview is always today, so its link carries the dealership only.
     const workshop = screen.getByRole("navigation", { name: "Workshop" })
+    expect(within(workshop).getAllByRole("link").map((link) => link.textContent)).toEqual(["Overview", "Dispatch board", "Appointments"])
     const board = within(workshop).getByRole("link", { name: "Dispatch board" })
     const appointments = within(workshop).getByRole("link", { name: "Appointments" })
     await waitFor(() => expect(board).toHaveAttribute("href", `/dispatch?dealership=${reading.id}`))
+    expect(within(workshop).getByRole("link", { name: "Overview" })).toHaveAttribute("href", `/overview?dealership=${reading.id}`)
     expect(board).toHaveAttribute("aria-current", "page")
     expect(appointments).toHaveAttribute("href", `/appointments?dealership=${reading.id}`)
     expect(appointments).not.toHaveAttribute("aria-current")

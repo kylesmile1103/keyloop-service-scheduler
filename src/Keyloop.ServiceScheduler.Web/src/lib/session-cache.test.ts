@@ -12,6 +12,8 @@ import {
   listAppointmentsQueryKey,
 } from "@/api/@tanstack/react-query.gen"
 import type { GetAvailabilityData, ListAppointmentsData } from "@/api/types.gen"
+import { overviewWindow } from "@/app/overview/lib/overview"
+import { rangeReadOptions } from "@/lib/appointment-range"
 import { createQueryClient } from "@/lib/query-client"
 import { clearCallerData, holdsCallerData } from "@/lib/session-cache"
 import { reading } from "@/test/dealerships"
@@ -25,6 +27,8 @@ const keys = {
   triageStatus: getBookingTriageStatusQueryKey(),
   schedule: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } }),
   range: listAppointmentsQueryKey({ path: { dealershipId }, query: { from: "2026-10-13", to: "2026-10-19" } as ListAppointmentsData["query"] }),
+  // The Overview's read, built as the page builds it (Task 28b).
+  overview: rangeReadOptions(dealershipId, overviewWindow("2026-10-13").from, overviewWindow("2026-10-13").to).queryKey,
   availability: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } as GetAvailabilityData["query"] }),
   details: getAppointmentQueryKey({ path: { appointmentId: "8c1f6b3e-5d2a-4f7b-9e1c-3a2b4c5d6e7f" } }),
   // The admin area's Refine cache, whose lists come from the schedule.
@@ -56,7 +60,7 @@ describe("which reads may hold another caller's data", () => {
     const holds = (key: readonly unknown[]) => holdsCallerData(queryClient.getQueryCache().find({ queryKey: key, exact: true })!)
 
     expect([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus].map(holds)).toEqual([false, false, false, false])
-    expect([keys.schedule, keys.range, keys.availability, keys.details, keys.refine].map(holds)).toEqual([true, true, true, true, true])
+    expect([keys.schedule, keys.range, keys.overview, keys.availability, keys.details, keys.refine].map(holds)).toEqual([true, true, true, true, true, true])
   })
 })
 

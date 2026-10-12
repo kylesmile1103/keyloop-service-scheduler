@@ -3,7 +3,18 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpRight, BookOpenText, CalendarRange, ClipboardList, ListChecks, SunMoon, UserRound, UsersRound, Warehouse } from "lucide-react"
+import {
+  ArrowUpRight,
+  BookOpenText,
+  CalendarRange,
+  ClipboardList,
+  LayoutDashboard,
+  ListChecks,
+  SunMoon,
+  UserRound,
+  UsersRound,
+  Warehouse,
+} from "lucide-react"
 
 import { Logo } from "@/components/logo"
 import { NavMain } from "@/components/nav-main"
@@ -25,6 +36,8 @@ const data = {
     {
       label: "Workshop",
       items: [
+        // Always today: the link carries the dealership, not the workshop pages' day.
+        { title: "Overview", url: "/overview", icon: LayoutDashboard, carry: [DEALERSHIP_PARAM] },
         {
           title: "Dispatch board",
           url: "/dispatch",
