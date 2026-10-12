@@ -151,15 +151,21 @@ A second cancel returns `409 invalid-state-transition` with `currentStatus` and 
 
 ## Project layout
 
-The integrated layout follows the [implementation plan](docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md):
+The integrated layout follows ADR-025 and the dated update to the [implementation plan](docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md):
 
 ```text
 src/
+  Keyloop.ServiceScheduler.Domain/          Pure aggregates, values and scheduling rules
+    Common/, Catalog/, Dealerships/, Resources/, Scheduling/
+  Keyloop.ServiceScheduler.Infrastructure/  Persistence and outbound adapters
+    Persistence/             DbContext, migrations, configurations, queries, seeding and audit
+    Notifications/           Outbox, dispatcher, email senders and validated options
+    Serialization/           PersistenceJsonContext for audit/outbox JSON
+    Telemetry/               Adapter logs and shared service meter
   Keyloop.ServiceScheduler.Api/
-    Domain/                  Value objects, aggregates, availability and allocation
-    Features/                Catalogue, availability, appointments and schedule slices
-    Common/                  Contracts, problems, validation, options and telemetry
-    Infrastructure/          EF model, migrations, seeding, locks and audit persistence
+    Program.cs               Composition root and explicit registration
+    Features/                Complete vertical slices: endpoint, validation, handler and mapping
+    Common/                  HTTP contracts, problems, validation, options, JSON and request telemetry
   Keyloop.ServiceScheduler.AppHost/          Aspire application model
   Keyloop.ServiceScheduler.ServiceDefaults/  Health and OpenTelemetry defaults
   Keyloop.ServiceScheduler.Web/              React, generated HeyAPI client and board
@@ -173,6 +179,8 @@ scripts/                     Contract export and AOT measurement
 .github/                     CI and dependency updates
 references/README.md         Reference provenance
 ```
+
+Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard the emitted assembly dependencies.
 
 AppHost, Web and AspireTests are integration targets for this draft, as described above. Generated client files are regenerated from OpenAPI; hand-written runtime configuration stays separate from them.
 
@@ -249,7 +257,7 @@ The script forces a Release analyzer rebuild, preserves its build exit status an
 
 | Concern | Implementation | Residual work |
 |---|---|---|
-| Request dispatch, JSON | Request Delegate Generator and `SchedulerJsonContext`, reflection-based JSON disabled | Register every new wire/extension type; a missing registration fails instead of falling back |
+| Request dispatch, JSON | Request Delegate Generator and Api `SchedulerJsonContext`; Infrastructure `PersistenceJsonContext` for audit/outbox JSON; reflection-based JSON disabled | Register every new wire/extension type; a missing registration fails instead of falling back |
 | Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks replace converter-based annotation in Task 18a |
 | Endpoint/handler/validator discovery | Explicit registry and DI registrations | No assembly scanning |
 | Microsoft DI | Explicit registrations, framework container | Constructor discovery at startup, accepted in the budget |
@@ -267,12 +275,25 @@ The groundwork report at base `9f5a168` measured the following **historical base
 
 Task 18a's separate report records removal of the owned TimeSpan warning and an additional EF migration-readiness call site. **`TODO(final-gate)`:** rerun this script after all branches integrate and replace the baseline with the final warning catalogue, counts and artifact reference.
 
+The DbContext, design-time factory and all existing migrations live in Infrastructure. Migration commands use Api as the startup project:
+
+```bash
+dotnet tool restore
+dotnet ef migrations add <Name> --project src/Keyloop.ServiceScheduler.Infrastructure \
+  --startup-project src/Keyloop.ServiceScheduler.Api --output-dir Persistence/Migrations
+dotnet ef migrations has-pending-model-changes --project src/Keyloop.ServiceScheduler.Infrastructure \
+  --startup-project src/Keyloop.ServiceScheduler.Api
+dotnet ef migrations bundle --project src/Keyloop.ServiceScheduler.Infrastructure \
+  --startup-project src/Keyloop.ServiceScheduler.Api
+```
+
 The documented compiled-model experiment is:
 
 ```bash
 dotnet tool restore
-dotnet ef dbcontext optimize --project src/Keyloop.ServiceScheduler.Api \
-  --output-dir Infrastructure/Persistence/CompiledModels
+dotnet ef dbcontext optimize --project src/Keyloop.ServiceScheduler.Infrastructure \
+  --startup-project src/Keyloop.ServiceScheduler.Api \
+  --output-dir Persistence/CompiledModels
 ```
 
 It is intentionally deferred. A compiled model must be regenerated whenever the EF model changes; silently stale generated metadata is a correctness risk. Compiled models alone do not establish NativeAOT support, and query-generation tooling needs its own compatibility evaluation.

@@ -46,6 +46,8 @@
 
 ## File structure (locked)
 
+**Dated update, 2026-10-12 (Task 18b, ADR-025):** the original locked structure below is retained as the implementation history. Pure `Domain/` now lives in `src/Keyloop.ServiceScheduler.Domain/`, and persistence/outbound `Infrastructure/` in `src/Keyloop.ServiceScheduler.Infrastructure/`, including Task 19 notifications. Api retains `Program.cs`, Common web concerns and every complete `Features/<Capability>/<Slice>/` folder. Dependencies are Api -> Infrastructure -> Domain (Api also references Domain); no Service/Application project. Migrations and the design-time factory belong to Infrastructure: EF commands use `--project src/Keyloop.ServiceScheduler.Infrastructure --startup-project src/Keyloop.ServiceScheduler.Api`, with output under `Persistence/Migrations`. Consumer-owned options, persisted JSON, log methods and the shared meter follow the boundaries described in SYSTEM_DESIGN §8.4. This dated update supersedes the original project list, root-namespace and folder constraints above; it does not rewrite earlier task instructions.
+
 ```
 Keyloop.ServiceScheduler.sln
 global.json

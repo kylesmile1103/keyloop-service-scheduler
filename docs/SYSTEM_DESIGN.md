@@ -586,6 +586,8 @@ The Container's outbound `http://email.internal/v1/send` handler owns the sender
 
 ### 8.3 C4 - Components inside the Scheduler API
 
+The API process hosts three assemblies (ADR-025): the Api host and complete slices, pure Domain, and Infrastructure persistence/outbound adapters. The following paths are relative to `src/`; Api feature and Common paths are relative to `Keyloop.ServiceScheduler.Api/`.
+
 ```mermaid
 C4Component
     title Component diagram - Scheduler API
@@ -603,9 +605,10 @@ C4Component
         Component(fSched, "Features/Schedule/GetWorkshopSchedule", "Vertical slice", "Bays x appointments read model")
         Component(fRef, "Features/Dealerships, Features/Catalog", "Vertical slices", "Dealerships; service types with bookable flag")
 
-        Component(domain, "Domain", "DDD aggregates, value objects, domain services", "Appointment, Dealership, ServiceBay, Technician, ServiceType, TimeSlot, Vin, AvailabilityCalculator, AllocationPolicy, BookingWindowPolicy")
-        Component(persist, "Infrastructure/Persistence", "EF Core 10 + Npgsql", "SchedulerDbContext, configurations, migrations, seeding, DomainEventInterceptor, PostgresErrorClassifier, DealershipLock")
-        Component(telemetry, "Common/Telemetry", "OpenTelemetry", "ActivitySource + Meter: booking duration, outcomes, lock wait, backstop hits")
+        Component(domain, "Keyloop.ServiceScheduler.Domain", "DDD aggregates, value objects, domain services", "Appointment, Dealership, ServiceBay, Technician, ServiceType, TimeSlot, Vin, AvailabilityCalculator, AllocationPolicy, BookingWindowPolicy")
+        Component(persist, "Keyloop.ServiceScheduler.Infrastructure/Persistence", "EF Core 10 + Npgsql", "SchedulerDbContext, configurations, migrations, seeding, DomainEventInterceptor, PostgresErrorClassifier, DealershipLock")
+        Component(notifications, "Keyloop.ServiceScheduler.Infrastructure/Notifications", "Outbox + MailKit", "Transactional staging, dispatcher, SMTP sender and recipient policy")
+        Component(telemetry, "Common/Telemetry", "OpenTelemetry", "Request ActivitySource and instruments; shared Meter in Infrastructure/Telemetry")
         Component(problems, "Common/Problems", "RFC 9457", "Problem type catalogue, exception-to-problem mapping, suggested slots enrichment")
     }
 
@@ -625,6 +628,8 @@ C4Component
     Rel(fRef, persist, "reads")
     Rel(fBook, telemetry, "records")
     Rel(fBook, problems, "maps outcomes")
+    Rel(persist, notifications, "stages outbox atomically")
+    Rel(notifications, db, "claims and acknowledges")
     Rel(persist, db, "Npgsql")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
@@ -632,44 +637,58 @@ C4Component
 
 ### 8.4 Vertical-slice layout and conventions
 
-```
-src/Keyloop.ServiceScheduler.Api/
-├── Program.cs                         # composition root: ServiceDefaults, DbContext, slices, pipeline
-├── Domain/                            # pure, no EF/ASP.NET references
-│   ├── Common/        Entity, AggregateRoot, ValueObject, IDomainEvent, DomainException, Result
-│   ├── Dealerships/   Dealership, OperatingHours, DayOperatingHours, OperatingWindow
+```text
+src/
+├── Keyloop.ServiceScheduler.Domain/       # no project/package references
+│   ├── Common/        Entity, AggregateRoot, IDomainEvent, exceptions, Guard, DeterministicGuid
+│   ├── Dealerships/   Dealership, OperatingHours, DayOperatingHours, OperatingWindow, LocalTimeConverter
 │   ├── Resources/     ServiceBay, BayCapability, Technician, Certification
 │   ├── Catalog/       ServiceType, ServiceDuration
 │   └── Scheduling/    Appointment, AppointmentStatus, TimeSlot, Vin, CustomerDetails, VehicleDetails,
 │                      AppointmentEvents, AvailabilityCalculator, AllocationPolicy, BookingWindowPolicy
-├── Features/                          # one folder per capability; nothing shared across slices except Domain + Common
-│   ├── Dealerships/GetDealerships/     GetDealershipsEndpoint, GetDealershipsHandler, DealershipResponse
-│   ├── Dealerships/Mapping/            DealershipMapper (Mapperly; one mapper per feature family)
-│   ├── Catalog/GetServiceTypes/        GetServiceTypesEndpoint, GetServiceTypesHandler, ServiceTypeResponse
-│   ├── Catalog/Mapping/                ServiceTypeMapper
-│   ├── Availability/GetAvailability/   Endpoint, Query, Validator, Handler, Response
-│   ├── Appointments/BookAppointment/   Endpoint, Command, Validator, Handler, Response, IdempotencyGuard
-│   ├── Appointments/GetAppointment/
-│   ├── Appointments/CancelAppointment/
-│   ├── Schedule/GetWorkshopSchedule/
-│   └── Demo/ReseedDemoData/            the Aspire dashboard's reseed command (Development only, outside the contract)
-├── Infrastructure/
-│   ├── Persistence/   SchedulerDbContext, Configurations/*, Migrations/*, Seeding/*, Interceptors/DomainEventInterceptor,
-│   │                  DealershipLock, PostgresErrorClassifier, DatabaseInitializer (migrate + seed, env-gated)
-│   └── Idempotency/   IdempotencyKey entity + store
-├── Common/
-│   ├── Endpoints/     IEndpoint + EndpointRegistry (explicit list, no discovery), route group /api/v1
-│   ├── Contracts/     wire records more than one feature family returns (OperatingWindowResponse, ServiceTypeSummary,
-│   │                  ResourceSummary): one schema each in the contract, one type in the generated client
-│   ├── Validation/    ValidationFilter (FluentValidation -> 400 validation-error)
-│   ├── Problems/      ProblemTypes, ProblemDetailsFactory, GlobalExceptionHandler
-│   ├── Telemetry/     SchedulerTelemetry (ActivitySource, Meter, instruments)
-│   └── Options/       SchedulingOptions, DatabaseOptions, SecurityOptions, DemoOptions (validated on start)
-├── appsettings.json / appsettings.{Development,SystemTest,UAT,Production}.json
-└── Dockerfile                          # multi-stage, non-root (uid 1654), /alive health check, read-only FS friendly
+├── Keyloop.ServiceScheduler.Infrastructure/  # references Domain only
+│   ├── Persistence/   SchedulerDbContext, design-time factory, DatabaseOptions, DealershipLock, PostgresErrorClassifier,
+│   │                  AppointmentHistoryEntry, IdempotencyKey, DatabaseInitializer
+│   │   ├── Configurations/  explicit EF configurations (no scanning)
+│   │   ├── Conversions/     EnumArrayConversions
+│   │   ├── Migrations/      existing migration ids/classes and model snapshot
+│   │   ├── Interceptors/    DomainEventInterceptor, IDomainEventObserver, CurrentActor audit state
+│   │   ├── Queries/         DayScheduleReader
+│   │   └── Seeding/         ReferenceDataSeed, DemoAppointmentSeeder
+│   ├── Notifications/  outbox/snapshot, dispatcher, SMTP/disabled senders, templates, recipient policy,
+│   │                   backlog monitor, commit signal/observer, NotificationOptions + generated validator
+│   ├── Serialization/  PersistenceJsonContext (audit payloads and notification snapshots)
+│   └── Telemetry/      InfrastructureLog; InfrastructureTelemetry (shared Meter and notification instruments)
+└── Keyloop.ServiceScheduler.Api/          # references Domain + Infrastructure + ServiceDefaults
+    ├── Program.cs                         # composition root: ServiceDefaults, DbContext, slices, pipeline
+    ├── Features/                          # complete endpoint + request/response + validator + handler + mapping
+    │   ├── Dealerships/GetDealerships/     GetDealershipsEndpoint, GetDealershipsHandler, DealershipResponse
+    │   ├── Dealerships/Mapping/            DealershipMapper (Mapperly; one mapper per feature family)
+    │   ├── Catalog/GetServiceTypes/        GetServiceTypesEndpoint, GetServiceTypesHandler, ServiceTypeResponse
+    │   ├── Catalog/Mapping/                ServiceTypeMapper
+    │   ├── Availability/GetAvailability/   Endpoint, Query, Validator, Handler, Response
+    │   ├── Appointments/BookAppointment/   Endpoint, Request, Validator, Handler, BookingAttempt, idempotency helpers
+    │   ├── Appointments/GetAppointment/
+    │   ├── Appointments/CancelAppointment/
+    │   ├── Schedule/GetWorkshopSchedule/
+    │   └── Demo/ReseedDemoData/            Aspire dashboard reseed command (outside the contract)
+    ├── Common/
+    │   ├── Endpoints/     IEndpoint + EndpointRegistry (explicit list, no discovery), route group /api/v1
+    │   ├── Contracts/     shared wire records (OperatingWindowResponse, ServiceTypeSummary, ResourceSummary)
+    │   ├── Validation/    ValidationFilter (FluentValidation -> 400 validation-error)
+    │   ├── Problems/      problem catalogue, GlobalExceptionHandler
+    │   ├── Health/        SchedulerReadinessCheck (host readiness with DB/schema checks)
+    │   ├── Http/          middleware, correlation, security, rate limiting, forwarding, actor assignment
+    │   ├── OpenApi/       build-time document and transformers
+    │   ├── Serialization/ SchedulerJsonContext (HTTP DTOs and problem extensions)
+    │   ├── Telemetry/     SchedulerTelemetry (ActivitySource, request instruments), SchedulerLog, event observer
+    │   └── Options/       SchedulingOptions, SecurityOptions, DemoOptions (validated on start)
+    ├── appsettings.json / appsettings.{Environment}.json
+    └── Dockerfile                          # multi-stage, non-root (uid 1654), /alive health check
 ```
 
 Conventions:
+- **Compile-time boundaries (ADR-025).** Api -> Infrastructure -> Domain, with Api also referencing Domain directly. Domain has no project or package references. Infrastructure never references Api. Only cross-assembly types are public; friend access is limited to tests that need internals. No Service/Application assembly splits endpoints from handlers.
 - **No assembly scanning, no runtime code generation in our code.** Endpoints are listed in an explicit `EndpointRegistry`; handlers and validators are registered one by one; DTOs are listed in `SchedulerJsonContext`; mappers are Mapperly-generated (§9.1, ADR-016).
 - **No mediator library.** Each slice registers its handler in DI and its endpoint calls it directly. MediatR moved to a commercial licence in 2025 and a hand-rolled dispatcher adds indirection without value here (ADR-001). Cross-cutting behaviour (validation, problem mapping, telemetry) lives in endpoint filters and middleware, not in a pipeline of behaviours.
 - **Handlers own their persistence.** A slice queries `SchedulerDbContext` directly with projections; there is no generic repository. The domain stays persistence-ignorant via EF configurations.
@@ -950,6 +969,8 @@ Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; 
 
 ### 8.9 Notifications
 
+Implementation lives in `src/Keyloop.ServiceScheduler.Infrastructure/Notifications/`; options and their generated validator live beside the adapters. `Persistence/Interceptors/DomainEventInterceptor` stages the outbox, and `Serialization/PersistenceJsonContext` owns its JSON metadata. Api `Program.cs` still binds options and registers the dispatcher/senders explicitly (ADR-025).
+
 A booking confirmation and a cancellation notice are queued for the appointment's customer email. Both have British English plain text and accessible semantic HTML (one `h1`, a definition list, 16 px body text, inline styles, no images, external assets or tracking). Content: dealership and service names, start and end in the dealership's IANA time zone as human-readable local time with each instant's own offset and the zone, for example `Tuesday 13 October 2026, 09:00 (UTC+01:00, Europe/London)` (the two 01:30s of an autumn change differ by offset), an eight-character random UUID suffix for display plus the full appointment id, registration, VIN masked to the last four characters, and a line directing the customer to dealership support. The cancellation notice says only that the booking was cancelled. **No free text the recipient did not author**: booking is anonymous (ADR-010), so the cancellation reason (500 characters) and the customer name are text any visitor could aim at any address, and mail clients turn URLs into links; neither is stored for the email nor rendered. The registration (16 characters) is a known, small residual. Values are formatted with the invariant culture (English names, fixed digits), so server culture never leaks in. The sender display name is **Keyloop Service Scheduler**. From and optional Reply-To addresses are configurable.
 
 ```mermaid
@@ -976,7 +997,7 @@ flowchart TD
     M --> F
 ```
 
-**Atomicity and idempotency.** The table has a deferrable `UNIQUE (appointment_id, kind)` constraint, backed by an index, and a partial `(next_attempt_at, id)` index where `status = 'Pending'`. The interceptor writes notification rows even when dispatch is disabled, using the same SaveChanges/transaction as the appointment and history. The appointment's commit-verification and idempotency paths therefore also cover the outbox. No after-commit observer performs a durable email write. A row holds the recipient (its own column, for the recipient policy and Task 20's caps), the kind, timestamps and a `jsonb` **snapshot** of the appointment (`NotificationSnapshot`, source-generated JSON through `SchedulerJsonContext`: appointment, dealership and service ids, start and end, registration and the VIN's last four characters). Staging builds it from the aggregate alone: it performs no query and renders nothing, so it cannot fail a booking or cancel (a template or time-zone problem fails only that row at dispatch) and it adds no round trip to the booking's advisory-lock critical section. The schema is applied explicitly in `SchedulerDbContext`, and the migration's Designer and snapshot are generated with the pinned EF tool. EF models the unique alternate key; appended migration SQL makes its PostgreSQL constraint `DEFERRABLE INITIALLY DEFERRED`. This preserves the existing cancellation concurrency behaviour: EF may insert the cancellation row before updating the appointment, so immediate duplicate checking could supersede `xmin` and cause a 500. Deferral lets a stale writer fail the `xmin` check with 409 first, while a truly duplicate kind still cannot commit. [PostgreSQL uniqueness checks](https://www.postgresql.org/docs/17/index-unique-checks.html) describe this deferred, non-blocking insertion check.
+**Atomicity and idempotency.** The table has a deferrable `UNIQUE (appointment_id, kind)` constraint, backed by an index, and a partial `(next_attempt_at, id)` index where `status = 'Pending'`. The interceptor writes notification rows even when dispatch is disabled, using the same SaveChanges/transaction as the appointment and history. The appointment's commit-verification and idempotency paths therefore also cover the outbox. No after-commit observer performs a durable email write. A row holds the recipient (its own column, for the recipient policy and Task 20's caps), the kind, timestamps and a `jsonb` **snapshot** of the appointment (`NotificationSnapshot`, source-generated JSON through `PersistenceJsonContext`: appointment, dealership and service ids, start and end, registration and the VIN's last four characters). Staging builds it from the aggregate alone: it performs no query and renders nothing, so it cannot fail a booking or cancel (a template or time-zone problem fails only that row at dispatch) and it adds no round trip to the booking's advisory-lock critical section. The schema is applied explicitly in `SchedulerDbContext`, and the migration's Designer and snapshot are generated with the pinned EF tool. EF models the unique alternate key; appended migration SQL makes its PostgreSQL constraint `DEFERRABLE INITIALLY DEFERRED`. This preserves the existing cancellation concurrency behaviour: EF may insert the cancellation row before updating the appointment, so immediate duplicate checking could supersede `xmin` and cause a 500. Deferral lets a stale writer fail the `xmin` check with 409 first, while a truly duplicate kind still cannot commit. [PostgreSQL uniqueness checks](https://www.postgresql.org/docs/17/index-unique-checks.html) describe this deferred, non-blocking insertion check.
 
 **Rendering at dispatch.** After a claim commits, the dispatcher reads the batch's dealerships (name, time zone) and service types (name) in two indexed queries and renders each row. Names and the zone are therefore the current ones when the email is sent, not a copy taken at booking time. A row that cannot be rendered (an unknown time zone, a corrupt payload, a deleted dealership) becomes `Failed` with the category `RenderFailed` at once, without a send: retrying cannot help. A database fault while reading fails the cycle instead, and the leases recover.
 
@@ -986,7 +1007,7 @@ flowchart TD
 
 **Claims, wake-up and failure handling.** Several API instances can dispatch safely: each claims due rows using `SELECT ... FOR UPDATE SKIP LOCKED LIMIT n`, sets a new token and lease expiry, and commits before starting parallel, bounded sends. A token-guarded acknowledgement cannot overwrite a newer owner's state. The acknowledgement after a send does not use the shutdown token, so an accepted email is not left leased and sent again after a restart; it has its own five-second deadline, which the lease covers: `ClaimLease` must exceed `SendTimeout` by more than five seconds (defaults 30 seconds and two minutes). Business eligibility, leases and retry times use `TimeProvider`; send latency uses `Stopwatch`. Unusual process pauses or loss of connectivity past the lease can still cause duplicates, consistent with at-least-once semantics. A send cancelled by shutdown leaves its lease for recovery. The dispatcher drains once at start and then sleeps until the first of: a **nudge** from an after-commit observer when a booking or cancellation commits on this instance, the earliest Pending `next_attempt_at` (a retry or a lease expiry), or `IdleInterval` (default 15 minutes; it covers rows committed by another instance or an in-doubt commit whose events were never observed). A full batch is drained at once. An idle API therefore queries the outbox once per idle interval rather than every few seconds, which matters for a database that scales to zero when idle (proposal 2.3); the backlog gauges (§12.1) still query once per metric export interval while an exporter is configured. Failed attempts use `min(MaxBackoff, InitialBackoff * 2^(attempt-1) * (1 + 0.2 * random[0,1]))`. Attempts increment when claimed, so repeated worker crashes cannot retry forever: an expired lease already at `MaxAttempts` becomes `Failed` without another send. Dead letters are never retried automatically. Operators inspect metrics and fixed failure categories, repair configuration, then use a deliberately reviewed database operation to reset attempts/status; there is no public retry endpoint. A database failure during a cycle is logged (1303), leaves outstanding leases recoverable, and the worker tries again after `InitialBackoff` or the next nudge.
 
-**Providers and environments.** `IEmailSender` is provider-independent; `SmtpEmailSender` uses MailKit with a fresh connection per send, configurable required STARTTLS or no TLS, and optional credentials supplied by secrets. A capturing sender is used by integration tests. `None` disables dispatch and never silently accepts/discards email. `Cloudflare` is valid configuration syntax but selecting it fails clearly at startup, before database work, until its adapter is implemented. All notification options use generated `[OptionsValidator]` validation (time spans by typed comparisons in `Validate`, not the trim-unsafe `RangeAttribute(Type, string, string)`) and explicit DI registration. The snapshot is the only JSON, registered in `SchedulerJsonContext` like the history payloads; the HTTP contract is unchanged.
+**Providers and environments.** `IEmailSender` is provider-independent; `SmtpEmailSender` uses MailKit with a fresh connection per send, configurable required STARTTLS or no TLS, and optional credentials supplied by secrets. A capturing sender is used by integration tests. `None` disables dispatch and never silently accepts/discards email. `Cloudflare` is valid configuration syntax but selecting it fails clearly at startup, before database work, until its adapter is implemented. All notification options use generated `[OptionsValidator]` validation (time spans by typed comparisons in `Validate`, not the trim-unsafe `RangeAttribute(Type, string, string)`) and explicit DI registration. The snapshot is the only JSON, registered in Infrastructure `Serialization/PersistenceJsonContext` like the history payloads; the HTTP contract is unchanged.
 
 Local Aspire run uses the [community Mailpit hosting integration](https://aspire.dev/integrations/devtools/mailpit/mailpit-host/) (CommunityToolkit 13.6.0, compatible with Aspire 13.6.1), pinned `axllent/mailpit:v1.31.5`, SMTP target 1025 and HTTP target 8025. Host ports are assigned by Aspire and passed as `Notifications:Smtp:Host/Port`; open the **Mailpit inbox** link in its dashboard. Mailpit has a session lifetime, no persistent mail volume, health-gates API startup, and is absent in publish mode. Seeded bookings are on a reserved domain, so the inbox shows only bookings made with another address.
 
@@ -1360,6 +1381,7 @@ The brief makes the *process* of directing and verifying GenAI a primary evaluat
 | **ADR-022** | Cloudflare Worker Static Assets plus one sleeping API Container, with default scheduling, `basic`, WEUR placement and a first-creation Durable Object hint of `weur`; Neon PostgreSQL 17 London via direct TLS | Preserves PostgreSQL exclusion constraints, advisory locks and xmin. The documented Container class supplies concurrent-start and readiness helpers; the Durable Object Container API migration guide is the exit path. A singleton rollout briefly restarts the API. |
 | **ADR-023** | Secrets Store bindings supply the DB credential at container start and optional REST email/browser OTLP credentials inside the Worker | No credential is committed or included in the SPA. Running API requests avoid secret reads; database credential rotation requires restart. |
 | **ADR-024** | The Worker overwrites forwarding headers; only the Cloudflare profile trusts all IPv4/IPv6 networks with a one-hop limit because the Container has no other ingress | The API sees the real client for rate limits and the original HTTPS scheme. This trust configuration must never be copied to an API with direct ingress. |
+| **ADR-025** | Extract pure Domain and persistence/outbound Infrastructure assemblies while Api retains the composition root, Common web concerns and complete vertical slices | The growing host needs compile-time boundaries: Api references Infrastructure and Domain; Infrastructure references Domain only; Domain references no project, EF Core, ASP.NET Core or Npgsql. Migrations/design-time factory follow the DbContext; persisted JSON, adapter options, logs and notification metrics follow their consumers. Rejected a Service/Application project (separates handlers from endpoints), Clean Architecture layers (adds service/repository indirection instead of direct slice persistence, ADR-001), and per-slice projects (project overhead and fragmented composition). Consequence: namespaces change, the HTTP contract and database schema do not; explicit registration and the reflection budget remain unchanged. |
 
 ---
 
