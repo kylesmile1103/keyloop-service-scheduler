@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;

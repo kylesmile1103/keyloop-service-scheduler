@@ -181,8 +181,8 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
         {
             // A second dealership offering the same service: its row stays renderable.
             var dealership = TestData.NewDealership("Other Motors");
-            var bay = TestData.NewBay(dealership.Id, "Bay 1", Keyloop.ServiceScheduler.Api.Domain.Resources.BayCapability.StandardLift);
-            var technician = TestData.NewTechnician(dealership.Id, "Chloe Evans", "T-2001", Keyloop.ServiceScheduler.Api.Domain.Resources.Certification.GeneralService);
+            var bay = TestData.NewBay(dealership.Id, "Bay 1", Keyloop.ServiceScheduler.Domain.Resources.BayCapability.StandardLift);
+            var technician = TestData.NewTechnician(dealership.Id, "Chloe Evans", "T-2001", Keyloop.ServiceScheduler.Domain.Resources.Certification.GeneralService);
             db.AddRange(dealership, bay, technician);
             await db.SaveChangesAsync(Ct);
             db.Add(TestData.NewAppointment(dealership, _workshop.Interim, bay, technician, TestData.LondonTime(10), email: TestData.DeliverableEmail(2)));

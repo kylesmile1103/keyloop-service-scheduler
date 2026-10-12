@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Keyloop.ServiceScheduler.Domain</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keyloop.ServiceScheduler.UnitTests" />
+  </ItemGroup>
+</Project>

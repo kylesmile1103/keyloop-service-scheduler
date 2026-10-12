@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;

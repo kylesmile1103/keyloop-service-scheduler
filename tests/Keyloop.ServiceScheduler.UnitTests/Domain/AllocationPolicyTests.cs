@@ -1,8 +1,8 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
-using static Keyloop.ServiceScheduler.Api.Domain.Resources.BayCapability;
-using static Keyloop.ServiceScheduler.Api.Domain.Resources.Certification;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
+using static Keyloop.ServiceScheduler.Domain.Resources.BayCapability;
+using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 

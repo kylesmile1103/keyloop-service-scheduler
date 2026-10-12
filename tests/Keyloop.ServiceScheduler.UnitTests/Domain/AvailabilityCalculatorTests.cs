@@ -1,6 +1,6 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 

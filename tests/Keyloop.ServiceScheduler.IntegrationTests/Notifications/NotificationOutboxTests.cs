@@ -118,7 +118,7 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         });
         (await RowsAsync()).Count(e => e.Kind == NotificationKind.Cancellation).ShouldBe(1);
         (await _factory.WithDbAsync(db => db.Appointments.AsNoTracking().SingleAsync(a => a.Id == appointment.Id, Ct))).Status
-            .ShouldBe(Keyloop.ServiceScheduler.Api.Domain.Scheduling.AppointmentStatus.Cancelled);
+            .ShouldBe(Keyloop.ServiceScheduler.Domain.Scheduling.AppointmentStatus.Cancelled);
     }
 
     [Fact]

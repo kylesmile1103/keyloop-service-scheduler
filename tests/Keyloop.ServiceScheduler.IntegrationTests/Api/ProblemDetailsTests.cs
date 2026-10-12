@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.TestHost;

@@ -1,5 +1,5 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Resources;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 

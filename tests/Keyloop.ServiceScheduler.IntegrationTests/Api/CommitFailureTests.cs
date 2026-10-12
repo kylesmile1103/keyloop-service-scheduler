@@ -1,6 +1,6 @@
 using System.Net;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;

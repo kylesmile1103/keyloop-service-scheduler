@@ -1,7 +1,7 @@
 using System.Globalization;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;

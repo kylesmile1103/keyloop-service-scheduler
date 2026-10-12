@@ -1,7 +1,7 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;

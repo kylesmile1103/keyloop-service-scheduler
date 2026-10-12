@@ -1,6 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 

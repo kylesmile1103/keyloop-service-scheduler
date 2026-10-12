@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.UnitTests.TestSupport;
 using Microsoft.Extensions.Logging;
 

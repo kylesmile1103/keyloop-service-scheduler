@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Common;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 

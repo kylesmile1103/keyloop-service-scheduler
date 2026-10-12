@@ -1,8 +1,8 @@
 using System.Data.Common;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;

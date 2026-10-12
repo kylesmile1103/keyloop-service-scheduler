@@ -1,10 +1,10 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Resources;
 using Microsoft.EntityFrameworkCore;
-using static Keyloop.ServiceScheduler.Api.Domain.Resources.BayCapability;
-using static Keyloop.ServiceScheduler.Api.Domain.Resources.Certification;
+using static Keyloop.ServiceScheduler.Domain.Resources.BayCapability;
+using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
 

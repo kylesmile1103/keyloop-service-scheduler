@@ -1,5 +1,5 @@
 using System.Globalization;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Riok.Mapperly.Abstractions;
 

@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Resources;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 

@@ -1,6 +1,6 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
-using static Keyloop.ServiceScheduler.Api.Domain.Resources.BayCapability;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using static Keyloop.ServiceScheduler.Domain.Resources.BayCapability;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 

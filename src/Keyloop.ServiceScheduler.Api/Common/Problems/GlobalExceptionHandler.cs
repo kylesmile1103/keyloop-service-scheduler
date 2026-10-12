@@ -1,5 +1,5 @@
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

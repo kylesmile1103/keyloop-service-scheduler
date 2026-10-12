@@ -15,6 +15,9 @@
     <PackageReference Include="Respawn" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
-  <ItemGroup><ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Domain\Keyloop.ServiceScheduler.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
+  </ItemGroup>
   <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>
 </Project>

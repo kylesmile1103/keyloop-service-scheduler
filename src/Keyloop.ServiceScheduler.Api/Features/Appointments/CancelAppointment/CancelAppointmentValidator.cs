@@ -1,6 +1,6 @@
 using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Validation;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 

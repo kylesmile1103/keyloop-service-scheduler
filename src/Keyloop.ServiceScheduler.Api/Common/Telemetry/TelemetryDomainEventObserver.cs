@@ -1,5 +1,5 @@
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;

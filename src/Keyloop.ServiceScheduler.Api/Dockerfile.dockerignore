@@ -1,17 +1,18 @@
 # Build context for src/Keyloop.ServiceScheduler.Api/Dockerfile (context: the repository root). Allow-list: only the shared build
-# settings and the two projects the API is built from are sent, never node_modules, test output or local secrets.
+# settings and the API and its referenced projects the API is built from are sent, never node_modules, test output or local secrets.
 *
 !global.json
 !Directory.Build.props
 !Directory.Packages.props
 !.editorconfig
 !src/Keyloop.ServiceScheduler.ServiceDefaults/
+!src/Keyloop.ServiceScheduler.Domain/
 !src/Keyloop.ServiceScheduler.Api/
 **/bin/
 **/obj/
 **/*.user
 **/appsettings.*.local.json
-# Credential files a developer may keep inside the two allowed projects. The allow-list above would send them; these lines win
+# Credential files a developer may keep inside the allowed projects. The allow-list above would send them; these lines win
 # because they come later. BuildKit reads this file, not the root .dockerignore, when the build names this Dockerfile.
 **/.env
 **/.env.*

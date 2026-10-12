@@ -25,7 +25,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Catalog.ServiceType", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Catalog.ServiceType", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -70,7 +70,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Dealerships.Dealership", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -98,7 +98,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("dealerships", (string)null);
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Resources.ServiceBay", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Resources.ServiceBay", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -137,7 +137,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("service_bays", (string)null);
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Resources.Technician", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Resources.Technician", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -183,7 +183,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("technicians", (string)null);
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -241,7 +241,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at_utc");
 
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "Customer", "Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment.Customer#CustomerDetails", b1 =>
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Customer", "Keyloop.ServiceScheduler.Domain.Scheduling.Appointment.Customer#CustomerDetails", b1 =>
                         {
                             b1.IsRequired();
 
@@ -264,7 +264,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                                 .HasColumnName("customer_phone");
                         });
 
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "Slot", "Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment.Slot#TimeSlot", b1 =>
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Slot", "Keyloop.ServiceScheduler.Domain.Scheduling.Appointment.Slot#TimeSlot", b1 =>
                         {
                             b1.IsRequired();
 
@@ -277,7 +277,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                                 .HasColumnName("start_utc");
                         });
 
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "Vehicle", "Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment.Vehicle#VehicleDetails", b1 =>
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Vehicle", "Keyloop.ServiceScheduler.Domain.Scheduling.Appointment.Vehicle#VehicleDetails", b1 =>
                         {
                             b1.IsRequired();
 
@@ -490,9 +490,9 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("idempotency_keys", (string)null);
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Dealerships.Dealership", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", b =>
                 {
-                    b.OwnsOne("Keyloop.ServiceScheduler.Api.Domain.Dealerships.OperatingHours", "Hours", b1 =>
+                    b.OwnsOne("Keyloop.ServiceScheduler.Domain.Dealerships.OperatingHours", "Hours", b1 =>
                         {
                             b1.Property<Guid>("DealershipId")
                                 .HasColumnType("uuid")
@@ -506,7 +506,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("DealershipId")
                                 .HasConstraintName("fk_dealerships_dealerships_id");
 
-                            b1.OwnsMany("Keyloop.ServiceScheduler.Api.Domain.Dealerships.DayOperatingHours", "Days", b2 =>
+                            b1.OwnsMany("Keyloop.ServiceScheduler.Domain.Dealerships.DayOperatingHours", "Days", b2 =>
                                 {
                                     b2.Property<Guid>("DealershipId")
                                         .HasColumnType("uuid")
@@ -546,9 +546,9 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Resources.ServiceBay", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Resources.ServiceBay", b =>
                 {
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Dealerships.Dealership", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
                         .WithMany()
                         .HasForeignKey("DealershipId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -556,9 +556,9 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_service_bays_dealerships_dealership_id");
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Resources.Technician", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Resources.Technician", b =>
                 {
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Dealerships.Dealership", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
                         .WithMany()
                         .HasForeignKey("DealershipId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -566,30 +566,30 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_technicians_dealerships_dealership_id");
                 });
 
-            modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment", b =>
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", b =>
                 {
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Resources.ServiceBay", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Resources.ServiceBay", null)
                         .WithMany()
                         .HasForeignKey("BayId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_appointments_service_bays_bay_id");
 
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Dealerships.Dealership", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
                         .WithMany()
                         .HasForeignKey("DealershipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_appointments_dealerships_dealership_id");
 
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Catalog.ServiceType", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Catalog.ServiceType", null)
                         .WithMany()
                         .HasForeignKey("ServiceTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_appointments_service_types_service_type_id");
 
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Resources.Technician", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Resources.Technician", null)
                         .WithMany()
                         .HasForeignKey("TechnicianId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -599,7 +599,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Infrastructure.Notifications.NotificationOutboxEntry", b =>
                 {
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", null)
                         .WithMany()
                         .HasForeignKey("AppointmentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -609,7 +609,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.AppointmentHistoryEntry", b =>
                 {
-                    b.HasOne("Keyloop.ServiceScheduler.Api.Domain.Scheduling.Appointment", null)
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", null)
                         .WithMany()
                         .HasForeignKey("AppointmentId")
                         .OnDelete(DeleteBehavior.Cascade)

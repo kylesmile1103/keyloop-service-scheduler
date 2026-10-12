@@ -1,6 +1,6 @@
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Http;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;

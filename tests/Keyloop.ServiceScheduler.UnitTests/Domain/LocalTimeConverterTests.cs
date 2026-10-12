@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 

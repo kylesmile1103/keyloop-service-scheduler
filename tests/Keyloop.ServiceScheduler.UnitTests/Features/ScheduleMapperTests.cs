@@ -1,8 +1,8 @@
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Resources;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.Mapping;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;

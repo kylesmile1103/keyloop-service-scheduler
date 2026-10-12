@@ -1,6 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Riok.Mapperly.Abstractions;
 

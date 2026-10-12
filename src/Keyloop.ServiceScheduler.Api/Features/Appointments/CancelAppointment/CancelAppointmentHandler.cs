@@ -1,7 +1,7 @@
 using System.Data;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Domain.Common;
+using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;

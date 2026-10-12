@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
+using Keyloop.ServiceScheduler.Domain.Catalog;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 
