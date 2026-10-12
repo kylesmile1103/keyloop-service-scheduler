@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { Plus, RotateCw } from "lucide-react"
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import { getDealershipsOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
+import { SignInPrompt } from "@/components/auth/sign-in-prompt"
+import { WriteReason } from "@/components/auth/write-reason"
 import { type DealershipListStatus, DealershipSelect } from "@/components/dealership-select"
 import { FailedState } from "@/components/failed-state"
 import { IllustratedState } from "@/components/illustrated-state"
@@ -12,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
+import { useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
@@ -40,6 +43,9 @@ export default function DispatchPage() {
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const isMobile = useIsMobile()
+  // The board waits for `/me` as it waits for its first reads (they run side by side), so its write controls appear in
+  // their final state: never usable first and then withdrawn, and never a reason that pushes the board down later.
+  const identityKnown = useCurrentUser().status !== "loading"
 
   // A failed background refresh keeps the list it already has; only a list that never arrived is a failure.
   const status: DealershipListStatus = dealerships.data
@@ -64,7 +70,7 @@ export default function DispatchPage() {
   return (
     <BaseLayout title="Dispatch board" description="Bays, technicians and booked work for one workshop day." band>
       <div className={cn("flex min-w-0 flex-col gap-4 px-4 md:gap-5 md:px-6 xl:px-8", isMobile && "pb-24")}>
-        {selected ? (
+        {selected && identityKnown ? (
           <DealershipDay dealership={selected} dealershipSelect={dealershipSelect} agenda={isMobile} />
         ) : (
           <>
@@ -92,7 +98,7 @@ export default function DispatchPage() {
             ) : (
               <>
                 <p role="status" className="sr-only">
-                  {dealerships.data ? "Finding a dealership with work today…" : "Loading dealerships…"}
+                  {selected ? "Checking who is signed in…" : dealerships.data ? "Finding a dealership with work today…" : "Loading dealerships…"}
                 </p>
                 <BoardPlaceholder loading />
               </>
@@ -121,6 +127,10 @@ interface DealershipDayProps {
  * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet and the booking
  * dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
  * the same board; there is one schedule query, which both lane views and both presentations draw from.
+ *
+ * Booking follows the signed-in role (UI_DESIGN 11.20): an Admin or Service advisor books; a visitor who is not signed in
+ * gets the sign-in prompt instead of the dialog, before anything is typed; any other account sees every Book action
+ * unavailable, with the reason on screen under the toolbar and read with each action.
  */
 function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayProps) {
   const now = useNow()
@@ -134,6 +144,15 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const [booking, setBooking] = useState({ session: 0, open: false })
   const opener = useRef<HTMLElement | null>(null)
   const board = useRef<HTMLDivElement>(null)
+  const access = writeAccessOf(useCurrentUser())
+  const [signInPrompt, setSignInPrompt] = useState(false)
+  const reasonId = useId()
+  // Every Book action is unavailable, but keeps focus, while it cannot book; the reason names it for screen readers.
+  const bookState = {
+    disabled: access.state === "checking" || access.state === "denied",
+    focusableWhenDisabled: true,
+    "aria-describedby": access.state === "denied" ? reasonId : undefined,
+  }
 
   const refetchInterval = autoRefresh ? AUTO_REFRESH_MS : false
   const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } })
@@ -152,7 +171,10 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
     setSelection({ appointment, dealershipId: dealership.id, open: true })
   }
 
-  const openBooking = () => setBooking((previous) => ({ session: previous.session + 1, open: true }))
+  const openBooking = () => {
+    if (access.state === "allowed") setBooking((previous) => ({ session: previous.session + 1, open: true }))
+    else if (access.state === "sign-in") setSignInPrompt(true)
+  }
 
   /** Shows a booking on the board: its day, then its block or card, scrolled into view with the booked halo. */
   const viewOnBoard = (appointment: AppointmentResponse) => {
@@ -177,7 +199,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   }
 
   const bookButton = (
-    <Button type="button" onClick={openBooking} className="cursor-pointer">
+    <Button type="button" onClick={openBooking} className="cursor-pointer" {...bookState}>
       <Plus aria-hidden="true" />
       Book appointment
     </Button>
@@ -223,7 +245,9 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
             onAutoRefreshChange: setAutoRefresh,
           }}
           onBookAppointment={openBooking}
+          bookState={bookState}
         />
+        {access.state === "denied" && <WriteReason id={reasonId} reason={access.reason} />}
         <KpiStrip
           dealershipId={dealership.id}
           date={date}
@@ -269,6 +293,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
         onBooked={onBooked}
         onViewOnBoard={viewOnBoard}
       />
+      <SignInPrompt open={signInPrompt} onOpenChange={setSignInPrompt} />
 
       {agenda && (
         // The phone's Book action: Keyloop's cyan, clear of the home indicator (UI_DESIGN 14). The agenda leaves room under it.
@@ -278,6 +303,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           data-slot="book-fab"
           aria-label="Book appointment"
           onClick={openBooking}
+          {...bookState}
           className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 h-14 rounded-full px-5 text-base shadow-lg ring-6 ring-brand-accent/25 pointer-coarse:h-14"
         >
           <Plus aria-hidden="true" className="size-6" />

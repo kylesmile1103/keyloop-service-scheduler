@@ -9,6 +9,7 @@ import noAvailability from "@/assets/illustrations/no-availability.webp"
 import notFound from "@/assets/illustrations/not-found.webp"
 import photoEvidence from "@/assets/illustrations/photo-evidence.webp"
 import serverError from "@/assets/illustrations/server-error.webp"
+import signInToBook from "@/assets/illustrations/sign-in-to-book.webp"
 import unauthorized from "@/assets/illustrations/unauthorized.webp"
 
 /**
@@ -30,6 +31,8 @@ export const illustrations = {
   "not-found": notFound,
   "empty-technicians": emptyTechnicians,
   "photo-evidence": photoEvidence,
+  // The sign-in prompt before a booking or a change (Task 27b).
+  "sign-in-to-book": signInToBook,
 } as const
 
 export type Illustration = keyof typeof illustrations
@@ -52,4 +55,5 @@ export const illustrationAlt: Record<Illustration, string> = {
   "not-found": "Directional road sign pointing toward a short road closed by a barrier.",
   "empty-technicians": "Tool pegboard beside an open, empty technician locker.",
   "photo-evidence": "Phone camera framing an amber warning triangle on a generic vehicle dashboard.",
+  "sign-in-to-book": "Calendar booking card beside a car key.",
 }

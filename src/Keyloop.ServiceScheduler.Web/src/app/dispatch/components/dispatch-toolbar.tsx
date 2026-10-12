@@ -32,8 +32,10 @@ interface DispatchToolbarProps {
   dealershipSelect: ReactNode
   /** The day, lane and refresh controls, once a dealership is selected. */
   board?: BoardControls
-  /** Opens the booking dialog (Task 17); the action is not shown until there is one. */
+  /** Opens the booking dialog (Task 17), or the sign-in prompt; the action is not shown until there is one. */
   onBookAppointment?: () => void
+  /** Book appointment's availability for this account: unavailable but focusable, with its reason (UI_DESIGN 11.20). */
+  bookState?: { disabled: boolean; focusableWhenDisabled: boolean; "aria-describedby"?: string }
 }
 
 /**
@@ -42,7 +44,7 @@ interface DispatchToolbarProps {
  * the lane view with a Filters sheet holding auto-refresh, the lane filter and the legend.
  * The lane toggle is the tab list of the board's `Tabs` (the page wraps toolbar and board in it).
  */
-export function DispatchToolbar({ dealershipSelect, board, onBookAppointment }: DispatchToolbarProps) {
+export function DispatchToolbar({ dealershipSelect, board, onBookAppointment, bookState }: DispatchToolbarProps) {
   const isMobile = useIsMobile()
 
   // On a touch screen each tab is 44 px tall (the touch-target rule), so the list grows to hold it inside its 3 px inset:
@@ -63,7 +65,7 @@ export function DispatchToolbar({ dealershipSelect, board, onBookAppointment }: 
     </TabsList>
   )
   const book = onBookAppointment && (
-    <Button type="button" onClick={onBookAppointment} className="cursor-pointer pointer-coarse:h-11">
+    <Button type="button" onClick={onBookAppointment} className="cursor-pointer pointer-coarse:h-11" {...bookState}>
       <Plus aria-hidden="true" />
       Book appointment
     </Button>

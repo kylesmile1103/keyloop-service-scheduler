@@ -25,6 +25,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useCurrentUser } from "@/hooks/use-current-user"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
@@ -73,6 +74,8 @@ export default function AppointmentsPage() {
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const phone = useIsMobile()
+  // The list waits for `/me` as the board does, so its Cancel actions and details sheet open in their final state.
+  const identityKnown = useCurrentUser().status !== "loading"
 
   const status: DealershipListStatus = dealerships.data
     ? dealerships.data.length > 0
@@ -95,7 +98,7 @@ export default function AppointmentsPage() {
   return (
     <BaseLayout title="Appointments" description="Search and filter one workshop day's bookings, and act on any of them.">
       <div className="flex min-w-0 flex-col gap-4 px-4 md:gap-5 md:px-6 xl:px-8">
-        {selected ? (
+        {selected && identityKnown ? (
           // A new table per dealership: its bays, technicians and filters are its own.
           <DealershipAppointments key={selected.id} dealership={selected} dealershipSelect={dealershipSelect} phone={phone} />
         ) : (
@@ -124,7 +127,7 @@ export default function AppointmentsPage() {
             ) : (
               <>
                 <p role="status" className="sr-only">
-                  {dealerships.data ? "Finding a dealership with work today…" : "Loading dealerships…"}
+                  {selected ? "Checking who is signed in…" : dealerships.data ? "Finding a dealership with work today…" : "Loading dealerships…"}
                 </p>
                 <ListSkeleton phone={phone} />
               </>

@@ -26,6 +26,8 @@ import type {
   ServiceTypeResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
+import { SignInAction } from "@/components/auth/sign-in-action"
+import { WriteReason } from "@/components/auth/write-reason"
 import { CapabilityBadges } from "@/components/capability-badges"
 import { IllustratedState } from "@/components/illustrated-state"
 import { ProblemAlert } from "@/components/problem-alert"
@@ -42,12 +44,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { useCountdown } from "@/hooks/use-countdown"
+import { useWriteAccess, type WriteAccess } from "@/hooks/use-current-user"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
 import { featureLabel } from "@/lib/features"
 import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
 import {
+  authRefusalTitle,
   describeFailure,
   fieldErrors,
   parseProblem,
@@ -177,6 +181,12 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   const alertRef = useRef<HTMLDivElement>(null)
   const moved = useRef(false)
   const [waiting, startWaiting] = useCountdown()
+  // The dialog opens only for an account that may book, but the identity can change while it is open (a sign-out in
+  // another tab, a session that ended): then Book, Suggest a service and the photos stop, with the reason on screen, and
+  // what was typed stays where it is (it is never stored, so it needs entering again after signing in).
+  const access = useWriteAccess()
+  const blocked = access.state === "sign-in" || access.state === "denied"
+  const blockedId = useId()
 
   const form = useForm<BookingFormInput, unknown, BookingForm>({
     resolver: zodResolver(bookingSchema),
@@ -317,6 +327,10 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   }
 
   function submit(event?: FormEvent) {
+    if (blocked) {
+      event?.preventDefault()
+      return
+    }
     void form.handleSubmit(
       (values) => {
         const body = toBookingRequest(values)
@@ -333,7 +347,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
 
   /** The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded. */
   function retry() {
-    if (!lastRequest.current || book.isPending) return
+    if (!lastRequest.current || book.isPending || blocked) return
     book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })
   }
 
@@ -389,6 +403,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
               triage.enabled ? (
                 <BookingTriageIntake
                   triage={triage}
+                  blockedBy={blocked ? blockedId : undefined}
                   dealership={dealership}
                   today={today}
                   serviceTypes={serviceTypes.data}
@@ -435,6 +450,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
         )}
       </div>
 
+      {!booked && blocked && <BlockedNotice id={blockedId} access={access} sheet={sheet} />}
       {!booked && (
         <footer
           className={cn(
@@ -459,9 +475,10 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
             <Button
               key="book"
               type="submit"
-              disabled={book.isPending || waiting > 0}
+              disabled={book.isPending || waiting > 0 || blocked}
               focusableWhenDisabled
               aria-busy={book.isPending || undefined}
+              aria-describedby={blocked ? blockedId : undefined}
             >
               {book.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
               {book.isPending ? "Booking…" : waiting > 0 ? `Book (in ${waiting} s)` : "Book"}
@@ -470,6 +487,25 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
         </footer>
       )}
     </form>
+  )
+}
+
+/**
+ * Why this booking cannot be made any more, above the footer: signed out (with Sign in, and the warning that what was typed
+ * is not kept), or a role that cannot book. Book, Suggest a service and the photos name it with `aria-describedby`.
+ */
+function BlockedNotice({ id, access, sheet }: { id: string; access: WriteAccess; sheet: boolean }) {
+  return (
+    <div className={cn("flex flex-col gap-2 border-t px-4 py-3 sm:px-6", sheet && "bg-popover")}>
+      {access.state === "sign-in" ? (
+        <>
+          <WriteReason id={id} reason="You’re signed out, so this booking can’t be made. Sign in to book: what you entered here isn’t kept and will need entering again." />
+          <SignInAction size="sm" variant="outline" className="self-start" />
+        </>
+      ) : access.state === "denied" ? (
+        <WriteReason id={id} reason={access.reason} />
+      ) : null}
+    </div>
   )
 }
 
@@ -1093,6 +1129,11 @@ function BookingProblem({ error, alertRef, waiting, busy, booking, onPick, onRet
 
   if (status === 404) {
     return <ProblemAlert tone="warning" title={problem?.title ?? "Not found"} error={error} focusRef={alertRef} />
+  }
+
+  // Signed out or refused for the role: the app's session prompt says what to do (components/auth/session-watch.tsx).
+  if (status === 401 || status === 403) {
+    return <ProblemAlert tone="warning" title={authRefusalTitle(status, "book")} error={error} focusRef={alertRef} />
   }
 
   if (status !== undefined && status < 500) {

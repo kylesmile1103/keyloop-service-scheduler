@@ -770,13 +770,30 @@ The app says who may do what before anything is sent, from `GET /me` (ARCHITECTU
 
 The theme radio group stays at the bottom of every menu (phones have no header toggle). Items are `pointer-coarse:min-h-11`; links are `DropdownMenuLinkItem` (Base UI `Menu.LinkItem`): Sign in and Sign out navigate the whole page, Account is a router `Link`. On a phone the row is in the sidebar sheet's footer.
 
+**Sign-in prompt** (`components/auth/sign-in-prompt.tsx`, `SignInPrompt`): what a visitor who is not signed in gets from **Book appointment** (the toolbar's, an empty day's and the phone's floating action) instead of the booking dialog, before anything is typed, so no booking is half-entered and then lost to the sign-in's navigation. A `Dialog` (`sm:max-w-md p-0 gap-0`): a centred column (`px-6 pt-8 pb-6`) with `sign-in-to-book.webp` (`w-40 md:w-48`, described: it shows what the headline does not), the title "Sign in to book" (`font-heading text-lg font-semibold`), one paragraph ("Booking needs a workshop account with the Admin or Service advisor role. Anyone can view the board, with customer details masked."), then the dialog footer with **Not now** (outline) and **Sign in** (primary, `LogIn`). Sign in takes focus as it opens; Not now, Escape or the close button give focus back to the Book action that opened it. Below `sm` the footer stacks the actions at full width, Sign in on top.
+
+**Sign-in panel** (`SignInPanel`): the same request inside a view that is already open, the details sheet: `rounded-xl border border-border bg-card p-4`, the picture at `w-24` beside (from `sm`) or above the `h3` "Sign in to see the whole booking", one line ("Contact details, the vehicle and cancelling need a workshop account. Until then, names, VINs and plates are masked.") and **Sign in** (`sm`). It stands in for the record and for the cancellation form, and the record is not requested, so there is no `401` and no error state.
+
+**Sign in** (`components/auth/sign-in-action.tsx`) is a link styled as a button: a top-level navigation to the API's login URL with `returnTo` set to the current path and search (the dealership and day come back with the user). Its classes go through `cn()`: `buttonVariants` alone only concatenates, so an outline link would keep the base's `border-transparent` and lose its border.
+
+**Disabled with reason**: for a signed-in account whose role cannot do it (a Viewer; an account without a role), a control that changes bookings stays on screen, unavailable but focusable (`disabled` with Base UI's `focusableWhenDisabled`, which renders `aria-disabled`), and names its reason with `aria-describedby`; the reason is visible too, never only a tooltip. The reason is `WriteReason` (`components/auth/write-reason.tsx`): `flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground` with `Eye` in `text-muted-foreground`.
+
+| Where | Control | Reason placed |
+|---|---|---|
+| dispatch board | **Book appointment** (toolbar, empty day, phone's floating action) | one note under the toolbar, named by every Book action |
+| details sheet | **Cancel appointment** (destructive, unavailable; no reason field to fill) | above it, in the sheet's footer |
+| appointments list | the row menu's **Cancel appointment** (dimmed item) | a `text-xs text-muted-foreground` line under the item, outside it so it keeps full contrast |
+| booking dialog | **Book**, **Suggest a service** and the photo input, when the identity changes while it is open | a note above the footer; signed out, it says what was typed is not kept and adds **Sign in** (outline, `sm`) |
+
+The words: "Your role can view bookings but not change them." for a Viewer; "Your account has no workshop role yet, so it can view the board but not change bookings. The workshop administrator assigns roles." for an account without a role. The board and the appointments list wait for `/me` as they wait for their first reads, so a Book action never shows usable and then turns unavailable, and the note never pushes the board down after it has drawn.
+
 **The development server** (the Vite dev server fronts the API's Development identity, which is configuration): no login page exists and the Access logout is not served, so nothing offers them. Sign in becomes **How to sign in** (`Info` icon) to Settings > Account, whose second card lists the `Auth__Development__Roles__0` settings (with copy buttons) and the AppHost parameter; signed-in menus put "Signed in by this development server's configuration, so there is no sign-out here." inside the group's label (so it is read with the items) and offer no Sign out. Prompts add one muted line: "On this development server the API's configuration decides who you are, so there is no sign-in page."
 
 ## 12. Illustrations, empty and error states
 
 ### 12.1 State illustrations
 
-Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). A second set of ten (wave 2, same pipeline and style, its own README with prompts, alt text and verification) adds a picture per error page, the empty roster, the triage photo field and three for later tasks; the seven in use are copied the same way, and `empty-calendar.webp`, `dashboard-insights.webp` and `sign-in-to-book.webp` wait for the calendar, overview and sign-in work (Tasks 28b and 27b). State illustrations are registered once, with their alt text, in `src/lib/illustrations.ts`: that module holds only their fingerprinted addresses, so a picture is downloaded when a state that shows it renders. The illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
+Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). A second set of ten (wave 2, same pipeline and style, its own README with prompts, alt text and verification) adds a picture per error page, the empty roster, the triage photo field, the sign-in prompt and two for later tasks; the eight in use are copied the same way, and `empty-calendar.webp` and `dashboard-insights.webp` wait for the calendar and overview (Task 28b). State illustrations are registered once, with their alt text, in `src/lib/illustrations.ts`: that module holds only their fingerprinted addresses, so a picture is downloaded when a state that shows it renders. The illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
 
 | File | Pixels, bytes | State | Headline (example) | Action |
 |---|---|---|---|---|
@@ -793,6 +810,7 @@ Original artwork generated for this project with OpenAI image generation through
 | `maintenance.webp` | 1200 × 900, 156 KB | 503 page | "Down for maintenance" + bookings kept | **Try again** on the sending page, else **Go to the dispatch board** |
 | `empty-technicians.webp` | 1200 × 900, 106 KB | Technicians and Bays lists of a dealership with none yet (11.17) | "No technicians yet" / "No bays yet" + one line | **Check again** (outline) |
 | `photo-evidence.webp` | 1200 × 900, 131 KB | the triage photo field in the booking dialog's step 1 (11.14), before the first photo | no headline: the field's label, then "A photo of the warning light, the damage or the paperwork helps find the right service." | the file input itself |
+| `sign-in-to-book.webp` | 1200 × 900, 123 KB | the sign-in prompt before booking, and the details sheet's sign-in panel at `w-24` (11.20) | "Sign in to book" / "Sign in to see the whole booking" + what needs an account | **Sign in** (primary), with **Not now** in the prompt |
 
 Layout: a centred column inside the card or panel, `flex flex-col items-center gap-3 py-8 text-center`; the image `w-40 md:w-48 h-auto` with `width`/`height` attributes set to the file's pixels (no layout shift); headline `h3` (`font-heading text-lg font-semibold`; `h1` on the router error pages, which have no other title); one line of `text-sm text-muted-foreground` (`max-w-xs`); one action. Desktop booking success stays a toast (Addendum B §B4); only the mobile full-screen sheet uses the success illustration.
 
@@ -833,7 +851,7 @@ Decorative: empty `alt`, `aria-hidden`.
 
 ### 12.4 Alt text
 
-The images READMEs are not copied into the web project, so the alt text lives here and, for the state illustrations, in `src/lib/illustrations.ts`. The first set's states have a headline that already says what the picture shows, so their image is decorative: `alt=""`. The wave-2 pictures are each state's own and show what the words do not (a key and an open padlock for sign-in, a barrier for no access, a closed road, an open bonnet, a car on a lift, an empty locker, a phone photographing a warning light), so they carry the alt text below (`described` on `IllustratedState`; the error pages and the empty Technicians and Bays lists always, and the photo field's picture). Use the first set's alt text only where an illustration appears without an equivalent heading.
+The images READMEs are not copied into the web project, so the alt text lives here and, for the state illustrations, in `src/lib/illustrations.ts`. The first set's states have a headline that already says what the picture shows, so their image is decorative: `alt=""`. The wave-2 pictures are each state's own and show what the words do not (a key and an open padlock for sign-in, a barrier for no access, a closed road, an open bonnet, a car on a lift, an empty locker, a phone photographing a warning light, a booking card beside a car key), so they carry the alt text below (`described` on `IllustratedState`; the error pages and the empty Technicians and Bays lists always, the photo field's picture, and the sign-in prompt and panel). Use the first set's alt text only where an illustration appears without an equivalent heading.
 
 | File | Alt text |
 |---|---|
@@ -850,6 +868,7 @@ The images READMEs are not copied into the web project, so the alt text lives he
 | `not-found.webp` | Directional road sign pointing toward a short road closed by a barrier. |
 | `empty-technicians.webp` | Tool pegboard beside an open, empty technician locker. |
 | `photo-evidence.webp` | Phone camera framing an amber warning triangle on a generic vehicle dashboard. |
+| `sign-in-to-book.webp` | Calendar booking card beside a car key. |
 | `backdrop-light.webp`, `backdrop-dark.webp` | decorative: `alt=""` and `aria-hidden="true"` always |
 
 ## 13. Data visualisation

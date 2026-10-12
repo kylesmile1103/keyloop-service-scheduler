@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest"
 
-import { describeFailure, failureKey, fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
+import {
+  authRefusalTitle,
+  describeFailure,
+  failureKey,
+  failureStatus,
+  fieldErrors,
+  parseProblem,
+  problemLoginUrl,
+  problemSlug,
+  UnexpectedResponseError,
+} from "@/lib/problem-details"
 
 const rateLimited = {
   type: "https://api.keyloop.example/problems/rate-limited",
@@ -154,5 +164,37 @@ describe("the brief's problem helpers", () => {
       // Without a label, the API's words stay.
       "idempotency-Key": "Idempotency-Key must be 1 to 64 characters.",
     })
+  })
+})
+
+describe("refusals of identity (ADR-027)", () => {
+  const unauthenticated = {
+    type: "https://api.keyloop.example/problems/unauthenticated",
+    title: "Authentication required",
+    status: 401,
+    detail: "Sign in to perform this action.",
+    loginUrl: "/auth/login?returnTo=%2F",
+    traceId: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  }
+
+  it("finds the status of a failure in every shape it takes", () => {
+    expect(failureStatus(unauthenticated)).toBe(401)
+    expect(failureStatus({ error: { ...unauthenticated, status: 403 } })).toBe(403)
+    expect(failureStatus(new UnexpectedResponseError(502, "Bad Gateway", ""))).toBe(502)
+    // The admin area's Refine HttpError, and the failure it wraps.
+    expect(failureStatus({ statusCode: 403, message: "Forbidden" })).toBe(403)
+    expect(failureStatus({ statusCode: 0, message: "Failed to fetch", cause: new TypeError("Failed to fetch") })).toBeUndefined()
+    expect(failureStatus(new TypeError("Failed to fetch"))).toBeUndefined()
+  })
+
+  it("reads the login URL a 401 carries, also through a wrapping HttpError", () => {
+    expect(problemLoginUrl(unauthenticated)).toBe("/auth/login?returnTo=%2F")
+    expect(problemLoginUrl({ statusCode: 401, message: "Sign in", cause: unauthenticated })).toBe("/auth/login?returnTo=%2F")
+    expect(problemLoginUrl(rateLimited)).toBeUndefined()
+  })
+
+  it("titles a refused write in the words of what was being done", () => {
+    expect(authRefusalTitle(401, "book")).toBe("Couldn’t book: you’re signed out")
+    expect(authRefusalTitle(403, "cancel the appointment")).toBe("Couldn’t cancel the appointment: your role doesn’t allow it")
   })
 })
