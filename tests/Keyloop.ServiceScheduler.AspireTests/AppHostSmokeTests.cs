@@ -67,6 +67,15 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         new Uri(scalar.Url).Scheme.ShouldBe("https");
     }
 
+    [Fact]
+    public void Dashboard_runs_on_a_dev_localhost_name()
+    {
+        // `aspire new`'s *.dev.localhost option. From the dashboard's name Aspire derives <resource>-scheduler.dev.localhost for every
+        // http(s) endpoint (tcp and smtp stay on localhost). The testing builder runs without a dashboard, so the per-resource names are
+        // only visible in a real run; the developer certificate covers *.dev.localhost.
+        new Uri(RunningAppHost.LaunchProfileDashboardUrl()).Host.ShouldBe("scheduler.dev.localhost");
+    }
+
     [Theory]
     [InlineData("https", new[] { "https", "http" })]
     [InlineData("http", new[] { "http" })]
@@ -81,7 +90,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         var context = new ResourceUrlsCallbackContext(
             builder.ExecutionContext,
             api,
-            [.. endpoints.Select(name => new ResourceUrlAnnotation { Url = $"{name}://localhost", Endpoint = new EndpointReference(api, name) })],
+            [.. endpoints.Select(name => new ResourceUrlAnnotation { Url = $"{name}://api-scheduler.dev.localhost:7180", Endpoint = new EndpointReference(api, name) })],
             Ct);
 
         foreach (var annotation in api.Annotations.OfType<ResourceUrlsCallbackAnnotation>())
@@ -91,7 +100,8 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
 
         // Preferably on https; a link on an endpoint the api does not have would be dropped.
         var scalar = context.Urls.Where(url => url.DisplayText == "Scalar API reference").ShouldHaveSingleItem();
-        (scalar.Url, scalar.Endpoint?.EndpointName).ShouldBe(("/scalar/v1", endpoints[0]));
+        // Absolute and on the endpoint's own host, so it keeps the dev.localhost name a relative link would lose.
+        (scalar.Url, scalar.Endpoint?.EndpointName).ShouldBe(($"{endpoints[0]}://api-scheduler.dev.localhost:7180/scalar/v1", endpoints[0]));
         context.Urls.Where(url => url != scalar).Select(url => url.DisplayText).ShouldBe(endpoints.Select(name => $"API ({name})"));
     }
 
@@ -229,6 +239,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
                 [$"--Parameters:postgres-password={password}", "--Parameters:cloudflare-account-id=", "--Parameters:cloudflare-ai-token="], ct);
             try
             {
+
                 foreach (var container in builder.Resources.OfType<ContainerResource>().ToList())
                 {
                     builder.CreateResourceBuilder(container).WithLifetime(ContainerLifetime.Session);
@@ -264,6 +275,20 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
 
                 throw;
             }
+        }
+
+        /// <summary>The first applicationUrl of the AppHost's https launch profile, read from the file the developer runs with.</summary>
+        internal static string LaunchProfileDashboardUrl()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Keyloop.ServiceScheduler.sln")))
+            {
+                directory = directory.Parent;
+            }
+
+            var path = Path.Combine(directory!.FullName, "src", "Keyloop.ServiceScheduler.AppHost", "Properties", "launchSettings.json");
+            using var settings = JsonDocument.Parse(File.ReadAllText(path), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip });
+            return settings.RootElement.GetProperty("profiles").GetProperty("https").GetProperty("applicationUrl").GetString()!.Split(';')[0];
         }
 
         public async ValueTask DisposeAsync()

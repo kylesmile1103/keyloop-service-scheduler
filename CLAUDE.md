@@ -18,6 +18,7 @@ Prerequisites: .NET SDK 10.0.100 (`global.json`), Node 22 + pnpm, and a running 
 ```bash
 # whole stack (PostgreSQL, Mailpit inbox, API, Vite app, Aspire dashboard); `aspire run` is equivalent
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost
+# Dashboard: https://scheduler.dev.localhost:17180; resources link as <resource>-scheduler.dev.localhost:<port> (browsers resolve *.localhost; use localhost:<port> from curl)
 # Open "Mailpit inbox" on the mailpit resource in the Aspire dashboard (HTTP target 8025, dynamic host port).
 # SMTP target 1025 is wired into Notifications:Smtp; Development dispatches, SystemTest/UAT/Production default off.
 # Seeded customers are @example.com, which is never sent to: book with another address to see an email in the inbox.

@@ -85,7 +85,20 @@ foreach (var name in apiEndpoints)
 
 if (apiEndpoints is [var scalarEndpoint, ..])
 {
-    api.WithUrlForEndpoint(scalarEndpoint, _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "Scalar API reference" });
+    // Built from the endpoint's own URL, so it carries the endpoint's dev.localhost name (launchSettings.json); a relative link would
+    // be resolved against the bound localhost address instead.
+    api.WithUrls(context =>
+    {
+        if (context.Urls.FirstOrDefault(url => url.Endpoint?.EndpointName == scalarEndpoint) is { } endpointUrl)
+        {
+            context.Urls.Add(new ResourceUrlAnnotation
+            {
+                Url = new Uri(new Uri(endpointUrl.Url), "/scalar/v1").ToString(),
+                DisplayText = "Scalar API reference",
+                Endpoint = endpointUrl.Endpoint,
+            });
+        }
+    });
 }
 
 // Mailpit is a local capture inbox only. Publish mode retains Provider=None until the production adapter is available.
