@@ -5,6 +5,60 @@ export type ClientOptions = {
 };
 
 /**
+ * An appointment selected by its local start date, with its service and allocated resources.
+ */
+export type AppointmentListItemResponse = {
+    /**
+     * The appointment id; `GET /api/v1/appointments/{id}` reads the whole record.
+     */
+    id: string;
+    /**
+     * Lifecycle status, including cancelled and no-show appointments.
+     */
+    status: AppointmentStatus;
+    /**
+     * Inclusive start in UTC, for example `2026-10-13T08:00:00Z`.
+     */
+    startUtc: string;
+    /**
+     * Exclusive end in UTC.
+     */
+    endUtc: string;
+    /**
+     * Start in the dealership's time zone with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for example `2026-10-13T09:00+01:00`.
+     */
+    startLocal: string;
+    /**
+     * End in the dealership's time zone with offset; may fall outside the requested date range.
+     */
+    endLocal: string;
+    /**
+     * The booked service's id, code, name and duration in minutes.
+     */
+    serviceType: ServiceTypeSummary;
+    /**
+     * The allocated bay's id and display name.
+     */
+    bay: ResourceSummary;
+    /**
+     * The allocated technician's id and display name.
+     */
+    technician: ResourceSummary;
+    /**
+     * Masked customer initials, one upper-case initial per whitespace-separated name part, for example `ALS`. All callers receive initials until Task 27 enables role-based full values.
+     */
+    customerName: string;
+    /**
+     * Masked VIN: its last six characters only, for example `123456`. All callers receive this suffix until Task 27 enables role-based full values.
+     */
+    vin: string;
+    /**
+     * The vehicle's registration plate, upper case.
+     */
+    registration: string;
+};
+
+/**
  * An appointment: one service for one vehicle, with the bay and the technician reserved for it over the same time slot.
  */
 export type AppointmentResponse = {
@@ -777,6 +831,63 @@ export type GetAvailabilityResponses = {
 };
 
 export type GetAvailabilityResponse = GetAvailabilityResponses[keyof GetAvailabilityResponses];
+
+export type ListAppointmentsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * The dealership whose appointments are read (the seeded Reading dealership in the example).
+         */
+        dealershipId: string;
+    };
+    query: {
+        /**
+         * First inclusive local date, exactly `yyyy-MM-dd`.
+         */
+        from: string;
+        /**
+         * Last inclusive local date, exactly `yyyy-MM-dd`; on or after from, spanning at most 62 calendar dates including both bounds.
+         */
+        to: string;
+        /**
+         * Optional, repeatable, case-sensitive status names: Confirmed, CheckedIn, InProgress, Completed, Cancelled, NoShow. Omit to read every status.
+         */
+        status?: Array<'Confirmed' | 'CheckedIn' | 'InProgress' | 'Completed' | 'Cancelled' | 'NoShow'>;
+    };
+    url: '/api/v1/dealerships/{dealershipId}/appointments';
+};
+
+export type ListAppointmentsErrors = {
+    /**
+     * Missing or malformed dates, from after to, more than 62 inclusive days, or an invalid status (`validation-error`, with `errors` keyed `from`, `to` or `status`).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No dealership has this id (`not-found`, with `resource` = `dealership` and the `id`).
+     */
+    404: ProblemDetails;
+    /**
+     * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type ListAppointmentsError = ListAppointmentsErrors[keyof ListAppointmentsErrors];
+
+export type ListAppointmentsResponses = {
+    /**
+     * An array of appointments ordered by start, with service, bay and technician summaries, masked customer initials and VIN suffixes; empty when there are no matches.
+     */
+    200: Array<AppointmentListItemResponse>;
+};
+
+export type ListAppointmentsResponse = ListAppointmentsResponses[keyof ListAppointmentsResponses];
 
 export type BookAppointmentData = {
     /**

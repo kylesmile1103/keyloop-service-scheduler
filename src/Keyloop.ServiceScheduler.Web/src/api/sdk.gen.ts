@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -46,6 +46,18 @@ export const getServiceTypes = <ThrowOnError extends boolean = false>(options: O
  * (`2026-10-13T10:00+01:00`). The answer is a snapshot; booking checks again.
  */
 export const getAvailability = <ThrowOnError extends boolean = false>(options: Options<GetAvailabilityData, ThrowOnError>): RequestResult<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError> => (options.client ?? client).get<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/availability', ...options });
+
+/**
+ * List appointments for a local date range
+ *
+ * Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most
+ * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
+ * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
+ * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
+ * hour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables
+ * role-based full values. Registration plates remain visible. Returns an empty array when there are no matches.
+ */
+export const listAppointments = <ThrowOnError extends boolean = false>(options: Options<ListAppointmentsData, ThrowOnError>): RequestResult<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/appointments', ...options });
 
 /**
  * Book an appointment

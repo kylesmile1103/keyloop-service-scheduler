@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, type Options, triageBookingRequest } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, triageBookingRequest } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -105,6 +105,31 @@ export const getAvailabilityOptions = (options: Options<GetAvailabilityData>) =>
         return data;
     },
     queryKey: getAvailabilityQueryKey(options)
+});
+
+export const listAppointmentsQueryKey = (options: Options<ListAppointmentsData>) => createQueryKey('listAppointments', options);
+
+/**
+ * List appointments for a local date range
+ *
+ * Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most
+ * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
+ * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
+ * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
+ * hour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables
+ * role-based full values. Registration plates remain visible. Returns an empty array when there are no matches.
+ */
+export const listAppointmentsOptions = (options: Options<ListAppointmentsData>) => queryOptions<ListAppointmentsResponse, ListAppointmentsError, ListAppointmentsResponse, ReturnType<typeof listAppointmentsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listAppointments({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listAppointmentsQueryKey(options)
 });
 
 /**
