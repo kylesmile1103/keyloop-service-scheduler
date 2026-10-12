@@ -27,6 +27,7 @@ const catalogues = { serviceTypes: (id: string) => (id === munich.id ? munichCat
 
 describe("services list", () => {
   it("lists the catalogue with code, duration, needs, whether it is bookable here and today's bookings", async () => {
+    viewportOf(1600)
     const { requests } = mockBoardApi(catalogues)
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
@@ -43,6 +44,22 @@ describe("services list", () => {
     expect(document.title).toBe("Services – Keyloop Service Scheduler")
   })
 
+  it("leaves the code out below 1536 px, where the search still finds it and View brings it back", async () => {
+    mockBoardApi(catalogues)
+    renderBoard(`/resources/services?dealership=${reading.id}`)
+
+    // 1440 px (the test default): the table fits its card without the code.
+    const list = await table()
+    expect(headers(list)).toEqual(["Service", "Duration", "Needs", "Bookable here", "Booked today"])
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search services" }), { target: { value: "heavy-van" } })
+    await waitFor(() => expect(columnTexts(list, "Service")).toEqual(["Heavy Van Service"]))
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }))
+    const menu = await screen.findByRole("menu")
+    fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Code" }))
+    await waitFor(() => expect(headers(list)).toContain("Code"))
+  })
+
   it("says what this dealership lacks for a service it cannot book", async () => {
     mockBoardApi(catalogues)
     renderBoard(`/resources/services?dealership=${munich.id}`)
@@ -54,7 +71,7 @@ describe("services list", () => {
     expect(within(row("MOT Test")).getByText("Missing: MOT testing, MOT tester.")).toBeInTheDocument()
     expect(within(row("Diagnostic Fault Finding")).getByText("Missing: Diagnostics.")).toBeInTheDocument()
     // Each need exists here, but on different technicians.
-    expect(row("EV Charging Fault Diagnosis")).toHaveTextContent("No single bay and technician has all it needs")
+    expect(row("EV Charging Fault Diagnosis")).toHaveTextContent("Not all on one technician")
     expect(within(row("Interim Service")).getByText("Yes")).toBeInTheDocument()
   })
 

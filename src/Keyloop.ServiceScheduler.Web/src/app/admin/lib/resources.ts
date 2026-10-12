@@ -29,10 +29,16 @@ export interface BayRecord extends Omit<BayScheduleResponse, "appointments"> {
   today: DayLoad
 }
 
-/** What a service needs that no active bay has, and no active technician holds. Both empty: no single bay or technician has the whole set. */
+/** Why the dealership cannot book a service, from what its active bays and technicians have. */
 export interface Shortfall {
+  /** Required capabilities no active bay has. */
   capabilities: BayCapability[]
+  /** Required certifications no active technician holds. */
   certifications: Certification[]
+  /** Every required capability is on some active bay, but no one bay has them all. */
+  splitAcrossBays: boolean
+  /** Every required certification is held by some active technician, but no one technician holds them all. */
+  splitAcrossTechnicians: boolean
 }
 
 /** A service of the catalogue, with today's bookings and, when the dealership cannot book it, why. */
@@ -80,15 +86,37 @@ export function serviceRecords(catalogue: readonly ServiceTypeResponse[], schedu
   return catalogue.map((service) => ({
     ...service,
     bookedToday: work.filter((appointment) => appointment.serviceType.id === service.id).length,
-    shortfall: service.bookable
-      ? null
-      : {
-          capabilities: service.requiredBayCapabilities.filter((capability) => !activeBays.some((bay) => bay.capabilities.includes(capability))),
-          certifications: service.requiredCertifications.filter(
-            (certification) => !activeTechnicians.some((technician) => technician.certifications.includes(certification))
-          ),
-        },
+    shortfall: service.bookable ? null : shortfallOf(service, activeBays, activeTechnicians),
   }))
+}
+
+function shortfallOf(
+  service: ServiceTypeResponse,
+  bays: readonly BayScheduleResponse[],
+  technicians: readonly TechnicianResponse[]
+): Shortfall {
+  const capabilities = service.requiredBayCapabilities.filter((capability) => !bays.some((bay) => bay.capabilities.includes(capability)))
+  const certifications = service.requiredCertifications.filter(
+    (certification) => !technicians.some((technician) => technician.certifications.includes(certification))
+  )
+  const oneBay = bays.some((bay) => service.requiredBayCapabilities.every((capability) => bay.capabilities.includes(capability)))
+  const oneTechnician = technicians.some((technician) =>
+    service.requiredCertifications.every((certification) => technician.certifications.includes(certification))
+  )
+  return {
+    capabilities,
+    certifications,
+    splitAcrossBays: capabilities.length === 0 && !oneBay,
+    splitAcrossTechnicians: certifications.length === 0 && !oneTechnician,
+  }
+}
+
+/** "Not all on one technician": a shortfall that is not a missing need but a split one, in words; `null` otherwise. */
+export function splitSentence(shortfall: Shortfall): string | null {
+  if (shortfall.splitAcrossBays && shortfall.splitAcrossTechnicians) return "Not all on one bay or technician"
+  if (shortfall.splitAcrossBays) return "Not all on one bay"
+  if (shortfall.splitAcrossTechnicians) return "Not all on one technician"
+  return null
 }
 
 /** The window minutes of a set of records' day (all records of one list share it); `null` on a closed day or an empty list. */

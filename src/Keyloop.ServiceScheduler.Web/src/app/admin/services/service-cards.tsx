@@ -2,7 +2,7 @@ import { CapabilityBadges } from "@/components/capability-badges"
 import { countOf } from "@/lib/data-table"
 
 import type { ServiceRecord } from "../lib/resources"
-import { NO_SINGLE_MATCH } from "./bookable-cell"
+import { Shortfall } from "./bookable-cell"
 
 const BOOKED = { one: "booked today", other: "booked today" }
 
@@ -14,8 +14,6 @@ export function ServiceCards({ rows }: { rows: readonly ServiceRecord[] }) {
   return (
     <ol aria-label="Services" className="flex flex-col gap-2">
       {rows.map((row) => {
-        const shortfall = row.shortfall
-        const named = shortfall && shortfall.capabilities.length + shortfall.certifications.length > 0
         return (
           <li key={row.id} className="flex flex-col gap-2.5 rounded-chip bg-card p-3 shadow-xs ring-1 ring-foreground/10">
             <div className="flex min-w-0 items-start justify-between gap-3">
@@ -31,12 +29,7 @@ export function ServiceCards({ rows }: { rows: readonly ServiceRecord[] }) {
                 <span className={row.bookable ? undefined : "font-medium"}>{row.bookable ? "Bookable here" : "Not bookable here"}</span>
                 <span className="text-muted-foreground">{countOf(row.bookedToday, BOOKED)}</span>
               </div>
-              {!row.bookable &&
-                (named ? (
-                  <CapabilityBadges capabilities={shortfall.capabilities} certifications={shortfall.certifications} variant="outline" max={4} className="flex-wrap" />
-                ) : (
-                  <p className="text-xs text-muted-foreground">{NO_SINGLE_MATCH}</p>
-                ))}
+              {!row.bookable && <Shortfall service={row} max={4} wrap />}
             </div>
           </li>
         )

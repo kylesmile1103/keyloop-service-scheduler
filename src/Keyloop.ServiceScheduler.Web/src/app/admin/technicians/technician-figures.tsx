@@ -55,7 +55,7 @@ export function TechnicianFigures({ rows, failed }: { rows: readonly TechnicianR
               ? "Closed today"
               : `${formatMinutes(figures.bookedMinutes)} booked of ${formatMinutes(figures.capacityMinutes)}`)
         )}
-        detail="Booked time over open technician time"
+        detail="Booked over open technician time"
       />
     </section>
   )

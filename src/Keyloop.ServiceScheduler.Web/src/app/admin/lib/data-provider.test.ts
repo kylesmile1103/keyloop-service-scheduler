@@ -63,7 +63,7 @@ describe("the resources data provider", () => {
     expect(services.data.find((record) => record.code === "MOT-TEST")).toMatchObject({
       bookable: false,
       bookedToday: 0,
-      shortfall: { capabilities: ["MotTesting"], certifications: ["MotTester"] },
+      shortfall: { capabilities: ["MotTesting"], certifications: ["MotTester"], splitAcrossBays: false, splitAcrossTechnicians: false },
     })
     expect(requestsTo(requests, "/service-types")).toHaveLength(1)
     expect(queryClient.getQueryData(getServiceTypesQueryKey({ path: { dealershipId: munich.id } }))).toEqual(munichCatalogue)

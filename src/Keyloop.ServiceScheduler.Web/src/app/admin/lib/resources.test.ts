@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { WorkshopScheduleResponse } from "@/api/types.gen"
+import type { ServiceTypeResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { munichCatalogue, readingCatalogue } from "@/test/catalogue"
 import { appointments, bays, munichTuesday, readingSunday, readingTuesday, technicians, withStatus } from "@/test/schedules"
 
@@ -119,10 +119,10 @@ describe("serviceRecords", () => {
     const shortfall = (code: string) => records.find((record) => record.code === code)!.shortfall
 
     expect(shortfall("INTERIM-SERVICE")).toBeNull()
-    expect(shortfall("MOT-TEST")).toEqual({ capabilities: ["MotTesting"], certifications: ["MotTester"] })
-    expect(shortfall("DIAG-FAULT-FINDING")).toEqual({ capabilities: ["Diagnostics"], certifications: [] })
+    expect(shortfall("MOT-TEST")).toEqual({ capabilities: ["MotTesting"], certifications: ["MotTester"], splitAcrossBays: false, splitAcrossTechnicians: false })
+    expect(shortfall("DIAG-FAULT-FINDING")).toEqual({ capabilities: ["Diagnostics"], certifications: [], splitAcrossBays: false, splitAcrossTechnicians: false })
     // Hans holds high-voltage electrical and Ingrid diagnostics, but nobody holds both: each need exists, the pair does not.
-    expect(shortfall("EV-CHARGING-FAULT")).toEqual({ capabilities: [], certifications: [] })
+    expect(shortfall("EV-CHARGING-FAULT")).toEqual({ capabilities: [], certifications: [], splitAcrossBays: false, splitAcrossTechnicians: true })
   })
 
   it("counts an inactive bay or technician as missing", () => {
@@ -132,7 +132,21 @@ describe("serviceRecords", () => {
     ).find((record) => record.code === "MOT-TEST")!.shortfall
 
     // Bay 6 is the only MOT bay; Amelia and Farid are still MOT testers.
-    expect(shortfall).toEqual({ capabilities: ["MotTesting"], certifications: [] })
+    expect(shortfall).toEqual({ capabilities: ["MotTesting"], certifications: [], splitAcrossBays: false, splitAcrossTechnicians: false })
+  })
+
+  it("names the bays' side when every capability exists but not in one bay", () => {
+    const evDiagnostics: ServiceTypeResponse = {
+      ...readingCatalogue[0],
+      id: "ev-diagnostics",
+      requiredBayCapabilities: ["EvHighVoltage", "Diagnostics"],
+      requiredCertifications: [],
+      bookable: false,
+    }
+    const [record] = serviceRecords([evDiagnostics], readingTuesday)
+
+    // Bay 4 has the EV equipment and Bay 5 the diagnostics, as the seeder's comment on EV Charging Fault Diagnosis says.
+    expect(record.shortfall).toEqual({ capabilities: [], certifications: [], splitAcrossBays: true, splitAcrossTechnicians: false })
   })
 })
 

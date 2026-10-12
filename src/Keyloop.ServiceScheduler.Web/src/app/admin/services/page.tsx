@@ -3,6 +3,7 @@ import { useMemo, useState } from "react"
 
 import type { Facet } from "@/components/data-table/data-table-faceted-filter"
 import type { SortChoice } from "@/components/data-table/filters-sheet"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { dataTableFeatures, PAGE_SIZES } from "@/lib/data-table"
 
 import { ResourceList } from "../components/resource-list"
@@ -27,6 +28,22 @@ const SORTS: readonly SortChoice[] = [
   { value: "booked", label: "Most booked today", sorting: [{ id: "bookedToday", desc: true }] },
 ]
 
+/**
+ * Which columns show. All six fit from 1536 px; below that the code is left out (the search still finds a service by it),
+ * so the table fits its card without scrolling sideways from 1024 px up. View brings it back, and once the user has chosen,
+ * the choice stands whatever the width (the appointments list's rule, UI_DESIGN 11.17).
+ */
+function useColumnVisibility() {
+  const wide = useMediaQuery("(min-width: 1536px)")
+  const [chosen, setChosen] = useState<ColumnVisibilityState | null>(null)
+  const state = chosen ?? { code: wide }
+  return {
+    state,
+    onChange: (updater: ColumnVisibilityState | ((previous: ColumnVisibilityState) => ColumnVisibilityState)) =>
+      setChosen((previous) => functionalUpdate(updater, previous ?? state)),
+  }
+}
+
 /** Stable empty rows: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: ServiceRecord[] = []
 
@@ -42,15 +59,15 @@ export default function ServicesPage() {
 function ServiceList({ dealership, today, phone }: ResourceScope) {
   const read = useResourceList<ServiceRecord>("services", { dealership, today })
   const rows = read.rows ?? NO_ROWS
-  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({})
+  const columnVisibility = useColumnVisibility()
 
   const table = useTable({
     features: dataTableFeatures,
     data: rows,
     columns: serviceColumns,
     initialState: { sorting: [{ id: "name", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
-    state: { columnVisibility },
-    onColumnVisibilityChange: (updater) => setColumnVisibility((previous) => functionalUpdate(updater, previous)),
+    state: { columnVisibility: columnVisibility.state },
+    onColumnVisibilityChange: columnVisibility.onChange,
     globalFilterFn: serviceSearch,
     getColumnCanGlobalFilter: (column) => column.id === "name",
   })
