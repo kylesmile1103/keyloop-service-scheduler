@@ -47,7 +47,18 @@ public sealed class LiveAiGoldenSetTests
         {
             var request = ClefQuestionBuilder.Build(settings.Model, item.Description, services, dealership, TimeProvider.System, 90);
             var started = Stopwatch.GetTimestamp();
-            var answer = await client.EvaluateAsync(request, TestContext.Current.CancellationToken);
+            ClefEvaluation answer;
+            try
+            {
+                answer = await client.EvaluateAsync(request, TestContext.Current.CancellationToken);
+            }
+            catch (TriageUnavailableException ex)
+            {
+                // The client logs to NullLogger here, so the safe reason (timeout, rate-limited, billing, ...) must surface in the failure.
+                throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                    $"Fixture {rows.Count + 1} was unavailable: {ex.Reason}."), ex);
+            }
+
             latencies.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             tokens += answer.InputTokens ?? 0;
             var response = TriageResponseMapper.Map(settings.Model, answer, services, new TriageOptions());

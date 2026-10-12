@@ -7,6 +7,11 @@ public sealed class TriageConnectionOptionsTests
     [Fact]
     public void Disabled_defaults_need_no_credentials() => new TriageConnectionOptionsValidator().Validate(null, new()).Succeeded.ShouldBeTrue();
 
+    // Stakeholder decision for Clef (2026-10-12): the live text-only run had p95 2.4 s and a cold start beyond four seconds, and photos
+    // add up to about 11 MB of request body. The image-path latency is still unmeasured (ARCHITECTURE §8.10).
+    [Fact]
+    public void Default_total_deadline_is_eight_seconds() => new TriageConnectionOptions().Timeout.ShouldBe(TimeSpan.FromSeconds(8));
+
     [Theory]
     [InlineData("", "test-token")]
     [InlineData("not-an-account", "test-token")]

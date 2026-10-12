@@ -15,7 +15,7 @@ public sealed class TriageConnectionOptions : IValidatableObject
     public string BaseUrl { get; set; } = "https://api.cloudflare.com/client/v4";
     public bool ImagesEnabled { get; set; } = true;
     public string ImageStoreUrl { get; set; } = "";
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(4);
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(8);
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
