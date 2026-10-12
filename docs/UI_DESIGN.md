@@ -796,6 +796,22 @@ The words: "Your role can view bookings but not change them." for a Viewer; "You
 
 **The development server** (the Vite dev server fronts the API's Development identity, which is configuration): no login page exists and the Access logout is not served, so nothing offers them. Sign in becomes **How to sign in** (`Info` icon) to Settings > Account, whose second card lists the `Auth__Development__Roles__0` settings (with copy buttons) and the AppHost parameter; signed-in menus put "Signed in by this development server's configuration, so there is no sign-out here." inside the group's label (so it is read with the items) and offer no Sign out. Prompts add one muted line: "On this development server the API's configuration decides who you are, so there is no sign-in page."
 
+### 11.21 Vehicle-aware booking, explanations and competence (ADR-029)
+
+Everything in this section shows only while `GET /api/v1/features` answers `vehicleAwareRequirements: true` (`lib/feature-switches.ts`); with the switch off the booking dialog, the details sheet and the Technicians page are exactly as before. The words come from one catalogue, `lib/vehicle-aware.ts`, keyed by the API's own values (powertrain, class, provenance, deciding criterion, rule code, reason code), so a value the contract adds is a compile error there and a failing test.
+
+**Provenance chip** (`components/provenance-chip.tsx`): where one fact about the vehicle came from, always beside the value it qualifies and read with it ("VOLKSWAGEN, from VIN"). `h-5 rounded-full px-1.5 text-2xs font-medium`, icon `size-3`:
+
+| Source | Words | Look | Why that look |
+|---|---|---|---|
+| `VinDecoded` | from VIN | `bg-secondary`, `ScanBarcode` | evidence the system read for itself: a quiet fill |
+| `RegistryLookup` (reserved) | from registration | `bg-secondary`, `IdCard` | the same |
+| `Declared` | declared | `border border-input`, `UserPen` | a person said so and is accountable for it: an outline |
+| `SuggestedConfirmed` (reserved) | suggested, confirmed | `border border-input`, `BadgeCheck` | the same |
+| `Unknown` | not known | `border border-dashed border-input text-muted-foreground`, `CircleQuestionMark` | the dashed outline the app uses for what is missing |
+
+**HV level badge** (`components/hv-level.tsx`): a technician's or a job's high-voltage competence on the IMI-style scale. The *ladder* is four `3 px` bars rising to 25, 50, 75 and 100 % of `h-3.5`, in `bg-current`, filled up to the level and the rest at 20 % opacity: a shape that reads in a table row without spending a status hue (principle 2). The badge is `h-6 rounded-full border border-input px-2 text-xs font-medium tabular-nums`: the ladder, "HV 3" (level 0 is "No HV") and, where there is room, the level's name in `font-normal text-muted-foreground`: Awareness, Routine maintenance, Component repair, Live working. A lapsed level is `border-dashed text-muted-foreground` and its spoken name adds "expired". Screen readers hear "HV 3, level 3 of 4: Component repair"; the ladder is `aria-hidden`.
+
 ## 12. Illustrations, empty and error states
 
 ### 12.1 State illustrations

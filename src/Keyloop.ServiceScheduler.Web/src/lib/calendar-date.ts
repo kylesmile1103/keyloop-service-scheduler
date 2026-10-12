@@ -50,9 +50,11 @@ export function weekdayOf(date: string): DayOfWeek {
 const dayFormats = {
   short: new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }),
   long: new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+  /** A date that may be years away (a competence's expiry): no weekday, the year kept. */
+  dated: new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }),
 }
 
-/** A date for people: "Tue 13 Oct" (short) or "Tuesday 13 October 2026" (long). */
+/** A date for people: "Tue 13 Oct" (short), "Tuesday 13 October 2026" (long) or "31 Dec 2028" (dated). */
 export function formatDay(date: string, style: keyof typeof dayFormats): string {
   return dayFormats[style].format(utcMidnight(date)).replace(",", "")
 }
