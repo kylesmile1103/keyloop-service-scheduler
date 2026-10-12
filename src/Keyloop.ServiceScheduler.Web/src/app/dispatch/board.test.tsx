@@ -544,7 +544,8 @@ describe("dispatch board: details and cancellation", () => {
     fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "x" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 
-    expect(await within(sheet).findByText("reason is required, 1 to 500 characters after trimming.")).toBeInTheDocument()
+    // The API names the field by its JSON path; the sheet names it as the form does.
+    expect(await within(sheet).findByText("Reason is required, 1 to 500 characters after trimming.")).toBeInTheDocument()
     expect(within(sheet).getByRole("textbox", { name: "Reason" })).toHaveAttribute("aria-invalid", "true")
   })
 

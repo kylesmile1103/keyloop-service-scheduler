@@ -31,6 +31,10 @@ describe("dispatch board: dealership", () => {
     vi.useRealTimers()
   })
 
+  const emptied = (schedule: ReturnType<typeof defaultSchedule>) => ({ ...schedule, bays: schedule.bays.map((bay) => ({ ...bay, appointments: [] })) })
+  /** München's day with work on it: Reading's booked bays under München's name (only the bookings matter here). */
+  const munichBooked = (date: string) => ({ ...defaultSchedule(munich.id, date), bays: defaultSchedule(reading.id, date).bays })
+
   it("shows that dealerships are loading until the list arrives", async () => {
     let answer: () => void = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
@@ -85,15 +89,61 @@ describe("dispatch board: dealership", () => {
   it("falls back to the first dealership open today, then to the first one, when nobody has appointments", async () => {
     // Saturday 2026-10-17: München is closed, Reading opens until 13:00; neither has appointments.
     vi.setSystemTime(new Date("2026-10-17T08:00:00Z"))
-    const empty = (schedule: ReturnType<typeof defaultSchedule>) => ({ ...schedule, bays: schedule.bays.map((bay) => ({ ...bay, appointments: [] })) })
     mockBoardApi({
       dealerships: () => [munich, reading],
       schedule: (dealershipId, date) =>
-        dealershipId === munich.id ? { ...empty(defaultSchedule(dealershipId, date)), operatingWindow: null } : empty(defaultSchedule(dealershipId, date)),
+        dealershipId === munich.id ? { ...emptied(defaultSchedule(dealershipId, date)), operatingWindow: null } : emptied(defaultSchedule(dealershipId, date)),
     })
     renderBoard()
 
     expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+  })
+
+  // Monday 2026-10-12: both dealerships open today, and their next open day is Tuesday the 13th.
+  it("prefers a dealership with appointments today over one booked only on its next open day", async () => {
+    mockBoardApi({
+      dealerships: () => [munich, reading],
+      schedule: (dealershipId, date) =>
+        dealershipId === munich.id
+          ? date === "2026-10-13"
+            ? munichBooked(date)
+            : defaultSchedule(dealershipId, date)
+          : defaultSchedule(dealershipId, date),
+    })
+    renderBoard()
+
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+  })
+
+  it("prefers a dealership with appointments on its next open day over one that is merely open today", async () => {
+    mockBoardApi({
+      dealerships: () => [munich, reading],
+      schedule: (dealershipId, date) =>
+        dealershipId === reading.id && date === "2026-10-12" ? emptied(defaultSchedule(dealershipId, date)) : defaultSchedule(dealershipId, date),
+    })
+    renderBoard()
+
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+  })
+
+  it("keeps the loading frame until the schedules it compares have arrived, never showing or recording the first one", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({
+      dealerships: () => [munich, reading],
+      schedule: async (dealershipId, date) => (await held, defaultSchedule(dealershipId, date)),
+    })
+    const { router } = renderBoard()
+
+    expect(await screen.findByText("Finding a dealership with work today…")).toBeInTheDocument()
+    expect(await dealershipSelect()).not.toHaveTextContent(munich.name)
+    expect(screen.queryByRole("heading", { level: 2, name: munich.name })).not.toBeInTheDocument()
+    expect(search(router)).toEqual({})
+
+    answer()
+
+    expect(await screen.findByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
+    await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id }))
   })
 
   it("opens the dealership the address names", async () => {

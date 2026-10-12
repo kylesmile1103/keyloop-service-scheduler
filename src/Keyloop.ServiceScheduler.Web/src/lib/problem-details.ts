@@ -93,14 +93,33 @@ export function problemSlug(problem: ProblemDetails): string {
   return problem.type.slice(catalogue.length).split("/").filter(Boolean).at(-1) ?? ""
 }
 
+/** A JSON path with each segment's first letter lowered: `Vehicle.Vin` and `vehicle.vin` name the same field. */
+const camelPath = (path: string) =>
+  path
+    .split(".")
+    .map((segment) => segment.charAt(0).toLowerCase() + segment.slice(1))
+    .join(".")
+
 /**
  * A validation problem's field errors, one sentence per field, keyed by the form's field paths. The API already keys `errors`
  * by camelCase JSON path (`customer.email`); each segment's first letter is lowered too, so a PascalCase path
  * (`Vehicle.Vin`) maps onto the same field. Several messages for one field are joined.
+ *
+ * The API's sentences name their field by that path ("customer.email must be an email address ..."), which is the request
+ * body's vocabulary, not the screen's. Given the form's label for a path (`{ "customer.email": "Email" }`), a message that
+ * opens with the path opens with the label instead ("Email must be an email address ..."); other messages, and fields
+ * without a label, keep the API's words.
  */
-export function fieldErrors(problem: ProblemDetails): Record<string, string> {
-  const camel = (segment: string) => segment.charAt(0).toLowerCase() + segment.slice(1)
+export function fieldErrors(problem: ProblemDetails, labels: Readonly<Record<string, string>> = {}): Record<string, string> {
+  const named = (message: string, path: string) => {
+    const label = labels[path]
+    const space = message.indexOf(" ")
+    return label && space > 0 && camelPath(message.slice(0, space)) === path ? `${label}${message.slice(space)}` : message
+  }
   return Object.fromEntries(
-    Object.entries(problem.errors ?? {}).map(([path, messages]) => [path.split(".").map(camel).join("."), messages.join(" ")])
+    Object.entries(problem.errors ?? {}).map(([key, messages]) => {
+      const path = camelPath(key)
+      return [path, messages.map((message) => named(message, path)).join(" ")]
+    })
   )
 }

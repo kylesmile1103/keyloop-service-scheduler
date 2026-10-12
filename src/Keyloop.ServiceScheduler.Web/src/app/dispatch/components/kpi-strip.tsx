@@ -194,7 +194,7 @@ function NextFreeSlot({ dealershipId, date, today, timeZone, schedule, failed, n
   else if (closed) [value, footer] = [NO_FIGURE, "Closed that day"]
   else if (serviceTypes.isError || availability.isError) {
     const problem = parseProblem(availability.error ?? serviceTypes.error)
-    ;[value, footer] = [NO_FIGURE, (problem && fieldErrors(problem).date) || "Couldn’t check availability"]
+    ;[value, footer] = [NO_FIGURE, (problem && fieldErrors(problem, { date: "Date" }).date) || "Couldn’t check availability"]
   } else if (serviceTypes.data && !service) [value, footer] = [NO_FIGURE, "No bookable services"]
   else if (availability.data && service) {
     // The API leaves out starts that have passed when it answers; between reads (auto-refresh off, no window focus) the

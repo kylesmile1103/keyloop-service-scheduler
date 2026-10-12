@@ -128,21 +128,26 @@ const blank = (date: string): BookingFormInput => ({
   notes: "",
 })
 
-/** The form paths a `400`'s `errors` can name (camelCase JSON paths, as `fieldErrors` writes them). */
-const formPaths: ReadonlyArray<FieldPath<BookingFormInput>> = [
-  "serviceTypeId",
-  "startUtc",
-  "customer.name",
-  "customer.email",
-  "customer.phone",
-  "vehicle.vin",
-  "vehicle.registration",
-  "vehicle.make",
-  "vehicle.model",
-  "preferredBayId",
-  "preferredTechnicianId",
-  "notes",
-]
+/**
+ * The form paths a `400`'s `errors` can name (camelCase JSON paths, as `fieldErrors` writes them), with the name each field
+ * goes by on screen: the API's messages open with the path ("vehicle.vin must be ..."), the form's with the label.
+ */
+const formLabels = {
+  serviceTypeId: "Service",
+  startUtc: "Start time",
+  "customer.name": "Name",
+  "customer.email": "Email",
+  "customer.phone": "Phone",
+  "vehicle.vin": "VIN",
+  "vehicle.registration": "Registration",
+  "vehicle.make": "Make",
+  "vehicle.model": "Model",
+  preferredBayId: "Preferred bay",
+  preferredTechnicianId: "Preferred technician",
+  notes: "Notes",
+} satisfies Partial<Record<FieldPath<BookingFormInput>, string>>
+
+const formPaths = Object.keys(formLabels) as ReadonlyArray<keyof typeof formLabels>
 
 /** Business rules about the start time (§8.7): the fix is another start, back on step 1. */
 const timeRules = new Set(["outside-operating-hours", "lead-time-not-met", "beyond-booking-horizon", "slot-not-aligned"])
@@ -197,7 +202,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
       const problem = parseProblem(error)
       const slug = problem ? problemSlug(problem) : ""
       if (slug === "validation-error" && problem) {
-        const errors = fieldErrors(problem)
+        const errors = fieldErrors(problem, formLabels)
         let onStepOne = false
         for (const path of formPaths) {
           const message = errors[path]

@@ -1,12 +1,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { BookAppointmentRequest } from "@/api/types.gen"
+import type { AvailabilityResponse, BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
 import * as telemetry from "@/lib/telemetry"
-import { bookedFrom, mockBoardApi, requestsTo } from "@/test/board-api"
-import { reading } from "@/test/dealerships"
+import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
+import { munich, reading } from "@/test/dealerships"
 import { problemResponse } from "@/test/mock-api"
-import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
+import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
+import { interimAvailability, readingTuesday } from "@/test/schedules"
 
 // The concurrency stress panel (Task 17): N bookings for one slot at once, tallied live, with every answer listed.
 
@@ -30,17 +31,42 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-/** The API under contention: the first booking wins, every other one finds the slot taken. */
+/** Interim Service's free starts on any day: 10:15 and 10:30 local (BST), on the day asked. */
+function availabilityOn(date: string): AvailabilityResponse {
+  return {
+    ...interimAvailability,
+    date,
+    slots: interimAvailability.slots.map((slot) => ({
+      ...slot,
+      startUtc: `${date}${slot.startUtc.slice(10)}`,
+      endUtc: `${date}${slot.endUtc.slice(10)}`,
+      startLocal: `${date}${slot.startLocal.slice(10)}`,
+    })),
+  }
+}
+
+/**
+ * The API under contention: the first booking wins, every other one finds the slot taken. The winner then shows on
+ * Tuesday's board, under Bay 1.
+ */
 function contendedApi(extra: { serverErrorAt?: number } = {}) {
   let count = 0
-  let winner = false
+  let winner: WorkshopScheduleResponse | null = null
   return mockBoardApi({
+    schedule: (_, date) => (date === readingTuesday.date && winner) || { ...readingTuesday, date },
+    availability: (_, __, date) => availabilityOn(date),
     book: (_, body) => {
       const index = count++
       if (index === extra.serverErrorAt) return new Response("", { status: 503, statusText: "Service Unavailable" })
       if (!winner) {
-        winner = true
-        return bookedFrom(body)
+        const appointment = bookedFrom(body)
+        winner = {
+          ...readingTuesday,
+          bays: readingTuesday.bays.map((bay, position) =>
+            position === 0 ? { ...bay, appointments: [...bay.appointments, scheduledFrom(appointment)] } : bay
+          ),
+        }
+        return appointment
       }
       return problemResponse(409, {
         type: "https://api.keyloop.example/problems/slot-unavailable",
@@ -63,6 +89,11 @@ async function aimAtInterim1015(scope: HTMLElement, requests: string) {
   fireEvent.change(count, { target: { value: requests } })
   fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
   pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+  await pick1015(scope)
+}
+
+/** The 10:15 chip of the day the panel shows. */
+async function pick1015(scope: HTMLElement) {
   const chip = await within(scope).findByRole("radio", { name: /^10:15/ })
   fireEvent.click(chip)
   await waitFor(() => expect(chip).toHaveAttribute("aria-checked", "true"))
@@ -80,6 +111,7 @@ describe("concurrency stress panel", () => {
 
     await aimAtInterim1015(scope, "5")
     const schedulesBefore = requestsTo(api.requests, "/schedule").length
+    const availabilityBefore = requestsTo(api.requests, "/availability").length
     fireEvent.click(within(scope).getByRole("button", { name: "Fire 5 parallel bookings" }))
 
     const tally = await within(scope).findByRole("region", { name: "Tally" })
@@ -106,7 +138,13 @@ describe("concurrency stress panel", () => {
     expect(sent.every((request) => !request.headers.has("Idempotency-Key"))).toBe(true)
 
     await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
+    // The day's free starts are read again too: the won slot is gone from the chips and the next free slot.
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityBefore))
     expect(telemetry.withSpan).toHaveBeenCalledWith("ui.stress_test", expect.any(Function), expect.any(Object))
+
+    // The one winner is on the board, with the booked halo.
+    const block = await screen.findByRole("button", { name: /^Interim Service, Bay 1 - Standard, 10:15 to 11:15/ })
+    await waitFor(() => expect(block).toHaveAttribute("data-booked"))
   })
 
   it("counts a server error on its own tile", async () => {
@@ -120,6 +158,140 @@ describe("concurrency stress panel", () => {
     const tally = await within(scope).findByRole("region", { name: "Tally" })
     await waitFor(() => expect(within(tally).getByRole("group", { name: "Server error" })).toHaveTextContent("1"))
     expect(within(tally).getByRole("group", { name: "Slot taken" })).toHaveTextContent("2")
+  })
+
+  it("aims only at the board's day: another day clears the chosen slot, and the next one fires at that day", async () => {
+    const api = contendedApi()
+    const { router } = renderBoard(readingBoard)
+    const scope = await panel()
+    await aimAtInterim1015(scope, "3")
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }))
+
+    await waitFor(() => expect(search(router).date).toBe("2026-10-14"))
+    // Wednesday's chips, none chosen, and nothing to fire at until one is.
+    await waitFor(() => expect(within(scope).getByRole("radio", { name: /^10:15/ })).toHaveAttribute("aria-checked", "false"))
+    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeDisabled()
+    // The count and the service stay: they do not depend on the day.
+    expect(within(scope).getByRole("spinbutton", { name: "Requests" })).toHaveValue(3)
+    expect(within(scope).getByRole("combobox", { name: "Service" })).toHaveTextContent("Interim Service")
+
+    await pick1015(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }))
+
+    await waitFor(() => expect(bookings(api.requests)).toHaveLength(3))
+    const bodies = await Promise.all(bookings(api.requests).map(async (request) => (await request.clone().json()) as BookAppointmentRequest))
+    expect(new Set(bodies.map((body) => body.startUtc))).toEqual(new Set(["2026-10-14T09:15:00Z"]))
+  })
+
+  it("forgets the service and the slot when the board moves to another dealership", async () => {
+    contendedApi()
+    // München first, so its catalogue (which lists the same Interim Service) is already loaded when the board returns to it.
+    renderBoard(`/dispatch?dealership=${munich.id}`)
+    const scope = await panel()
+    const service = within(scope).getByRole("combobox", { name: "Service" })
+    await waitFor(() => expect(service).not.toHaveAttribute("aria-busy"))
+    const chooseDealership = async (name: RegExp) => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Dealership" }))
+      pointerClick(await screen.findByRole("option", { name }))
+    }
+    await chooseDealership(/Reading/)
+    await screen.findByRole("heading", { level: 2, name: reading.name })
+    await aimAtInterim1015(scope, "3")
+
+    await chooseDealership(/München/)
+
+    await screen.findByRole("heading", { level: 2, name: munich.name })
+    expect(service).toHaveTextContent("Choose a service")
+    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeDisabled()
+  })
+
+  it("keeps the last run's results with the day it ran on", async () => {
+    contendedApi()
+    renderBoard(readingBoard)
+    const scope = await panel()
+    await aimAtInterim1015(scope, "3")
+    fireEvent.click(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }))
+    await waitFor(() => expect(within(scope).getByRole("group", { name: "Booked" })).toHaveTextContent("1"))
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }))
+    await waitFor(() => expect(within(scope).queryByRole("region", { name: "Tally" })).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous day" }))
+    expect(await within(scope).findByRole("region", { name: "Tally" })).toBeInTheDocument()
+  })
+
+  it("keeps a start chosen on another day while a run was still out", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({
+      availability: (_, __, date) => availabilityOn(date),
+      book: async (_, body) => (await held, bookedFrom(body)),
+    })
+    renderBoard(readingBoard)
+    const scope = await panel()
+    await aimAtInterim1015(scope, "2")
+    fireEvent.click(within(scope).getByRole("button", { name: "Fire 2 parallel bookings" }))
+    await within(scope).findByRole("button", { name: "Firing…" })
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }))
+    await pick1015(scope)
+    answer()
+
+    // The run spent Tuesday's start, not the one chosen on Wednesday since.
+    await waitFor(() => expect(within(scope).getByRole("button", { name: "Fire 2 parallel bookings" })).toBeEnabled())
+    expect(within(scope).getByRole("radio", { name: /^10:15/ })).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("takes no bookings on a past day", async () => {
+    mockBoardApi()
+    renderBoard(`${readingBoard}&date=2026-10-12`)
+    const scope = await panel()
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+
+    expect(await within(scope).findByText("Past days take no bookings: choose today or a later day on the board.")).toBeInTheDocument()
+    expect(within(scope).queryByRole("radio")).not.toBeInTheDocument()
+    expect(within(scope).getByRole("button", { name: "Fire 30 parallel bookings" })).toBeDisabled()
+  })
+
+  it("says in the screen's words which days take bookings when the board is past the booking horizon", async () => {
+    mockBoardApi({
+      availability: () =>
+        problemResponse(400, {
+          type: "https://api.keyloop.example/problems/validation-error",
+          title: "Validation failed",
+          status: 400,
+          detail: "One or more fields are invalid.",
+          traceId: "00-6af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          errors: { date: ["date must be between 2026-10-12 and 2027-01-10."] },
+        }),
+    })
+    renderBoard(`${readingBoard}&date=2027-03-02`)
+    const scope = await panel()
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+
+    expect(await within(scope).findByText("Date must be between 2026-10-12 and 2027-01-10.")).toBeInTheDocument()
+    expect(within(scope).queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("says so when the run itself fails, and lets the next one start", async () => {
+    contendedApi()
+    vi.mocked(telemetry.withSpan).mockImplementationOnce(async () => {
+      throw new Error("The tracer could not start a span.")
+    })
+    renderBoard(readingBoard)
+    const scope = await panel()
+    await aimAtInterim1015(scope, "3")
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }))
+
+    const alert = await within(scope).findByRole("alert")
+    expect(within(alert).getByText("The concurrency test stopped")).toBeInTheDocument()
+    expect(within(scope).queryByRole("button", { name: "Firing…" })).not.toBeInTheDocument()
+    await pick1015(scope)
+    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeEnabled()
   })
 
   it("keeps the number of requests within 2 to 50", async () => {

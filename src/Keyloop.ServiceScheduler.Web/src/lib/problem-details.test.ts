@@ -117,4 +117,26 @@ describe("the brief's problem helpers", () => {
     })
     expect(fieldErrors(alreadyCancelled)).toEqual({})
   })
+
+  it("fieldErrors_names_a_field_by_its_label_instead_of_its_path", () => {
+    const problem = {
+      errors: {
+        "customer.email": ["customer.email must be an email address of at most 254 characters."],
+        "Vehicle.Vin": ["vehicle.vin must be a 17-character VIN.", "Vehicle.Vin must not contain I, O or Q."],
+        reason: ["reason is required, 1 to 500 characters after trimming."],
+        notes: ["Keep it under 1000 characters."],
+        "Idempotency-Key": ["Idempotency-Key must be 1 to 64 characters."],
+      },
+    }
+
+    expect(fieldErrors(problem, { "customer.email": "Email", "vehicle.vin": "VIN", reason: "Reason", notes: "Notes" })).toEqual({
+      "customer.email": "Email must be an email address of at most 254 characters.",
+      "vehicle.vin": "VIN must be a 17-character VIN. VIN must not contain I, O or Q.",
+      reason: "Reason is required, 1 to 500 characters after trimming.",
+      // A message that does not open with the path is the API's own sentence, kept as it is.
+      notes: "Keep it under 1000 characters.",
+      // Without a label, the API's words stay.
+      "idempotency-Key": "Idempotency-Key must be 1 to 64 characters.",
+    })
+  })
 })

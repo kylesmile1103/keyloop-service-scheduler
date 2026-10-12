@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
@@ -8,7 +8,7 @@ import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/boar
 import { reading } from "@/test/dealerships"
 import { jsonResponse, problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
-import { bays, interimServiceType, readingTuesday, technicians } from "@/test/schedules"
+import { bays, interimAvailability, interimServiceType, readingTuesday, technicians } from "@/test/schedules"
 
 /** A service that needs a capability and a certification of the same name, as the seeded catalogue's diagnostics does. */
 const diagnosticsServiceType = {
@@ -227,11 +227,14 @@ describe("booking an appointment", () => {
     const scope = await openDialog()
     await goToStepTwo(scope)
     fillCustomerAndVehicle(scope)
+    const availabilityReads = requestsTo(api.requests, "/availability").length
     fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
 
     const alert = await within(scope).findByRole("alert")
     expect(alert).toHaveAttribute("data-tone", "warning")
     expect(within(alert).getByText("Slot just taken - pick another time")).toBeInTheDocument()
+    // The free starts the dialog and the board showed are stale: they are read again.
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityReads))
     expect(within(alert).getByText(slotUnavailable.detail)).toBeInTheDocument()
     expect(within(alert).getByText(slotUnavailable.traceId)).toBeInTheDocument()
 
@@ -320,6 +323,35 @@ describe("booking an appointment", () => {
     expect(within(scope).getByRole("textbox", { name: "VIN" })).toHaveAttribute("aria-invalid", "true")
     // Every message is under its field, so nothing else is announced above the form.
     expect(within(scope).queryByText("Check the highlighted details")).not.toBeInTheDocument()
+  })
+
+  it("names the field by its label when the API's message starts with its JSON path", async () => {
+    // The API's own wording (BookAppointmentValidator), which names each field by its path in the request body.
+    mockBoardApi({
+      book: () =>
+        problemResponse(400, {
+          type: `${problems}validation-error`,
+          title: "Validation failed",
+          status: 400,
+          detail: "One or more fields are invalid.",
+          traceId: "00-2bf7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          errors: {
+            "customer.email": ["customer.email must be an email address of at most 254 characters."],
+            "vehicle.vin": ["vehicle.vin must be a 17-character VIN of digits and letters other than I, O and Q."],
+            "customer.name": ["customer.name is required, at most 120 characters."],
+          },
+        }),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    expect(await within(scope).findByText("Email must be an email address of at most 254 characters.")).toBeInTheDocument()
+    expect(within(scope).getByText("VIN must be a 17-character VIN of digits and letters other than I, O and Q.")).toBeInTheDocument()
+    expect(within(scope).getByText("Name is required, at most 120 characters.")).toBeInTheDocument()
+    expect(within(scope).queryByText(/customer\.|vehicle\./)).not.toBeInTheDocument()
   })
 
   it("returns to the first step when the API refuses the start time as malformed", async () => {
@@ -428,6 +460,56 @@ describe("booking an appointment", () => {
     const keys = bookingRequests(api.requests).map((request) => request.headers.get("Idempotency-Key"))
     expect(keys).toHaveLength(2)
     expect(keys[0]).not.toBe(keys[1])
+  })
+
+  it("groups the free starts into morning and afternoon, with noon in the afternoon", async () => {
+    const at = (local: string) => {
+      const startUtc = new Date(Date.parse(`2026-10-13T${local}:00+01:00`)).toISOString().replace(".000Z", "Z")
+      return { startUtc, endUtc: startUtc, startLocal: `2026-10-13T${local}+01:00`, freeBays: 1, freeTechnicians: 1 }
+    }
+    mockBoardApi({ availability: () => ({ ...interimAvailability, slots: [at("11:45"), at("12:00"), at("12:15")] }) })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+    await within(scope).findByRole("radio", { name: /^12:00/ })
+
+    const group = (name: string) => within(scope).getByText(name).parentElement!
+    expect(within(group("Morning")).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label")?.slice(0, 5))).toEqual(["11:45"])
+    expect(within(group("Afternoon")).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label")?.slice(0, 5))).toEqual([
+      "12:00",
+      "12:15",
+    ])
+  })
+
+  it("lets the booked halo go after about 3 seconds", async () => {
+    // Timers are fake here so the 3 s can pass at once; they still advance with real time, for the UI's own waits.
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true })
+    vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
+    let booked: WorkshopScheduleResponse | null = null
+    mockBoardApi({
+      schedule: () => booked ?? readingTuesday,
+      book: (_, body) => {
+        const appointment = bookedFrom(body, { bay: bays.heavy })
+        booked = {
+          ...readingTuesday,
+          bays: readingTuesday.bays.map((bay) => (bay.id === bays.heavy.id ? { ...bay, appointments: [scheduledFrom(appointment)] } : bay)),
+        }
+        return appointment
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const block = await screen.findByRole("button", { name: /^Interim Service, Bay 3 - Heavy duty, 10:15 to 11:15/ })
+    await waitFor(() => expect(block).toHaveAttribute("data-booked"))
+    await act(() => vi.advanceTimersByTimeAsync(2500))
+    expect(block).toHaveAttribute("data-booked")
+    await act(() => vi.advanceTimersByTimeAsync(700))
+    expect(block).not.toHaveAttribute("data-booked")
   })
 
   it("follows the toast to a booking on another day and highlights it there", async () => {

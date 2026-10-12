@@ -5,6 +5,7 @@ import { useId, useState } from "react"
 import { getAvailabilityQueryKey, getServiceTypesOptions, getWorkshopScheduleQueryKey } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse, GetAvailabilityData } from "@/api/types.gen"
 import { CopyButton } from "@/components/copy-button"
+import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -42,12 +43,21 @@ interface StressPanelProps {
 }
 
 interface Run {
+  /** The board (dealership and day) the run was fired from: its results show only there. */
+  board: string
   total: number
   /** In arrival order while running, by request number once done. */
   outcomes: StressOutcome[]
   running: boolean
   /** The `ui.stress_test` trace, when browser tracing is on: every request of the run is in it. */
   traceId?: string
+  /** Why the run stopped before every answer was in (the requests themselves never throw). */
+  failure?: unknown
+}
+
+/** The chosen start, as an object: a run clears the one it fired at, never one chosen since. */
+interface Target {
+  startUtc: string
 }
 
 /**
@@ -61,8 +71,24 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
   const queryClient = useQueryClient()
   const [requests, setRequests] = useState(String(DEFAULT_REQUESTS))
   const [serviceTypeId, setServiceTypeId] = useState("")
-  const [startUtc, setStartUtc] = useState("")
+  const [target, setTarget] = useState<Target | null>(null)
   const [run, setRun] = useState<Run | null>(null)
+
+  // The panel aims at the board above it. When the board moves to another day the chosen start is dropped, and at another
+  // dealership the chosen service too, so Fire is never aimed at a slot the user can no longer see (and by the time the
+  // board comes back, that start may be taken). The number of requests stays. The state is adjusted while rendering (React's
+  // pattern for state that follows a prop), so no frame offers Fire at the old start.
+  const [shown, setShown] = useState({ dealershipId: dealership.id, date })
+  if (shown.dealershipId !== dealership.id || shown.date !== date) {
+    setShown({ dealershipId: dealership.id, date })
+    setTarget(null)
+    if (shown.dealershipId !== dealership.id) setServiceTypeId("")
+  }
+  const startUtc = target?.startUtc ?? ""
+  // A run's results show on the board it was fired from (going back there shows them again).
+  const board = `${dealership.id}/${date}`
+  const shownRun = run?.board === board ? run : null
+  const running = run?.running ?? false
   const serviceTypes = useQuery(getServiceTypesOptions({ path: { dealershipId: dealership.id } }))
   const bookable = (serviceTypes.data ?? []).filter((candidate) => candidate.bookable)
   const service = bookable.find((candidate) => candidate.id === serviceTypeId)
@@ -70,38 +96,47 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
   const n = Number(requests)
   const validCount = Number.isInteger(n) && n >= MIN_REQUESTS && n <= MAX_REQUESTS
   const past = date < today
-  const ready = validCount && Boolean(service) && Boolean(startUtc) && !past && !run?.running
+  const ready = validCount && Boolean(service) && Boolean(startUtc) && !past && !running
 
   async function fire() {
-    if (!service || !ready) return
-    setRun({ total: n, outcomes: [], running: true })
-    const target = { serviceTypeId: service.id, startUtc }
-    const outcomes = await withSpan(
-      "ui.stress_test",
-      ({ fetch, span }) => {
-        const traceId = span.isRecording() ? span.spanContext().traceId : undefined
-        setRun((current) => current && { ...current, traceId })
-        return fireParallelBookings(n, (index) => stressBooking(index, target), dealership.id, {
-          fetch,
-          onSettled: (outcome) => setRun((current) => current && { ...current, outcomes: [...current.outcomes, outcome] }),
-        })
-      },
-      {
-        "keyloop.dealership_id": dealership.id,
-        "keyloop.service_type_id": service.id,
-        "keyloop.start_utc": startUtc,
-        "keyloop.requests": n,
-      }
-    )
-    setRun((current) => current && { ...current, outcomes, running: false })
-    // The winner is on the board now, and the slot is gone from every availability read of that day.
-    void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId: dealership.id }, query: { date } }) })
-    void queryClient.invalidateQueries({
-      queryKey: getAvailabilityQueryKey({ path: { dealershipId: dealership.id }, query: { date } as GetAvailabilityData["query"] }),
-    })
-    setStartUtc("")
-    const winner = outcomes.find((outcome) => outcome.appointmentId)
-    if (winner?.appointmentId) onWinner(winner.appointmentId)
+    if (!service || !ready || !target) return
+    const aimed = target
+    const slot = { serviceTypeId: service.id, startUtc: aimed.startUtc }
+    setRun({ board, total: n, outcomes: [], running: true })
+    try {
+      const outcomes = await withSpan(
+        "ui.stress_test",
+        ({ fetch, span }) => {
+          const traceId = span.isRecording() ? span.spanContext().traceId : undefined
+          setRun((current) => current && { ...current, traceId })
+          return fireParallelBookings(n, (index) => stressBooking(index, slot), dealership.id, {
+            fetch,
+            onSettled: (outcome) => setRun((current) => current && { ...current, outcomes: [...current.outcomes, outcome] }),
+          })
+        },
+        {
+          "keyloop.dealership_id": dealership.id,
+          "keyloop.service_type_id": slot.serviceTypeId,
+          "keyloop.start_utc": slot.startUtc,
+          "keyloop.requests": n,
+        }
+      )
+      setRun((current) => current && { ...current, outcomes })
+      const winner = outcomes.find((outcome) => outcome.appointmentId)
+      if (winner?.appointmentId) onWinner(winner.appointmentId)
+    } catch (failure) {
+      setRun((current) => current && { ...current, failure })
+    } finally {
+      setRun((current) => current && { ...current, running: false })
+      // Whatever came back, the run's day may have changed (this render's dealership and date, whatever the board shows by
+      // now): the winner is on its board, and the slot is gone from every availability read of that day.
+      void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId: dealership.id }, query: { date } }) })
+      void queryClient.invalidateQueries({
+        queryKey: getAvailabilityQueryKey({ path: { dealershipId: dealership.id }, query: { date } as GetAvailabilityData["query"] }),
+      })
+      // The start is spent; one chosen since stays.
+      setTarget((current) => (current === aimed ? null : current))
+    }
   }
 
   return (
@@ -152,7 +187,8 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
               value={serviceTypeId || null}
               onValueChange={(value) => {
                 setServiceTypeId(value ?? "")
-                setStartUtc("")
+                // A start belongs to one service's availability.
+                setTarget(null)
               }}
             >
               <SelectTrigger id={ids.service} className="w-full cursor-pointer" aria-busy={serviceTypes.isPending || undefined}>
@@ -186,20 +222,20 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
               serviceType={service}
               date={date}
               value={startUtc}
-              onValueChange={setStartUtc}
+              onValueChange={(value) => setTarget({ startUtc: value })}
               labelledBy={ids.start}
             />
           )}
         </div>
 
         <div>
-          <Button type="button" variant="signal" onClick={() => void fire()} disabled={!ready} aria-busy={run?.running || undefined}>
-            {run?.running ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Zap aria-hidden="true" />}
-            {run?.running ? "Firing…" : validCount ? `Fire ${n} parallel bookings` : "Fire parallel bookings"}
+          <Button type="button" variant="signal" onClick={() => void fire()} disabled={!ready} aria-busy={running || undefined}>
+            {running ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Zap aria-hidden="true" />}
+            {running ? "Firing…" : validCount ? `Fire ${n} parallel bookings` : "Fire parallel bookings"}
           </Button>
         </div>
 
-        {run && <RunResults run={run} compact={compact} />}
+        {shownRun && <RunResults run={shownRun} compact={compact} />}
       </CardContent>
     </Card>
   )
@@ -214,51 +250,60 @@ function RunResults({ run, compact }: { run: Run; compact: boolean }) {
 
   return (
     <div className="flex flex-col gap-4 border-t pt-4">
-      <p role="status" className="text-sm text-muted-foreground tabular-nums">
-        {run.running
-          ? `Running: ${run.outcomes.length} of ${run.total} answered…`
-          : `${run.total} requests answered${timing ? ` in ${timing.max} ms at most` : ""}.`}
-      </p>
+      {run.failure ? (
+        <ProblemAlert title="The concurrency test stopped" error={run.failure}>
+          <span>{`${run.outcomes.length} of ${run.total} answers came back. The board and the free starts have been read again.`}</span>
+        </ProblemAlert>
+      ) : (
+        <p role="status" className="text-sm text-muted-foreground tabular-nums">
+          {run.running
+            ? `Running: ${run.outcomes.length} of ${run.total} answered…`
+            : `${run.total} requests answered${timing ? ` in ${timing.max} ms at most` : ""}.`}
+        </p>
+      )}
 
-      <section aria-label="Tally" className="flex flex-col gap-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {kinds.map((kind) => {
-            const { word, icon: Icon, tile, ink } = outcomeMeta[kind]
-            const count = byKind(kind).length
-            const labels = rows.filter((row) => kindOfRow(row.label) === kind)
-            return (
-              <Card key={kind} size="sm" role="group" aria-label={word} className="shadow-xs">
-                <CardHeader>
-                  <CardDescription>{word}</CardDescription>
-                  <div className={cn("font-heading text-3xl font-bold tracking-tight tabular-nums", ink)}>{count}</div>
-                  <CardAction>
-                    <span className={cn("flex size-9 items-center justify-center rounded-chip", tile)}>
-                      <Icon aria-hidden="true" className="size-5" />
-                    </span>
-                  </CardAction>
-                  <div className="col-span-2 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                    {labels.length <= 1 ? (
-                      <span>{labels[0]?.label ?? (kind === "booked" ? "201 Created" : kind === "taken" ? "409" : "5xx")}</span>
-                    ) : (
-                      labels.map((row) => <span key={row.label} className="tabular-nums">{`${row.label} ${row.count}`}</span>)
-                    )}
-                  </div>
-                </CardHeader>
-              </Card>
-            )
-          })}
-        </div>
-        {/* The tiles above carry the numbers; the bar only shows the proportions at a glance. */}
-        {run.outcomes.length > 0 && (
-          <div aria-hidden="true" className="flex h-3 gap-0.5 overflow-hidden rounded-full bg-muted">
-            {outcomeOrder.map((kind) => {
+      {/* A run that stopped before any answer came back has nothing to count. */}
+      {(!run.failure || run.outcomes.length > 0) && (
+        <section aria-label="Tally" className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {kinds.map((kind) => {
+              const { word, icon: Icon, tile, ink } = outcomeMeta[kind]
               const count = byKind(kind).length
-              return count > 0 ? <span key={kind} className={outcomeMeta[kind].bar} style={{ flexGrow: count, flexBasis: 0 }} /> : null
+              const labels = rows.filter((row) => kindOfRow(row.label) === kind)
+              return (
+                <Card key={kind} size="sm" role="group" aria-label={word} className="shadow-xs">
+                  <CardHeader>
+                    <CardDescription>{word}</CardDescription>
+                    <div className={cn("font-heading text-3xl font-bold tracking-tight tabular-nums", ink)}>{count}</div>
+                    <CardAction>
+                      <span className={cn("flex size-9 items-center justify-center rounded-chip", tile)}>
+                        <Icon aria-hidden="true" className="size-5" />
+                      </span>
+                    </CardAction>
+                    <div className="col-span-2 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
+                      {labels.length <= 1 ? (
+                        <span>{labels[0]?.label ?? (kind === "booked" ? "201 Created" : kind === "taken" ? "409" : "5xx")}</span>
+                      ) : (
+                        labels.map((row) => <span key={row.label} className="tabular-nums">{`${row.label} ${row.count}`}</span>)
+                      )}
+                    </div>
+                  </CardHeader>
+                </Card>
+              )
             })}
-            {run.running && <span className="bg-muted" style={{ flexGrow: run.total - run.outcomes.length, flexBasis: 0 }} />}
           </div>
-        )}
-      </section>
+          {/* The tiles above carry the numbers; the bar only shows the proportions at a glance. */}
+          {run.outcomes.length > 0 && (
+            <div aria-hidden="true" className="flex h-3 gap-0.5 overflow-hidden rounded-full bg-muted">
+              {outcomeOrder.map((kind) => {
+                const count = byKind(kind).length
+                return count > 0 ? <span key={kind} className={outcomeMeta[kind].bar} style={{ flexGrow: count, flexBasis: 0 }} /> : null
+              })}
+              {run.running && <span className="bg-muted" style={{ flexGrow: run.total - run.outcomes.length, flexBasis: 0 }} />}
+            </div>
+          )}
+        </section>
+      )}
 
       {timing && (
         <dl aria-label="Latency" className="grid grid-cols-3 gap-3">

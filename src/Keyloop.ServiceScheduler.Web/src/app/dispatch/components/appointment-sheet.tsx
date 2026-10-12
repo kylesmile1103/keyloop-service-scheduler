@@ -288,7 +288,7 @@ function CancelForm({ appointment, status, timeZone, onCancelled, onConflict }: 
   })
 
   const problem = parseProblem(cancel.error)
-  const serverReasonError = problem && problemSlug(problem) === "validation-error" ? fieldErrors(problem).reason : undefined
+  const serverReasonError = problem && problemSlug(problem) === "validation-error" ? fieldErrors(problem, { reason: "Reason" }).reason : undefined
   const reasonError = missingReason ? "Say why the appointment is cancelled." : serverReasonError
   const conflict = problem?.status === 409
   const showProblem = cancel.isError && !serverReasonError

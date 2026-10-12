@@ -92,7 +92,7 @@ export function AvailabilityChips({
 
   if (availability.isError) {
     const problem = parseProblem(availability.error)
-    const dateError = problem && fieldErrors(problem).date
+    const dateError = problem && fieldErrors(problem, { date: "Date" }).date
     // A date the API will not plan (before yesterday or past the booking horizon) is the user's to change, not a failure.
     return dateError ? (
       <Hint>{dateError}</Hint>
