@@ -375,6 +375,45 @@ describe("on a phone", () => {
   })
 })
 
+describe("touch targets (UI_DESIGN 11.22; sizes and hit-tests are measured in a browser, jsdom has no layout)", () => {
+  /** A day link is 44 by 44 px on a coarse pointer and below `md`, whatever it draws. */
+  const expectTouchSized = (link: HTMLElement) => {
+    for (const size of ["pointer-coarse:min-h-11", "pointer-coarse:min-w-11", "max-md:min-h-11", "max-md:min-w-11"]) expect(link).toHaveClass(size)
+  }
+  const dayLink = async (name: string) => within(await screen.findByRole("heading", { level: 3, name })).getByRole("link", { name })
+
+  it("makes a week day's link a touch target that stacks its weekday over its number in a narrow column, beside New appointment", async () => {
+    mockBoardApi()
+    renderBoard(calendar)
+
+    const link = await dayLink("Wednesday 14 October, dispatch board")
+    expectTouchSized(link)
+    // A tablet's column (narrower than 8rem) holds the link and New appointment side by side only with the weekday stacked.
+    expect(link).toHaveClass("@max-[8rem]/day:flex-col")
+    // Where even that does not fit, New appointment wraps under the day rather than covering it.
+    const header = link.closest("h3")!.parentElement!
+    expect(header).toHaveClass("flex-wrap")
+    expect(within(header).getByRole("button", { name: "New appointment on Wednesday 14 October" })).toBeInTheDocument()
+  })
+
+  it("makes a month day's link a touch target, its New appointment wrapping rather than covering it", async () => {
+    mockBoardApi()
+    renderBoard(`${calendar}&view=month`)
+
+    const link = await dayLink("Wednesday 14 October, dispatch board")
+    expectTouchSized(link)
+    expect(link.closest("h3")!.parentElement!).toHaveClass("flex-wrap")
+  })
+
+  it("makes an agenda day's link a touch target on a phone", async () => {
+    phoneViewport()
+    mockBoardApi()
+    renderBoard(calendar)
+
+    expectTouchSized(await dayLink("Wednesday 14 October, dispatch board"))
+  })
+})
+
 describe("a failed read", () => {
   it("says the appointments could not be loaded and recovers with Try again", async () => {
     let fail = true

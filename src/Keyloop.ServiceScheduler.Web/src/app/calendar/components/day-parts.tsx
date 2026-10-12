@@ -51,7 +51,10 @@ interface DayLinkProps {
   className?: string
 }
 
-/** A day's heading as a link to its dispatch board (the day in detail), on this dealership. */
+/**
+ * A day's heading as a link to its dispatch board (the day in detail), on this dealership. A touch target of at least
+ * 44 by 44 px on a coarse pointer and below `md` (UI_DESIGN 14), whatever it draws (a month's day number is 28 px).
+ */
 export function DayLink({ date, today, dealershipId, children, className }: DayLinkProps) {
   const search = new URLSearchParams({ [DEALERSHIP_PARAM]: dealershipId })
   if (date !== today) search.set(DATE_PARAM, date)
@@ -60,6 +63,7 @@ export function DayLink({ date, today, dealershipId, children, className }: DayL
       to={{ pathname: "/dispatch", search: `?${search}` }}
       className={cn(
         "inline-flex min-w-0 items-center gap-1.5 rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "max-md:min-h-11 max-md:min-w-11 pointer-coarse:min-h-11 pointer-coarse:min-w-11",
         className
       )}
     >

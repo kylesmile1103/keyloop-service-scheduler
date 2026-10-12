@@ -40,15 +40,22 @@ export function WeekView({ days, byDay, dealership, today, selectedId, onSelect,
         return (
           // A container: a narrow column (a tablet's week) keeps its heading to the day and its chips to the start time.
           <li key={date} className="@container/day flex min-w-0 flex-col bg-card">
-            <div className="flex min-h-11 items-center justify-between gap-1 border-b px-1.5 py-1.5 @[9rem]/day:px-2">
+            {/*
+              On touch the day link and New appointment are 44 px targets each. A narrow column (below 8rem, a tablet's week)
+              stacks the weekday over the number, so both fit side by side; where they still do not, New appointment wraps
+              under the day instead of covering its link.
+            */}
+            <div className="flex min-h-11 flex-wrap items-center justify-between gap-1 border-b px-1.5 py-1.5 @[9rem]/day:px-2 @max-[8rem]/day:gap-0.5 @max-[8rem]/day:px-1 @max-[8rem]/day:py-1">
               {/* Focusable by script only: "+N more" in the month moves focus here once the week is on screen. */}
               <h3 data-day-heading={date} tabIndex={-1} className="min-w-0 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <DayLink date={date} today={today} dealershipId={dealership.id}>
-                  <span className={cn("text-muted-foreground", date === today && "font-semibold text-foreground")}>{formatDay(date, "short").slice(0, 3)}</span>
+                <DayLink date={date} today={today} dealershipId={dealership.id} className="@max-[8rem]/day:flex-col @max-[8rem]/day:justify-center @max-[8rem]/day:gap-0">
+                  <span className={cn("text-muted-foreground @max-[8rem]/day:text-xs @max-[8rem]/day:leading-4", date === today && "font-semibold text-foreground")}>
+                    {formatDay(date, "short").slice(0, 3)}
+                  </span>
                   <DayNumber date={date} today={today} />
                 </DayLink>
               </h3>
-              <span className="flex items-center gap-0.5">
+              <span className="ms-auto flex items-center gap-0.5">
                 {items.length > 0 && (
                   <span className="sr-only text-xs text-muted-foreground tabular-nums @[9rem]/day:not-sr-only">
                     {count(items)}

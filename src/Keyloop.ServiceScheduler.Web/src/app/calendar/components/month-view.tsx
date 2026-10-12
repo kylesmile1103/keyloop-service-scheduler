@@ -47,14 +47,19 @@ export function MonthView({ days, byDay, dealership, today, anchor, selectedId, 
           return (
             // The hatch is a layer of its own: merged with the cell's fill, tailwind-merge would take it for a colour and drop the fill.
             <li key={date} className={cn("flex min-h-28 min-w-0 flex-col", own ? "bg-card" : "bg-muted")}>
-              <div className={cn("flex flex-1 flex-col gap-1 p-1.5", !open && "bg-hatch")}>
-                <div className="flex items-center justify-between gap-1">
+              {/* On touch the day link and New appointment are 44 px each: the cell's padding narrows so both fit, else the button wraps. */}
+              <div className={cn("flex flex-1 flex-col gap-1 p-1.5 pointer-coarse:p-1", !open && "bg-hatch")}>
+                <div className="flex flex-wrap items-center justify-between gap-1 pointer-coarse:gap-0.5">
                   <h3 className="text-sm">
                     <DayLink date={date} today={today} dealershipId={dealership.id}>
                       <DayNumber date={date} today={today} muted={!own} />
                     </DayLink>
                   </h3>
-                  {bookableDay(dealership, date, today) && <NewOnDay date={date} onNew={onNew} bookState={bookState} />}
+                  {bookableDay(dealership, date, today) && (
+                    <span className="ms-auto flex">
+                      <NewOnDay date={date} onNew={onNew} bookState={bookState} />
+                    </span>
+                  )}
                 </div>
                 {items.length > 0 ? (
                   <ul className="flex min-w-0 flex-col gap-1">
