@@ -18,4 +18,14 @@ describe("asset security headers", () => {
     expect(headers).not.toContain("includeSubDomains");
     expect(headers).not.toContain("preload");
   });
+  it("serves the static API reference under the site CSP, with no path-specific relaxation", () => {
+    expect(headers.match(/Content-Security-Policy:/g)).toHaveLength(1);
+    expect(headers.split("\n").filter(line => line.startsWith("/"))).toEqual(["/*", "/assets/*"]);
+    const csp = headers.match(/Content-Security-Policy: (.+)/)![1]!;
+    const directive = (name: string) => csp.split(";").map(part => part.trim()).find(part => part.startsWith(`${name} `));
+    expect(directive("script-src")).toBe("script-src 'self'");
+    expect(directive("font-src")).toBe("font-src 'self'");
+    expect(directive("connect-src")).toBe("connect-src 'self'");
+    expect(csp).not.toContain("unsafe-eval");
+  });
 });
