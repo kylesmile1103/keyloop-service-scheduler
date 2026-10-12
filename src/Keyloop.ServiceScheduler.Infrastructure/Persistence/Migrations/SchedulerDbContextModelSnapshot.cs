@@ -123,6 +123,12 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_service_bays");
 
@@ -191,6 +197,12 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("name");
 
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_technicians");
 
@@ -249,6 +261,10 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("notes");
+
+                    b.Property<string>("RecordedRequirements")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("recorded_requirements");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
@@ -548,6 +564,65 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.AdminChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("After")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("after");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at_utc");
+
+                    b.Property<string>("Before")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("before");
+
+                    b.Property<Guid>("DealershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dealership_id");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resource_id");
+
+                    b.Property<string>("ResourceKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("resource_kind");
+
+                    b.HasKey("Id")
+                        .HasName("pk_admin_changes");
+
+                    b.HasIndex("DealershipId", "AtUtc", "Id")
+                        .HasDatabaseName("ix_admin_changes_dealership_id_at_utc_id");
+
+                    b.ToTable("admin_changes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_admin_changes_after_bound", "octet_length(after::text) <= 65536");
+
+                            t.HasCheckConstraint("ck_admin_changes_before_bound", "before IS NULL OR octet_length(before::text) <= 65536");
+                        });
+                });
+
             modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.AppointmentHistoryEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -629,6 +704,25 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_idempotency_keys_expires_at_utc");
 
                     b.ToTable("idempotency_keys", (string)null);
+                });
+
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.RequirementPolicyVersion", b =>
+                {
+                    b.Property<Guid>("DealershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dealership_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("DealershipId", "Version")
+                        .HasName("pk_requirement_policy_versions");
+
+                    b.ToTable("requirement_policy_versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_requirement_policy_versions_positive", "version > 0");
+                        });
                 });
 
             modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", b =>
@@ -758,6 +852,16 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_notification_outbox_appointments_appointment_id");
                 });
 
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.AdminChange", b =>
+                {
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
+                        .WithMany()
+                        .HasForeignKey("DealershipId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_admin_changes_dealerships_dealership_id");
+                });
+
             modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.AppointmentHistoryEntry", b =>
                 {
                     b.HasOne("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", null)
@@ -766,6 +870,16 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_appointment_history_appointments_appointment_id");
+                });
+
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Persistence.RequirementPolicyVersion", b =>
+                {
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
+                        .WithMany()
+                        .HasForeignKey("DealershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_requirement_policy_versions_dealerships_dealership_id");
                 });
 #pragma warning restore 612, 618
         }

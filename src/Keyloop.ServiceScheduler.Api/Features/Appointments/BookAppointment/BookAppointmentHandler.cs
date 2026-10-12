@@ -116,7 +116,7 @@ public sealed class BookAppointmentHandler(
             BookingWindowPolicy.EnsureAligned(slot.StartUtc, window, options.Value.SlotGranularityMinutes);
             var localDate = LocalTimeConverter.ToLocalDate(slot.StartUtc, dealership.TimeZone);
             var profile = options.Value.VehicleAwareRequirements ? VehicleProfileResolution.Resolve(Vin.Create(request.Vehicle.Vin), request.Vehicle.Profile, actor.Name) : null;
-            var requirements = profile is null ? null : RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealership.Id, ct), request.NeedsLiveDiagnosis);
+            var requirements = profile is null ? null : await policies.ResolveAsync(dealership.Id, serviceType, profile, request.NeedsLiveDiagnosis, ct);
             if (requirements is not null)
             {
                 foreach (var rule in requirements.FiredRules)

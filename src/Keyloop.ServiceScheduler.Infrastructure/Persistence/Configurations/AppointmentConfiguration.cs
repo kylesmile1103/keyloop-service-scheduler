@@ -65,6 +65,12 @@ internal sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appoin
 
         // PostgreSQL's xmin system column as the optimistic concurrency token (ARCHITECTURE §7.3 layer 3); Npgsql maps a uint
         // row version to xmin, so the migration creates no column for it.
+        builder.Property(a => a.RecordedRequirements).HasColumnType("jsonb")
+            .HasConversion(v => VehicleJson.RequirementsToJson(v!), v => VehicleJson.RequirementsFromJson(v))
+            .Metadata.SetValueComparer(new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<RecordedRequirements?>(
+                (a, b) => a == null ? b == null : b != null && VehicleJson.RequirementsToJson(a) == VehicleJson.RequirementsToJson(b),
+                v => v == null ? 0 : VehicleJson.RequirementsToJson(v).GetHashCode(),
+                v => v == null ? null : VehicleJson.RequirementsFromJson(VehicleJson.RequirementsToJson(v))));
         builder.Property(a => a.RowVersion).IsRowVersion();
 
         // The (dealership_id, start_utc) day-query index is created in the migration's SQL next to the exclusion constraints:

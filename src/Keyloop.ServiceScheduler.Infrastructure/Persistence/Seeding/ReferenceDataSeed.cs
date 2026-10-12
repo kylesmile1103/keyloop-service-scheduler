@@ -45,9 +45,14 @@ public static class ReferenceDataSeed
             // Copy the latest policy before adding the new constraint. Old versions and custom effects are retained.
             var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(ct);
             var policies = await db.RequirementRules.AsNoTracking().ToListAsync(ct);
+            var editedSites = await db.RequirementPolicyVersions.Select(v => v.DealershipId).Distinct().ToListAsync(ct);
             var published = new List<PublishedRequirementPolicy>();
             foreach (var site in sites)
             {
+                if (editedSites.Contains(site))
+                {
+                    continue;
+                }
                 var existing = policies.Where(r => r.DealershipId == site).ToArray();
                 if (existing.Length == 0)
                 {
