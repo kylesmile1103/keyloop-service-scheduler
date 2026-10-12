@@ -433,13 +433,26 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         var bytes = new byte[256 * 1024];
         Convert.FromBase64String(Photo).CopyTo(bytes, 0);
         await UploadPhotoAsync(client, Convert.ToBase64String(bytes));
-        using var oversized = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
-            new StringContent(new string(' ', TriageImageLimits.MaxUploadBodyBytes + 1), Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        using var oversized = await PostDeclaringLengthFirstAsync(client, $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
+            new string(' ', TriageImageLimits.MaxUploadBodyBytes + 1));
         oversized.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
-        using var ordinary = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage",
-            new StringContent("{\"description\":\"brakes squeal\"}" + new string(' ', 64 * 1024), Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        using var ordinary = await PostDeclaringLengthFirstAsync(client, $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage",
+            "{\"description\":\"brakes squeal\"}" + new string(' ', 64 * 1024));
         ordinary.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
         stub.Calls.ShouldBe(0);
+    }
+
+    // Kestrel rejects a declared Content-Length over the route's limit and closes the connection. Sent without Expect, the body
+    // races that close and the client can fail with a broken pipe before it reads the 413. With Expect: 100-continue the client
+    // waits for the server's answer, which is the 413, and never sends the body.
+    private static async Task<HttpResponseMessage> PostDeclaringLengthFirstAsync(HttpClient client, string path, string json)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.ExpectContinue = true;
+        return await client.SendAsync(request, TestContext.Current.CancellationToken);
     }
 
     [Fact]
