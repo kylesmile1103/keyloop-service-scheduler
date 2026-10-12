@@ -16,6 +16,10 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     internal string ServiceChoice { get; set; } = "BRAKES-PADS-DISCS";
     internal string DateChoice { get; set; } = "2026-10-15";
     internal double Confidence { get; set; } = 0.98;
+    internal string UncoveredChoice { get; set; } = "NONE";
+    internal double UncoveredConfidence { get; set; } = 0.9;
+    internal string? ModelFreeText { get; set; }
+    internal Dictionary<string, double>? ServiceProbabilities { get; set; }
     /// <summary>"run" (what /ai/run returned live: a completed run wrapping the model body), "result" or "bare".</summary>
     internal string Shape { get; set; } = "run";
     internal int? RetryAfter { get; set; }
@@ -58,6 +62,7 @@ internal sealed class StubTriageHandler : HttpMessageHandler
             {
                 ["service"] = Answer("service", ServiceChoice, Confidence),
                 ["preferred_date"] = Answer("preferred_date", DateChoice, 0.8),
+                ["uncovered_issue"] = Answer("uncovered_issue", UncoveredChoice, UncoveredConfidence),
             },
             ["usage"] = new JsonObject { ["input_tokens"] = 432 },
         };
@@ -95,9 +100,11 @@ internal sealed class StubTriageHandler : HttpMessageHandler
         var criteria = Body!["questions"]![question]!["criteria"]!.AsObject();
         foreach (var option in criteria)
         {
-            probabilities[option.Key] = option.Key == winner ? 0.85 : 0.15 / (criteria.Count - 1);
+            probabilities[option.Key] = question == "service" && ServiceProbabilities is { } provided
+                ? provided.GetValueOrDefault(option.Key) : option.Key == winner ? 0.85 : 0.15 / (criteria.Count - 1);
         }
 
-        return new() { ["type"] = "choice", ["choice"] = winner, ["confidence"] = confidence, ["probabilities"] = probabilities };
+        return new() { ["type"] = "choice", ["choice"] = winner, ["confidence"] = confidence, ["probabilities"] = probabilities,
+            ["explanation"] = ModelFreeText };
     }
 }

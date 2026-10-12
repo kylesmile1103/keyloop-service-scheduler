@@ -35,6 +35,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("BRAKES-PADS-DISCS", 0.98, "suggest", "run")]
     [InlineData("BRAKES-PADS-DISCS", 0.19, "confirm", "bare")]
     [InlineData("NONE_OF_THESE", 0.9, "no-match", "result")]
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", 0.9, "suggest", "run")]
     public async Task Maps_each_recommendation_from_every_envelope(string choice, double confidence, string expected, string shape)
     {
         using var stub = new StubTriageHandler { ServiceChoice = choice, Confidence = confidence, Shape = shape };
@@ -147,6 +148,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Body!.AsObject().Select(p => p.Key).ShouldBe(["model", "state", "questions"]);
         stub.Body["model"]!.GetValue<string>().ShouldBe("clef-flash");
         var input = stub.Body.AsObject();
+        input["questions"]!.AsObject().Select(q => q.Key).ShouldBe(["service", "preferred_date", "uncovered_issue"]);
         input["state"]!.AsObject().ShouldHaveSingleItem().Key.ShouldBe("customer_description");
         input["state"]!["customer_description"]!.GetValue<string>().ShouldBe(description);
         var criteria = input["questions"]!["service"]!["criteria"]!.AsObject();
@@ -359,6 +361,107 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
             }
         }
         AssertNoDescriptionInLogs(description);
+    }
+
+    [Theory]
+    [InlineData("ACCIDENT_OR_BODY_DAMAGE", 0.9, true)]
+    [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.9, true)]
+    [InlineData("AIR_CONDITIONING", 0.9, true)]
+    [InlineData("TYRES_OR_WHEELS", 0.9, true)]
+    [InlineData("GLASS", 0.7, true)]
+    [InlineData("OTHER", 0.9, true)]
+    [InlineData("GLASS", 0.69999, false)]
+    [InlineData("NONE", 1, false)]
+    public async Task Exposes_only_confident_closed_categories_and_discards_all_model_prose(string category, double confidence, bool present)
+    {
+        const string prose = "private-model-explanation-0912345678";
+        using var metrics = new MetricsCollector();
+        var spans = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == SchedulerTelemetry.Name,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = spans.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var stub = new StubTriageHandler { UncoveredChoice = category, UncoveredConfidence = confidence, ModelFreeText = prose };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "Brakes squeal; another issue also needs attention");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        json.ShouldNotContain(prose);
+        using var body = JsonDocument.Parse(json);
+        var issue = body.RootElement.GetProperty("uncoveredIssue");
+        if (present)
+        {
+            issue.GetProperty("category").GetString().ShouldBe(category);
+            issue.GetProperty("confidence").GetDouble().ShouldBe(confidence);
+        }
+        else
+        {
+            issue.ValueKind.ShouldBe(JsonValueKind.Null);
+        }
+        stub.Calls.ShouldBe(1);
+        var expectedTag = present ? category : "NONE";
+        metrics.Of("scheduler.triage.requests").ShouldHaveSingleItem().Tag("uncovered_category").ShouldBe(expectedTag);
+        metrics.Of("scheduler.triage.duration").ShouldHaveSingleItem().Tag("uncovered_category").ShouldBe(expectedTag);
+        spans.Single(a => a.OperationName == "scheduler.triage").GetTagItem("triage.uncovered_category").ShouldBe(expectedTag);
+        foreach (var span in spans)
+        {
+            foreach (var tag in span.TagObjects) { (tag.Value?.ToString() ?? "").ShouldNotContain(prose); }
+        }
+        AssertNoDescriptionInLogs(prose);
+        await _factory.WithDbAsync(async db =>
+        {
+            (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Appointments, TestContext.Current.CancellationToken)).ShouldBe(0);
+            (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.AppointmentHistory, TestContext.Current.CancellationToken)).ShouldBe(0);
+        });
+    }
+
+    [Fact]
+    public async Task An_unrecognized_uncovered_category_is_503_without_text_in_the_response_logs_or_spans()
+    {
+        const string secret = "private-model-category-0912345678";
+        var spans = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == SchedulerTelemetry.Name,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = spans.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var stub = new StubTriageHandler { UncoveredChoice = secret };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "brakes squeal");
+        await UnavailableAsync(response);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).ShouldNotContain(secret);
+        AssertNoDescriptionInLogs(secret);
+        foreach (var span in spans)
+        {
+            foreach (var tag in span.TagObjects) { (tag.Value?.ToString() ?? "").ShouldNotContain(secret); }
+        }
+        stub.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Relative_floor_removes_ten_percent_service_noise_on_the_wire()
+    {
+        using var stub = new StubTriageHandler
+        {
+            ServiceChoice = "DIAG-FAULT-FINDING", Confidence = 0.53, UncoveredChoice = "ACCIDENT_OR_BODY_DAMAGE",
+            ServiceProbabilities = new() { ["DIAG-FAULT-FINDING"] = 0.53, ["FULL-SERVICE"] = 0.1, ["NONE_OF_THESE"] = 0.37 },
+        };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "Diagnose AC that cannot turn on; also crashed bumper");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        body.RootElement.GetProperty("services").EnumerateArray().ShouldHaveSingleItem()
+            .GetProperty("serviceType").GetProperty("code").GetString().ShouldBe("DIAG-FAULT-FINDING");
+        body.RootElement.GetProperty("uncoveredIssue").GetProperty("category").GetString().ShouldBe("ACCIDENT_OR_BODY_DAMAGE");
+        stub.Calls.ShouldBe(1);
     }
 
     [Fact]

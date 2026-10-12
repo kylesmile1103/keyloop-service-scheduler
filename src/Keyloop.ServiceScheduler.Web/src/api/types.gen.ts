@@ -814,10 +814,11 @@ export type TriageBookingResponse = {
      */
     serviceConfidence: number;
     /**
-     * At most three bookable candidates above the configured probability floor, most likely first.
+     * At most three bookable candidates meeting the absolute and relative probability floors, most likely first.
      */
     services: Array<TriageServiceCandidate>;
     preferredDate: null | TriagePreferredDate;
+    uncoveredIssue: null | TriageUncoveredIssue;
 };
 
 /**
@@ -835,6 +836,20 @@ export type TriagePreferredDate = {
 export type TriageServiceCandidate = {
     serviceType: ServiceTypeSummary;
     probability: number;
+};
+
+/**
+ * Closed UI-copy keys for problems outside the most likely service. One appointment covers one service.
+ */
+export type TriageUncoveredCategory = 'ACCIDENT_OR_BODY_DAMAGE' | 'LIGHTS_OR_ELECTRICAL_ACCESSORY' | 'AIR_CONDITIONING' | 'TYRES_OR_WHEELS' | 'GLASS' | 'OTHER';
+
+/**
+ * A validated closed category, with confidence distinct from its probability. NONE and below-threshold answers return null.
+ */
+export type TriageUncoveredIssue = {
+    category: TriageUncoveredCategory;
+    probability: number;
+    confidence: number;
 };
 
 /**
@@ -1511,7 +1526,7 @@ export type TriageBookingRequestError = TriageBookingRequestErrors[keyof TriageB
 
 export type TriageBookingRequestResponses = {
     /**
-     * Model, recommendation, service confidence, up to three candidates and an optional local date.
+     * Model, recommendation, service confidence, up to three candidates, an optional local date and an optional uncovered issue with a closed category.
      */
     200: TriageBookingResponse;
 };

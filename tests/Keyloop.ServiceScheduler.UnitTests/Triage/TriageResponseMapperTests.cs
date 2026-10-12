@@ -66,7 +66,7 @@ public sealed class TriageResponseMapperTests
             .ToDictionary(p => p.Code, p => p.Probability, StringComparer.Ordinal);
         var response = TriageResponseMapper.Map("@cf/cloudflare/clef-flash",
             new(new("choice", "DIAG-FAULT-FINDING", 0.8, probabilities),
-                new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }), null),
+                new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }), None, null),
             services.Take(9).ToList(), new TriageOptions { CandidateFloor = 0.01 });
         response.Services.Select(s => s.ServiceType.Code).ShouldBe(["AIRCON-REGAS", "HEAVY-VAN-SERVICE", "WHEEL-ALIGNMENT"]);
         response.Services.Select(s => s.Probability).ShouldBe([0.09, 0.08, 0.07]);
@@ -76,5 +76,80 @@ public sealed class TriageResponseMapperTests
         double probability = 0.8, string choice = "BRAKES-PADS-DISCS", string date = "2026-10-18") =>
         TriageResponseMapper.Map("@cf/cloudflare/clef-flash", new(
             new("choice", choice, confidence, new() { ["BRAKES-PADS-DISCS"] = probability, [ClefQuestionBuilder.NoneOfThese] = 1 - probability }),
-            new("choice", date, dateConfidence, new() { [date] = 0.9 }), 321), [ClefQuestionBuilderTests.Brakes], new());
+            new("choice", date, dateConfidence, new() { [date] = 0.9 }), None, 321), [ClefQuestionBuilderTests.Brakes], new());
+
+    private static readonly ClefAnswer None = new("choice", "NONE", 1, new() { ["NONE"] = 1 });
+
+    [Theory]
+    [InlineData(0.09999, 0.0, false)]
+    [InlineData(0.1, 0.0, true)]
+    [InlineData(0.1, 0.5, false)]
+    [InlineData(0.26499, 0.5, false)]
+    [InlineData(0.265, 0.5, true)]
+    [InlineData(0.47, 1.0, false)]
+    public void Relative_floor_removes_the_stakeholders_ten_percent_noise_and_keeps_boundary_candidates(double other, double relative, bool kept)
+    {
+        var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes()
+            .Where(s => s.Code is "DIAG-FAULT-FINDING" or "FULL-SERVICE").ToArray();
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "DIAG-FAULT-FINDING", 0.53, new() { ["DIAG-FAULT-FINDING"] = 0.53, ["FULL-SERVICE"] = other }),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }), None, null), services,
+            new TriageOptions { RelativeCandidateFloor = relative });
+        response.Services.Count.ShouldBe(kept ? 2 : 1);
+        response.Services[0].ServiceType.Code.ShouldBe("DIAG-FAULT-FINDING");
+    }
+
+    [Theory]
+    [InlineData("NONE", 1, false)]
+    [InlineData("GLASS", 0.69999, false)]
+    [InlineData("GLASS", 0.7, true)]
+    [InlineData("ACCIDENT_OR_BODY_DAMAGE", 0.8, true)]
+    [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.8, true)]
+    [InlineData("AIR_CONDITIONING", 0.8, true)]
+    [InlineData("TYRES_OR_WHEELS", 0.8, true)]
+    [InlineData("OTHER", 0.8, true)]
+    public void Uncovered_issue_has_its_own_inclusive_confidence_threshold(string category, double confidence, bool present)
+    {
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "BRAKES-PADS-DISCS", 0.1, new() { ["BRAKES-PADS-DISCS"] = 1 }),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }),
+            new("choice", category, confidence, new() { [category] = 0.9 }), null), [ClefQuestionBuilderTests.Brakes], new());
+        response.Recommendation.ShouldBe("confirm");
+        (response.UncoveredIssue is not null).ShouldBe(present);
+        if (present)
+        {
+            response.UncoveredIssue!.Category.ToString().ShouldBe(category);
+            response.UncoveredIssue.Probability.ShouldBe(0.9);
+            response.UncoveredIssue.Confidence.ShouldBe(confidence);
+        }
+    }
+
+    [Fact]
+    public void Empty_catalogue_abstains_without_losing_the_uncovered_issue()
+    {
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "NONE_OF_THESE", 1, new() { ["NONE_OF_THESE"] = 1 }),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }),
+            new("choice", "GLASS", 0.9, new() { ["GLASS"] = 1 }), null), [], new());
+        response.Services.ShouldBeEmpty();
+        response.Recommendation.ShouldBe("no-match");
+        response.UncoveredIssue.ShouldNotBeNull().Category.ShouldBe(TriageUncoveredCategory.GLASS);
+    }
+
+    [Theory]
+    [InlineData(0.6, true)]
+    [InlineData(0.8, true)]
+    [InlineData(0.80001, false)]
+    [InlineData(1.0, false)]
+    public void Uncovered_threshold_is_configurable_without_changing_service_or_date_thresholds(double threshold, bool present)
+    {
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "BRAKES-PADS-DISCS", 0.5, new() { ["BRAKES-PADS-DISCS"] = 1 }),
+            new("choice", "2026-10-13", 0.6, new() { ["2026-10-13"] = 1 }),
+            new("choice", "AIR_CONDITIONING", 0.8, new() { ["AIR_CONDITIONING"] = 1 }), null),
+            [ClefQuestionBuilderTests.Brakes], new TriageOptions { UncoveredIssueThreshold = threshold });
+        response.Recommendation.ShouldBe("suggest");
+        response.PreferredDate.ShouldNotBeNull().Date.ShouldBe(new DateOnly(2026, 10, 13));
+        (response.UncoveredIssue is not null).ShouldBe(present);
+    }
 }

@@ -40,7 +40,7 @@ public sealed class ClefAnswerValidatorTests
     }
 
     [Fact]
-    public void Accepts_the_legacy_Jev_response_with_the_same_typed_answer_schema()
+    public void Rejects_the_historical_two_question_Jev_response_under_the_three_question_contract()
     {
         // The Reading catalogue and clock of the captured request (2026-10-12T08:00Z, 90-day horizon) and the body Cloudflare
         // returned for it through the keyloop-scheduler gateway on 2026-10-12, unedited.
@@ -48,10 +48,7 @@ public sealed class ClefAnswerValidatorTests
             ReferenceDataSeed.CreateServiceTypes().Where(s => s.Code != "ACCIDENT-DAMAGE-ASSESSMENT").ToArray(), ClefQuestionBuilderTests.Reading,
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 90);
         var parsed = JsonSerializer.Deserialize(LiveResponse, TriageJsonContext.Default.ClefEnvelope);
-        var answer = ClefAnswerValidator.Validate(parsed, request);
-        answer.Service.Choice.ShouldBe("BRAKES-PADS-DISCS");
-        answer.PreferredDate.Choice.ShouldBe("2026-10-15");
-        answer.InputTokens.ShouldBe(1942);
+        Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(parsed, request)).Reason.ShouldBe("invalid-answer");
     }
 
     private const string LiveResponse = """
@@ -103,7 +100,80 @@ public sealed class ClefAnswerValidatorTests
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 1);
         return (request, """
             {"answers":{"service":{"type":"choice","choice":"BRAKES-PADS-DISCS","confidence":0.8,"probabilities":{"BRAKES-PADS-DISCS":0.9,"NONE_OF_THESE":0.1}},
-              "preferred_date":{"type":"choice","choice":"2026-10-13","confidence":0.9,"probabilities":{"2026-10-12":0,"2026-10-13":1,"NO_SPECIFIC_DATE":0}}},"usage":{"input_tokens":123}}
+              "preferred_date":{"type":"choice","choice":"2026-10-13","confidence":0.9,"probabilities":{"2026-10-12":0,"2026-10-13":1,"NO_SPECIFIC_DATE":0}},
+              "uncovered_issue":{"type":"choice","choice":"NONE","confidence":0.9,"probabilities":{"NONE":1,"ACCIDENT_OR_BODY_DAMAGE":0,"LIGHTS_OR_ELECTRICAL_ACCESSORY":0,"AIR_CONDITIONING":0,"TYRES_OR_WHEELS":0,"GLASS":0,"OTHER":0}}},"usage":{"input_tokens":123}}
             """);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("extra-answer")]
+    [InlineData("null")]
+    [InlineData("free-text-choice")]
+    [InlineData("free-text-key")]
+    [InlineData("missing-probability")]
+    [InlineData("missing-confidence")]
+    [InlineData("negative-confidence")]
+    [InlineData("high-confidence")]
+    [InlineData("wrong-type")]
+    [InlineData("negative-probability")]
+    [InlineData("high-probability")]
+    [InlineData("non-normalized")]
+    [InlineData("wrong-winner")]
+    public void Every_uncovered_answer_is_validated_before_mapping_or_telemetry(string fault)
+    {
+        const string secret = "private-model-prose-0912345678";
+        var (request, json) = Valid();
+        var response = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        var answers = response["answers"]!.AsObject();
+        var uncovered = answers["uncovered_issue"]!;
+        switch (fault)
+        {
+            case "missing": answers.Remove("uncovered_issue"); break;
+            case "extra-answer": answers["explanation"] = uncovered.DeepClone(); break;
+            case "null": answers["uncovered_issue"] = null; break;
+            case "free-text-choice": uncovered["choice"] = secret; break;
+            case "free-text-key": uncovered["probabilities"]![secret] = 0; break;
+            case "missing-probability": uncovered["probabilities"]!.AsObject().Remove("GLASS"); break;
+            case "missing-confidence": uncovered.AsObject().Remove("confidence"); break;
+            case "negative-confidence": uncovered["confidence"] = -0.1; break;
+            case "high-confidence": uncovered["confidence"] = 1.1; break;
+            case "wrong-type": uncovered["type"] = "text"; break;
+            case "negative-probability": uncovered["probabilities"]!["GLASS"] = -0.1; break;
+            case "high-probability": uncovered["probabilities"]!["NONE"] = 1.1; break;
+            case "non-normalized": uncovered["probabilities"]!["GLASS"] = 0.3; break;
+            case "wrong-winner": uncovered["choice"] = "GLASS"; break;
+        }
+        var parsed = JsonSerializer.Deserialize(response.ToJsonString(), TriageJsonContext.Default.ClefEnvelope);
+        var exception = Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(parsed, request));
+        exception.Reason.ShouldBe("invalid-answer");
+        exception.ToString().ShouldNotContain(secret);
+    }
+
+    [Fact]
+    public void Model_explanation_fields_are_discarded_by_the_typed_reader()
+    {
+        var (request, json) = Valid();
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        node["answers"]!["uncovered_issue"]!["explanation"] = "private-model-prose-0912345678";
+        var envelope = JsonSerializer.Deserialize(node.ToJsonString(), TriageJsonContext.Default.ClefEnvelope);
+        var evaluation = ClefAnswerValidator.Validate(envelope, request);
+        evaluation.UncoveredIssue.Choice.ShouldBe("NONE");
+        JsonSerializer.Serialize(envelope, TriageJsonContext.Default.ClefEnvelope).ShouldNotContain("private-model-prose-0912345678");
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void Nonfinite_uncovered_confidence_and_probability_are_rejected(double value)
+    {
+        var (request, json) = Valid();
+        var envelope = JsonSerializer.Deserialize(json, TriageJsonContext.Default.ClefEnvelope)!;
+        var original = envelope.Answers!["uncovered_issue"];
+        envelope.Answers["uncovered_issue"] = original with { Confidence = value };
+        Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(envelope, request)).Reason.ShouldBe("invalid-answer");
+        envelope.Answers["uncovered_issue"] = original with { Probabilities = new(original.Probabilities!) { ["NONE"] = value } };
+        Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(envelope, request)).Reason.ShouldBe("invalid-answer");
     }
 }

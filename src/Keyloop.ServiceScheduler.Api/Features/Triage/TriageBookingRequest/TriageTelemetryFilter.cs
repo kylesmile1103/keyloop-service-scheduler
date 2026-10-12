@@ -15,6 +15,7 @@ public sealed class TriageTelemetryFilter(IOptions<TriageConnectionOptions> opti
         var started = Stopwatch.GetTimestamp();
         var outcome = "rejected";
         string? reason = null;
+        string? uncoveredCategory = null;
         using var activity = SchedulerTelemetry.Source.StartActivity("scheduler.triage");
         activity?.SetTag("dealership.id", context.HttpContext.Request.RouteValues["dealershipId"]?.ToString());
         activity?.SetTag("triage.model", options.Value.Model);
@@ -25,6 +26,8 @@ public sealed class TriageTelemetryFilter(IOptions<TriageConnectionOptions> opti
             {
                 outcome = response.Recommendation;
                 activity?.SetTag("triage.recommendation", response.Recommendation);
+                uncoveredCategory = response.UncoveredIssue?.Category.ToString() ?? ClefQuestionBuilder.NoUncoveredIssue;
+                activity?.SetTag("triage.uncovered_category", uncoveredCategory);
             }
             return result;
         }
@@ -42,6 +45,10 @@ public sealed class TriageTelemetryFilter(IOptions<TriageConnectionOptions> opti
             if (reason is not null)
             {
                 tags.Add("reason", reason);
+            }
+            if (uncoveredCategory is not null)
+            {
+                tags.Add("uncovered_category", uncoveredCategory);
             }
             SchedulerTelemetry.TriageRequests.Add(1, tags);
             SchedulerTelemetry.TriageDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds, tags);

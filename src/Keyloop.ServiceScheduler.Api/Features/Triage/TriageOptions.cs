@@ -16,6 +16,11 @@ public sealed class TriageOptions
     public double DateThreshold { get; set; } = 0.6;
     [Range(0.0, 1.0)]
     public double CandidateFloor { get; set; } = 0.1;
+    [Range(0.0, 1.0)]
+    public double RelativeCandidateFloor { get; set; } = 0.5;
+    [Range(0.0, 1.0)]
+    // Provisional: flag a further issue only with stronger evidence than a service suggestion. Calibrate on the extended golden set.
+    public double UncoveredIssueThreshold { get; set; } = 0.7;
 }
 
 [OptionsValidator]

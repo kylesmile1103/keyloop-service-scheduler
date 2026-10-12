@@ -1403,7 +1403,7 @@
         "tags": [
           "Catalog"
         ],
-        "summary": "Suggest bookable services and an optional preferred date from an intake description",
+        "summary": "Suggest bookable services, an optional preferred date and a closed uncovered-issue category from an intake description",
         "description": "A person must confirm a suggestion before asking for availability and booking. No description is stored.",
         "operationId": "TriageBookingRequest",
         "parameters": [
@@ -1442,7 +1442,7 @@
         },
         "responses": {
           "200": {
-            "description": "Model, recommendation, service confidence, up to three candidates and an optional local date.",
+            "description": "Model, recommendation, service confidence, up to three candidates, an optional local date and an optional uncovered issue with a closed category.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -3479,7 +3479,8 @@
           "recommendation",
           "serviceConfidence",
           "services",
-          "preferredDate"
+          "preferredDate",
+          "uncoveredIssue"
         ],
         "type": "object",
         "properties": {
@@ -3501,7 +3502,7 @@
             "items": {
               "$ref": "#/components/schemas/TriageServiceCandidate"
             },
-            "description": "At most three bookable candidates above the configured probability floor, most likely first."
+            "description": "At most three bookable candidates meeting the absolute and relative probability floors, most likely first."
           },
           "preferredDate": {
             "oneOf": [
@@ -3511,6 +3512,17 @@
               {
                 "description": "Confidently selected local date, including a closed day, or null.",
                 "$ref": "#/components/schemas/TriagePreferredDate"
+              }
+            ]
+          },
+          "uncoveredIssue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "A confidently selected additional issue outside the most likely service, or null. Render the category with fixed client copy, never model text.",
+                "$ref": "#/components/schemas/TriageUncoveredIssue"
               }
             ]
           }
@@ -3556,6 +3568,40 @@
           }
         },
         "description": "A candidate from the dealership's bookable catalogue."
+      },
+      "TriageUncoveredCategory": {
+        "enum": [
+          "ACCIDENT_OR_BODY_DAMAGE",
+          "LIGHTS_OR_ELECTRICAL_ACCESSORY",
+          "AIR_CONDITIONING",
+          "TYRES_OR_WHEELS",
+          "GLASS",
+          "OTHER"
+        ],
+        "type": "string",
+        "description": "Closed UI-copy keys for problems outside the most likely service. One appointment covers one service."
+      },
+      "TriageUncoveredIssue": {
+        "required": [
+          "category",
+          "probability",
+          "confidence"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/TriageUncoveredCategory"
+          },
+          "probability": {
+            "type": "number",
+            "format": "double"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "description": "A validated closed category, with confidence distinct from its probability. NONE and below-threshold answers return null."
       },
       "UploadBookingTriageImageRequest": {
         "required": [

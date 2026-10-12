@@ -60,6 +60,7 @@ export function triageAnswer(
       probability,
     })),
     preferredDate,
+    uncoveredIssue: null,
   }
 }
 

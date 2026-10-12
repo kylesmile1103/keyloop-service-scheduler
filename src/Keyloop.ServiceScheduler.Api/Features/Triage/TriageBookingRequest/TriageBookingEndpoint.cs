@@ -26,13 +26,13 @@ public sealed class TriageBookingEndpoint : IEndpoint
         .WithResponseHeader(StatusCodes.Status503ServiceUnavailable, HeaderNames.RetryAfter,
             "Whole seconds to wait when the upstream supplied Retry-After.", type: JsonSchemaType.Integer);
 
-    /// <summary>Suggest bookable services and an optional preferred date from an intake description</summary>
+    /// <summary>Suggest bookable services, an optional preferred date and a closed uncovered-issue category from an intake description</summary>
     /// <remarks>A person must confirm a suggestion before asking for availability and booking. No description is stored.</remarks>
     /// <param name="dealershipId">Dealership whose active resources and local dates bound the choices.</param>
     /// <param name="request">The booking intake description.</param>
     /// <param name="handler">Evaluates the closed catalogue through Clef.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
-    /// <response code="200">Model, recommendation, service confidence, up to three candidates and an optional local date.</response>
+    /// <response code="200">Model, recommendation, service confidence, up to three candidates, an optional local date and an optional uncovered issue with a closed category.</response>
     /// <response code="400">Description is missing, blank or over the limit (validation-error).</response>
     /// <response code="404">No dealership has this id (not-found).</response>
     /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
