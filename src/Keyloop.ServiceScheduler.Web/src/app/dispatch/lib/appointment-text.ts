@@ -1,4 +1,5 @@
-import { formatLocalTime } from "./time-grid"
+import { formatLocalTime } from "@/lib/local-time"
+
 import type { BoardAppointment } from "./schedule"
 import { statusMeta } from "./status"
 

@@ -8,11 +8,11 @@ import type { AppointmentStatus, WorkshopScheduleResponse } from "@/api/types.ge
 import { Card, CardAction, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDay } from "@/lib/calendar-date"
+import { formatLocalTime } from "@/lib/local-time"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 
 import { boardAppointments, scheduleKpis } from "../lib/schedule"
 import { boardStatuses, statusMeta } from "../lib/status"
-import { formatLocalTime } from "../lib/time-grid"
 
 /** What a card shows when it has no figure for the day (its footer says why); read out in words. */
 const NO_FIGURE = "–"

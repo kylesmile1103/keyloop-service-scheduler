@@ -59,7 +59,7 @@ export function daySentence(
   dealership: DealershipResponse,
   date: string,
   today: string,
-  schedule: WorkshopScheduleResponse | undefined
+  schedule: Pick<WorkshopScheduleResponse, "operatingWindow"> | undefined
 ): string {
   const window = schedule?.operatingWindow
   const weekly = openingHoursOn(dealership, weekdayOf(date))

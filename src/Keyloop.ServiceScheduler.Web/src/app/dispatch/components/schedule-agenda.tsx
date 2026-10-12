@@ -3,12 +3,12 @@ import { Fragment, useId } from "react"
 
 import { InitialsAvatar } from "@/components/initials-avatar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { formatLocalTime } from "@/lib/local-time"
 import { cn } from "@/lib/utils"
 
 import { jobCardLabel, timeRange } from "../lib/appointment-text"
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { statusMeta } from "../lib/status"
-import { formatLocalTime } from "../lib/time-grid"
 import { PlateChip } from "./appointment-block"
 import { StatusBadge } from "./status-badge"
 

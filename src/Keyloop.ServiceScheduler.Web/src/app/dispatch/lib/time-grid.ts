@@ -1,4 +1,5 @@
 import type { OperatingWindowResponse } from "@/api/types.gen"
+import { formatLocalTime } from "@/lib/local-time"
 
 /**
  * The timeline's geometry. The board is a CSS grid whose time columns are slots of `granularityMinutes` (15 by default,
@@ -48,18 +49,6 @@ export function spanFor(startUtc: string, endUtc: string, grid: GridSpec): { sta
   if (!overlaps) return { start, end: start }
   const end = clampLine(Math.ceil(slotsFromStart(endUtc, grid)) + 1, grid)
   return { start, end: Math.max(end, start + 1) }
-}
-
-const timeFormats = new Map<string, Intl.DateTimeFormat>()
-
-/** `HH:mm` as the clock on the dealership's wall shows it (24-hour), whatever the browser's zone. */
-export function formatLocalTime(iso: string, timeZone: string): string {
-  let format = timeFormats.get(timeZone)
-  if (!format) {
-    format = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
-    timeFormats.set(timeZone, format)
-  }
-  return format.format(new Date(iso))
 }
 
 /** Minutes past the hour in an API local string (`2026-10-13T07:30+02:00` → 30). */
