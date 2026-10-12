@@ -21,7 +21,7 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Contract;
 public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 {
     private const string Drift =
-        "contract drift: run scripts/export-openapi.sh (dotnet build regenerates contracts/openapi/v1.json), then commit the file";
+        "runtime/build-time contract mismatch: inspect environment-dependent endpoint metadata first; scripts/export-openapi.sh regenerates the build-time document, and CI git diff --exit-code contracts/ detects uncommitted drift";
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
@@ -175,6 +175,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "400"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "404"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "409"),
+                ("POST /api/v1/dealerships/{dealershipId}/appointments", "413"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "422"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "429"),
                 ("GET /api/v1/appointments/{appointmentId}", "404"),

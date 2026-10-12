@@ -817,6 +817,10 @@ export type BookAppointmentErrors = {
      */
     409: ProblemDetails;
     /**
+     * The request body exceeds the 64 KiB limit (framework RFC 9110 problem).
+     */
+    413: ProblemDetails;
+    /**
      * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`.
      */
     422: ProblemDetails;

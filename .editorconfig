@@ -28,3 +28,7 @@ dotnet_diagnostic.CA1515.severity = none
 # generated code so code-style rules written for hand-written files (file-scoped namespaces, etc.) do not fail the build.
 [**/Migrations/*.cs]
 generated_code = true
+
+# The build-time OpenAPI generator emits JSON without a final newline; preserve its bytes for contract drift checks.
+[contracts/openapi/v1.json]
+insert_final_newline = false

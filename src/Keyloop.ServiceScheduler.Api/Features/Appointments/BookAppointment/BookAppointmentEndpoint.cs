@@ -29,6 +29,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesRateLimitedProblem()
             .WithResponseHeader(StatusCodes.Status201Created, "Location", "The new appointment's path, /api/v1/appointments/{id} (the same id on a replay).", "uri-reference")
@@ -61,6 +62,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// <response code="400">The body or the <c>Idempotency-Key</c> is malformed (<c>validation-error</c>, <c>errors</c> keyed by JSON path such as <c>customer.email</c>, or <c>Idempotency-Key</c>).</response>
     /// <response code="404">No dealership or no service type has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> or <c>service-type</c> and the <c>id</c>).</response>
     /// <response code="409">The slot is taken: every qualified bay or technician is busy (<c>slot-unavailable</c>), or the database's overlap backstop fired (<c>slot-conflict</c>, with <c>conflictingResource</c>); both carry <c>suggestedSlots</c>, the nearest bookable starts that day.</response>
+    /// <response code="413">The request body exceeds the 64 KiB limit (framework RFC 9110 problem).</response>
     /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, or <c>idempotency-key-reuse</c>.</response>
     /// <response code="429">Too many bookings from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Results<Created<AppointmentResponse>, ValidationProblem>> HandleAsync(

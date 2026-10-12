@@ -176,7 +176,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         booking.GetProperty("description").GetString().ShouldNotBeNull().ShouldContain("Idempotency-Key");
 
         var responses = booking.GetProperty("responses");
-        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["201", "400", "404", "409", "422", "429"], ignoreOrder: true);
+        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["201", "400", "404", "409", "413", "422", "429"], ignoreOrder: true);
         foreach (var (status, mediaType, schema, reasonPhrase) in new[]
                  {
                      ("201", "application/json", "AppointmentResponse", "Created"),

@@ -463,6 +463,25 @@
               }
             }
           },
+          "413": {
+            "description": "The request body exceeds the 64 KiB limit (framework RFC 9110 problem).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "422": {
             "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`.",
             "headers": {
