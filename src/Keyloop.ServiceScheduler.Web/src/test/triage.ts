@@ -3,6 +3,8 @@ import type {
   ServiceTypeResponse,
   TriageBookingResponse,
   TriagePreferredDate,
+  TriageUncoveredCategory,
+  TriageUncoveredIssue,
 } from "@/api/types.gen"
 
 /**
@@ -56,11 +58,15 @@ export const assessmentServiceType: ServiceTypeResponse = {
   bookable: true,
 }
 
-/** A triage answer: the recommendation, its candidates with their probabilities (most likely first) and the day asked for. */
+/**
+ * A triage answer: the recommendation, its candidates with their probabilities (most likely first), the day asked for and
+ * a further problem the description mentioned that the most likely service would not address (Task 32a).
+ */
 export function triageAnswer(
   recommendation: "suggest" | "confirm" | "no-match",
   candidates: ReadonlyArray<readonly [ServiceTypeResponse, number]>,
-  preferredDate: TriagePreferredDate | null = null
+  preferredDate: TriagePreferredDate | null = null,
+  uncoveredIssue: TriageUncoveredIssue | null = null
 ): TriageBookingResponse {
   return {
     model: "@cf/cloudflare/clef-flash",
@@ -71,9 +77,20 @@ export function triageAnswer(
       probability,
     })),
     preferredDate,
-    uncoveredIssue: null,
+    uncoveredIssue,
   }
 }
+
+/**
+ * `uncoveredIssue`: its closed category, outside the service Clef chose (`outside`), or outside every bookable service
+ * (`null`, a no-match). Shapes from the Task 32a report's examples.
+ */
+export const uncovered = (category: TriageUncoveredCategory, outside: ServiceTypeResponse | null): TriageUncoveredIssue => ({
+  category,
+  probability: 0.85,
+  confidence: 0.9,
+  outsideServiceTypeId: outside?.id ?? null,
+})
 
 /** A chosen day, as `preferredDate`. */
 export const askedFor = (date: string): TriagePreferredDate => ({ date, probability: 0.82, confidence: 0.8 })

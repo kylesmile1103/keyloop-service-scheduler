@@ -1,6 +1,6 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
-import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, ScanSearch } from "lucide-react"
+import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, MessageSquareText, ScanSearch } from "lucide-react"
 import { useEffect, useId, useLayoutEffect, useRef } from "react"
 
 import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate } from "@/api/types.gen"
@@ -20,6 +20,7 @@ import { serviceHelp } from "@/lib/service-help"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
+import { inspectionAction, inspectionService, NO_MATCH, noMatchNextSteps, phraseOf } from "../lib/triage-copy"
 
 interface BookingTriageProps {
   triage: BookingTriage
@@ -43,9 +44,9 @@ interface BookingTriageProps {
 /**
  * Booking intake triage in step 1 (ARCHITECTURE §8.10, §15): the issue in the customer's words, "Suggest a service", and
  * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
- * possible ones (nothing chosen when the model is unsure), or a plain "no match". Using one sets the service and, when that
- * day is still to come and the workshop is open then, the day asked for; the free starts for them come next. A failure
- * leaves the manual choice below as it is.
+ * possible ones (nothing chosen when the model is unsure), or a plain no-match with what to do next. Using one sets the
+ * service and, when that day is still to come and the workshop is open then, the day asked for; the free starts for
+ * them come next. A failure leaves the manual choice below as it is.
  */
 export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse, blockedBy }: BookingTriageProps) {
   const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
@@ -196,7 +197,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
 
       {/* Always on the page, so what each answer says is read out as it arrives. */}
       <p role="status" className="sr-only">
-        {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today) : ""}
+        {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today, serviceTypes) : ""}
       </p>
 
       {alert && (
@@ -286,15 +287,24 @@ function dayAskedFor(response: TriageBookingResponse, dealership: DealershipResp
 
 const dayName = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 
-/** What the status region reads out for an answer. */
-function announcement(response: TriageBookingResponse, dealership: DealershipResponse, today: string): string {
+/** What the status region reads out for an answer: the cards, or the no-match and its next step, as the screen says them. */
+function announcement(
+  response: TriageBookingResponse,
+  dealership: DealershipResponse,
+  today: string,
+  serviceTypes: ServiceTypeResponse[] | undefined
+): string {
   const candidates = candidatesOf(response, undefined)
+  if (response.recommendation === "no-match" || candidates.length === 0) {
+    const issue = response.uncoveredIssue
+    const inspection = inspectionService(serviceTypes)
+    const mentioned = issue ? `Mentioned: ${phraseOf(issue.category)}. ` : ""
+    const next = inspection ? `${inspectionAction(inspection)}, choose a service below or contact the workshop.` : noMatchNextSteps(false)
+    return `${NO_MATCH} ${mentioned}${next}`
+  }
   const day = dayAskedFor(response, dealership, today)
   const why = day?.notUsed === "passed" ? ", which has passed" : day?.notUsed === "closed" ? ", when the workshop is closed" : ""
   const asked = day ? `Asked for ${dayName(day.date)}${why}. ` : ""
-  if (response.recommendation === "no-match" || candidates.length === 0) {
-    return "No service here matches the description. Choose the service yourself."
-  }
   if (response.recommendation === "suggest") {
     const [top] = candidates
     return `Likely: ${top.serviceType.name}, ${top.percent}%. ${asked}Check it, then choose Use this.`
@@ -305,11 +315,8 @@ function announcement(response: TriageBookingResponse, dealership: DealershipRes
     : `${candidates.length} services could fit: ${names}. ${asked}Choose one, then choose Use this.`
 }
 
-/** The headline over the answer, in the same plain words. */
+/** The headline over the matched cards, in the same plain words, for one card or several. */
 function headline(response: TriageBookingResponse, count: number): string {
-  if (response.recommendation === "no-match" || count === 0) {
-    return "No service here matches the description. Choose the service yourself below."
-  }
   if (response.recommendation === "suggest") {
     return count === 1 ? "This service fits the description. Check it, then use it." : "One service fits best. Check it, then use it."
   }
@@ -333,7 +340,18 @@ interface SuggestionsProps {
   onUse: (serviceTypeId: string, date: string | null) => void
 }
 
-function Suggestions({ answer, stale, pending, selected, onSelect, dealership, today, serviceTypes, current, onUse }: SuggestionsProps) {
+function Suggestions({
+  answer,
+  stale,
+  pending,
+  selected,
+  onSelect,
+  dealership,
+  today,
+  serviceTypes,
+  current,
+  onUse,
+}: SuggestionsProps) {
   const { response } = answer
   const candidates = candidatesOf(response, serviceTypes)
   const day = dayAskedFor(response, dealership, today)
@@ -345,14 +363,14 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
 
   return (
     <div aria-busy={pending || undefined} className="flex flex-col gap-3 border-t border-border pt-3">
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-pretty">{headline(response, candidates.length)}</p>
-        {stale && (
-          <p className="text-xs text-pretty text-muted-foreground">
-            The description or photos have changed since these suggestions. Suggest again to update them.
-          </p>
-        )}
-      </div>
+      {matched ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium text-pretty">{headline(response, candidates.length)}</p>
+          {stale && <StaleNote />}
+        </div>
+      ) : (
+        <NoMatch response={response} serviceTypes={serviceTypes} current={current} stale={stale} pending={pending} onUse={onUse} />
+      )}
 
       {matched && (
         <RadioGroup
@@ -385,6 +403,67 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+function StaleNote() {
+  return (
+    <p className="text-xs text-pretty text-muted-foreground">
+      The description or photos have changed since these suggestions. Suggest again to update them.
+    </p>
+  )
+}
+
+interface NoMatchProps {
+  response: TriageBookingResponse
+  serviceTypes: ServiceTypeResponse[] | undefined
+  current: { serviceTypeId: string; date: string }
+  stale: boolean
+  pending: boolean
+  onUse: (serviceTypeId: string, date: string | null) => void
+}
+
+/**
+ * No bookable service matches: said plainly, with what was described in its fixed words when the answer names it, and the
+ * next steps. The inspection (Diagnostic Fault Finding, by its catalogue code) is offered as an action only while this
+ * dealership can book it; choosing it works as *Use this* does, for the service alone (a no-match applies no day).
+ */
+function NoMatch({ response, serviceTypes, current, stale, pending, onUse }: NoMatchProps) {
+  const inspection = inspectionService(serviceTypes)
+  const issue = response.uncoveredIssue
+  const inUse = inspection !== null && current.serviceTypeId === inspection.id
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-pretty">{NO_MATCH}</p>
+        {stale && <StaleNote />}
+      </div>
+      {issue && (
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Mentioned</span>{" "}
+          <span className="inline-flex min-h-7 items-center gap-1.5 rounded-chip border border-input bg-card px-2.5 py-1 text-sm font-medium">
+            <MessageSquareText aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span>{phraseOf(issue.category)}</span>
+          </span>
+        </p>
+      )}
+      {inspection && (
+        <Button
+          type="button"
+          variant="signal"
+          onClick={() => !stale && !inUse && onUse(inspection.id, null)}
+          disabled={inUse || pending || stale}
+          focusableWhenDisabled
+          // A long name wraps on a phone rather than running out of the section.
+          className="h-auto min-h-10 max-w-full self-start py-2 text-left whitespace-normal pointer-coarse:min-h-11"
+        >
+          {inUse && <Check aria-hidden="true" />}
+          {inUse ? `${inspection.name} in use` : inspectionAction(inspection)}
+        </Button>
+      )}
+      <p className="text-xs text-pretty text-muted-foreground">{noMatchNextSteps(inspection !== null)}</p>
     </div>
   )
 }
