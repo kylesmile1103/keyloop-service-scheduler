@@ -24,7 +24,8 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Concurrency;
 /// booked; the other 29 are answered <c>409</c> with suggestions; nothing fails, deadlocks, trips the exclusion-constraint backstop or
 /// leaves an orphaned audit, idempotency or notification outbox row, and the winner's confirmation email is staged exactly once. The
 /// variants show that the lock serialises without refusing legitimate work, that queued requests record the real time they waited, and
-/// that one dealership's queue never delays another's bookings.
+/// that one dealership's queue never delays another's bookings. Every request carries a deliverable (non-reserved) address, so each
+/// confirmation takes the production <c>Pending</c> outbox path, not the <c>Suppressed</c> one reserved-domain customers take.
 /// </summary>
 /// <remarks>
 /// The assertions are the design's claims, not tolerances: a failure here is a design defect to investigate (the
@@ -83,16 +84,17 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
     {
         var (dealershipId, serviceTypeId, bayId, technicianId) = await _factory.WithDbAsync(TestData.ContentionDealershipAsync);
 
-        // Every contender is a distinct request (its own customer and VIN). Odd rounds send no Idempotency-Key, as a plain client would;
-        // in even rounds each contender sends its own, so the keyed path runs under the same contention and "no orphaned idempotency
-        // row" is a claim that can fail: the winner's key must be the only one memoised, pointing at the winner, and the 29 losers' keys
-        // must have rolled back with their refusals (SYSTEM_DESIGN §7.5). Rounds rather than mixed traffic: a keyed request makes one
-        // more round trip before the lock (the lock-free key lookup), so in a mixed crowd an unkeyed request nearly always wins.
+        // Every contender is a distinct request (its own customer, deliverable address and VIN). Odd rounds send no Idempotency-Key, as
+        // a plain client would; in even rounds each contender sends its own, so the keyed path runs under the same contention and "no
+        // orphaned idempotency row" is a claim that can fail: the winner's key must be the only one memoised, pointing at the winner, and
+        // the 29 losers' keys must have rolled back with their refusals (SYSTEM_DESIGN §7.5). Rounds rather than mixed traffic: a keyed
+        // request makes one more round trip before the lock (the lock-free key lookup), so in a mixed crowd an unkeyed request nearly
+        // always wins.
         var keyed = round % 2 == 0;
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var contenders = Enumerable.Range(1, Contenders).Select(async contender =>
         {
-            var request = TestData.BookingRequest(serviceTypeId, Ten, customerIndex: contender);
+            var request = Request(serviceTypeId, Ten, contender);
             var key = keyed ? IdempotencyKeyFor(string.Create(CultureInfo.InvariantCulture, $"round-{round}"), contender) : null;
             await gate.Task;
             return await BookAsync(dealershipId, contender, request, key);
@@ -133,7 +135,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var contenders = startFor.Select(async pair =>
         {
-            var request = TestData.BookingRequest(quickCheck.Id, pair.Value, customerIndex: pair.Key);
+            var request = Request(quickCheck.Id, pair.Value, pair.Key);
             await gate.Task;
             return await BookAsync(dealershipId, pair.Key, request, key: null);
         }).ToArray();
@@ -175,6 +177,9 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
             var outbox = await db.NotificationOutbox.AsNoTracking().ToListAsync(Ct);
             outbox.Select(n => n.AppointmentId).ShouldBe(booked, ignoreOrder: true, "exactly one outbox row per booking");
             outbox.ShouldAllBe(n => n.Kind == NotificationKind.BookingConfirmation);
+            outbox.Select(n => n.Recipient).ShouldBe(outcomes.Select(o => TestData.DeliverableEmail(o.Contender)), ignoreOrder: true);
+            outbox.ShouldAllBe(n => n.Status == NotificationStatus.Pending && n.Attempts == 0 && n.LastFailure == null,
+                "deliverable addresses are staged on the production Pending path, and dispatch is off in SystemTest");
         });
     }
 
@@ -189,7 +194,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         await using (var holder = await HoldDealershipLockAsync(dealershipId))
         {
             contenders = [.. Enumerable.Range(1, Contenders).Select(contender =>
-                BookAsync(dealershipId, contender, TestData.BookingRequest(serviceTypeId, Ten, customerIndex: contender), IdempotencyKeyFor("queued", contender)))];
+                BookAsync(dealershipId, contender, Request(serviceTypeId, Ten, contender), IdempotencyKeyFor("queued", contender)))];
             await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, Contenders, Ct);
             await Task.Delay(LockHold, Ct);
             completedWhileLocked = contenders.Count(c => c.IsCompleted);
@@ -234,14 +239,14 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         await using (var holder = await HoldDealershipLockAsync(dealershipA))
         {
             contendersAtA = [.. Enumerable.Range(1, Contenders).Select(contender =>
-                BookAsync(dealershipA, contender, TestData.BookingRequest(serviceTypeId, Ten, customerIndex: contender), key: null))];
+                BookAsync(dealershipA, contender, Request(serviceTypeId, Ten, contender), key: null))];
             await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, Contenders, Ct);
 
             // One at a time: concurrent bookings at B would (rightly) queue for B's own lock and blur what is measured.
             foreach (var (start, index) in startsAtB.Select((start, index) => (start, index)))
             {
                 var contender = 101 + index;
-                var booking = BookAsync(dealershipB.Id, contender, TestData.BookingRequest(serviceTypeId, start, customerIndex: contender), key: null);
+                var booking = BookAsync(dealershipB.Id, contender, Request(serviceTypeId, start, contender), key: null);
                 if (await Task.WhenAny(booking, Task.Delay(TimeSpan.FromSeconds(10), Ct)) != booking)
                 {
                     stuckAtB = booking;
@@ -310,7 +315,7 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         (appointment.StartUtc, appointment.EndUtc).ShouldBe((start, start.AddHours(1)));
         appointment.Status.ShouldBe(AppointmentStatus.Confirmed);
         appointment.Vehicle.Vin.ShouldBe(TestData.VinFor(winner.Contender), "the 201 describes the winner's own request");
-        appointment.Customer.Email.ShouldBe(string.Create(CultureInfo.InvariantCulture, $"customer{winner.Contender}@example.com"));
+        appointment.Customer.Email.ShouldBe(TestData.DeliverableEmail(winner.Contender), "the winner's own, deliverable address");
 
         var traceIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var loser in outcomes.Where(o => o.Status == HttpStatusCode.Conflict))
@@ -340,7 +345,8 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
     /// <summary>
     /// SYSTEM_DESIGN §14.4 assertion 4: the winner is the dealership's only appointment, active, on the only bay and technician, with
     /// exactly one audit row; no audit row references a missing appointment; the only idempotency row (if any) is the winner's; the
-    /// winner's booking confirmation is the dealership's only notification outbox row (ADR-020, proposal item A5).
+    /// winner's booking confirmation is the dealership's only notification outbox row (ADR-020, proposal item A5), staged
+    /// <c>Pending</c> for its deliverable address and untouched by a dispatcher.
     /// </summary>
     private Task ShouldHaveExactlyTheWinnerInTheDatabaseAsync(Guid dealershipId, Outcome winner) => _factory.WithDbAsync(async db =>
     {
@@ -359,11 +365,15 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         (await db.AppointmentHistory.CountAsync(h => !db.Appointments.Any(a => a.Id == h.AppointmentId), Ct)).ShouldBe(0, "orphaned history");
 
         // The confirmation email is staged in the winner's transaction (ADR-020): exactly one outbox row, the winner's, addressed to the
-        // winner's customer; the 29 refusals rolled back before staging anything, and nothing was staged twice.
+        // winner's customer; the 29 refusals rolled back before staging anything, and nothing was staged twice. The address is
+        // deliverable, so the row takes the production path a dispatcher would claim: Pending, never Suppressed (dispatch is off in
+        // SystemTest, so nothing has claimed or attempted it).
         var outbox = await db.NotificationOutbox.AsNoTracking()
             .Where(n => db.Appointments.Any(a => a.Id == n.AppointmentId && a.DealershipId == dealershipId)).ToListAsync(Ct);
         var notification = outbox.ShouldHaveSingleItem("exactly one confirmation is staged, for the winner");
         (notification.AppointmentId, notification.Kind, notification.Recipient).ShouldBe((booked.Id, NotificationKind.BookingConfirmation, booked.Customer.Email));
+        notification.Status.ShouldBe(NotificationStatus.Pending, "a deliverable address is staged on the production Pending path");
+        (notification.Attempts, notification.ClaimToken, notification.LastFailure).ShouldBe((0, (Guid?)null, (string?)null));
         notification.ReadSnapshot().AppointmentId.ShouldBe(booked.Id);
         (await db.NotificationOutbox.CountAsync(n => !db.Appointments.Any(a => a.Id == n.AppointmentId), Ct)).ShouldBe(0, "orphaned outbox rows");
 
@@ -441,6 +451,13 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         outcome.Problem is { } problem && problem.TryGetProperty("type", out var type) && type.GetString() is { } uri
             ? uri.Replace(ProblemTypes.Base, "", StringComparison.Ordinal)
             : null;
+
+    /// <summary>
+    /// The contender's booking body with its own deliverable address (<see cref="TestData.DeliverableEmail"/>): a reserved-domain
+    /// customer's confirmation is staged <c>Suppressed</c>, so only a deliverable one exercises the outbox row a dispatcher would claim.
+    /// </summary>
+    private static BookAppointmentRequest Request(Guid serviceTypeId, DateTime startUtc, int contender) =>
+        TestData.BookingRequest(serviceTypeId, startUtc, customerIndex: contender, email: TestData.DeliverableEmail(contender));
 
     /// <summary>A distinct, valid <c>Idempotency-Key</c> (1–64 of <c>[A-Za-z0-9_-]</c>) per contender, e.g. <c>round-2-contender-07</c>.</summary>
     private static string IdempotencyKeyFor(string scope, int contender) => string.Create(CultureInfo.InvariantCulture, $"{scope}-contender-{contender:D2}");
