@@ -7,6 +7,7 @@ import {
   capabilitiesOf,
   currentUserQuery,
   type IdentitySource,
+  identityKey,
   identitySource,
   knownRoles,
   LOGOUT_PATH,
@@ -23,6 +24,12 @@ export interface CurrentUser extends Capabilities {
   status: "loading" | "ready" | "failed"
   /** The last answer, kept while it is read again; none while `failed` (an answer from before the failure is not trusted). */
   user: CurrentUserResponse | undefined
+  /**
+   * Who the screen is for: the answer's fingerprint (`identityKey`), or `loading` / `failed`. A view that keeps something
+   * read as one caller outside the query cache (a selected booking's snapshot, a booking being entered) drops it when this
+   * changes, in the same render, so it never paints for the next caller.
+   */
+  identity: string
   authenticated: boolean
   roles: Role[]
   /** Where Sign out leads (the hostname's Access logout), when `/me` offers one; Sign in builds its own (`signInHref`). */
@@ -52,6 +59,7 @@ export function useCurrentUser(): CurrentUser {
   return {
     status: failed ? "failed" : user ? "ready" : "loading",
     user,
+    identity: user ? identityKey(user) : failed ? "failed" : "loading",
     authenticated: user?.authenticated === true,
     roles: user?.authenticated ? knownRoles(user.roles) : [],
     ...capabilitiesOf(user),

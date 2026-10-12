@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { CurrentUserResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
-import { anonymous, serviceAdvisor, viewer } from "@/test/identities"
+import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { renderBoard } from "@/test/render-board"
 import { readingTuesday } from "@/test/schedules"
@@ -107,11 +107,16 @@ describe("a 401 or 403 from the server", () => {
     expect(document.body.textContent).not.toContain(`${problems}unauthenticated`)
     expect(document.body.textContent).not.toContain('"status"')
 
+    // /me now says signed out: the sheet, which showed the booking as the previous caller read it, has closed beneath.
+    await waitFor(() => expect(sheet).not.toBeInTheDocument())
+    expect(signIn).toHaveFocus()
     fireEvent.click(within(dialog).getByRole("button", { name: "Not now" }))
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your session has ended" })).not.toBeInTheDocument())
-    // /me now says signed out: the sheet offers sign-in in place of the cancellation.
-    expect(await within(sheet).findByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
-    expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
+    // Opened again, it offers sign-in in place of the cancellation.
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const again = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(within(again).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
+    expect(within(again).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
   })
 
   it.each([
@@ -137,14 +142,7 @@ describe("a 401 or 403 from the server", () => {
   })
 
   it("answers a 403 with what the role does not allow and who assigns roles, and reads /me again", async () => {
-    let me: CurrentUserResponse = serviceAdvisor
-    const api = mockBoardApi({
-      me: () => me,
-      cancel: () => {
-        me = viewer
-        return problemResponse(403, forbidden)
-      },
-    })
+    const api = mockBoardApi({ me: () => serviceAdvisor, cancel: () => problemResponse(403, forbidden) })
     renderBoard(board)
     const sheet = await cancelInterim()
     const before = meReads(api.requests)
@@ -155,11 +153,34 @@ describe("a 401 or 403 from the server", () => {
     const close = within(dialog).getByRole("button", { name: "Close" })
     await waitFor(() => expect(close).toHaveFocus())
     await waitFor(() => expect(meReads(api.requests)).toBeGreaterThan(before))
+    // /me names the same caller: the sheet stays, titling the refusal in its own words.
     expect(within(sheet).getByText("Couldn’t cancel the appointment: your role doesn’t allow it")).toBeInTheDocument()
-
     fireEvent.click(close)
-    // /me now says Viewer: the sheet shows the action unavailable, with the reason.
-    expect(await within(sheet).findByText("Your role can view bookings but not change them.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your role doesn’t allow that" })).not.toBeInTheDocument())
+    expect(sheet).toBeInTheDocument()
+  })
+
+  it("closes the sheet beneath a 403 when /me then names a role that cannot cancel, and shows why when it is opened again", async () => {
+    let me: CurrentUserResponse = serviceAdvisor
+    mockBoardApi({
+      me: () => me,
+      cancel: () => {
+        me = viewer
+        return problemResponse(403, forbidden)
+      },
+    })
+    renderBoard(board)
+    const sheet = await cancelInterim()
+
+    const dialog = await sessionDialog("Your role doesn’t allow that")
+    await waitFor(() => expect(sheet).not.toBeInTheDocument())
+    expect(within(dialog).getByRole("button", { name: "Close" })).toHaveFocus()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your role doesn’t allow that" })).not.toBeInTheDocument())
+
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const again = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(within(again).getByText("Your role can view bookings but not change them.")).toBeInTheDocument()
   })
 
   it("answers a refused read too", async () => {
@@ -221,8 +242,8 @@ describe("a change of identity", () => {
     me = anonymous
     refocus()
 
-    expect(await within(sheet).findByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
-    expect(within(sheet).queryByRole("link", { name: "sophie.turner@example.com" })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    expect(screen.queryByRole("link", { name: "sophie.turner@example.com" })).not.toBeInTheDocument()
     // Settle the re-reads, then check none of them was the record.
     await waitFor(() => expect(screen.getAllByText("*******").length).toBeGreaterThan(0))
     expect(recordReads()).toBe(readsBefore)
@@ -241,5 +262,66 @@ describe("a change of identity", () => {
     expect(screen.getByText("Sophie Turner")).toBeInTheDocument()
     // Only the list's own focus re-read (it reads again on focus when stale), never a reset.
     expect(requestsTo(api.requests, "/schedule").length - schedules).toBeLessThanOrEqual(1)
+  })
+})
+
+/** Every personal field of the Interim Service booking, as the board, the list and its record show them to a role. */
+const personalFields = [
+  "Sophie Turner",
+  "sophie.turner@example.com",
+  "+44 7700 900105",
+  "JTDKN3DU0A0123460",
+  "RF20 BCJ",
+  "Customer waiting in the lounge.",
+  "Toyota Prius",
+]
+
+function expectNothingPersonal(text: string | null, where: string) {
+  for (const field of personalFields) expect(text ?? "", `${field} in ${where}`).not.toContain(field)
+}
+
+/** Opens the Interim Service booking's details on the board (its block) or the list (its row's View details). */
+async function openInterimDetails(page: string) {
+  if (page === board) fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+  else {
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Interim Service at 08:00, Sophie Turner" }))
+    fireEvent.click(await screen.findByRole("menuitem", { name: "View details" }))
+  }
+  const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+  expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
+  return sheet
+}
+
+describe.each([
+  ["the board", board],
+  ["the appointments list", list],
+])("an open details sheet on %s when the identity changes", (_, page) => {
+  it.each<[string, CurrentUserResponse | "unreadable"]>([
+    ["signs out", anonymous],
+    ["loses every role", noRole],
+    ["cannot be checked", "unreadable"],
+    ["is another account", viewer],
+    ["keeps the email with another writing role", { ...admin, roles: ["ServiceAdvisor"] }],
+  ])("closes when the caller %s, leaving nothing of the booking's snapshot or record", async (_, next) => {
+    let me: CurrentUserResponse | "unreadable" = admin
+    const roleHolder = () => me !== "unreadable" && me.authenticated && me.roles.length > 0
+    mockBoardApi({
+      me: () => (me === "unreadable" ? new Response("", { status: 502, statusText: "Bad Gateway" }) : me),
+      schedule: () => (roleHolder() ? readingTuesday : masked(readingTuesday)),
+    })
+    const { queryClient } = renderBoard(page)
+    const sheet = await openInterimDetails(page)
+
+    me = next
+    refocus()
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    expectNothingPersonal(sheet.textContent, "the sheet")
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
+    if (!roleHolder()) {
+      // The page itself read again as the new caller: masked, as the API answers it.
+      expect((await screen.findAllByText("*******")).length).toBeGreaterThan(0)
+      expectNothingPersonal(document.body.textContent, "the page")
+    }
   })
 })

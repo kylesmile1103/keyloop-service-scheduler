@@ -84,13 +84,17 @@ export function AppointmentSheet({
 }: AppointmentSheetProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
   const reasonRef = useRef<HTMLTextAreaElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   return (
     <Sheet open={open && appointment !== null} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={popupRef}
         side={side}
         initialFocus={() => (initialFocus === "reason" ? reasonRef.current : null) ?? titleRef.current ?? true}
-        finalFocus={() => returnFocus() ?? true}
+        // A dialog opened over the sheet keeps focus when the sheet closes beneath it (the session dialog, after a refusal
+        // that also closed the sheet because the identity changed).
+        finalFocus={() => (focusInOtherDialog(popupRef.current) ? false : (returnFocus() ?? true))}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
           side === "right" && "w-full"
@@ -116,6 +120,12 @@ export function AppointmentSheet({
       </SheetContent>
     </Sheet>
   )
+}
+
+/** Whether focus is in a dialog other than `popup`, which then keeps it. */
+function focusInOtherDialog(popup: HTMLElement | null): boolean {
+  const active = document.activeElement
+  return active instanceof HTMLElement && !popup?.contains(active) && active.closest('[role="dialog"]') !== null
 }
 
 interface SheetBodyProps {

@@ -90,8 +90,13 @@ export function SessionWatch() {
     }
   }, [queryClient])
 
+  // After the views have rendered for the new caller: the cache's notifications reach them on TanStack's next tick (its
+  // notify manager batches on a zero timeout), which may come after this state update has rendered. A view that closed
+  // with the change (a booking's details) then no longer holds its read, so it is not read again for the new caller.
   useEffect(() => {
-    if (changes > 0) void refetchCallerData(queryClient)
+    if (changes === 0) return
+    const timer = setTimeout(() => void refetchCallerData(queryClient), 0)
+    return () => clearTimeout(timer)
   }, [changes, queryClient])
 
   return <SessionProblemDialog problem={problem} onClose={() => setProblem(null)} />
