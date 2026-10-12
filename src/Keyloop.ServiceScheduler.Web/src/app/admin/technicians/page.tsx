@@ -92,7 +92,7 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
         table={table}
         read={read}
         cards={(page) => <TechnicianCards rows={page} />}
-        empty={{ title: "No technicians yet", text: "This dealership has no technicians on its roster." }}
+        empty={{ title: "No technicians yet", text: "This dealership has no technicians on its roster.", illustration: "empty-technicians" }}
       />
     </>
   )

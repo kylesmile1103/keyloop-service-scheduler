@@ -149,6 +149,8 @@ describe("technicians list", () => {
     renderBoard(page)
 
     expect(await screen.findByRole("heading", { name: "No technicians yet" })).toBeInTheDocument()
+    // The empty roster's own picture (wave 2): an open, empty locker beside the tool board.
+    expect(screen.getByRole("img", { name: "Tool pegboard beside an open, empty technician locker." }).getAttribute("src")).toMatch(/\/empty-technicians\.webp$/)
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(figure("Technicians")).toHaveTextContent("0None yet")
     expect(figure("Working today")).toHaveTextContent("0 of 0No active technicians")

@@ -1,6 +1,7 @@
 import bookingSuccess from "@/assets/illustrations/booking-success.webp"
 import closedDay from "@/assets/illustrations/closed-day.webp"
 import emptySchedule from "@/assets/illustrations/empty-schedule.webp"
+import emptyTechnicians from "@/assets/illustrations/empty-technicians.webp"
 import errorConnection from "@/assets/illustrations/error-connection.webp"
 import forbidden from "@/assets/illustrations/forbidden.webp"
 import maintenance from "@/assets/illustrations/maintenance.webp"
@@ -20,12 +21,13 @@ export const illustrations = {
   "no-availability": noAvailability,
   "error-connection": errorConnection,
   "booking-success": bookingSuccess,
-  // Wave 2: each error page's own picture.
+  // Wave 2: each error page's own picture and the empty roster.
   unauthorized,
   forbidden,
   "server-error": serverError,
   maintenance,
   "not-found": notFound,
+  "empty-technicians": emptyTechnicians,
 } as const
 
 export type Illustration = keyof typeof illustrations
@@ -46,4 +48,5 @@ export const illustrationAlt: Record<Illustration, string> = {
   "server-error": "Generic silver hatchback with an open bonnet, a steam wisp and a nearby wrench.",
   maintenance: "Silver hatchback raised on a two-post lift beside cones and a progress indicator.",
   "not-found": "Directional road sign pointing toward a short road closed by a barrier.",
+  "empty-technicians": "Tool pegboard beside an open, empty technician locker.",
 }

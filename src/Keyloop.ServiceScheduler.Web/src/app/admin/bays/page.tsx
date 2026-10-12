@@ -84,7 +84,7 @@ function BayList({ dealership, today, phone }: ResourceScope) {
         table={table}
         read={read}
         cards={(page) => <BayCards rows={page} />}
-        empty={{ title: "No bays yet", text: "This dealership has no service bays set up." }}
+        empty={{ title: "No bays yet", text: "This dealership has no service bays set up.", illustration: "empty-technicians" }}
       />
     </>
   )

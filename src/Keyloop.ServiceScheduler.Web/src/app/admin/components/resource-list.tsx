@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DataTableFeatures, Noun } from "@/lib/data-table"
+import type { Illustration } from "@/lib/illustrations"
 import { formatLocalTime } from "@/lib/local-time"
 import { daySentence } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
@@ -37,8 +38,11 @@ interface ResourceListProps<TRow extends { id: string }> {
   read: ResourceRead<TRow>
   /** The phone presentation of the current page's rows, in the table's order. */
   cards: (rows: readonly TRow[]) => ReactNode
-  /** A dealership with none of these yet. */
-  empty: { title: string; text: string }
+  /**
+   * A dealership with none of these yet. Its picture is the empty schedule unless the list has its own (the empty locker
+   * for the technicians and bays), which is then described: it shows what the headline does not say.
+   */
+  empty: { title: string; text: string; illustration?: Illustration }
   /** The table's row actions slot, for Task 30's editing. */
   rowActions?: (row: TRow) => ReactNode
 }
@@ -106,7 +110,8 @@ export function ResourceList<TRow extends { id: string }>({
         </>
       ) : read.rows.length === 0 ? (
         <IllustratedState
-          illustration="empty-schedule"
+          illustration={empty.illustration ?? "empty-schedule"}
+          described={empty.illustration !== undefined}
           title={empty.title}
           action={
             <Button type="button" variant="outline" onClick={retry} disabled={read.fetching} focusableWhenDisabled className="cursor-pointer">

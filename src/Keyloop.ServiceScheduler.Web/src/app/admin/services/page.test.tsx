@@ -93,6 +93,9 @@ describe("services list", () => {
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
     expect(await screen.findByRole("heading", { name: "No services yet" })).toBeInTheDocument()
+    // An empty catalogue is not an empty roster: it keeps the empty-schedule picture, decorative under its headline.
+    expect(document.querySelector('img[src$="/empty-schedule.webp"]')).toHaveAttribute("alt", "")
+    expect(screen.queryByRole("img", { name: /locker/ })).not.toBeInTheDocument()
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(figureValue("Services")).toBe("0")
     expect(figure("Services")).toHaveTextContent("In the catalogue")
