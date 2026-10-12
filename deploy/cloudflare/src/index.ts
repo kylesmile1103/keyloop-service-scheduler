@@ -32,7 +32,7 @@ export class ApiContainer extends Container<Env> {
     // one that arrives while another request's check, restart or cold start is still in progress, waits on that same
     // attempt with its 60 s readiness window. Otherwise containerFetch would wait with the library's 20 s default and
     // answer a raw 500 during a slower cold start (F11).
-    if (!this.startConfigCurrent || !this.ctx.container?.running || (await this.getState()).status !== "healthy") {
+    if (!this.startConfigCurrent || !(await this.runningAndHealthy())) {
       this.reconciling ??= this.reconcile().finally(() => { this.reconciling = undefined; });
       await this.reconciling;
     }
@@ -40,12 +40,15 @@ export class ApiContainer extends Container<Env> {
   }
 
   private async reconcile(): Promise<void> {
-    const healthy = this.ctx.container?.running === true && (await this.getState()).status === "healthy";
+    const healthy = await this.runningAndHealthy();
     let envVars: Record<string, string>;
     try {
       envVars = await containerEnv(this.env);
     } catch (error) {
-      if (!healthy) throw error;
+      // A container that is not running is never started without its configuration. Health is read again because the
+      // container can stop while Secrets Store is slow to fail; containerFetch would then start it with whatever this.envVars
+      // holds, an empty environment on a fresh instance. The request gets the Worker's JSON 503 and the next request checks again.
+      if (!healthy || !(await this.runningAndHealthy())) throw error;
       // The running container keeps serving with the configuration it was started with; the next request checks again.
       console.error(JSON.stringify({ event: "ApiContainerConfigUnverified" }));
       return;
@@ -73,6 +76,10 @@ export class ApiContainer extends Container<Env> {
       cancellationOptions: { portReadyTimeoutMS: READY_TIMEOUT_MS },
     });
     this.startConfigCurrent = true;
+  }
+
+  private async runningAndHealthy(): Promise<boolean> {
+    return this.ctx.container?.running === true && (await this.getState()).status === "healthy";
   }
 
   private async stopForRestart(): Promise<void> {

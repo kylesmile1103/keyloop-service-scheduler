@@ -3,6 +3,7 @@ import { convertV4MiniflareOptions, Miniflare, Response as MiniflareResponse } f
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { containerEnv, startFingerprint } from "../src/container-env";
 import { ApiContainer, START_FINGERPRINT_KEY, STOP_GRACE_MS } from "../src/index";
+import { routeRequest } from "../src/router";
 import { FakeContainerRuntime, fakeContainerState, settle } from "./container-runtime";
 import { fakeEnv, edgeRequest } from "./helpers";
 import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "json" };
@@ -453,6 +454,34 @@ describe("configuration changes reach a running container", () => {
     expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
     expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
     expect(runtime.starts).toHaveLength(1);
+  });
+
+  it("answers 503 instead of starting an empty environment when the container stops during a slow failing Secrets Store read", async () => {
+    const { runtime, storage } = await warmContainer();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const next = deploy(runtime, storage);
+    next.mocks.DB_URL.get.mockImplementationOnce(() => new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("local-sensitive-value")), 5_000);
+    }));
+    // Through the Worker's router, as the request arrives.
+    const { env: worker } = fakeEnv();
+    worker.API.get.mockReturnValue({ fetch: (request: Request) => next.api.fetch(request) });
+    const response = settle(routeRequest(edgeRequest("/api/v1/dealerships"), worker));
+    await vi.advanceTimersByTimeAsync(1_000);
+    // The container sleeps (or its host restarts) while the read is still pending.
+    runtime.exit();
+    await vi.advanceTimersByTimeAsync(7_000);
+    const outcome = await response;
+    expect("value" in outcome && outcome.value.status).toBe(503);
+    expect("value" in outcome && await outcome.value.json()).toEqual({ code: "E_API_UNAVAILABLE", retryable: true });
+    expect(runtime.starts).toHaveLength(1);
+    expect(runtime.proxied).toHaveLength(1);
+    expect(errors.mock.calls.map(call => String(call[0]))).not.toContain(JSON.stringify({ event: "ApiContainerConfigUnverified" }));
+    // The next request reads the configuration again and starts the container with all of it.
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts).toHaveLength(2);
+    expect(runtime.starts[1]!.env).toEqual(runtime.starts[0]!.env);
+    expect(runtime.starts[1]!.env).toMatchObject({ ConnectionStrings__schedulerdb: "local-test-database-value" });
   });
 
   it("stores only a digest of the start configuration and logs no values", async () => {
