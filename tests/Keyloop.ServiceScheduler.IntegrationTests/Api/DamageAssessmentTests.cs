@@ -93,9 +93,15 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
         var originalRules = await _factory.WithDbAsync(db => db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site).OrderBy(r => r.Order).ToListAsync(Ct));
         var resourcesBefore = await ResourcesAsync();
         var logs = new CapturingLoggerProvider();
-        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(15); // service + 7 Reading + 7 Munich
-        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(0);
-        // One line per dealership that received a version, naming the previous latest one (0: Munich had none after the delete above).
+        var upgrade = await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
+        upgrade.RowsAdded.ShouldBe(15); // service + 7 Reading + 7 Munich
+        upgrade.PublishedPolicies.ShouldBe([new(site, 8, 7), new(ReferenceDataSeed.MunichDealershipId, 2, 0)], ignoreOrder: true);
+        var repeat = await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
+        (repeat.RowsAdded, repeat.PublishedPolicies.Count).ShouldBe((0, 0));
+        // Logged by the caller after commit: one line per dealership that received a version, naming the previous latest one (0: Munich
+        // had none after the delete above).
+        upgrade.LogPublished(logs.CreateLogger("seed"));
+        repeat.LogPublished(logs.CreateLogger("seed"));
         logs.Entries.Select(e => (e.EventId.Id, e.Message)).ShouldBe([
             (1107, $"Seeding published requirement policy version 8 for dealership {site}; previous latest version 7 (0: none)"),
             (1107, $"Seeding published requirement policy version 2 for dealership {ReferenceDataSeed.MunichDealershipId}; previous latest version 0 (0: none)"),
@@ -134,9 +140,8 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
                 .Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 3 }));
             await db.SaveChangesAsync(Ct);
         });
-        var logs = new CapturingLoggerProvider();
-        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(0);
-        logs.Entries.ShouldBeEmpty();
+        var result = await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
+        (result.RowsAdded, result.PublishedPolicies.Count).ShouldBe((0, 0));
         await _factory.WithDbAsync(async db =>
         {
             var latest = await db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site).MaxAsync(r => r.PolicyVersion, Ct);

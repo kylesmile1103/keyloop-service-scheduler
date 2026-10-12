@@ -62,12 +62,14 @@ public static class DatabaseInitializer
                 db.ChangeTracker.Clear();
                 await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
                 await SeedingLock.AcquireAsync(db, token);
-                var reference = await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, token);
+                var reference = await ReferenceDataSeed.EnsureSeededAsync(db, clock, token);
                 var appointments = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, token);
                 await transaction.CommitAsync(token);
                 return (reference, appointments);
             }, ct);
-            logger.SeedCompleted("reference-data", reference);
+            // Only the committed attempt's result leaves the strategy, so a rolled-back attempt announces nothing (ReferenceSeedResult).
+            reference.LogPublished(logger);
+            logger.SeedCompleted("reference-data", reference.RowsAdded);
             logger.SeedCompleted("demo-appointments", appointments);
         }
     }

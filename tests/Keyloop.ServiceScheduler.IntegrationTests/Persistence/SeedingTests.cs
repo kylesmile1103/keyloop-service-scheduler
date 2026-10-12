@@ -6,8 +6,10 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
@@ -235,6 +237,50 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
             versions.Select(v => (v.Key, v.Count)).ShouldBe([(1, 12), (2, 14)]);
         });
         logs.Entries.Skip(logged).Count(e => e.EventId.Id == 1107).ShouldBe(2); // one publication per dealership, by one instance
+    }
+
+    /// <summary>
+    /// Event 1107 is written after the seeding transaction commits, from what the committed attempt returned, never inside the retried
+    /// unit of work. A first attempt whose commit fails before reaching the server rolls back and logs nothing; the retry publishes and
+    /// logs each version once. If instead the commit succeeds and only its acknowledgement is lost, the retry finds both versions and
+    /// publishes nothing, so nothing is logged: at most once per committed version, never twice.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 2)]
+    [InlineData(false, 0)]
+    public async Task Startup_logs_each_published_policy_after_its_commit_and_never_twice(bool commitFails, int lines)
+    {
+        var logs = new CapturingLoggerProvider();
+        var probe = new PolicyPublicationProbe(pg.ConnectionString);
+        var loss = new CommitAcknowledgementLoss { BeforeCommit = commitFails };
+        await using var parent = new SchedulerApiFactory(pg.ConnectionString, _factory.Clock, logs);
+        await using var instance = parent.WithWebHostBuilder(builder => builder
+            .UseSetting("Database:MigrateOnStartup", "false").UseSetting("Database:SeedDemoData", "true")
+            .ConfigureTestServices(services =>
+            {
+                services.AddSingleton<ILoggerProvider>(probe);
+                services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss)); // inert until armed
+            }));
+        _ = instance.Services; // its own startup seeds a fresh v2 database and the demo week
+        await _factory.WithDbAsync(db => PolicyPublicationProbe.RevertToBeforeTask32aAsync(db, Ct));
+        var logged = logs.Entries.Count;
+
+        loss.Arm(); // the seeding transaction's first commit is the next commit in this host
+        await DatabaseInitializer.InitializeAsync(instance.Services, Ct);
+
+        loss.Fired.ShouldBe(1);
+        logs.Entries.Skip(logged).Count(e => e.EventId.Id == 1107).ShouldBe(lines);
+        probe.Lines.Count.ShouldBe(lines);
+        probe.Lines.ShouldAllBe(line => line.Committed && line.Version == 2 && line.Previous == 1);
+        probe.Lines.Select(line => line.DealershipId).ShouldBe(commitFails
+            ? new[] { ReferenceDataSeed.ReadingDealershipId, ReferenceDataSeed.MunichDealershipId } : Array.Empty<Guid>(), ignoreOrder: true);
+        await _factory.WithDbAsync(async db =>
+        {
+            var versions = await db.RequirementRules.AsNoTracking().GroupBy(r => r.PolicyVersion).Select(g => new { g.Key, Count = g.Count() })
+                .OrderBy(g => g.Key).ToListAsync(Ct);
+            versions.Select(v => (v.Key, v.Count)).ShouldBe([(1, 12), (2, 14)]);
+            (await db.ServiceTypes.CountAsync(Ct)).ShouldBe(11);
+        });
     }
 
     /// <summary>Polls from its own connection: inside a transaction PostgreSQL would keep returning one activity snapshot.</summary>

@@ -43,7 +43,9 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
             return null;
         }
 
-        var outcome = await db.Database.CreateExecutionStrategy().ExecuteAsync(ReseedAsync, ct);
+        var (outcome, reference) = await db.Database.CreateExecutionStrategy().ExecuteAsync(ReseedAsync, ct);
+        // After the commit, from the attempt that committed: a rolled-back attempt announces no policy version (ReferenceSeedResult).
+        reference.LogPublished(logger);
         logger.DemoDataReseeded(outcome.AppointmentsDeleted, outcome.AppointmentsCreated);
         return outcome;
     }
@@ -63,7 +65,7 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
             SHA256.HashData(Encoding.UTF8.GetBytes(presented)), SHA256.HashData(Encoding.UTF8.GetBytes(expected)));
     }
 
-    private async Task<ReseedDemoDataResponse> ReseedAsync(CancellationToken ct)
+    private async Task<(ReseedDemoDataResponse Outcome, ReferenceSeedResult Reference)> ReseedAsync(CancellationToken ct)
     {
         // A retried run starts from nothing: whatever the failed run tracked or staged is gone with its transaction.
         db.ChangeTracker.Clear();
@@ -79,12 +81,12 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
         await db.AppointmentHistory.Where(h => appointments.Any(a => a.Id == h.AppointmentId)).ExecuteDeleteAsync(ct);
         var deleted = await appointments.ExecuteDeleteAsync(ct);
 
-        await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, ct);
+        var reference = await ReferenceDataSeed.EnsureSeededAsync(db, clock, ct);
         await ReferenceDataSeed.RestoreSeededCompetenceAsync(db, ct);
         await ReferenceDataSeed.RestoreSeededDamageCertificationAsync(db, ct);
         var created = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct);
 
         await transaction.CommitAsync(ct);
-        return new ReseedDemoDataResponse(deleted, created);
+        return (new ReseedDemoDataResponse(deleted, created), reference);
     }
 }
