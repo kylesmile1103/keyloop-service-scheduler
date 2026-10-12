@@ -558,6 +558,119 @@ describe("a booking discarded because the caller changed", () => {
   })
 })
 
+// Review round 2's audit of the other writes for the same gap: each is bound to the account its view was drawn for, so a
+// press after /me names another account (even one that may write) sends nothing, and a write stopped before its request
+// leaves nothing in the mutation cache.
+describe("the other writes, bound to the account their view was drawn for", () => {
+  it("sends no cancellation once another account that may cancel is in the cache, before the sheet has closed", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me })
+    const { queryClient } = renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Private reason typed" } })
+
+    me = otherAdmin
+    queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    await settle()
+
+    expect(posts(api.requests, "/cancel")).toHaveLength(0)
+    expect(cached(queryClient)).not.toContain("Private reason typed")
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["signs out", anonymous],
+    ["is another account that may cancel", otherAdmin],
+  ])("sends no cancellation pressed in the same tick as the caller %s, and keeps nothing of it", async (_, next) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me })
+    const { queryClient } = renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Private reason typed" } })
+
+    act(() => {
+      fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+      me = next
+      queryClient.setQueryData(currentUserQueryKey(), next)
+    })
+    await settle()
+
+    expect(posts(api.requests, "/cancel")).toHaveLength(0)
+    expect(cached(queryClient)).not.toContain("Private reason typed")
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  })
+
+  it("sends no suggestion from Suggest a service once another account that may book is in the cache", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, triageStatus: () => triageEnabled })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    fireEvent.change(await within(dialog).findByRole("textbox", { name: "Describe the issue" }), { target: { value: "Private brake noise" } })
+
+    me = otherAdmin
+    queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Suggest a service" }))
+    await settle()
+
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(0)
+    expect(cached(queryClient)).not.toContain("Private brake noise")
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  })
+
+  it("sends nothing from the suggestions' Try again once another account that may book is in the cache", async () => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({ me: () => me, triageStatus: () => triageEnabled, triage: () => problemResponse(503, triageUnavailable) })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    fireEvent.change(await within(dialog).findByRole("textbox", { name: "Describe the issue" }), { target: { value: "Private brake noise" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Suggest a service" }))
+    const retry = await within(dialog).findByRole("button", { name: "Try again" })
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(1)
+
+    me = otherAdmin
+    queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
+    fireEvent.click(retry)
+    await settle()
+
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(1)
+    expect(cached(queryClient)).not.toContain("Private brake noise")
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["signs out", anonymous],
+    ["is another account that may book", otherAdmin],
+  ])("uploads no photo and keeps nothing when the caller %s between Suggest a service and the first upload", async (_, next) => {
+    let me: CurrentUserResponse = admin
+    const api = mockBoardApi({
+      me: () => me,
+      triageStatus: () => triageEnabled,
+      serviceTypes: () => [interimServiceType, brakesServiceType],
+      uploadTriageImage: () => ({ imageId, contentType: "image/png", sizeBytes: 4, expiresAt: "2026-10-13T09:30:00Z" }),
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.95]]),
+    })
+    const { queryClient } = renderBoard(board)
+    const dialog = await openBooking()
+    const photo = new File([new Uint8Array([137, 80, 78, 71])], "dashboard.png", { type: "image/png" })
+    fireEvent.change(within(dialog).getByLabelText("Photos or paperwork (optional)"), { target: { files: [photo] } })
+    fireEvent.change(await within(dialog).findByRole("textbox", { name: "Describe the issue" }), { target: { value: "Private warning light" } })
+
+    act(() => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Suggest a service" }))
+      me = next
+      queryClient.setQueryData(currentUserQueryKey(), next)
+    })
+    await settle()
+
+    expect(posts(api.requests, "/booking-triage/images")).toHaveLength(0)
+    expect(posts(api.requests, "/booking-triage")).toHaveLength(0)
+    expect(cached(queryClient)).not.toContain("Private warning light")
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  })
+})
+
 /** The suggestions section alone, as the booking dialog places it, with the dialog's blocked reason when it is blocked. */
 function TriageSection({ blocked }: { blocked: boolean }) {
   const triage = useBookingTriage(reading.id)
