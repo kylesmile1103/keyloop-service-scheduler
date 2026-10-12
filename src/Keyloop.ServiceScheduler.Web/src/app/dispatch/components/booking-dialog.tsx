@@ -271,10 +271,11 @@ function BookingFlow({
   const book = useWriteMutation({
     mutationKey: BOOK_MUTATION_KEY,
     // The generated mutation, inside a `ui.book_appointment` span whose fetch carries `traceparent` to the API, so one trace
-    // runs from the click to PostgreSQL in the Aspire dashboard. Checked as it is sent; an answer that arrives after the
-    // identity changed is thrown away, with no toast, no closing and nothing kept.
-    mutationFn: (variables: BookVariables, _guard, context) =>
-      withSpan("ui.book_appointment", ({ fetch }) => generated.mutationFn!({ ...variables, fetch }, context), {
+    // runs from the click to PostgreSQL in the Aspire dashboard. The account is checked inside that fetch, as the request
+    // leaves (`write.fetch`); an answer that arrives after the identity changed is thrown away, with no toast, no closing
+    // and nothing kept.
+    mutationFn: (variables: BookVariables, write, context) =>
+      withSpan("ui.book_appointment", ({ fetch }) => generated.mutationFn!({ ...variables, fetch: write.fetch(fetch) }, context), {
         "keyloop.dealership_id": dealershipId,
         "keyloop.service_type_id": variables.body.serviceTypeId,
       }),

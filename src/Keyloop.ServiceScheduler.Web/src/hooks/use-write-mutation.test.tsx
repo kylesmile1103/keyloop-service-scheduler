@@ -35,7 +35,7 @@ function renderWrite(drawnFor: CurrentUserResponse = admin) {
 }
 
 /** Nothing of the write anywhere: no mutation in the cache, nothing running, and the hook idle without its variables. */
-async function expectNothingKept(rendered: ReturnType<typeof renderWrite>) {
+async function expectNothingKept(rendered: Pick<ReturnType<typeof renderWrite>, "queryClient"> & { result: { current: { isIdle: boolean; variables: unknown } } }) {
   await waitFor(() => expect(rendered.result.current.isIdle).toBe(true))
   expect(rendered.result.current.variables).toBeUndefined()
   expect(rendered.queryClient.getMutationCache().getAll()).toHaveLength(0)
@@ -106,6 +106,73 @@ describe("useWriteMutation", () => {
 
     await waitFor(() => expect(rendered.result.current.isSuccess).toBe(true))
     expect(rendered.send).toHaveBeenCalledTimes(1)
+  })
+
+  describe("the account checked last, inside the fetch each request is given", () => {
+    /**
+     * A write whose request is prepared over a few awaits (as the generated client prepares one) and then handed to the
+     * fetch the hook gives it; the identity changes during that preparation.
+     */
+    function renderPreparedWrite() {
+      const queryClient = createQueryClient()
+      queryClient.setQueryData(currentUserQueryKey(), admin)
+      const base = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ sent: true })))
+      let prepare!: () => void
+      const prepared = new Promise<void>((resolve) => (prepare = resolve))
+      const onError = vi.fn()
+      const onSuccess = vi.fn()
+      const onDiscarded = vi.fn()
+      const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      const hook = renderHook(
+        () =>
+          useWriteMutation({
+            mutationFn: async (variables: ReturnType<typeof draft>, write) => {
+              await prepared
+              const response = await write.fetch(base)("http://localhost:3000/api/v1/writes", {
+                method: "POST",
+                body: JSON.stringify(variables),
+              })
+              return response.json()
+            },
+            onError,
+            onSuccess,
+            onDiscarded,
+          }),
+        { wrapper }
+      )
+      const becomes = (user: CurrentUserResponse) => queryClient.setQueryData(currentUserQueryKey(), user)
+      return { ...hook, queryClient, base, prepare: () => act(prepare), onError, onSuccess, onDiscarded, becomes }
+    }
+
+    it.each<[string, CurrentUserResponse]>([
+      ["signs out", anonymous],
+      ["becomes a Viewer", viewer],
+      ["is another account that may write", otherAdmin],
+    ])("sends nothing and keeps nothing when the caller %s while the request is prepared", async (_, next) => {
+      const rendered = renderPreparedWrite()
+      act(() => void rendered.result.current.mutate(draft()))
+
+      rendered.becomes(next)
+      await rendered.prepare()
+
+      await expectNothingKept(rendered)
+      expect(rendered.base).not.toHaveBeenCalled()
+      expect(rendered.onError).not.toHaveBeenCalled()
+      expect(rendered.onSuccess).not.toHaveBeenCalled()
+      expect(rendered.onDiscarded).not.toHaveBeenCalled()
+    })
+
+    it("sends, and uses the answer, when the same email changes to another role that may write while the request is prepared", async () => {
+      const rendered = renderPreparedWrite()
+      act(() => void rendered.result.current.mutate(draft()))
+
+      rendered.becomes(sameEmailAdvisor)
+      await rendered.prepare()
+
+      await waitFor(() => expect(rendered.result.current.isSuccess).toBe(true))
+      expect(rendered.base).toHaveBeenCalledOnce()
+      expect(rendered.onSuccess).toHaveBeenCalledOnce()
+    })
   })
 
   describe("begin, for a write sent once a form's checks have passed", () => {

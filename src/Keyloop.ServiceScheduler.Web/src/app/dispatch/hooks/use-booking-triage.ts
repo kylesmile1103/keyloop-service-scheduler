@@ -54,36 +54,37 @@ export function useBookingTriage(dealershipId: string) {
   const maxTotalImageBytes = status.data?.maxTotalImageBytes ?? 8 * 1024 * 1024
 
   const generated = triageBookingRequestMutation()
-  // Uploads and the evaluation are writes (`BookingsWrite`), bound to the account the dialog was drawn for: checked as they
-  // are sent and again after every step awaited (reading a photo, each upload), so nothing is sent for anyone else and a
-  // role lost meanwhile sends nothing more; an answer that arrives after the identity changed is thrown away
-  // (`useWriteMutation`), and no upload of the previous caller's is kept for reuse.
+  // Uploads and the evaluation are writes (`BookingsWrite`), bound to the account the dialog was drawn for: checked last
+  // inside each request's fetch as it leaves (`write.fetch`, wrapping the span's traced fetch) and after every step awaited
+  // (reading a photo, each upload), so nothing is sent for anyone else and a role lost meanwhile sends nothing more; an
+  // answer that arrives after the identity changed is thrown away (`useWriteMutation`), and no upload of the previous
+  // caller's is kept for reuse.
   const request = useWriteMutation({
-    mutationFn: (submission: Submission, guard, context) =>
+    mutationFn: (submission: Submission, write, context) =>
       withSpan("ui.booking_triage", async ({ fetch }) => {
         const imageIds: string[] = []
         for (const photo of submission.photos) {
           let upload = uploads.current.get(photo)
           if (!upload || upload.expires <= Date.now() + 30_000) {
             const base64 = await imageBase64(photo)
-            guard()
+            write.guard()
             const response = await uploadBookingTriageImage({
               path: { dealershipId },
               body: { contentType: photo.type, base64 },
-              fetch,
+              fetch: write.fetch(fetch),
               throwOnError: true,
             })
-            guard()
+            write.guard()
             upload = { id: response.data.imageId, expires: Date.parse(response.data.expiresAt) }
             uploads.current.set(photo, upload)
           }
           imageIds.push(upload.id)
         }
-        guard()
+        write.guard()
         return generated.mutationFn!({
           path: { dealershipId },
           body: { description: submission.description, ...(imageIds.length ? { imageIds } : {}) },
-          fetch,
+          fetch: write.fetch(fetch),
         }, context)
       }, { "keyloop.dealership_id": dealershipId }),
     onSuccess: (response, submission) => {
