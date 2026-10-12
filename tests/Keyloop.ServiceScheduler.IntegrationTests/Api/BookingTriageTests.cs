@@ -33,7 +33,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
 
     [Theory]
     [InlineData("BRAKES-PADS-DISCS", 0.98, "suggest", "run")]
-    [InlineData("BRAKES-PADS-DISCS", 0.86, "confirm", "bare")]
+    [InlineData("BRAKES-PADS-DISCS", 0.19, "confirm", "bare")]
     [InlineData("NONE_OF_THESE", 0.9, "no-match", "result")]
     public async Task Maps_each_recommendation_from_every_envelope(string choice, double confidence, string expected, string shape)
     {

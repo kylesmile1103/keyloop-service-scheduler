@@ -9,10 +9,12 @@ public sealed class TriageResponseMapperTests
 {
     [Theory]
     [InlineData(1.0, "suggest")]
-    [InlineData(0.95, "suggest")]
-    [InlineData(0.94999, "confirm")]
-    // The live golden set's vague "something feels odd" scored 0.86 while every clear request scored 1.00 (2026-10-12).
-    [InlineData(0.86, "confirm")]
+    [InlineData(0.5, "suggest")]
+    [InlineData(0.49999, "confirm")]
+    // Clef-flash live golden set (2026-10-12): clear requests scored 0.38 to 0.88 (0.64 for "brakes squeal when stopping"),
+    // the vague "something feels odd" 0.19.
+    [InlineData(0.64, "suggest")]
+    [InlineData(0.19, "confirm")]
     [InlineData(0.0, "confirm")]
     public void Confidence_threshold_is_inclusive_and_distinct_from_probability(double confidence, string expected)
     {
