@@ -1,0 +1,44 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { createMemoryRouter } from "react-router-dom"
+import { beforeAll, describe, expect, it, vi } from "vitest"
+
+import App from "@/App"
+import { appRoutes } from "@/config/routes"
+import { createQueryClient } from "@/lib/query-client"
+import { mockBoardApi } from "@/test/board-api"
+import { munich, reading } from "@/test/dealerships"
+
+// Holds the Appointments page's code until the test releases it, like a slow network: the navigation stays pending.
+const appointmentsChunk = vi.hoisted(() => ({ release: () => {} }))
+vi.mock("@/app/appointments/page", async (importOriginal) => {
+  await new Promise<void>((resolve) => (appointmentsChunk.release = resolve))
+  return importOriginal()
+})
+
+// The board's route is lazy: load its code once up front, so each test's wait measures rendering, not the first,
+// cold compile of the page's modules (about 0.4 s, more on a busy machine).
+beforeAll(async () => {
+  await import("@/app/dispatch/page")
+})
+
+describe("leaving the dispatch board", () => {
+  it("is not undone by the board correcting its address while the next page loads", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({ dealerships: async () => (await held, [reading, munich]) })
+    // No dealership and no real date: once the dealerships arrive, the board would select one and drop the date, and either
+    // rewrite of the address, made while the link's navigation is pending, would cancel it.
+    const router = createMemoryRouter(appRoutes, { initialEntries: ["/dispatch?date=2026-02-30"] })
+    render(<App router={router} queryClient={createQueryClient()} />)
+    await screen.findByRole("heading", { level: 1, name: "Dispatch board" })
+
+    fireEvent.click(screen.getByRole("link", { name: "Appointments" }))
+    await waitFor(() => expect(router.state.navigation.state).toBe("loading"))
+    answer()
+    await screen.findByRole("heading", { level: 2, name: reading.name })
+    appointmentsChunk.release()
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Appointments" })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe("/appointments")
+  })
+})

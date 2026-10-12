@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Keyloop.ServiceScheduler.Api</RootNamespace>
+    <UserSecretsId>keyloop-service-scheduler-api</UserSecretsId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Reflection budget (ADR-016, Addendum A §A1): build-time request delegates and configuration binding, and no reflection
+         fallback for JSON, so a type missing from SchedulerJsonContext fails fast. -->
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.Http.Generated</InterceptorsNamespaces>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Build-time OpenAPI (ADR-008, Addendum B §B1): every build writes the v1 document to contracts/openapi/v1.json, which is committed
+         and from which the web client is generated. Program.cs skips database work while BuildTimeOpenApi.IsActive. -->
+    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../contracts/openapi</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name v1 --openapi-version OpenApi3_1</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Keyloop.ServiceScheduler.Infrastructure\Keyloop.ServiceScheduler.Infrastructure.csproj" />
+    <ProjectReference Include="..\Keyloop.ServiceScheduler.Domain\Keyloop.ServiceScheduler.Domain.csproj" />
+    <ProjectReference Include="..\Keyloop.ServiceScheduler.ServiceDefaults\Keyloop.ServiceScheduler.ServiceDefaults.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <!-- Build tooling only: generates the OpenAPI document after compilation. -->
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" PrivateAssets="all" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="FluentValidation" />
+    <!-- Compile-time mapping generator only (Addendum A §A1/§A6). -->
+    <PackageReference Include="Riok.Mapperly" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keyloop.ServiceScheduler.UnitTests" />
+    <InternalsVisibleTo Include="Keyloop.ServiceScheduler.IntegrationTests" />
+  </ItemGroup>
+</Project>

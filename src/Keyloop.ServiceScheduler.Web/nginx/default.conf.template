@@ -1,0 +1,60 @@
+# Rendered at container start by the image entrypoint (envsubst of ${PORT}, ${API_UPSTREAM}, ${NGINX_LOCAL_RESOLVERS});
+# nginx's own $variables are left alone.
+server {
+    listen ${PORT};
+    server_name _;
+    server_tokens off;
+    absolute_redirect off;
+    root /usr/share/nginx/html;
+
+    # Resolve the API host on each request (container DNS), so this container starts and serves the board even before
+    # the API is resolvable; /api answers 502 until it is.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $api_upstream ${API_UPSTREAM};
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+    # The API, its OpenAPI document and the Scalar reference, proxied with the request URI unchanged. The API sends its
+    # own security headers (and Scalar needs its own policy), so the SPA's headers are not added here.
+    location ~ ^/api/v1/dealerships/[0-9a-fA-F-]+/booking-triage/images$ {
+        client_max_body_size 6m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+    location /api/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+    location /auth/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+    location /openapi/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+    location /scalar/ {
+        include /etc/nginx/snippets/proxy.conf;
+        proxy_pass $api_upstream;
+    }
+
+    # Content-hashed bundles never change: cache for a year. A missing asset is a 404, never the SPA's HTML.
+    location /assets/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Everything else is the single-page app: unknown paths serve index.html (client-side routes), and the HTML is always
+    # revalidated so a new deployment is picked up on the next load.
+    location / {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}

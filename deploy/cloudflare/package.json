@@ -1,0 +1,27 @@
+{
+  "name": "keyloop-scheduler-edge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18.0 <23" },
+  "scripts": {
+    "types": "node scripts/local-validation.mjs types",
+    "typecheck": "npm run types && tsc --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "assemble": "node scripts/assemble-assets.mjs",
+    "build": "npm run assemble && node scripts/build.mjs",
+    "validate:build": "node scripts/local-validation.mjs build",
+    "validate:build:integrations": "node scripts/local-validation.mjs build --integrations"
+  },
+  "dependencies": { "@cloudflare/containers": "0.3.7" },
+  "devDependencies": {
+    "cf": "1.0.0-beta.14",
+    "wrangler": "4.149.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11",
+    "miniflare": "5.20261006.1-alpha",
+    "esbuild": "0.25.12",
+    "@types/node": "22.19.15",
+    "@cloudflare/workers-types": "5.20261012.1"
+  }
+}

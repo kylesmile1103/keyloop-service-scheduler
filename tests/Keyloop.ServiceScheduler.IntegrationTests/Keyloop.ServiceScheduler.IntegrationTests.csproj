@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><NoWarn>$(NoWarn);CA1707</NoWarn></PropertyGroup>
+  <PropertyGroup>
+    <!-- Feature switches apply per process: mirror the API's (Addendum A §A1) so a type missing from SchedulerJsonContext fails here,
+         not only in production. Test code reads JSON with JsonDocument or the API's context, never reflection-based overloads. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Infrastructure\Keyloop.ServiceScheduler.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Domain\Keyloop.ServiceScheduler.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
+  </ItemGroup>
+  <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>
+</Project>

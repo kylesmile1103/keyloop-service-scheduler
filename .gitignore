@@ -8,6 +8,10 @@ TestResults/
 *.binlog
 # Aspire / local secrets
 *.pfx
+*.pem
+*.key
+secrets.json
+.npmrc
 appsettings.*.local.json
 .aspire/
 # Node
@@ -26,10 +30,21 @@ coverage/
 !.vscode/tasks.json
 .DS_Store
 Thumbs.db
-# Reference clones live outside this repo; this folder only carries provenance notes
-references/*
-!references/README.md
 # Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.superpowers/
+# Local work-in-progress planning and hand-off notes (kept on disk, not in the repository)
+docs/superpowers/
+docs/HANDOFF.md
+# Aspire publish output
+artifacts/
+# Cloudflare local state, generated runtime types, and edge build output
+.cloudflare/
+.wrangler/
+deploy/cloudflare/build/
+.dev.vars
+.dev.vars.*
+.env
+.env.*

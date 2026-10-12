@@ -1,0 +1,8 @@
+{
+  "notificationId": "0199e1c2-0000-7000-8000-000000000001",
+  "to": "reviewer@keyloop.kylesmile.me",
+  "subject": "Booking confirmed: Oil service at Reading, Tue 13 Oct 09:00",
+  "text": "Booking confirmed for Tuesday 13 October 2026, 09:00 (UTC+01:00, Europe/London). Replies are not monitored.",
+  "html": "<!doctype html><html lang=\"en\"><body><h1>Booking confirmed</h1><p>Tuesday 13 October 2026, 09:00 (UTC+01:00, Europe/London).</p><p>Replies are not monitored.</p></body></html>",
+  "replyTo": null
+}

@@ -1,0 +1,257 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  backend:
+    name: Backend and contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Build with warnings as errors
+        run: dotnet build -c Release -warnaserror --no-restore
+      - name: Check OpenAPI contract drift
+        run: git diff --exit-code contracts/
+      - name: Unit tests with coverage
+        run: >-
+          dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests
+          -c Release --no-build --no-restore
+          --coverage --coverage-output-format cobertura
+          --results-directory "$GITHUB_WORKSPACE/TestResults/unit"
+      # Hosted Ubuntu runners already provide Docker for Testcontainers.
+      - name: Integration tests with coverage (excluding LiveAi)
+        run: >-
+          dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests
+          -c Release --no-build --no-restore --filter "Category!=LiveAi"
+          --coverage --coverage-output-format cobertura
+          --results-directory "$GITHUB_WORKSPACE/TestResults/integration"
+      - name: Fail on vulnerable NuGet packages
+        run: |
+          mkdir -p TestResults
+          dotnet list package --vulnerable --include-transitive --no-restore \
+            --format json --output-version 1 > TestResults/nuget-vulnerabilities.json
+          cat TestResults/nuget-vulnerabilities.json
+          # The CLI exits zero for advisories; inspect both direct and transitive packages.
+          jq -e '
+            (.version == 1) and (.projects | type == "array") and
+            ([.projects[] | .frameworks[]? |
+              ((.topLevelPackages // []) + (.transitivePackages // []))[] |
+              .vulnerabilities[]?] | length == 0) and
+            ((.problems // []) | length == 0)
+          ' TestResults/nuget-vulnerabilities.json
+      - name: Upload test results and dependency audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Measure AOT readiness
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts/aot-readiness
+          scripts/aot-readiness.sh 2>&1 | tee artifacts/aot-readiness/report.txt
+      - name: Upload AOT readiness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AOT readiness
+          path: artifacts/aot-readiness/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  frontend:
+    name: Frontend and generated client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/Keyloop.ServiceScheduler.Web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/Keyloop.ServiceScheduler.Web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: src/Keyloop.ServiceScheduler.Web/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate API client
+        run: pnpm generate:api
+      - name: Check generated client drift
+        working-directory: .
+        run: git diff --exit-code src/Keyloop.ServiceScheduler.Web/src/api
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  aspire-smoke:
+    name: Whole-stack Aspire smoke
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/Keyloop.ServiceScheduler.Web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: src/Keyloop.ServiceScheduler.Web/pnpm-lock.yaml
+      - name: Install web dependencies before starting Aspire
+        working-directory: src/Keyloop.ServiceScheduler.Web
+        run: pnpm install --frozen-lockfile
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build -c Release -warnaserror --no-restore
+      # The Aspire tests have their own project (ARCHITECTURE §14.3): Aspire.Hosting needs the reflection-based
+      # JSON that the integration test process disables. The model tests also run `docker compose config`.
+      - name: Test PostgreSQL, API and web through Aspire
+        run: |
+          mkdir -p TestResults/aspire
+          dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests \
+            -c Release --no-build --no-restore \
+            --results-directory "$GITHUB_WORKSPACE/TestResults/aspire" \
+            2>&1 | tee TestResults/aspire/smoke.log
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aspire-test-results
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  edge:
+    name: Cloudflare edge offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Validate local builds with and without optional integrations
+        run: |
+          npm run validate:build
+          npm run validate:build:integrations
+
+  images:
+    name: Build API and web images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build API image from repository context
+        run: docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:ci .
+      - name: Build web image
+        run: docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:ci src/Keyloop.ServiceScheduler.Web
+
+  grafana:
+    name: Grafana manifests offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: observability/grafana/validation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: observability/grafana/validation/requirements.txt
+      - name: Install validator dependencies in a venv
+        run: |
+          python -m venv ../.venv
+          ../.venv/bin/python -m pip install -r requirements.txt
+      - name: Validator self-tests
+        run: ../.venv/bin/python -m unittest discover
+      - name: Check manifests against the code
+        run: ../.venv/bin/python -c 'import validate; validate.check_manifests()'
+
+  k6:
+    name: k6 scenario offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      K6_NO_USAGE_REPORT: 'true'
+      K6_AUTO_EXTENSION_RESOLUTION: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '2.1.0'
+      - name: Inspect every scenario without sending requests
+        run: |
+          for scenario in tests/load/k6/*.js; do
+            k6 inspect --config tests/load/k6/k6.config.json "$scenario"
+          done
+      - name: Test origin guards and thresholds without an API
+        run: tests/load/k6/selftest.sh

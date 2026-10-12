@@ -1,0 +1,1039 @@
+apiVersion: dashboard.grafana.app/v1
+kind: Dashboard
+metadata:
+  name: keyloop-booking-engine
+  annotations:
+    grafana.app/folder: keyloop-service-scheduler
+spec:
+  title: Keyloop Scheduler - Booking engine overview
+  description: Booking invariants first, then throughput, latency, contention and correlated traces/logs. Expected translated OTLP names; validate against first deployed
+    data.
+  tags:
+  - keyloop
+  - scheduler
+  timezone: browser
+  schemaVersion: 39
+  version: 1
+  editable: false
+  graphTooltip: 1
+  refresh: 1m
+  time:
+    from: now-6h
+    to: now
+  timepicker: {}
+  annotations:
+    list: []
+  links:
+  - title: API health
+    type: link
+    url: /d/keyloop-api-health?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: Notifications
+    type: link
+    url: /d/keyloop-notifications?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  - title: Frontend
+    type: link
+    url: /d/keyloop-frontend?${env:queryparam}&var-namespace=${namespace}&var-ds_metrics=${ds_metrics}&var-ds_logs=${ds_logs}&var-ds_traces=${ds_traces}
+    keepTime: true
+    includeVars: false
+    targetBlank: false
+  templating:
+    list:
+    - name: ds_metrics
+      label: Metrics datasource
+      type: datasource
+      query: prometheus
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_logs
+      label: Logs datasource
+      type: datasource
+      query: loki
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: ds_traces
+      label: Traces datasource
+      type: datasource
+      query: tempo
+      refresh: 1
+      options: []
+      multi: false
+      includeAll: false
+    - name: namespace
+      type: constant
+      query: keyloop-scheduler
+      hide: 2
+    - name: service
+      label: Service
+      type: textbox
+      query: api
+      current:
+        text: api
+        value: api
+      options: []
+    - name: env
+      label: Environment
+      type: query
+      datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      query:
+        query: label_values(target_info{job="${namespace}/${service}"}, deployment_environment_name)
+        refId: env
+      definition: label_values(target_info{job="${namespace}/${service}"}, deployment_environment_name)
+      refresh: 2
+      sort: 1
+      multi: true
+      includeAll: true
+      allValue: .*
+      current:
+        text: Production
+        value: Production
+      options: []
+  panels:
+  - id: 1
+    title: Deadlocks, must be 0
+    description: PostgreSQL 40P01 on the booking path (event 1004). ADR-003 requires one lock. Empty or 0 is healthy; an absent never-fired counter is shown as 0,
+      which is not evidence that telemetry is flowing. A series first exported in the range counts its whole value, so the first deadlock of a process is not lost;
+      after a restart in the range the value is a lower bound.
+    type: stat
+    gridPos:
+      x: 0
+      y: 0
+      w: 4
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 1
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum((increase(scheduler_booking_deadlocks_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range]) and scheduler_booking_deadlocks_total{job="${namespace}/${service}",
+        deployment_environment_name=~"${env:regex}"} offset $__range) or (max_over_time(scheduler_booking_deadlocks_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])
+        unless scheduler_booking_deadlocks_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__range)) or vector(0)
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 2
+    title: Constraint backstop, must be 0
+    description: Exclusion constraint rejection after the locked pre-check (event 1003). Investigate writers bypassing the advisory lock. Empty or 0 is healthy; absent
+      counter becomes 0. Counts a series' first export; a lower bound after a restart in the range.
+    type: stat
+    gridPos:
+      x: 4
+      y: 0
+      w: 4
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 1
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum((increase(scheduler_booking_constraint_backstop_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range]) and scheduler_booking_constraint_backstop_total{job="${namespace}/${service}",
+        deployment_environment_name=~"${env:regex}"} offset $__range) or (max_over_time(scheduler_booking_constraint_backstop_total{job="${namespace}/${service}",
+        deployment_environment_name=~"${env:regex}"}[$__range]) unless scheduler_booking_constraint_backstop_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}
+        offset $__range)) or vector(0)
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 3
+    title: Bookings confirmed
+    description: 'Confirmed transactions in the selected range, excluding idempotent replays. Approximate: increase() needs two exported samples, so the value a series
+      carries at its first export (per dealership and process) is not counted.'
+    type: stat
+    gridPos:
+      x: 8
+      y: 0
+      w: 4
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum(increase(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", outcome="confirmed"}[$__range]))
+        or vector(0)
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 4
+    title: Contention (409) ratio
+    description: slot_unavailable plus slot_conflict divided by all booking outcomes. The 30-way stress run intentionally approaches 29/30. No requests leaves the
+      ratio undefined.
+    type: stat
+    gridPos:
+      x: 12
+      y: 0
+      w: 6
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: percentunit
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: (sum(rate(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", outcome=~"slot_unavailable|slot_conflict"}[$__rate_interval]))
+        or vector(0)) / sum(rate(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 5
+    title: Booking p95 vs SLO
+    description: Booking elapsed time, including contention. SLO 150 ms; page above 300 ms for 5 minutes with traffic. Default buckets interpolate across 150 and
+      300 ms until G1 lands.
+    type: stat
+    gridPos:
+      x: 18
+      y: 0
+      w: 6
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: orange
+            value: 150
+          - color: red
+            value: 300
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+  - id: 6
+    title: Backstop by constraint
+    description: Constraint name identifies bay or technician overlap. Empty or 0 is healthy. No constraint label exists when the counter has never fired. Counts
+      a series' first export, like the alert.
+    type: bargauge
+    gridPos:
+      x: 0
+      y: 4
+      w: 8
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 1
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (constraint) ((increase(scheduler_booking_constraint_backstop_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])
+        and scheduler_booking_constraint_backstop_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__range) or (max_over_time(scheduler_booking_constraint_backstop_total{job="${namespace}/${service}",
+        deployment_environment_name=~"${env:regex}"}[$__range]) unless scheduler_booking_constraint_backstop_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}
+        offset $__range)) or on() vector(0)
+      legendFormat: '{{constraint}}'
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      orientation: horizontal
+      displayMode: basic
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
+      showUnfilled: true
+  - id: 7
+    title: Booking outcomes
+    description: Rate of all bounded outcomes, including validation_failed before the handler and error for unexpected failures.
+    type: timeseries
+    gridPos:
+      x: 8
+      y: 4
+      w: 16
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 18
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: normal
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (outcome) (rate(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      legendFormat: '{{outcome}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 8
+    title: HTTP 409 on booking route
+    description: HTTP cross-check of contention outcomes. Matches the constrained :guid route found in endpoint code and the unconstrained contract spelling; confirm
+      the exported label after deploy. POST only.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 10
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum(rate(http_server_request_duration_seconds_count{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", http_route=~"/api/v1/dealerships/[{]dealershipId(:guid)?[}]/appointments",
+        http_request_method="POST", http_response_status_code="409"}[$__rate_interval])) or vector(0)
+      legendFormat: '409'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 9
+    title: Idempotent replays and key reuse
+    description: Replayed requests return the committed booking; idempotency_reuse rejects a key used with different request content. Empty means neither outcome
+      was exported.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 10
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: reqps
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (outcome) (rate(scheduler_booking_requests_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}", outcome=~"replayed|idempotency_reuse"}[$__rate_interval]))
+      legendFormat: '{{outcome}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 10
+    title: Booking duration p50, p95, p99
+    description: Latency across all outcomes. Threshold lines mark 150 ms SLO and 300 ms page threshold. Quantiles are interpolated until G1 provides tighter buckets.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 16
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: orange
+            value: 150
+          - color: red
+            value: 300
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: line
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.5, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: p50
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: p95
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: B
+      interval: 1m
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.99, sum by (le) (rate(scheduler_booking_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: p99
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: C
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 11
+    title: Booking p95 by outcome
+    description: Separates slow confirmed bookings from contention and replay paths. Missing outcomes have no histogram observations.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 16
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: orange
+            value: 150
+          - color: red
+            value: 300
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: line
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le, outcome) (rate(scheduler_booking_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: '{{outcome}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 12
+    title: Lock wait distribution
+    description: Advisory-lock acquisition time. Cumulative Prometheus buckets are rendered as a pre-bucketed heatmap. Wider buckets make individual tail waits approximate.
+    type: heatmap
+    gridPos:
+      x: 0
+      y: 23
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (le) (increase(scheduler_booking_lock_wait_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      legendFormat: '{{le}}'
+      instant: false
+      range: true
+      format: heatmap
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      calculate: false
+      cellGap: 1
+      color:
+        mode: scheme
+        scheme: Oranges
+        fill: dark-orange
+        steps: 64
+      yAxis:
+        unit: ms
+        axisPlacement: left
+      legend:
+        show: true
+      tooltip:
+        show: true
+        yHistogram: false
+  - id: 13
+    title: Hottest dealerships, lock wait p95
+    description: Top five dealerships only, to bound the legend and identify lock hot spots. dealership.id becomes dealership_id in Mimir.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 23
+      w: 12
+      h: 7
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: topk(5, histogram_quantile(0.95, sum by (le, dealership_id) (rate(scheduler_booking_lock_wait_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))))
+      legendFormat: '{{dealership_id}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 14
+    title: Availability p95
+    description: Read-path calculation latency, aggregated across dealerships. Compare with booking and lock wait to locate contention.
+    type: timeseries
+    gridPos:
+      x: 0
+      y: 30
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: ms
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: histogram_quantile(0.95, sum by (le) (rate(scheduler_availability_duration_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval])))
+      legendFormat: p95
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 15
+    title: Cancellations by previous status
+    description: Committed cancellation count per rate window, grouped by previous_status. Cancellation reasons and customer details are not dimensions.
+    type: timeseries
+    gridPos:
+      x: 12
+      y: 30
+      w: 12
+      h: 6
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+        custom:
+          drawStyle: line
+          lineWidth: 2
+          fillOpacity: 0
+          showPoints: never
+          spanNulls: false
+          stacking:
+            mode: none
+            group: A
+          thresholdsStyle:
+            mode: 'off'
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum by (previous_status) (increase(scheduler_appointments_cancellations_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))
+      legendFormat: '{{previous_status}}'
+      instant: false
+      range: true
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      legend:
+        displayMode: list
+        placement: bottom
+        calcs: []
+      tooltip:
+        mode: multi
+        sort: desc
+  - id: 16
+    title: Recent non-confirmed bookings (traces)
+    description: Booking spans whose outcome differs from confirmed, including successful replays. Event 1002 provides rejection context. validation_failed occurs
+      before the handler and has no booking span.
+    type: table
+    gridPos:
+      x: 0
+      y: 36
+      w: 12
+      h: 8
+    datasource:
+      type: tempo
+      uid: ${ds_traces}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: tempo
+        uid: ${ds_traces}
+      queryType: traceql
+      query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
+        && span:name = "scheduler.book_appointment" && span.booking.outcome != "confirmed" }'
+      filters: []
+      limit: 20
+      tableType: traces
+      refId: A
+    options:
+      showHeader: true
+      cellHeight: sm
+      sortBy: []
+  - id: 17
+    title: Booking warnings and errors
+    description: Stable message text for constraint backstop (1003), deadlock (1004), and unhandled exception (1200). EventId metadata naming and exemplar trace_id
+      click-through need first-deploy verification.
+    type: logs
+    gridPos:
+      x: 12
+      y: 36
+      w: 12
+      h: 8
+    datasource:
+      type: loki
+      uid: ${ds_logs}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: none
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+      overrides: []
+    targets:
+    - datasource:
+        type: loki
+        uid: ${ds_logs}
+      expr: '{service_name=~"${service:regex}", service_namespace="${namespace}", deployment_environment_name=~"${env:regex}"} |~ "Overlap constraint|Deadlock detected|answered
+        500 internal-error"'
+      queryType: range
+      maxLines: 100
+      refId: A
+    options:
+      showTime: true
+      showLabels: false
+      showCommonLabels: false
+      wrapLogMessage: true
+      sortOrder: Descending
+      enableLogDetails: true
+      dedupStrategy: none
+  - id: 18
+    title: HV allocations below minimum, must be 0
+    description: Allocations whose technician's HV level on the appointment's local date is below the resolved minimum (ADR-029, critical event 1020 with
+      appointment and technician ids, local date, policy version, fired rules and both levels). The hard filter makes this impossible; any value pages. Empty or
+      0 is healthy; absent counter becomes 0. Counts a series' first export; a lower bound after a restart in the range.
+    type: stat
+    gridPos:
+      x: 0
+      y: 44
+      w: 6
+      h: 4
+    datasource:
+      type: prometheus
+      uid: ${ds_metrics}
+    interval: 1m
+    fieldConfig:
+      defaults:
+        unit: short
+        thresholds:
+          mode: absolute
+          steps:
+          - color: green
+            value: null
+          - color: red
+            value: 1
+      overrides: []
+    targets:
+    - datasource:
+        type: prometheus
+        uid: ${ds_metrics}
+      editorMode: code
+      expr: sum((increase(scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range]) and scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}
+        offset $__range) or (max_over_time(scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__range])
+        unless scheduler_allocation_below_hv_minimum_total{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"} offset $__range)) or vector(0)
+      legendFormat: ''
+      instant: true
+      range: false
+      format: time_series
+      exemplar: false
+      refId: A
+      interval: 1m
+    options:
+      colorMode: background
+      graphMode: none
+      textMode: auto
+      reduceOptions:
+        calcs:
+        - lastNotNull
+        fields: ''
+        values: false
