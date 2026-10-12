@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
 import { formatDay } from "@/app/dispatch/lib/calendar-date"
 import * as telemetry from "@/lib/telemetry"
-import { bookedFrom, mockBoardApi, scheduledFrom } from "@/test/board-api"
+import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { jsonResponse, problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
@@ -130,6 +130,7 @@ describe("booking an appointment", () => {
     expect(within(scope).getByRole("listitem", { current: "step" })).toHaveTextContent("Customer & vehicle")
     expect(within(scope).getByText("Tue 13 Oct, 10:15 to 11:15 · 60 min")).toBeInTheDocument()
     fillCustomerAndVehicle(scope)
+    const availabilityReads = requestsTo(api.requests, "/availability").length
     fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
 
     // The toast names the allocation, with a way to the block.
@@ -151,6 +152,8 @@ describe("booking an appointment", () => {
     // The board reads the day again and the new block draws the booked halo.
     const block = await screen.findByRole("button", { name: /^Interim Service, Bay 3 - Heavy duty, 10:15 to 11:15/ })
     expect(block).toHaveAttribute("data-booked")
+    // The day's free starts are read again too: the slot is gone from the next free slot and from the chips.
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityReads))
     expect(telemetry.withSpan).toHaveBeenCalledWith("ui.book_appointment", expect.any(Function), expect.any(Object))
     expect(consoleError).not.toHaveBeenCalled()
   })
@@ -317,6 +320,29 @@ describe("booking an appointment", () => {
     expect(within(scope).getByRole("textbox", { name: "VIN" })).toHaveAttribute("aria-invalid", "true")
     // Every message is under its field, so nothing else is announced above the form.
     expect(within(scope).queryByText("Check the highlighted details")).not.toBeInTheDocument()
+  })
+
+  it("returns to the first step when the API refuses the start time as malformed", async () => {
+    mockBoardApi({
+      book: () =>
+        problemResponse(400, {
+          type: `${problems}validation-error`,
+          title: "Validation failed",
+          status: 400,
+          detail: "One or more fields are invalid.",
+          traceId: "00-3af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          errors: { startUtc: ["Start must be a UTC instant."] },
+        }),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    expect(await within(scope).findByRole("heading", { name: "Service and time" })).toBeInTheDocument()
+    expect(within(scope).getByText("Start must be a UTC instant.")).toBeInTheDocument()
+    expect(within(scope).getByRole("radiogroup", { name: "Start time" })).toHaveAttribute("aria-invalid", "true")
   })
 
   it("shows a field error that no field owns above the form", async () => {
@@ -509,5 +535,25 @@ describe("booking an appointment on a phone", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument())
     const card = await screen.findByRole("button", { name: /^Interim Service, Bay 3 - Heavy duty, 10:15 to 11:15/ })
     expect(card).toHaveAttribute("data-booked")
+  })
+
+  it("books another in the same sheet with a new idempotency key", async () => {
+    const api = mockBoardApi()
+    renderBoard(readingBoard)
+    fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+    const scope = await dialog()
+
+    for (let round = 0; round < 2; round++) {
+      await goToStepTwo(scope)
+      fillCustomerAndVehicle(scope)
+      fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+      await within(scope).findByRole("heading", { level: 2, name: "Booked" })
+      if (round === 0) fireEvent.click(within(scope).getByRole("button", { name: "Book another" }))
+    }
+
+    // A second booking with the first one's key would be refused as idempotency-key-reuse (or replayed).
+    const keys = bookingRequests(api.requests).map((request) => request.headers.get("Idempotency-Key"))
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).not.toBe(keys[1])
   })
 })
