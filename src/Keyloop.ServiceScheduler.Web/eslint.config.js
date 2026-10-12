@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `eslint.config.js`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -27,6 +29,31 @@ export default defineConfig([
     },
     rules: {
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  // One app, two areas (ARCHITECTURE §15, ADR-030): the admin area (Refine and the resources pages) and the workshop pages
+  // never import each other, so the board's first load never downloads Refine or admin code. Both may use components,
+  // hooks, lib and api. src/module-boundaries.test.ts pins these patterns.
+  {
+    files: ['src/app/admin/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^(@/app/|(\\.\\./)+(app/)?)(dispatch|calendar|overview|appointments)(/|$)',
+          message: 'The admin area may not import a workshop page\'s code: move what both need to components, hooks, lib or api.',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['src/app/{dispatch,calendar,overview,appointments}/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^(@/app/|(\\.\\./)+(app/)?)admin(/|$)',
+          message: 'The workshop pages may not import the admin area: it would put Refine and admin code in the board\'s first load. Move what both need to components, hooks, lib or api.',
+        }],
+      }],
     },
   },
   {

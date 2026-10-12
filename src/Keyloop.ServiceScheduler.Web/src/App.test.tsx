@@ -78,6 +78,20 @@ describe("app shell", () => {
     expect(appointments).not.toHaveAttribute("aria-current")
   })
 
+  it("lists the Resources pages after the Workshop ones, carrying the dealership but not the day", async () => {
+    renderAt(`/dispatch?dealership=${reading.id}&date=2026-10-14`)
+    await pageHeading("Dispatch board")
+
+    const resources = screen.getByRole("navigation", { name: "Resources" })
+    expect(within(resources).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Technicians", `/resources/technicians?dealership=${reading.id}`],
+      ["Bays", `/resources/bays?dealership=${reading.id}`],
+      ["Services", `/resources/services?dealership=${reading.id}`],
+    ])
+    const groups = screen.getAllByRole("navigation").map((nav) => nav.getAttribute("aria-labelledby") && nav.textContent)
+    expect(groups.findIndex((text) => text?.startsWith("Technicians"))).toBeGreaterThan(groups.findIndex((text) => text?.startsWith("Dispatch board")))
+  })
+
   it("moves between pages from the sidebar", async () => {
     const { router } = renderAt("/dispatch")
     await pageHeading("Dispatch board")
@@ -100,11 +114,13 @@ describe("app shell", () => {
     expect(reference).toHaveAccessibleName(/opens in a new tab/)
   })
 
-  it("says plainly that sign-in is not enabled", async () => {
+  it("says plainly that the app does not show the signed-in account yet", async () => {
     renderAt("/dispatch")
     await pageHeading("Dispatch board")
 
-    expect(screen.getByText("Anonymous mode")).toBeInTheDocument()
+    expect(screen.getByText("Your account")).toBeInTheDocument()
+    expect(screen.getByText("Not shown in the app yet")).toBeInTheDocument()
+    expect(screen.queryByText(/anonymous mode/i)).not.toBeInTheDocument()
   })
 
   it("offers a skip link to the page content", async () => {
@@ -133,7 +149,10 @@ describe("app shell", () => {
 
     expect(await pageHeading("Page not found")).toBeInTheDocument()
     expect(screen.getByText("/no-such-page")).toBeInTheDocument()
-    expect(container.querySelector('img[src*="empty-schedule"]')).toHaveAttribute("alt", "")
+    expect(container.querySelector('img[src$="/not-found.webp"]')).toHaveAttribute(
+      "alt",
+      "Directional road sign pointing toward a short road closed by a barrier."
+    )
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
     expect(document.title).toBe("Page not found – Keyloop Service Scheduler")
   })

@@ -1,10 +1,10 @@
 import { use } from "react"
 
 import { PlateChip } from "@/app/dispatch/components/appointment-block"
-import { InitialsAvatar } from "@/app/dispatch/components/initials-avatar"
 import { StatusBadge } from "@/app/dispatch/components/status-badge"
 import { jobCardLabel, timeRange } from "@/app/dispatch/lib/appointment-text"
 import { statusMeta } from "@/app/dispatch/lib/status"
+import { InitialsAvatar } from "@/components/initials-avatar"
 import { cn } from "@/lib/utils"
 
 import { type AppointmentRow, durationMinutes } from "../lib/appointments"

@@ -4,6 +4,7 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } 
 
 import { getDealershipsOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
+import { type DealershipListStatus, DealershipSelect } from "@/components/dealership-select"
 import { FailedState } from "@/components/failed-state"
 import { IllustratedState } from "@/components/illustrated-state"
 import { BaseLayout } from "@/components/layouts/base-layout"
@@ -12,23 +13,21 @@ import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useSelectedDealership } from "@/hooks/use-selected-dealership"
+import { formatDay, todayIn } from "@/lib/calendar-date"
+import { firstOpenDate } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
 
 import { AppointmentSheet } from "./components/appointment-sheet"
 import { BoardPlaceholder } from "./components/board-placeholder"
 import { BookingDialog } from "./components/booking-dialog"
-import { type DealershipListStatus, DealershipSelect } from "./components/dealership-select"
 import { DispatchToolbar } from "./components/dispatch-toolbar"
 import { KpiStrip } from "./components/kpi-strip"
 import { ScheduleBoard } from "./components/schedule-board"
-import { StressPanel } from "./components/stress-panel"
 import { useBoardParams } from "./hooks/use-board-params"
-import { useNow } from "./hooks/use-now"
-import { useSelectedDealership } from "./hooks/use-selected-dealership"
 import { localTime } from "./lib/appointment-text"
-import { formatDay, todayIn } from "./lib/calendar-date"
-import { firstOpenDate } from "./lib/opening-hours"
 import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
 
 /** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
@@ -119,8 +118,8 @@ interface DealershipDayProps {
 }
 
 /**
- * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet, the booking
- * dialog and the concurrency test. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
+ * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet and the booking
+ * dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
  * the same board; there is one schedule query, which both lane views and both presentations draw from.
  */
 function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayProps) {
@@ -257,8 +256,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           }}
         />
       </Tabs>
-
-      <StressPanel dealership={dealership} date={date} today={today} compact={agenda} onWinner={(id) => highlight(id, false)} />
 
       <BookingDialog
         key={booking.session}

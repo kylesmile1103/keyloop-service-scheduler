@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
-import { formatDay } from "@/app/dispatch/lib/calendar-date"
+import { formatDay } from "@/lib/calendar-date"
 import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { reading } from "@/test/dealerships"

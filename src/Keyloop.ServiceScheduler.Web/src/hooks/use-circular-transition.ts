@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/hooks/use-circular-transition.ts`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 "use client"
 
 import { useRef, useCallback } from "react"

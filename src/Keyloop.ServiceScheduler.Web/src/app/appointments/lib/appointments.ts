@@ -2,15 +2,17 @@ import type { AppointmentStatus, ServiceTypeSummary, WorkshopScheduleResponse } 
 import { localTime } from "@/app/dispatch/lib/appointment-text"
 import { boardAppointments, type BoardAppointment } from "@/app/dispatch/lib/schedule"
 import { activeStatuses, boardStatuses, statusMeta } from "@/app/dispatch/lib/status"
+import type { FacetOption } from "@/components/data-table/data-table-faceted-filter"
+import type { Noun } from "@/lib/data-table"
 
 /** One row of the appointments list: an appointment from the day's schedule, knowing the bay it is in. */
 export type AppointmentRow = BoardAppointment
 
-/** A choice in a faceted filter: what the filter compares (an id or a status) and what the user reads. */
-export interface FacetOption {
-  value: string
-  label: string
-}
+/** What the list holds, for its counts. */
+export const APPOINTMENTS: Noun = { one: "appointment", other: "appointments" }
+
+/** The list's search box: what it is called and what it searches. */
+export const APPOINTMENT_SEARCH = { label: "Search appointments", placeholder: "Customer, registration or VIN" }
 
 /** The list's faceted filters, by column id. */
 export type FacetId = "status" | "bay" | "technician" | "service"

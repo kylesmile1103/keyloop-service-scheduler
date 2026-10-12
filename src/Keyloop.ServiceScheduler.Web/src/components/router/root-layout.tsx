@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/router/root-layout.tsx` and, for the
+// error boundary, `src/app/errors/internal-server-error/components/internal-server-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { RotateCw } from "lucide-react"
 import { isRouteErrorResponse, Outlet, useNavigation, useRouteError } from "react-router-dom"
 

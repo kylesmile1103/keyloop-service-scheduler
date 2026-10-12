@@ -621,6 +621,7 @@ describe("suggesting a service on a phone", () => {
 
 describe("photo-assisted triage", () => {
   const imageId = "550e8400-e29b-41d4-a716-446655440000"
+  const photoEvidenceAlt = "Phone camera framing an amber warning triangle on a generic vehicle dashboard."
   beforeEach(() => {
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test-photo") })
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
@@ -653,6 +654,37 @@ describe("photo-assisted triage", () => {
     expect(within(scope).getByText("The description or photos have changed since these suggestions. Suggest again to update them.")).toBeInTheDocument()
     expectUnavailableButFocusable(within(scope).getByRole("button", { name: "Use this" }))
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-photo")
+  })
+
+  it("shows what to photograph while no photo is chosen, and gives the space to the photos once there are some", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    const input = within(scope).getByLabelText("Photos or paperwork (optional)")
+    const picture = within(scope).getByRole("img", { name: photoEvidenceAlt })
+    expect(picture.getAttribute("src")).toMatch(/\/photo-evidence\.webp$/)
+    expect(picture).toHaveAttribute("width", "1200")
+    expect(picture).toHaveAttribute("height", "900")
+    expect(within(scope).getByText("A photo of the warning light, the damage or the paperwork helps find the right service.")).toBeInTheDocument()
+
+    const photo = new File([new Uint8Array([137, 80, 78, 71])], "dashboard.png", { type: "image/png" })
+    fireEvent.change(input, { target: { files: [photo] } })
+    expect(within(scope).queryByRole("img", { name: photoEvidenceAlt })).not.toBeInTheDocument()
+    expect(within(scope).getByAltText("Selected photo: dashboard.png")).toBeInTheDocument()
+    // The same file field, not a new one: focus that returns to it from the file picker stays in the dialog.
+    expect(within(scope).getByLabelText("Photos or paperwork (optional)")).toBe(input)
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Remove photo 1: dashboard.png" }))
+    expect(within(scope).getByRole("img", { name: photoEvidenceAlt })).toBeInTheDocument()
+  })
+
+  it("has no photo field, and so no picture for it, when the deployment takes no photos", async () => {
+    mockBoardApi({ triageStatus: () => ({ ...triageEnabled, imagesEnabled: false }), serviceTypes: catalogue })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+
+    expect(within(scope).queryByLabelText("Photos or paperwork (optional)")).not.toBeInTheDocument()
+    expect(within(scope).queryByRole("img", { name: photoEvidenceAlt })).not.toBeInTheDocument()
   })
 
   it("rejects PDFs, oversized files and too many photos before uploading", async () => {

@@ -1,33 +1,18 @@
-import { CalendarRange } from "lucide-react"
-import { Link, useLocation } from "react-router-dom"
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/not-found/components/not-found-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+import { useLocation } from "react-router-dom"
 
-import { IllustratedState } from "@/components/illustrated-state"
-import { BaseLayout } from "@/components/layouts/base-layout"
-import { buttonVariants } from "@/components/ui/button"
+import { DispatchBoardLink, ErrorPage } from "../components/error-page"
 
-/** The router's 404 (adopted from the template's `errors/not-found`, in the UI_DESIGN 12.1 layout). */
+/** The router's 404 (`*`, and `/errors/not-found` to navigate to): nothing lives at the address. */
 export default function NotFoundPage() {
   const { pathname } = useLocation()
 
   return (
-    <BaseLayout documentTitle="Page not found">
-      <div className="flex min-h-[60svh] flex-1 items-center justify-center px-4 md:px-6 xl:px-8">
-        <IllustratedState
-          illustration="empty-schedule"
-          level={1}
-          title="Page not found"
-          action={
-            <Link to="/dispatch" className={buttonVariants()}>
-              <CalendarRange aria-hidden="true" />
-              Go to the dispatch board
-            </Link>
-          }
-        >
-          <p>
-            Nothing lives at <code className="font-mono text-[0.9em] break-all text-foreground">{pathname}</code>.
-          </p>
-        </IllustratedState>
-      </div>
-    </BaseLayout>
+    <ErrorPage title="Page not found" illustration="not-found" action={<DispatchBoardLink />}>
+      <p>
+        Nothing lives at <code className="font-mono text-[0.9em] break-all text-foreground">{pathname}</code>.
+      </p>
+    </ErrorPage>
   )
 }

@@ -1,15 +1,17 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`
+// (its list view), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { ChevronDown } from "lucide-react"
 import { Fragment, useId } from "react"
 
+import { InitialsAvatar } from "@/components/initials-avatar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { formatLocalTime } from "@/lib/local-time"
 import { cn } from "@/lib/utils"
 
 import { jobCardLabel, timeRange } from "../lib/appointment-text"
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { statusMeta } from "../lib/status"
-import { formatLocalTime } from "../lib/time-grid"
 import { PlateChip } from "./appointment-block"
-import { InitialsAvatar } from "./initials-avatar"
 import { StatusBadge } from "./status-badge"
 
 interface ScheduleAgendaProps {

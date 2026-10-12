@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
 
+import { formatLocalTime } from "@/lib/local-time"
+
 import {
   boardWindow,
   buildGrid,
   columnFor,
-  formatLocalTime,
   hourLines,
   nowPosition,
   spanFor,

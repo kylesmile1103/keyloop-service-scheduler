@@ -1,4 +1,5 @@
-import { formatLocalTime } from "./time-grid"
+import { formatLocalTime } from "@/lib/local-time"
+
 import type { BoardAppointment } from "./schedule"
 import { statusMeta } from "./status"
 
@@ -34,13 +35,6 @@ export function jobCardLabel(appointment: BoardAppointment, timeZone: string): s
     appointment.technician.name,
     statusMeta[appointment.status].label,
   ].join(", ")
-}
-
-/** Initials for an avatar: first and last name ("Amelia Clarke" → "AC"). */
-export function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  const letters = words.length > 1 ? [words[0], words[words.length - 1]] : words
-  return letters.map((word) => word.charAt(0).toUpperCase()).join("")
 }
 
 /** The first word of a name ("Amelia Clarke" → "Amelia"). */

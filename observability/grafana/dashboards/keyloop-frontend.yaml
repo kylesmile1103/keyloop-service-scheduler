@@ -461,9 +461,9 @@ spec:
       cellHeight: sm
       sortBy: []
   - id: 8
-    title: ui.stress_test runs
-    description: Browser export requires the approved same-origin relay and G4 UI span call sites. Empty data does not prove successful UX. Whole stress-run traces.
-      A run should include one confirmed booking and expected contention failures; verify the two UI spans exist in the deployed Task 17 build.
+    title: ui.booking_triage runs
+    description: Browser export requires the approved same-origin relay. Empty data does not prove successful UX. Booking intake triage traces, from the
+      browser span through the API's scheduler.triage activity; the span carries the dealership id only, never the description.
     type: table
     gridPos:
       x: 12
@@ -489,7 +489,7 @@ spec:
         uid: ${ds_traces}
       queryType: traceql
       query: '{ resource.service.namespace = "${namespace}" && resource.service.name =~ "${service:regex}" && resource.deployment.environment.name =~ "${env:regex}"
-        && span:name = "ui.stress_test" }'
+        && span:name = "ui.booking_triage" }'
       filters: []
       limit: 20
       tableType: traces

@@ -38,7 +38,8 @@ resource links against the integrated branch before recording.
   seeding skips past slots and closed days. If there is no remaining bookable
   time today, use the next open day and explain the date change.
 - [ ] Reserve three distinct future, free **EV Battery Health Check** slots for
-  the conflict, suggested-slot recovery and stress demonstrations. Reading has
+  the conflict and suggested-slot recovery demonstrations
+  (two are needed; the 30-way proof uses the k6 contention scenario). Reading has
   one EV bay and one high-voltage technician, so each chosen slot has capacity
   one. Avoid the seeded EV booking and overlapping 60-minute appointments.
 - [ ] Open two board tabs (**A** and **B**), one dashboard tab on **Traces**, one
@@ -66,7 +67,7 @@ resource links against the integrated branch before recording.
 | 0:00–0:45 | Scenario | Dispatch board: one appointment needs a capable bay and a certified technician for its entire duration. |
 | 0:45–2:45 | Architecture | C4 containers, vertical slices, PostgreSQL invariant, generated contract and Aspire. |
 | 2:45–4:45 | Implementation | Exclusion constraints, transaction ordering, availability and problem responses. |
-| 4:45–7:15 | Live demo | Booking, conflict recovery, cancel and rebook, 30-way stress, telemetry and Scalar. |
+| 4:45–7:15 | Live demo | Booking, conflict recovery, cancel and rebook, 30-way k6 contention, telemetry and Scalar. |
 | 7:15–8:00 | Adversarial proof | Run the concurrency tests and show their real results. |
 | 8:00–9:30 | AI collaboration | Design record, written plan, reviewed changes and defects caught. |
 | 9:30–10:00 | Lessons | State the main trade-offs and remaining reflection budget. |
@@ -139,14 +140,15 @@ Use these rehearsal marks to keep the live segment within 2½ minutes:
    then **Cancel** in its details sheet; enter `Demo slot released` and confirm.
    Open **Book appointment** and book the original EV slot again. Show that its
    original bay and technician are available after cancellation.
-4. **5:55–6:20 - 30-way stress panel.** Select the third untouched EV slot,
-   set **N = 30**, and click **Fire N parallel bookings**. Show **1 × 201**,
-   **29 × 409**, **0 × 5xx**, p50/p95/max, and the per-request trace ids. Refresh
-   the board and point to the single winning booking. If the tallies differ,
-   investigate the capacity/slot setup and test output before recording.
-5. **6:20–6:55 - Aspire traces and metrics.** Copy one stress-result `traceId`;
-   in dashboard **Traces**, filter by that id and open the trace. Expand the
-   `ui.stress_test`/fetch → API → `scheduler.book_appointment` → dealership-lock,
+4. **5:55–6:20 - 30-way contention with k6.** In a terminal, run
+   `BASE_URL=http://localhost:5180 tests/load/k6/run.sh booking-contention.js -e CONTENDERS=30 -e ROUNDS=1`
+   against the Aspire-run API. Show the summary: exactly one 201 and 29 slot
+   conflicts for the round, no 429 or 5xx, and the teardown's read-back of one
+   active appointment. If the thresholds fail, investigate the fixture and the
+   test output before recording.
+5. **6:20–6:55 - Aspire traces and metrics.** In dashboard **Traces**, filter on
+   the `api` resource for the last minute and open one booking from the run.
+   Expand the API → `scheduler.book_appointment` → dealership-lock,
    availability and PostgreSQL spans. On **Metrics**, select `api` and show
    `scheduler.booking.requests` split by `outcome`, `scheduler.booking.duration`
    and `scheduler.booking.lock_wait`. Explain that

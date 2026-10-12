@@ -1,3 +1,5 @@
+/* Adopted from shadcn-dashboard-landing-template (vite-version) `src/index.css` (its Tailwind v4 setup and theme
+ * tokens), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section). */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -114,6 +116,9 @@
   --color-status-cancelled-fg: var(--status-cancelled-fg);
 }
 
+/* The light tokens are the default; `.light` also scopes them to an element inside the dark theme (the Appearance page's
+   light preview), as `.dark` scopes the dark ones. */
+.light,
 :root {
   color-scheme: light;
   /* Type families (self-hosted with @fontsource, loaded in src/main.tsx) */

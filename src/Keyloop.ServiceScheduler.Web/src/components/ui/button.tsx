@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/button.tsx`, a shadcn/ui primitive:
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
+// the README's licence section).
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"

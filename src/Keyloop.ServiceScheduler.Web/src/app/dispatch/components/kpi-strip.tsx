@@ -1,3 +1,6 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/dashboard/components/section-cards.tsx` and
+// `src/app/dashboard-2/components/metrics-overview.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice
+// is in the README's licence section).
 import { useQuery } from "@tanstack/react-query"
 import type { LucideIcon } from "lucide-react"
 import { CalendarClock, ClipboardList, Gauge, UsersRound } from "lucide-react"
@@ -7,12 +10,12 @@ import { getAvailabilityOptions, getServiceTypesOptions } from "@/api/@tanstack/
 import type { AppointmentStatus, WorkshopScheduleResponse } from "@/api/types.gen"
 import { Card, CardAction, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { formatDay } from "@/lib/calendar-date"
+import { formatLocalTime } from "@/lib/local-time"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 
-import { formatDay } from "../lib/calendar-date"
 import { boardAppointments, scheduleKpis } from "../lib/schedule"
 import { boardStatuses, statusMeta } from "../lib/status"
-import { formatLocalTime } from "../lib/time-grid"
 
 /** What a card shows when it has no figure for the day (its footer says why); read out in words. */
 const NO_FIGURE = "–"

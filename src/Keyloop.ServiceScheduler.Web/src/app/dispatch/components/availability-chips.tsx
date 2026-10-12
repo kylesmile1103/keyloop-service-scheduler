@@ -12,11 +12,11 @@ import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { formatDay } from "@/lib/calendar-date"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { localTime } from "../lib/appointment-text"
-import { formatDay } from "../lib/calendar-date"
 
 /** A slot chip (UI_DESIGN 11.6): 40 px, 44 px on touch; selected chips take the primary fill. */
 const chip =

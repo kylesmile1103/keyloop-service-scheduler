@@ -1,12 +1,13 @@
 import type { CSSProperties } from "react"
 
 import type { OperatingWindowResponse } from "@/api/types.gen"
+import { CapabilityBadges } from "@/components/capability-badges"
+import { formatLocalTime } from "@/lib/local-time"
 import { cn } from "@/lib/utils"
 
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
-import { boardWindow, buildGrid, formatLocalTime, type GridSpec, hourLines, nowPosition, spanFor, stackRows } from "../lib/time-grid"
+import { boardWindow, buildGrid, type GridSpec, hourLines, nowPosition, spanFor, stackRows } from "../lib/time-grid"
 import { AppointmentBlock } from "./appointment-block"
-import { CapabilityBadges } from "./capability-badges"
 
 interface TimelineGridProps {
   lanes: readonly Lane[]

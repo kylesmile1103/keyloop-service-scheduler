@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import "@fontsource-variable/plus-jakarta-sans/wght.css"
 import "@fontsource-variable/ibm-plex-sans/wght.css"
 import "@fontsource/ibm-plex-mono/400.css"

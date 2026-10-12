@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/hooks/use-mobile.ts` (its media query
+// subscription), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import * as React from "react"
 
 /** Whether a media query matches now, following changes (the same subscription pattern as `useIsMobile`). */

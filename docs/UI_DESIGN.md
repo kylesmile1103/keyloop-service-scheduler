@@ -73,7 +73,7 @@ Keyloop also uses a Tailwind-like grey ramp for body copy (`#111827`, `#374151`)
 - **Signal blue**: interaction. Links, the signal outline button, selected indicators (active tab bar, active nav bar), focus rings, info feedback.
 - **Cyan**: the brand accent, for the floating Book action and the toast action only.
 - **Status hues** (fusion purple, sky, amber, green, rose, slate): appointment state only (section 4.3).
-- **Feedback** (green, amber, red): outcomes of actions, and the 201 / 409 / 5xx tallies in the stress panel.
+- **Feedback** (green, amber, red): outcomes of actions.
 - **OWNERSHIP gradient**: the domain tag in the header. Nothing else.
 
 ### 3.3 Fusion domain gradients
@@ -208,7 +208,7 @@ How the shadcn tokens are used here:
 |---|---|---|
 | `--signal`, `--signal-foreground` | `text-signal`, `border-signal`, `bg-signal`, `text-signal-foreground` | links, the signal outline button, the 3 px active-tab and active-nav indicators, the active segment of the lane toggle, the switch "on" track |
 | `--brand-accent`, `--brand-accent-foreground` | `bg-brand-accent`, `text-brand-accent-foreground` | the mobile floating Book action, the toast action. Nowhere else |
-| `--destructive-foreground` | `text-destructive-foreground` | text on a solid `bg-destructive` (the 5xx tally pill, the "now" time label) |
+| `--destructive-foreground` | `text-destructive-foreground` | text on a solid `bg-destructive` (the "now" time label) |
 | `--*-subtle` | `bg-success-subtle`, `bg-warning-subtle`, `bg-info-subtle`, `bg-destructive-subtle` | banners, conflict alerts, table pills |
 | `--overlay` | `bg-overlay` | the scrim behind dialogs and sheets (17.3) |
 | `--domain-*` | `.domain-tag .domain-tag-ownership` | the header tag |
@@ -300,27 +300,27 @@ Requirements: **4.5:1** for text, **3:1** for control boundaries, focus indicato
 | `destructive` | `destructive/15 on popover` | destructive button hover (bg-destructive/15) | 5.05 | 5.00 | 4.5:1 |
 | `destructive-foreground` | `destructive` | solid destructive fill: 5xx pill, "now" time label | 6.65 | 7.84 | 4.5:1 |
 | **Feedback** | | | | | |
-| `destructive` | `card` | text-destructive on a card (alert title, tally figure) | 6.65 | 7.10 | 4.5:1 |
+| `destructive` | `card` | text-destructive on a card (alert title) | 6.65 | 7.10 | 4.5:1 |
 | `destructive` | `background` | text-destructive on the page | 6.65 | 7.84 | 4.5:1 |
 | `destructive` | `destructive-subtle` | banner, alert, pill: bg-destructive-subtle text-destructive | 5.80 | 5.93 | 4.5:1 |
 | `foreground` | `destructive-subtle` | body text inside the destructive banner | 12.10 | 12.02 | 4.5:1 |
 | `foreground/80 on destructive-subtle` | `destructive-subtle` | trace id (text-foreground/80) inside the destructive banner | 6.69 | 8.20 | 4.5:1 |
 | `muted-foreground` | `destructive-subtle` | "Trace ID" label inside the destructive banner | 5.10 | 6.36 | 4.5:1 |
-| `success` | `card` | text-success on a card (alert title, tally figure) | 5.65 | 9.46 | 4.5:1 |
+| `success` | `card` | text-success on a card (alert title) | 5.65 | 9.46 | 4.5:1 |
 | `success` | `background` | text-success on the page | 5.65 | 10.44 | 4.5:1 |
 | `success` | `success-subtle` | banner, alert, pill: bg-success-subtle text-success | 5.15 | 7.74 | 4.5:1 |
 | `foreground` | `success-subtle` | body text inside the success banner | 12.66 | 11.79 | 4.5:1 |
 | `foreground/80 on success-subtle` | `success-subtle` | trace id (text-foreground/80) inside the success banner | 6.91 | 8.12 | 4.5:1 |
 | `muted-foreground` | `success-subtle` | "Trace ID" label inside the success banner | 5.34 | 6.23 | 4.5:1 |
 | `success-foreground` | `success` | solid pill: bg-success text-success-foreground | 5.65 | 10.44 | 4.5:1 |
-| `warning` | `card` | text-warning on a card (alert title, tally figure) | 5.72 | 9.36 | 4.5:1 |
+| `warning` | `card` | text-warning on a card (alert title) | 5.72 | 9.36 | 4.5:1 |
 | `warning` | `background` | text-warning on the page | 5.72 | 10.33 | 4.5:1 |
 | `warning` | `warning-subtle` | banner, alert, pill: bg-warning-subtle text-warning | 5.14 | 7.64 | 4.5:1 |
 | `foreground` | `warning-subtle` | body text inside the warning banner | 12.47 | 11.75 | 4.5:1 |
 | `foreground/80 on warning-subtle` | `warning-subtle` | trace id (text-foreground/80) inside the warning banner | 6.86 | 8.13 | 4.5:1 |
 | `muted-foreground` | `warning-subtle` | "Trace ID" label inside the warning banner | 5.26 | 6.22 | 4.5:1 |
 | `warning-foreground` | `warning` | solid pill: bg-warning text-warning-foreground | 5.72 | 10.33 | 4.5:1 |
-| `info` | `card` | text-info on a card (alert title, tally figure) | 5.73 | 6.20 | 4.5:1 |
+| `info` | `card` | text-info on a card (alert title) | 5.73 | 6.20 | 4.5:1 |
 | `info` | `background` | text-info on the page | 5.73 | 6.85 | 4.5:1 |
 | `info` | `info-subtle` | banner, alert, pill: bg-info-subtle text-info | 5.06 | 5.22 | 4.5:1 |
 | `foreground` | `info-subtle` | body text inside the info banner | 12.26 | 12.11 | 4.5:1 |
@@ -403,9 +403,9 @@ Requirements: **4.5:1** for text, **3:1** for control boundaries, focus indicato
 | `chart-4` | `card` | chart series 4 | 3.73 | 5.47 | 3.0:1 |
 | `chart-5` | `card` | chart series 5 | 4.32 | 4.62 | 3.0:1 |
 | `chart-1` | `muted` | utilisation meter fill on its bg-muted track | 3.81 | 4.84 | 3.0:1 |
-| `success` | `card` | stress tally bar segment and icon (success) | 5.65 | 9.46 | 3.0:1 |
-| `warning` | `card` | stress tally bar segment and icon (warning) | 5.72 | 9.36 | 3.0:1 |
-| `destructive` | `card` | stress tally bar segment and icon (destructive) | 6.65 | 7.10 | 3.0:1 |
+| `success` | `card` | status icon on a card (success) | 5.65 | 9.46 | 3.0:1 |
+| `warning` | `card` | status icon on a card (warning) | 5.72 | 9.36 | 3.0:1 |
+| `destructive` | `card` | status icon on a card (destructive) | 6.65 | 7.10 | 3.0:1 |
 | `success` | `success-subtle` | outcome icon on its tile (bg-success-subtle) | 5.15 | 7.74 | 3.0:1 |
 | `warning` | `warning-subtle` | outcome icon on its tile (bg-warning-subtle) | 5.14 | 7.64 | 3.0:1 |
 | `info` | `info-subtle` | outcome icon on its tile (bg-info-subtle) | 5.06 | 5.22 | 3.0:1 |
@@ -573,7 +573,7 @@ The shadcn components in `src/components/ui` keep their APIs. Section 17.3 lists
 - **Frame**: `SidebarProvider` with the `inset` sidebar variant (as built). The wrapper is `bg-sidebar`; `SidebarInset` is `bg-background md:rounded-xl md:shadow-sm`.
 - **Header** (`SiteHeader`, 56 px, `border-b border-border`), left to right: `SidebarTrigger`; the domain tag `<span className="domain-tag domain-tag-ownership">Ownership</span>` (write the word in sentence case; CSS uppercases it, so screen readers say "Ownership", not letters); the product title "Service Scheduler" (`font-heading text-base font-bold tracking-tight`, a `span`, not a heading: the page title is the `h1`); then, pushed right, the wordmark "Keyloop" (`font-heading text-wordmark font-extrabold tracking-tight text-foreground`, a plain `span`: never a link to keyloop.com, never an image) and the theme toggle.
   - Below `sm` (640 px) the header holds only the trigger, the tag and the title (the title truncates); the wordmark moves into the mobile sidebar sheet's header and the theme toggle into its footer.
-- **Sidebar**: no brand block on desktop (the header carries the brand). Inside the mobile sheet, `SidebarHeader` shows the glyph tile and the wordmark (`md:hidden`). Nav items are 40 px tall (44 px on touch). The **active item** is `bg-sidebar-accent font-semibold` plus a 3 px signal bar on its inline start (`data-active:shadow-[inset_3px_0_0_var(--signal)]`), so the state is not carried by a pale fill alone. Group labels ("Workshop") are `text-xs font-medium text-sidebar-foreground/70` (5.0:1).
+- **Sidebar**: no brand block on desktop (the header carries the brand). Inside the mobile sheet, `SidebarHeader` shows the glyph tile and the wordmark (`md:hidden`). Nav items are 40 px tall (44 px on touch). The **active item** is `bg-sidebar-accent font-semibold` plus a 3 px signal bar on its inline start (`data-active:shadow-[inset_3px_0_0_var(--signal)]`), so the state is not carried by a pale fill alone. Group labels ("Workshop", "Resources", "Settings", in that order) are `text-xs font-medium text-sidebar-foreground/70` (5.0:1).
 - **Provenance line**: the last item in `SidebarFooter`, below the user row, on desktop and in the mobile sidebar sheet: `<p className="px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">Take-home demo · inspired by Keyloop's public design language · not an official Keyloop product</p>` (5.19:1 on the sidebar). It is not dismissible. Screenshots and videos for the README show it.
 - **Option considered: Service Hub's carbon app bar.** Not used. The light header stays part of the work surface so the OWNERSHIP tag and the header band read; in dark mode the header is already carbon, which is the app bar.
 - **Page header** (`BaseLayout` title row): `h1` page title, a one-line description in `text-muted-foreground`, actions on the right; actions wrap below the title under `md`.
@@ -717,25 +717,9 @@ Service Hub's kanban card, one per appointment, in a time-ordered list grouped b
 
 Every problem shows its `traceId` (copyable) so it can be found in the Aspire dashboard.
 
-### 11.17 Tables and the stress panel
+### 11.17 Tables
 
 - **Table**: header row `h-9 bg-muted/50 text-xs font-medium text-muted-foreground`; rows `h-11 border-b border-border`; numbers right-aligned with `tabular-nums`; mono for slugs and trace ids. Row hover `hover:bg-muted/50`.
-- **Outcome legend (Service Hub's traffic light)**: every outcome is an icon, a word and a colour, never a colour alone.
-
-  | Outcome | Icon | Tile | Word |
-  |---|---|---|---|
-  | 201 | `CircleCheck` | `bg-success-subtle text-success` | Booked |
-  | 409 | `TriangleAlert` | `bg-warning-subtle text-warning` | Slot taken |
-  | 5xx | `CircleX` | `bg-destructive-subtle text-destructive` | Server error |
-  | 429 | `Clock` | `bg-info-subtle text-info` | Rate limited |
-  | any other code | `CircleQuestionMark` | `bg-secondary text-secondary-foreground` | the problem title |
-
-  The tile is the status icon tile of 11.10 in the feedback colours: `inline-flex size-9 items-center justify-center rounded-chip`, icon `size-5`.
-- **Status code pills** (stress results): `rounded-full px-2 h-6 text-xs font-semibold tabular-nums` with the legend's colour pair: 201 `bg-success-subtle text-success`, 409 `bg-warning-subtle text-warning`, 5xx `bg-destructive-subtle text-destructive`, 429 `bg-info-subtle text-info`, any other code `bg-secondary text-secondary-foreground`; the code is always written ("409").
-- **Tallies**: one tile per outcome. The 201, 409 and 5xx tiles always show, 5xx even at 0; a 429 or other-code tile appears after them only when that outcome occurred. Each tile leads with its outcome tile (icon), then the figure `font-heading text-3xl font-bold tabular-nums` in `text-success`, `text-warning`, `text-destructive`, `text-info` or `text-foreground`, and the label underneath in `text-xs text-muted-foreground` ("409 slot-unavailable").
-- **Stacked bar**: `h-3 rounded-full overflow-hidden flex gap-0.5` (a 2 px surface gap between segments), segments `bg-success`, `bg-warning`, `bg-destructive`, `bg-info`, `bg-muted-foreground` sized by count, with the counts written in the tiles (the bar never carries numbers alone). Its legend repeats icon, word and count.
-- **Latency**: p50, p95 and max as small stat tiles (`text-xl font-semibold tabular-nums` + "ms").
-- **Mobile**: tiles stack, the table becomes stacked rows (pill, slug, duration, trace id with copy), no horizontal overflow.
 - **Appointments table** (the Appointments page, adopted from the template's tasks data table):
   - Each row's first cell carries the status marker bar (the 3 px `-border` colour of 11.12, drawn as a `before:` bar inside the cell), so the list reads as the board's status map; the first column's text starts 16 px from the card's edge, in line with the card header and toolbar.
   - Sortable headers are compact ghost buttons (`text-xs font-medium text-muted-foreground`, `ArrowUp` / `ArrowDown` / `ChevronsUpDown` at `size-3.5`); the header cell carries `aria-sort`.
@@ -743,6 +727,7 @@ Every problem shows its `traceId` (copyable) so it can be found in the Aspire da
   - Faceted filters: dashed outline `sm` buttons with `PlusCircle`, the chosen values as secondary badges; the popover is a checkbox list, each choice with its count (`text-xs text-muted-foreground tabular-nums`, read as "Bay 1 - Standard (3 appointments)"), and a ghost *Clear filter*. Status choices lead with the status dot.
   - Width: columns the card cannot hold are left out by default (Duration below 1536 px, VIN below 1440 px; *View* brings them back). Where it still overflows (below 1024 px) the table scrolls inside its card, and the time column stays put: `sticky left-0` on an opaque fill that repeats the row's tint (`color-mix` of `--muted` over `--card`), with a hairline `inset -1px 0 0 var(--border)` on its right edge.
   - Below 768 px the table becomes job cards (11.13) in the table's order, each naming both the bay and the technician, and the filters move into a *Filters* bottom sheet (sort, then one fieldset per filter, a sticky footer with *Reset filters* and *Show N appointments*).
+- **Resource tables** (Technicians, Bays, Services; the users app adopted, 11.19): the appointments table's anatomy without the status bar (a resource has no appointment status): sortable compact headers with `aria-sort`, 44 px rows, numbers right-aligned in `tabular-nums`, the first column sticky while the table scrolls inside its card, the same toolbar, faceted filters (each choice with its count, read as "MOT tester (2 technicians)") and *View*. Identifiers are monospace (employee number, service code). Capabilities and certifications are the board's badges (11.6), two then `+n`; a need the dealership lacks is an outline badge after a dashed *No* pill, and a need that exists but not on one bay or technician is said in words ("Not all on one technician"). Whether a technician takes bookings or a bay is in service is a quiet `secondary` pill (*Active*, *In service*) or the board's dashed pill (*Inactive*, *Out of service*), never a colour. Today's booked time is the thin `chart-1` meter of section 13 beside the time ("2 h 15 min") or the share ("45%"), *Closed* on a closed day. The services code is left out below 1536 px, so every resource table fits its card from 1024 px up. The table keeps a row-actions slot (a trailing menu cell, Task 30); until then no control edits anything. Below 768 px each row is a read-only card (`rounded-chip bg-card p-3 shadow-xs ring-1 ring-foreground/10`, the name an `h3`) with the same *Filters* sheet.
 
 ### 11.18 Skeletons
 
@@ -754,7 +739,7 @@ The template-adoption addendum of tasks 16 and 17 copies files from the shadcn d
 
 | Template file | Becomes | Adapt |
 |---|---|---|
-| `dashboard/components/section-cards.tsx` | KPI strip (11.11), stress tally tiles (11.17) | Delete the wrapper's `*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:bg-gradient-to-t` classes (principle 6: no gradients on cards) and use `Card size="sm" className="shadow-xs"`. Delete the `TrendingUp`/`TrendingDown` badges and the trend footer: the API has no history, so a trend would be invented. `CardAction` holds the optional status icon tile (11.10) or, on a tally tile, the outcome tile (11.17). The figure uses the 11.11 classes, not the template's `CardTitle text-2xl font-semibold`. |
+| `dashboard/components/section-cards.tsx` | KPI strip (11.11) | Delete the wrapper's `*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:bg-gradient-to-t` classes (principle 6: no gradients on cards) and use `Card size="sm" className="shadow-xs"`. Delete the `TrendingUp`/`TrendingDown` badges and the trend footer: the API has no history, so a trend would be invented. `CardAction` holds the optional status icon tile (11.10) or, on a tally tile, the outcome tile (11.17). The figure uses the 11.11 classes, not the template's `CardTitle text-2xl font-semibold`. |
 | `calendar/components/calendars.tsx` | the lane filter (bays or technicians) | No colour dots and no `text-white`: lanes have no colour, because hue is reserved for status (principle 2, section 13). Each lane row: a `Checkbox` (17.3), the lane name, its capability icons (`Zap`, `Ruler`) and its appointment count in `tabular-nums text-muted-foreground`. Desktop: a toolbar popover or collapsible panel; mobile: inside the Filters sheet. |
 | `calendar/components/date-picker.tsx`, `calendar-sidebar.tsx` | the date control (11.4) and the Book action | Selected day `bg-primary text-primary-foreground`, today `ring-1 ring-signal`, closed days disabled and `line-through`. The sidebar's quick action becomes **Book appointment**: the view's one primary button (the floating accent action on mobile). |
 | `calendar/components/calendar-main.tsx` (list view) | the mobile agenda (11.13) | Regroup by lane; each row becomes the 11.13 job card; drop the template's event colours. |
@@ -762,14 +747,18 @@ The template-adoption addendum of tasks 16 and 17 copies files from the shadcn d
 | `users/components/stat-cards.tsx` | the Appointments page's four figures (11.11) | The 11.11 card anatomy instead of the template's icon-above-title layout; no trend badges or "from previous" lines (no history to compare with); the completed and no-show cards carry their status's icon tile, the total a thin bar of the day by status in the status markers (section 13). |
 | `calendar/components/event-form.tsx`, `users/components/user-form-dialog.tsx` | the booking dialog (11.14) | Keep the react-hook-form, zod and `Field` structure: labels above, help and errors below (11.4). The stepper (11.14) and the slot chips (11.6) replace the template's free date and time inputs. |
 | `dashboard/components/chart-area-interactive.tsx` (only if adopted) | the latency chart | `chart-1` only, a flat fill or a line instead of the template's gradient fill, axis and tick text `text-muted-foreground`, and the values also written out (section 13). |
-| `errors/not-found` | the router 404 page | The 12.1 layout with `empty-schedule.webp`: headline "Page not found", one line naming the path (`font-mono`), action **Go to the dispatch board** (primary). |
+| `users/page.tsx`, `users/components/data-table.tsx`, `users/components/stat-cards.tsx` | the resources pages (Technicians, Bays, Services) and their figures | The 11.17 resource-table anatomy over the shared data table parts (the template's select filters become faceted filters, its row selection, image avatars, role and status colours and add-user form are not kept), four 11.11 figure cards per page without trends, cards on a phone. Read-only: the row-actions slot stays empty until Task 30. |
+| `settings/appearance/page.tsx` | Appearance (`/settings/appearance`) | The theme only, as a radio group of cards (11.6's card anatomy) with a miniature of the board in each theme's tokens instead of the template's grey sketches; applies at once, so no Save button; the font, sidebar-width and content-width selects are not kept (the design system fixes them). |
+| `settings/account/page.tsx` | Account (`/settings/account`), a placeholder for Task 27b | The anonymous session said plainly (signed in as, roles, recorded as); the template's profile, password and delete-account forms are not kept. |
+| `errors/unauthorized`, `errors/forbidden`, `errors/internal-server-error`, `errors/under-maintenance` | the 401, 403, 500 and 503 pages | The 12.1 layout in the shell, as the 404, each with its own wave-2 picture: a headline in words (no numeric headline), one or two lines, one action (*Sign in* or *Go to the dispatch board*, *Try again* when the sending page passed itself); the template's placeholder image and "Contact Us" are not kept. |
+| `errors/not-found` | the router 404 page | The 12.1 layout with `not-found.webp`: headline "Page not found", one line naming the path (`font-mono`), action **Go to the dispatch board** (primary). |
 | `errors/internal-server-error` | the router error boundary | The 12.1 layout with `error-connection.webp`: headline "Something went wrong", the trace id row when the error carries one, action **Try again** (primary), which reloads the route. |
 
 ## 12. Illustrations, empty and error states
 
 ### 12.1 State illustrations
 
-Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). The six illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
+Original artwork generated for this project with OpenAI image generation through Codex: no third-party marks, no text, people or vehicle badges (prompts and provenance in the images README kept with the design working files). Copy the eight `.webp` files to `src/assets/illustrations/` and import them so Vite fingerprints them (each is larger than Vite's 4 KB inline limit, so none becomes a `data:` URI). A second set of ten (wave 2, same pipeline and style, its own README with prompts, alt text and verification) adds a picture per error page, the empty roster, the triage photo field and three for later tasks; the seven in use are copied the same way, and `empty-calendar.webp`, `dashboard-insights.webp` and `sign-in-to-book.webp` wait for the calendar, overview and sign-in work (Tasks 28b and 27b). State illustrations are registered once, with their alt text, in `src/lib/illustrations.ts`: that module holds only their fingerprinted addresses, so a picture is downloaded when a state that shows it renders. The illustrations have a transparent background, with at least 24 px of transparent margin, that reads on light and dark cards; do not put them on a coloured panel.
 
 | File | Pixels, bytes | State | Headline (example) | Action |
 |---|---|---|---|---|
@@ -778,10 +767,20 @@ Original artwork generated for this project with OpenAI image generation through
 | `no-availability.webp` | 1200 × 900, 108 KB | booking step 1: no slot for the service and day | "No free slot for Full Service" + the API's `unavailableReason` | **Try Wednesday 14 October** (signal) |
 | `error-connection.webp` | 1200 × 900, 82 KB | the schedule could not load at all (network, 5xx) | "Couldn’t load the schedule" + summary + trace id | **Try again** (primary) |
 | `booking-success.webp` | 1200 × 900, 151 KB | mobile full-screen booking sheet after success | "Booked" + service · bay · technician · time | **View on board** (primary), **Book another** (secondary) |
-| `empty-schedule.webp` | (reused) | router 404 (11.19) | "Page not found" + the path | **Go to the dispatch board** (primary) |
 | `error-connection.webp` | (reused) | router error boundary (11.19) | "Something went wrong" + trace id if any | **Try again** (primary) |
+| `unauthorized.webp` | 1200 × 900, 106 KB | 401 page | "Sign in to continue" + whether sign-in is enabled | **Sign in** (primary), or **Go to the dispatch board** while it is not |
+| `forbidden.webp` | 1200 × 900, 114 KB | 403 page | "No access to this page" + who can give access | **Go to the dispatch board** (primary) |
+| `not-found.webp` | 1200 × 900, 93 KB | 404 page and the router's `*` route (11.19) | "Page not found" + the path | **Go to the dispatch board** (primary) |
+| `server-error.webp` | 1200 × 900, 156 KB | 500 page, also for every other 5xx but 503 | "Something went wrong on the server" + trace id if any | **Try again** on the sending page, else **Go to the dispatch board** |
+| `maintenance.webp` | 1200 × 900, 156 KB | 503 page | "Down for maintenance" + bookings kept | **Try again** on the sending page, else **Go to the dispatch board** |
+| `empty-technicians.webp` | 1200 × 900, 106 KB | Technicians and Bays lists of a dealership with none yet (11.17) | "No technicians yet" / "No bays yet" + one line | **Check again** (outline) |
+| `photo-evidence.webp` | 1200 × 900, 131 KB | the triage photo field in the booking dialog's step 1 (11.14), before the first photo | no headline: the field's label, then "A photo of the warning light, the damage or the paperwork helps find the right service." | the file input itself |
 
 Layout: a centred column inside the card or panel, `flex flex-col items-center gap-3 py-8 text-center`; the image `w-40 md:w-48 h-auto` with `width`/`height` attributes set to the file's pixels (no layout shift); headline `h3` (`font-heading text-lg font-semibold`; `h1` on the router error pages, which have no other title); one line of `text-sm text-muted-foreground` (`max-w-xs`); one action. Desktop booking success stays a toast (Addendum B §B4); only the mobile full-screen sheet uses the success illustration.
+
+Every error page has its own picture, so none needs telling apart: the icon tiles that once marked a shared `closed-day.webp` on the 401, 403 and 503 pages are gone. The Services list keeps `empty-schedule.webp` for an empty catalogue; the empty locker is for the people and bays a workshop has not set up.
+
+The triage photo field is the one illustration inside a form. Before the first photo the field is a dashed panel (`rounded-lg border border-dashed border-input p-3`, no fill): the picture at `w-20 sm:w-24` (`width`/`height` set as above) beside one line of `text-sm` saying what is worth photographing, the file input under them on a phone and beside the picture from `sm`. Once a photo is chosen the panel and the picture go and the field shows the input and the photo list; the input stays the same element, so focus that returns from the file picker stays in the dialog.
 
 Do not use illustrations for inline problems (409, 422, 400, 429): those are alerts in place, next to what the user is doing.
 
@@ -816,7 +815,7 @@ Decorative: empty `alt`, `aria-hidden`.
 
 ### 12.4 Alt text
 
-The images README is not copied into the web project, so the alt text lives here. In every state above the headline already says what the picture shows, so the image is decorative there: `alt=""`. Use the alt text below only where an illustration appears without an equivalent heading.
+The images READMEs are not copied into the web project, so the alt text lives here and, for the state illustrations, in `src/lib/illustrations.ts`. The first set's states have a headline that already says what the picture shows, so their image is decorative: `alt=""`. The wave-2 pictures are each state's own and show what the words do not (a key and an open padlock for sign-in, a barrier for no access, a closed road, an open bonnet, a car on a lift, an empty locker, a phone photographing a warning light), so they carry the alt text below (`described` on `IllustratedState`; the error pages and the empty Technicians and Bays lists always, and the photo field's picture). Use the first set's alt text only where an illustration appears without an equivalent heading.
 
 | File | Alt text |
 |---|---|
@@ -826,6 +825,13 @@ The images README is not copied into the web project, so the alt text lives here
 | `error-connection.webp` | Disconnected cable plugs beneath a coral warning triangle. |
 | `booking-success.webp` | Silver hatchback with a green check mark and lavender-to-peach sparks. |
 | `vehicle-placeholder.webp` | Generic silver hatchback viewed from the front at an angle. |
+| `unauthorized.webp` | Car key fob beside an open padlock inviting sign-in. |
+| `forbidden.webp` | Workshop bay behind a safety barrier with a wrench role badge. |
+| `server-error.webp` | Generic silver hatchback with an open bonnet, a steam wisp and a nearby wrench. |
+| `maintenance.webp` | Silver hatchback raised on a two-post lift beside cones and a progress indicator. |
+| `not-found.webp` | Directional road sign pointing toward a short road closed by a barrier. |
+| `empty-technicians.webp` | Tool pegboard beside an open, empty technician locker. |
+| `photo-evidence.webp` | Phone camera framing an amber warning triangle on a generic vehicle dashboard. |
 | `backdrop-light.webp`, `backdrop-dark.webp` | decorative: `alt=""` and `aria-hidden="true"` always |
 
 ## 13. Data visualisation
@@ -834,7 +840,7 @@ The images README is not copied into the web project, so the alt text lives here
 - **Status colours are reserved** for status: a chart of appointments by status uses the status markers (`bg-status-<s>-border`) with icons and labels, never `chart-*`; a chart of anything else never uses status or feedback colours.
 - **Tallies and outcome bars** use the feedback tokens (success, warning, destructive) as in section 11.17.
 - Marks are thin, with a 2 px surface gap between adjacent fills; numbers and labels use text tokens (`text-foreground`, `text-muted-foreground`), never the series colour; a legend appears for two or more series; a table view or written values exist for every chart.
-- The KPI strip is numbers, not charts. Bay utilisation may add a thin meter (`h-1.5 rounded-full bg-muted` track, `bg-chart-1` fill) under the figure. The same meter, `aria-hidden` under the written percentage, compares the suggested services' probabilities (11.6).
+- The KPI strip is numbers, not charts. Bay utilisation may add a thin meter (`h-1.5 rounded-full bg-muted` track, `bg-chart-1` fill) under the figure. The resources pages use the same meter for each technician's and bay's booked share of today's opening hours, beside the time or percentage it draws. The same meter, `aria-hidden` under the written percentage, compares the suggested services' probabilities (11.6).
 
 ## 14. Responsive rules
 
@@ -921,7 +927,7 @@ Paths are relative to `src/Keyloop.ServiceScheduler.Web` unless they start with 
    output. SIL Open Font License 1.1, Copyright 2017 IBM Corp. The full licence ships with the package
    (`node_modules/@fontsource/ibm-plex-mono/LICENSE`).
    ```
-6. Copy the eight `design/images/*.webp` files to `src/assets/illustrations/` (the alt text is in section 12.4).
+6. Copy the eight `design/images/*.webp` files, and the wave-2 files in use (12.1), to `src/assets/illustrations/` (the alt text is in section 12.4).
 7. Apply the component recipes in 17.3.
 8. Verify: `pnpm test && pnpm lint && pnpm typecheck && pnpm build`; then `grep -c "data:font" dist/assets/*.css` prints 0 for every file; the two `rg` checks in 17.2 print nothing; then look at the board in both themes at the five viewports of section 14.
 
@@ -987,7 +993,7 @@ These are the only edits the theme needs in existing components; they keep the c
 
 ### 17.4 Adding a token
 
-1. Define it in **both** `:root` and `.dark` in `src/index.css` as an `oklch()` value with a `/* #hex source */` comment after the semicolon (no braces inside comments: `theme-tokens.test.ts` parses these blocks with a regular expression). Colours are opaque; only ink and scrim tokens (`--shadow-ink`, `--overlay`) carry alpha, and `--card` and the status tokens must stay opaque (the test reads them).
+1. Define it in **both** `.light, :root` and `.dark` in `src/index.css` (`.light` and `.dark` also scope a theme to one element, as the Appearance page's previews do) as an `oklch()` value with a `/* #hex source */` comment after the semicolon (no braces inside comments: `theme-tokens.test.ts` parses these blocks with a regular expression). Colours are opaque; only ink and scrim tokens (`--shadow-ink`, `--overlay`) carry alpha, and `--card` and the status tokens must stay opaque (the test reads them).
 2. Expose it in `@theme inline` (`--color-<name>: var(--<name>);` for colours, `--radius-<name>`, `--shadow-<name>`, `--text-<name>` and so on). The utility (`bg-<name>`) exists from then on.
 3. Add every text or boundary pair it takes part in to `src/theme-tokens.test.ts` (the test already has `block()` and `contrast()`; add a table of `[foreground, background, minimum]` rows and assert them for both themes), and to section 4.4 of this document.
 4. Name it for its role, not its colour (`--signal`, not `--blue`), and document it in section 4.
@@ -1024,7 +1030,7 @@ Document:
 - **Audit (4.4)**: rebuilt and widened from 112 to 155 pairs: default outline, link focus, destructive focus, invalid fields, muted text on `sidebar-accent`, `primary-foreground/80`, input on `accent`, `secondary` and each status tint, ring on every surface, status markers and the now line on the hour bands, the meter, outcome icons on their tiles, the switch, selection and the hover states. Figures are now 8-bit quantised and truncated, so they reproduce from the hex values.
 - **Agenda card (11.13)**: rebuilt from the fields the schedule endpoint returns: VIN and plate added; make and model removed (they come from `GET /appointments/{id}` in the details sheet, never fetched per card). The card names the other resource (technician in bay mode, bay in technician mode) and the lane header names the grouped one, so every card shows both. The lane name is not repeated on each card (the verifier's sketch repeated it), because inside a lane group it would be the same word on every card.
 - **Provenance in the app (11.1)**: a visible sidebar-footer line, and the wordmark is a plain `span`, never a link. Not adopted: `aria-label="Keyloop (demo)"` on the wordmark span, because ARIA 1.2 does not allow naming a generic `span`, so screen readers may ignore it; the visible line reaches everyone, screenshots included.
-- **Traffic light (9, 11.17)**: specified as check, triangle and cross with words and tiles, plus 429 and any other code. `CircleX` is now the failure icon everywhere (stress panel, `ProblemAlert`, error toasts), not only in the stress panel, so an icon means one thing across the app; `CircleAlert` is kept for field errors.
+- **Traffic light (9, 11.17)**: specified as check, triangle and cross with words and tiles, plus 429 and any other code. `CircleX` is now the failure icon everywhere (`ProblemAlert`, error toasts; the stress panel it was first drawn for was removed on 2026-10-12), so an icon means one thing across the app; `CircleAlert` is kept for field errors.
 - **Problems (11.16)**: 404, 429 (with `Retry-After`) and any other 4xx added.
 - **Colour checks (17.2)**: both commands scan `.ts` too and catch `white`/`black` and `var(--kl-*)`/`var(--domain-*)`; tested against fixtures (a `.ts` status map with `bg-blue-500 text-white` and `#ff0000` is now caught) and against the current source (only the two scrims, which the recipes fix).
 - **Template adoption (11.19)**: rules for `section-cards`, `calendars`, the date picker, the calendar list view, the booking form, the optional chart, and the 404 and error-boundary routes (added to 12.1).
@@ -1041,3 +1047,7 @@ Left open: the illustrations' visual fit is verified only in isolation (on light
 **v3, Appointments list (Task 17c, 2026-10-12).** The appointments table in 11.17 (status bar, compact sort headers, faceted filters with counts, row actions menu, width-dependent columns, the sticky time column on narrow screens, job cards and a filter sheet on phones); the tasks data table and the users stat cards in the 11.19 adoption table; the dropdown menu's destructive focus fill in 17.3; the Cancelled row of 4.3 corrected (the list reads the schedule, which omits cancelled appointments). No new token: the sticky cell's fill mixes existing ones.
 
 **v4, booking intake triage (Task 26, 2026-10-12).** The suggested-service cards in 11.6 (a radio group of cards with the likelihood word, percentage and meter, the day-asked-for chip) and the meter's second use in section 13. No new token: the cards reuse the slot chip's surface, border and focus, and the meter's pair is already in the audit.
+
+**v5, resources, settings and error pages (Task 29, 2026-10-12).** The resource tables and their cards in 11.17; the users app, the settings app's appearance and account pages and the errors app's 401, 403, 500 and 503 pages in the 11.19 adoption table; the new error pages and the icon tile that tells apart pages sharing an illustration in 12.1; the meter's use on the resources pages in 13; the sidebar's three groups in 11.1. `.light` now scopes the light tokens to an element as `.dark` scopes the dark ones (17.4), so the Appearance page draws a light preview inside the dark theme. No new token.
+
+**v6, wave-2 illustrations (FE integration, 2026-10-12).** Each error page gets its own picture (401 `unauthorized`, 403 `forbidden`, 404 `not-found`, 500 and other 5xx `server-error`, 503 `maintenance`), described by its alt text, and the icon tiles that marked the shared `closed-day` picture are removed (12.1). `empty-technicians` for the empty Technicians and Bays lists; `photo-evidence` in the triage photo field before the first photo, the one in-form illustration (`w-20 sm:w-24`). Alt text for the seven in 12.4. No new token.

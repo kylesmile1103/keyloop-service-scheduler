@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/nav-user.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 "use client"
 
 import { EllipsisVertical, Monitor, Moon, Sun, UserRound } from "lucide-react"
@@ -23,8 +25,8 @@ import type { Theme } from "@/contexts/theme-context"
 import { useTheme } from "@/hooks/use-theme"
 
 /**
- * Who is acting. Authentication is designed but deferred (ARCHITECTURE §11.3): the API runs in anonymous mode and
- * records `anonymous:<client-ip>` as the audit actor, so the shell says so instead of showing a made-up user.
+ * Who is acting. The API authenticates every request (ADR-027), but the app does not show the signed-in account yet
+ * (Task 27b reads it from `GET /api/v1/me`), so the shell says so instead of showing a made-up user.
  */
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -48,9 +50,9 @@ export function NavUser() {
               </AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">Anonymous mode</span>
+              <span className="truncate font-medium">Your account</span>
               <span className="text-muted-foreground truncate text-xs">
-                Sign-in not enabled
+                Not shown in the app yet
               </span>
             </div>
             <EllipsisVertical className="ml-auto" />
@@ -63,7 +65,8 @@ export function NavUser() {
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-foreground max-w-64 text-xs leading-relaxed font-normal">
-                Sign-in is not enabled in this environment. Bookings and cancellations are recorded as anonymous.
+                This app does not offer sign-in yet. Anyone may view, with customer details masked; booking and
+                cancelling need a workshop account.
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

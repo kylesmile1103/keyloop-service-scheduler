@@ -1,3 +1,5 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/logo.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import * as React from "react"
 
 interface LogoProps extends React.SVGProps<SVGSVGElement> {

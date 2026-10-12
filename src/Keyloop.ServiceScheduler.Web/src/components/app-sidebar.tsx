@@ -1,7 +1,9 @@
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/app-sidebar.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 "use client"
 
 import * as React from "react"
-import { ArrowUpRight, BookOpenText, CalendarRange, ClipboardList } from "lucide-react"
+import { ArrowUpRight, BookOpenText, CalendarRange, ClipboardList, ListChecks, SunMoon, UserRound, UsersRound, Warehouse } from "lucide-react"
 
 import { Logo } from "@/components/logo"
 import { NavMain } from "@/components/nav-main"
@@ -16,7 +18,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { WORKSHOP_PARAMS } from "@/lib/workshop-params"
+import { DEALERSHIP_PARAM, WORKSHOP_PARAMS } from "@/lib/workshop-params"
 
 const data = {
   navGroups: [
@@ -35,6 +37,22 @@ const data = {
           icon: ClipboardList,
           carry: WORKSHOP_PARAMS,
         },
+      ],
+    },
+    {
+      // One dealership's resources, measured today: the links carry the dealership, not the workshop pages' day.
+      label: "Resources",
+      items: [
+        { title: "Technicians", url: "/resources/technicians", icon: UsersRound, carry: [DEALERSHIP_PARAM] },
+        { title: "Bays", url: "/resources/bays", icon: Warehouse, carry: [DEALERSHIP_PARAM] },
+        { title: "Services", url: "/resources/services", icon: ListChecks, carry: [DEALERSHIP_PARAM] },
+      ],
+    },
+    {
+      label: "Settings",
+      items: [
+        { title: "Appearance", url: "/settings/appearance", icon: SunMoon },
+        { title: "Account", url: "/settings/account", icon: UserRound },
       ],
     },
   ],

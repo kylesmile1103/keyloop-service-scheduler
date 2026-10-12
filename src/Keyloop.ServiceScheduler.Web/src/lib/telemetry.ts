@@ -121,7 +121,7 @@ async function start(
 }
 
 /**
- * Runs `call` inside a span named `name` (e.g. `ui.book_appointment`, `ui.stress_test`). Use the `fetch` it provides for
+ * Runs `call` inside a span named `name` (e.g. `ui.book_appointment`, `ui.booking_triage`). Use the `fetch` it provides for
  * the requests that belong to the span. The span records a failure and the error is rethrown unchanged. Without
  * telemetry the span is a no-op and `fetch` is the plain browser fetch.
  */
