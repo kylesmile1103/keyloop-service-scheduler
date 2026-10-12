@@ -12,7 +12,7 @@ public sealed class NotificationOutboxConfiguration : IEntityTypeConfiguration<N
         builder.ToTable("notification_outbox", table =>
         {
             table.HasCheckConstraint("ck_notification_outbox_attempts", "attempts >= 0");
-            table.HasCheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed')");
+            table.HasCheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed', 'Suppressed')");
             table.HasCheckConstraint("ck_notification_outbox_kind", "kind IN ('BookingConfirmation', 'Cancellation')");
         });
         builder.HasKey(e => e.Id);
@@ -20,7 +20,8 @@ public sealed class NotificationOutboxConfiguration : IEntityTypeConfiguration<N
         builder.Property(e => e.Kind).HasConversion<string>().HasMaxLength(32);
         builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(16);
         builder.Property(e => e.Recipient).HasMaxLength(254);
-        builder.Property(e => e.Subject).HasMaxLength(200);
+        // The appointment snapshot, rendered at dispatch (NotificationSnapshot through SchedulerJsonContext, like history payloads).
+        builder.Property(e => e.Payload).HasColumnType("jsonb");
         builder.Property(e => e.LastFailure).HasMaxLength(32);
         builder.HasOne<Appointment>().WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
         // Deferrability is appended in the migration: a stale cancellation must reach its xmin UPDATE before any duplicate email

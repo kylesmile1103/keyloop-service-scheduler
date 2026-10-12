@@ -49,6 +49,9 @@ public sealed class MetricsCollector : IDisposable
     public double Max(string instrument, Func<KeyValuePair<string, object?>[], bool>? tagFilter = null) =>
         Of(instrument, tagFilter).Select(m => m.Value).DefaultIfEmpty(0).Max();
 
+    /// <summary>Asks every observable instrument (the gauges) for its current value, which is then recorded like any measurement.</summary>
+    public void Observe() => _listener.RecordObservableInstruments();
+
     public void Dispose() => _listener.Dispose();
 
     private void Record(Instrument instrument, double value, ReadOnlySpan<KeyValuePair<string, object?>> tags) =>

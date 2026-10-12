@@ -54,6 +54,8 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("network", "Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/33", "SecurityOptions", "KnownNetworks")]
     [InlineData("trust_all", "Security:ForwardedHeaders:Enabled", "true", "SecurityOptions", "ForwardedHeaders")]
     [InlineData("notifications", "Notifications:MaxAttempts", "0", "NotificationOptions", "MaxAttempts")]
+    [InlineData("notification_idle", "Notifications:IdleInterval", "00:00:00.500", "NotificationOptions", "IdleInterval")]
+    [InlineData("notification_send_timeout", "Notifications:SendTimeout", "00:10:00", "NotificationOptions", "SendTimeout")]
     [InlineData("reseed_key", "Demo:ReseedKey", "too-short", "DemoOptions", "ReseedKey")]
     public async Task Invalid_configuration_fails_startup_before_any_database_work(string name, string key, string value, string optionsType, string member)
     {

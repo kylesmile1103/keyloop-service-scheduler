@@ -82,29 +82,75 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     }
 
     [Fact]
-    public async Task Mailpit_is_healthy_links_its_inbox_and_receives_email_from_the_composed_api()
+    public async Task Mailpit_is_healthy_links_its_inbox_and_receives_a_booking_email_from_the_composed_api()
     {
         await appHost.App.ResourceNotifications.WaitForResourceHealthyAsync("mailpit", Ct).WaitAsync(TimeSpan.FromSeconds(30), Ct);
-        using var http = appHost.App.CreateHttpClient("mailpit", "http");
-        using var response = await http.GetAsync("/readyz", Ct);
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var mailpit = appHost.App.CreateHttpClient("mailpit", "http");
+        using (var ready = await mailpit.GetAsync("/readyz", Ct))
+        {
+            ready.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
         appHost.App.ResourceNotifications.TryGetCurrentState("mailpit", out var resource).ShouldBeTrue();
         resource!.Snapshot.Urls.ShouldContain(u => u.DisplayProperties.DisplayName == "Mailpit inbox");
 
-        // Demo seeding queues bookings before the hosted worker starts. Receiving one proves the composed API's SMTP wiring too.
+        // Book through the API for an address that is not a reserved domain: the commit nudges the dispatcher, which sends over the
+        // composed SMTP wiring. Every seeded customer is @example.com, which the dispatcher suppresses, so this is the only message.
+        const string recipient = "aspire.smoke@inbox.keyloop.local";
+        using var api = appHost.App.CreateHttpClient("api", "http");
+        var booked = await BookAnyFreeSlotAsync(api, recipient);
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         while (true)
         {
-            using var messages = JsonDocument.Parse(await http.GetStringAsync("/api/v1/messages", timeout.Token));
+            using var messages = JsonDocument.Parse(await mailpit.GetStringAsync("/api/v1/messages", timeout.Token));
             if (messages.RootElement.GetProperty("total").GetInt32() > 0)
             {
-                messages.RootElement.GetProperty("messages")[0].GetProperty("From").GetProperty("Address").GetString()
-                    .ShouldBe("notifications@keyloop.example");
+                var message = messages.RootElement.GetProperty("messages").EnumerateArray().ShouldHaveSingleItem("seeded @example.com bookings are never sent");
+                message.GetProperty("To")[0].GetProperty("Address").GetString().ShouldBe(recipient);
+                message.GetProperty("From").GetProperty("Address").GetString().ShouldBe("notifications@keyloop.example");
+                message.GetProperty("Subject").GetString().ShouldBe($"Booking confirmation - {booked.ToString("N")[^8..].ToUpperInvariant()}");
                 break;
             }
             await Task.Delay(TimeSpan.FromMilliseconds(100), timeout.Token);
         }
+    }
+
+    /// <summary>Books the first free slot at the seeded Reading dealership in the coming days and returns the appointment id.</summary>
+    private static async Task<Guid> BookAnyFreeSlotAsync(HttpClient api, string email)
+    {
+        using var dealerships = JsonDocument.Parse(await api.GetStringAsync("/api/v1/dealerships", Ct));
+        var dealershipId = dealerships.RootElement.EnumerateArray()
+            .Single(d => d.GetProperty("name").GetString() == "Keyloop Motors Reading").GetProperty("id").GetString();
+        using var serviceTypes = JsonDocument.Parse(await api.GetStringAsync($"/api/v1/dealerships/{dealershipId}/service-types", Ct));
+        foreach (var serviceType in serviceTypes.RootElement.EnumerateArray())
+        {
+            var serviceTypeId = serviceType.GetProperty("id").GetString();
+            for (var day = 2; day <= 9; day++)
+            {
+                var date = DateTime.UtcNow.Date.AddDays(day).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                using var availability = JsonDocument.Parse(
+                    await api.GetStringAsync($"/api/v1/dealerships/{dealershipId}/availability?serviceTypeId={serviceTypeId}&date={date}", Ct));
+                if (availability.RootElement.GetProperty("slots").EnumerateArray().FirstOrDefault() is not { ValueKind: JsonValueKind.Object } slot)
+                {
+                    continue;
+                }
+                var body = JsonSerializer.Serialize(new
+                {
+                    serviceTypeId,
+                    startUtc = slot.GetProperty("startUtc").GetString(),
+                    customer = new { name = "Aspire Smoke", email, phone = "+44 7700 900999" },
+                    vehicle = new { vin = "WVWZZZ1KZAW654321", registration = "AS26 MKE", make = "Volkswagen", model = "Golf" },
+                });
+                using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                using var response = await api.PostAsync($"/api/v1/dealerships/{dealershipId}/appointments", content, Ct);
+                var answer = await response.Content.ReadAsStringAsync(Ct);
+                response.StatusCode.ShouldBe(HttpStatusCode.Created, answer);
+                using var appointment = JsonDocument.Parse(answer);
+                return appointment.RootElement.GetProperty("id").GetGuid();
+            }
+        }
+        throw new InvalidOperationException("No free slot at Reading in the coming days.");
     }
 
     [Fact]

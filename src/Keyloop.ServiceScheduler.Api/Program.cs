@@ -53,7 +53,10 @@ builder.Services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<IOptions
     NotificationProvider.None => new DisabledEmailSender(),
     _ => throw new InvalidOperationException("Notifications:Provider=Cloudflare is reserved; the Cloudflare email adapter is not implemented yet. Select Smtp or None."),
 });
+builder.Services.AddSingleton<NotificationSignal>();
 builder.Services.AddHostedService<NotificationDispatcher>();
+builder.Services.AddSingleton<NotificationBacklogMonitor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<NotificationBacklogMonitor>());
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(sp =>
@@ -64,6 +67,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddScoped<CurrentActor>();
 builder.Services.AddScoped<DomainEventInterceptor>();
 builder.Services.AddScoped<IDomainEventObserver, TelemetryDomainEventObserver>();
+builder.Services.AddScoped<IDomainEventObserver, NotificationNudgeObserver>();
 builder.Services.AddScoped<DayScheduleReader>();
 
 // The connection string is read when a context is first configured, not here, so WebApplicationFactory overrides apply. During

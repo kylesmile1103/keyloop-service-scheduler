@@ -12,6 +12,7 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 
@@ -39,6 +40,8 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(AppointmentStarted))]
 [JsonSerializable(typeof(AppointmentCompleted))]
 [JsonSerializable(typeof(AppointmentNoShow))]
+// Task 19: the notification outbox snapshot (notification_outbox.payload), rendered into the email at dispatch
+[JsonSerializable(typeof(NotificationSnapshot))]
 // Task 7: problem extension values (SYSTEM_DESIGN §8.7), by runtime type
 [JsonSerializable(typeof(OperatingWindow))] // operatingWindow
 [JsonSerializable(typeof(DateTime))] // earliestStartUtc, latestStartUtc

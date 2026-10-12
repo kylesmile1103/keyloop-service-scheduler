@@ -15,19 +15,15 @@ public sealed class NotificationOptions : IValidatableObject
     public string FromAddress { get; set; } = "notifications@keyloop.example";
     public string FromDisplayName { get; set; } = "Keyloop Service Scheduler";
     public string? ReplyTo { get; set; }
-    [Range(typeof(TimeSpan), "00:00:00.100", "00:10:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
-    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>The longest the dispatcher sleeps when nothing nudges it and nothing is due (it also wakes on commits and due times).</summary>
+    public TimeSpan IdleInterval { get; set; } = TimeSpan.FromMinutes(15);
     [Range(1, 100)]
     public int BatchSize { get; set; } = 10;
     [Range(1, 20)]
     public int MaxAttempts { get; set; } = 5;
-    [Range(typeof(TimeSpan), "00:00:00.100", "1.00:00:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public TimeSpan InitialBackoff { get; set; } = TimeSpan.FromSeconds(10);
-    [Range(typeof(TimeSpan), "00:00:00.100", "7.00:00:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public TimeSpan MaxBackoff { get; set; } = TimeSpan.FromHours(1);
-    [Range(typeof(TimeSpan), "00:00:01", "00:05:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public TimeSpan SendTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    [Range(typeof(TimeSpan), "00:00:02", "00:30:00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public TimeSpan ClaimLease { get; set; } = TimeSpan.FromMinutes(2);
     [ValidateObjectMembers]
     public SmtpNotificationOptions Smtp { get; set; } = new();
@@ -53,15 +49,40 @@ public sealed class NotificationOptions : IValidatableObject
         {
             yield return new ValidationResult("ReplyTo must be a single email address without display text or line breaks.", [nameof(ReplyTo)]);
         }
+        // Typed comparisons, not [Range(typeof(TimeSpan), ...)]: that constructor converts through a TypeConverter, which is not
+        // trim-safe (IL2026; ledger ruling under Task 18/18a). The generated validator calls this method.
+        if (OutOfRange(IdleInterval, TimeSpan.FromSeconds(1), TimeSpan.FromHours(1)))
+        {
+            yield return new ValidationResult("IdleInterval must be between 00:00:01 and 01:00:00.", [nameof(IdleInterval)]);
+        }
+        if (OutOfRange(InitialBackoff, TimeSpan.FromMilliseconds(100), TimeSpan.FromDays(1)))
+        {
+            yield return new ValidationResult("InitialBackoff must be between 00:00:00.100 and 1.00:00:00.", [nameof(InitialBackoff)]);
+        }
+        if (OutOfRange(MaxBackoff, TimeSpan.FromMilliseconds(100), TimeSpan.FromDays(7)))
+        {
+            yield return new ValidationResult("MaxBackoff must be between 00:00:00.100 and 7.00:00:00.", [nameof(MaxBackoff)]);
+        }
+        if (OutOfRange(SendTimeout, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(5)))
+        {
+            yield return new ValidationResult("SendTimeout must be between 00:00:01 and 00:05:00.", [nameof(SendTimeout)]);
+        }
+        if (OutOfRange(ClaimLease, TimeSpan.FromSeconds(2), TimeSpan.FromMinutes(30)))
+        {
+            yield return new ValidationResult("ClaimLease must be between 00:00:02 and 00:30:00.", [nameof(ClaimLease)]);
+        }
         if (MaxBackoff < InitialBackoff)
         {
             yield return new ValidationResult("MaxBackoff must be at least InitialBackoff.", [nameof(MaxBackoff)]);
         }
+        // The margin covers the bounded acknowledgement after a send (NotificationDispatcher.AcknowledgementTimeout, five seconds).
         if (ClaimLease <= SendTimeout + TimeSpan.FromSeconds(5))
         {
             yield return new ValidationResult("ClaimLease must exceed SendTimeout by more than five seconds.", [nameof(ClaimLease)]);
         }
     }
+
+    private static bool OutOfRange(TimeSpan value, TimeSpan minimum, TimeSpan maximum) => value < minimum || value > maximum;
 
     private static bool HasLineBreak(string value) => value.Contains('\r') || value.Contains('\n');
     private static bool IsAddress(string value) => !string.IsNullOrWhiteSpace(value) && !HasLineBreak(value)

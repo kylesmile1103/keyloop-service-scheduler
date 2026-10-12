@@ -40,9 +40,11 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         row.Kind.ShouldBe(NotificationKind.BookingConfirmation);
         row.Recipient.ShouldBe("customer1@example.com");
         row.Status.ShouldBe(NotificationStatus.Pending);
-        row.TextBody.ShouldContain("Test Motors");
-        row.TextBody.ShouldContain("*************3456");
-        row.TextBody.ShouldNotContain(appointment.Vehicle.Vin.Value);
+        // A snapshot of the aggregate, rendered at dispatch: ids and times, the registration and only the VIN's last four characters.
+        row.ReadSnapshot().ShouldBe(new NotificationSnapshot(appointment.Id, _workshop.Dealership.Id, _workshop.Interim.Id,
+            appointment.Slot.StartUtc, appointment.Slot.EndUtc, "AB12 CDE", "3456"));
+        row.Payload.ShouldNotContain(appointment.Vehicle.Vin.Value);
+        row.Payload.ShouldNotContain(appointment.Customer.Name);
         (await _factory.WithDbAsync(db => db.AppointmentHistory.CountAsync(Ct))).ShouldBe(1);
 
         var rolledBack = _workshop.Book(TestData.LondonTime(11));
@@ -72,8 +74,50 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         });
         var rows = await RowsAsync();
         rows.Count.ShouldBe(2);
-        rows.Single(e => e.Kind == NotificationKind.Cancellation).TextBody.ShouldContain("Customer rescheduled");
-        rows.Single(e => e.Kind == NotificationKind.BookingConfirmation).TextBody.ShouldNotContain("Customer rescheduled");
+        // The reason is free text typed by an anonymous visitor (ADR-010): it is not even stored for the email (proposal 2.4, A8).
+        rows.ShouldAllBe(e => !e.Payload.Contains("Customer rescheduled"));
+        var cancellation = rows.Single(e => e.Kind == NotificationKind.Cancellation);
+        cancellation.ReadSnapshot().ShouldBe(rows.Single(e => e.Kind == NotificationKind.BookingConfirmation).ReadSnapshot());
+        cancellation.CreatedAt.ShouldBe(TestData.Now.AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task Staging_reads_nothing_so_a_booking_or_cancel_gains_no_round_trip()
+    {
+        // The booking's dealership and service type are loaded untracked by the handler, so any lookup here would be an extra
+        // SELECT inside the advisory-lock critical section (ADR-003). Rendering happens at dispatch instead.
+        var commands = new CommandRecorder();
+        var appointment = _workshop.Book(TestData.LondonTime(9));
+        await using (var db = NewContext(commands))
+        {
+            db.Add(appointment);
+            await db.SaveChangesAsync(Ct);
+            appointment.Cancel("Customer rescheduled", TestData.Now.AddMinutes(5));
+            await db.SaveChangesAsync(Ct);
+        }
+        commands.Texts.Count.ShouldBe(2, string.Join(Environment.NewLine, commands.Texts));
+        commands.Texts.ShouldAllBe(text => !text.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+            && !text.Contains("FROM dealerships", StringComparison.Ordinal) && !text.Contains("FROM service_types", StringComparison.Ordinal));
+        (await RowsAsync()).Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_cancel_saves_even_when_its_email_cannot_be_rendered_now()
+    {
+        var appointment = _workshop.Book(TestData.LondonTime(9));
+        await _factory.WithDbAsync(async db => { db.Add(appointment); await db.SaveChangesAsync(Ct); });
+        // Unrenderable at this moment (an unknown zone); staging must not depend on it (A2).
+        await _factory.WithDbAsync(db => db.Database.ExecuteSqlAsync(
+            $"UPDATE dealerships SET time_zone_id = 'Mars/Olympus_Mons' WHERE id = {_workshop.Dealership.Id}", Ct));
+        await _factory.WithDbAsync(async db =>
+        {
+            var tracked = await db.Appointments.SingleAsync(a => a.Id == appointment.Id, Ct);
+            tracked.Cancel("Customer rescheduled", TestData.Now.AddMinutes(5));
+            await db.SaveChangesAsync(Ct);
+        });
+        (await RowsAsync()).Count(e => e.Kind == NotificationKind.Cancellation).ShouldBe(1);
+        (await _factory.WithDbAsync(db => db.Appointments.AsNoTracking().SingleAsync(a => a.Id == appointment.Id, Ct))).Status
+            .ShouldBe(Keyloop.ServiceScheduler.Api.Domain.Scheduling.AppointmentStatus.Cancelled);
     }
 
     [Fact]
@@ -161,8 +205,8 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         await using var tx = await connection.BeginTransactionAsync(Ct);
         await using var duplicate = new Npgsql.NpgsqlCommand("""
             INSERT INTO notification_outbox
-                (id, appointment_id, kind, recipient, subject, text_body, html_body, created_at, next_attempt_at, status, attempts)
-            SELECT gen_random_uuid(), appointment_id, kind, recipient, subject, text_body, html_body, created_at, next_attempt_at, status, attempts
+                (id, appointment_id, kind, recipient, payload, created_at, next_attempt_at, status, attempts)
+            SELECT gen_random_uuid(), appointment_id, kind, recipient, payload, created_at, next_attempt_at, status, attempts
             FROM notification_outbox LIMIT 1
             """, connection, tx);
         // The appointment UPDATE's xmin check must get a chance to reject a stale cancel before duplicate notification checking.
@@ -173,60 +217,38 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         (await RowsAsync()).ShouldHaveSingleItem();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Snapshot_query_failure_detaches_staged_rows_and_a_retry_writes_each_once(bool synchronous)
+    private sealed class CommandRecorder : DbCommandInterceptor
     {
-        var appointment = _workshop.Book(TestData.LondonTime(9));
-        await using var db = new SchedulerDbContext(new DbContextOptionsBuilder<SchedulerDbContext>().UseNpgsql(pg.ConnectionString)
-            .UseSnakeCaseNamingConvention().AddInterceptors(new FailFirstSnapshotQuery(),
-                new DomainEventInterceptor(new CurrentActor(), [], NullLogger<DomainEventInterceptor>.Instance)).Options);
-        db.Add(appointment);
-        if (synchronous)
+        private readonly List<string> _texts = [];
+        public IReadOnlyList<string> Texts => _texts;
+        public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
         {
-            Should.Throw<IOException>(() => db.SaveChanges());
-        }
-        else
-        {
-            await Should.ThrowAsync<IOException>(() => db.SaveChangesAsync(Ct));
-        }
-        db.ChangeTracker.Entries<AppointmentHistoryEntry>().ShouldBeEmpty();
-        db.ChangeTracker.Entries<NotificationOutboxEntry>().ShouldBeEmpty();
-        appointment.DomainEvents.ShouldHaveSingleItem();
-
-        await db.SaveChangesAsync(Ct);
-        (await RowsAsync()).ShouldHaveSingleItem().AppointmentId.ShouldBe(appointment.Id);
-        (await _factory.WithDbAsync(context => context.AppointmentHistory.CountAsync(h => h.AppointmentId == appointment.Id, Ct))).ShouldBe(1);
-    }
-
-    private sealed class FailFirstSnapshotQuery : DbCommandInterceptor
-    {
-        private int _armed = 1;
-        public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData,
-            InterceptionResult<DbDataReader> result)
-        {
-            FailIfArmed(command);
+            _texts.Add(command.CommandText);
             return result;
         }
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
             InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
-            FailIfArmed(command);
+            _texts.Add(command.CommandText);
             return ValueTask.FromResult(result);
         }
 
-        private void FailIfArmed(DbCommand command)
+        public override InterceptionResult<int> NonQueryExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<int> result)
         {
-            if (command.CommandText.Contains("FROM dealerships", StringComparison.Ordinal) && Interlocked.Exchange(ref _armed, 0) == 1)
-            {
-                throw new IOException("Simulated snapshot query failure");
-            }
+            _texts.Add(command.CommandText);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            _texts.Add(command.CommandText);
+            return ValueTask.FromResult(result);
         }
     }
 
     private Task<List<NotificationOutboxEntry>> RowsAsync() => _factory.WithDbAsync(db => db.NotificationOutbox.AsNoTracking().ToListAsync(Ct));
-    private SchedulerDbContext NewContext() => new(new DbContextOptionsBuilder<SchedulerDbContext>().UseNpgsql(pg.ConnectionString)
-        .UseSnakeCaseNamingConvention().AddInterceptors(new DomainEventInterceptor(new CurrentActor(), [], NullLogger<DomainEventInterceptor>.Instance)).Options);
+    private SchedulerDbContext NewContext(params IInterceptor[] extra) => new(new DbContextOptionsBuilder<SchedulerDbContext>().UseNpgsql(pg.ConnectionString)
+        .UseSnakeCaseNamingConvention().AddInterceptors([.. extra, new DomainEventInterceptor(new CurrentActor(), [], NullLogger<DomainEventInterceptor>.Instance)]).Options);
 }

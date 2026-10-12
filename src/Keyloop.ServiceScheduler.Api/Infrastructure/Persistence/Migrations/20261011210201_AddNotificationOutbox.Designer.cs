@@ -14,7 +14,7 @@ using NpgsqlTypes;
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SchedulerDbContext))]
-    [Migration("20261011200419_AddNotificationOutbox")]
+    [Migration("20261011210201_AddNotificationOutbox")]
     partial class AddNotificationOutbox
     {
         /// <inheritdoc />
@@ -354,11 +354,6 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("HtmlBody")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("html_body");
-
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -373,6 +368,11 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("NextAttemptAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
 
                     b.Property<string>("Recipient")
                         .IsRequired()
@@ -390,17 +390,6 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("status");
 
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("subject");
-
-                    b.Property<string>("TextBody")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("text_body");
-
                     b.HasKey("Id")
                         .HasName("pk_notification_outbox");
 
@@ -417,7 +406,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_notification_outbox_kind", "kind IN ('BookingConfirmation', 'Cancellation')");
 
-                            t.HasCheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed')");
+                            t.HasCheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed', 'Suppressed')");
                         });
                 });
 

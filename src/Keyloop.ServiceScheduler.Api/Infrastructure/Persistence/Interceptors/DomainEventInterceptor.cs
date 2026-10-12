@@ -2,8 +2,6 @@ using System.Data.Common;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Domain.Common;
-using Keyloop.ServiceScheduler.Api.Domain.Catalog;
-using Keyloop.ServiceScheduler.Api.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 using Microsoft.EntityFrameworkCore;
@@ -46,7 +44,7 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     // Events whose explicit transaction's commit reported a failure: committed or not, the caller has to find out.
     private readonly List<IDomainEvent> _inDoubt = [];
 
-    // The SaveChanges in flight: its aggregates, their events and the history rows staged for them.
+    // The SaveChanges in flight: its aggregates, their events and the history and outbox rows staged for them.
     private Staged? _staged;
 
     /// <summary>
@@ -70,34 +68,15 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
 
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
-        try
-        {
-            Stage(eventData.Context);
-            StageNotifications(eventData.Context);
-            return result;
-        }
-        catch
-        {
-            // SavingChanges runs before EF's save-failure callbacks. Snapshot lookup faults must clean up here.
-            Discard(eventData.Context);
-            throw;
-        }
+        Stage(eventData.Context);
+        return result;
     }
 
-    public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            Stage(eventData.Context);
-            await StageNotificationsAsync(eventData.Context, cancellationToken);
-            return result;
-        }
-        catch
-        {
-            Discard(eventData.Context);
-            throw;
-        }
+        Stage(eventData.Context);
+        return ValueTask.FromResult(result);
     }
 
     public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
@@ -210,61 +189,44 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
             return;
         }
 
+        // Every row is built before the context is touched, so a fault here leaves nothing staged and a retry writes each row once.
         var events = aggregates.SelectMany(aggregate => aggregate.DomainEvents).ToList();
         var entries = events.Select(domainEvent => AppointmentHistoryEntry.From(domainEvent, _actor.Name)).ToList();
+        var notifications = Notifications(aggregates);
         context.Set<AppointmentHistoryEntry>().AddRange(entries);
+        context.Set<NotificationOutboxEntry>().AddRange(notifications);
 
         // Decided before EF opens its own transaction for this save: only a caller's transaction defers the notification.
-        _staged = new Staged(aggregates, events, entries, InCallerTransaction: context.Database.CurrentTransaction is not null);
+        _staged = new Staged(aggregates, events, entries, notifications, InCallerTransaction: context.Database.CurrentTransaction is not null);
     }
 
-    // The notification is staged here, never in an after-commit observer. Ordinary inserts of fresh ids do not add a contended
-    // resource to the booking transaction (ADR-003). Both sync and async SaveChanges paths share the same snapshot construction.
-    private IEnumerable<(IDomainEvent Event, Appointment Appointment, NotificationKind Kind)> NotificationsToStage() =>
-        _staged is null ? [] : _staged.Events.Where(e => e is AppointmentBooked or AppointmentCancelled)
-            .Select(e => (e, _staged.Aggregates.OfType<Appointment>().Single(a => a.Id == e.AppointmentId),
-                e is AppointmentBooked ? NotificationKind.BookingConfirmation : NotificationKind.Cancellation));
-
-    private void StageNotifications(DbContext? context)
+    /// <summary>
+    /// The booking confirmation and cancellation emails, staged in the same SaveChanges, never by an after-commit observer (ADR-020).
+    /// In-memory work on the aggregate only: no lookup and no rendering, so staging can neither fail the booking or cancel nor add a
+    /// round trip to the booking's critical section; the dispatcher renders at send time. Fresh outbox ids add no contended resource (ADR-003).
+    /// </summary>
+    private static List<NotificationOutboxEntry> Notifications(List<AggregateRoot> aggregates)
     {
-        if (context is null)
+        var notifications = new List<NotificationOutboxEntry>();
+        foreach (var appointment in aggregates.OfType<Appointment>())
         {
-            return;
+            foreach (var domainEvent in appointment.DomainEvents)
+            {
+                NotificationKind? kind = domainEvent switch
+                {
+                    AppointmentBooked => NotificationKind.BookingConfirmation,
+                    AppointmentCancelled => NotificationKind.Cancellation,
+                    _ => null,
+                };
+                if (kind is { } notificationKind)
+                {
+                    notifications.Add(NotificationOutboxEntry.Create(
+                        notificationKind, appointment.Customer.Email, NotificationSnapshot.From(appointment), domainEvent.OccurredAtUtc));
+                }
+            }
         }
-        foreach (var (domainEvent, appointment, kind) in NotificationsToStage())
-        {
-            var dealership = context.Set<Dealership>().Local.SingleOrDefault(d => d.Id == appointment.DealershipId)
-                ?? context.Set<Dealership>().Single(d => d.Id == appointment.DealershipId);
-            var service = context.Set<ServiceType>().Local.SingleOrDefault(t => t.Id == appointment.ServiceTypeId)
-                ?? context.Set<ServiceType>().Single(t => t.Id == appointment.ServiceTypeId);
-            AddNotification(context, domainEvent, appointment, kind, dealership, service);
-        }
-    }
 
-    private async Task StageNotificationsAsync(DbContext? context, CancellationToken ct)
-    {
-        if (context is null)
-        {
-            return;
-        }
-        foreach (var (domainEvent, appointment, kind) in NotificationsToStage())
-        {
-            var dealership = context.Set<Dealership>().Local.SingleOrDefault(d => d.Id == appointment.DealershipId)
-                ?? await context.Set<Dealership>().SingleAsync(d => d.Id == appointment.DealershipId, ct);
-            var service = context.Set<ServiceType>().Local.SingleOrDefault(t => t.Id == appointment.ServiceTypeId)
-                ?? await context.Set<ServiceType>().SingleAsync(t => t.Id == appointment.ServiceTypeId, ct);
-            AddNotification(context, domainEvent, appointment, kind, dealership, service);
-        }
-    }
-
-    private void AddNotification(DbContext context, IDomainEvent domainEvent, Appointment appointment, NotificationKind kind, Dealership dealership, ServiceType service)
-    {
-        var details = new NotificationDetails(appointment.Id, appointment.Customer.Email, dealership.Name, service.Name, dealership.TimeZoneId,
-            appointment.Slot.StartUtc, appointment.Slot.EndUtc, appointment.Vehicle.Registration, appointment.Vehicle.Vin.Value,
-            domainEvent is AppointmentCancelled cancelled ? cancelled.Reason : null);
-        var notification = NotificationOutboxEntry.Create(kind, details, domainEvent.OccurredAtUtc);
-        _staged!.Notifications.Add(notification);
-        context.Set<NotificationOutboxEntry>().Add(notification);
+        return notifications;
     }
 
     /// <summary>The saved events if they are committed now; null when there are none or they await an explicit transaction's commit.</summary>
@@ -342,8 +304,6 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     }
 
     private sealed record Staged(
-        List<AggregateRoot> Aggregates, List<IDomainEvent> Events, List<AppointmentHistoryEntry> Entries, bool InCallerTransaction)
-    {
-        public List<NotificationOutboxEntry> Notifications { get; } = [];
-    }
+        List<AggregateRoot> Aggregates, List<IDomainEvent> Events, List<AppointmentHistoryEntry> Entries,
+        List<NotificationOutboxEntry> Notifications, bool InCallerTransaction);
 }

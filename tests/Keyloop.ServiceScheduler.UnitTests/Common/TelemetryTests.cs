@@ -46,6 +46,9 @@ public class TelemetryTests
                 ("scheduler.notifications.retried", "{notification}", "Counter`1"),
                 ("scheduler.notifications.dispatch_duration", "ms", "Histogram`1"),
                 ("scheduler.notifications.outbox_age", "s", "Histogram`1"),
+                ("scheduler.notifications.suppressed", "{notification}", "Counter`1"),
+                ("scheduler.notifications.outbox_pending", "{notification}", "ObservableGauge`1"),
+                ("scheduler.notifications.oldest_pending_age", "s", "ObservableGauge`1"),
             ],
             ignoreOrder: true);
     }

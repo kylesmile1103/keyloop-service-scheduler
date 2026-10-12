@@ -19,9 +19,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     appointment_id = table.Column<Guid>(type: "uuid", nullable: false),
                     kind = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     recipient = table.Column<string>(type: "character varying(254)", maxLength: 254, nullable: false),
-                    subject = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    text_body = table.Column<string>(type: "text", nullable: false),
-                    html_body = table.Column<string>(type: "text", nullable: false),
+                    payload = table.Column<string>(type: "jsonb", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     next_attempt_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
@@ -36,7 +34,7 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Migrations
                     table.UniqueConstraint("ak_notification_outbox_appointment_id_kind", x => new { x.appointment_id, x.kind });
                     table.CheckConstraint("ck_notification_outbox_attempts", "attempts >= 0");
                     table.CheckConstraint("ck_notification_outbox_kind", "kind IN ('BookingConfirmation', 'Cancellation')");
-                    table.CheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed')");
+                    table.CheckConstraint("ck_notification_outbox_status", "status IN ('Pending', 'Sent', 'Failed', 'Suppressed')");
                     table.ForeignKey(
                         name: "fk_notification_outbox_appointments_appointment_id",
                         column: x => x.appointment_id,

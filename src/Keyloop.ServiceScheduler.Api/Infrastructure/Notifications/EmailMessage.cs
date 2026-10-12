@@ -1,9 +1,14 @@
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 
-/// <summary>Provider-independent envelope; the outbox id is the stable idempotency reference on every attempt.</summary>
-public sealed record EmailMessage(Guid OutboxId, string Recipient, string Subject, string TextBody, string HtmlBody)
+/// <summary>
+/// Provider-independent envelope. <see cref="NotificationId"/> is the outbox id, the same on every attempt; every provider sends it as
+/// the <see cref="NotificationIdHeader"/> header, which is how a delivered email is correlated with its row. Provider-specific headers
+/// are derived by the sender, never carried here: SMTP derives a stable Message-Id from the id, while Cloudflare Email Service rejects
+/// a caller-set Message-ID (<c>E_HEADER_NOT_ALLOWED</c>) and has no idempotency key (SYSTEM_DESIGN §8.9).
+/// </summary>
+public sealed record EmailMessage(Guid NotificationId, string Recipient, string Subject, string TextBody, string HtmlBody)
 {
-    public string MessageId => $"{OutboxId:N}@service-scheduler.keyloop.example";
+    public const string NotificationIdHeader = "X-Keyloop-Notification-Id";
 }
 
 public interface IEmailSender
@@ -12,7 +17,3 @@ public interface IEmailSender
 }
 
 public enum NotificationKind { BookingConfirmation, Cancellation }
-
-public sealed record NotificationDetails(
-    Guid AppointmentId, string Recipient, string DealershipName, string ServiceName, string TimeZoneId,
-    DateTime StartUtc, DateTime EndUtc, string Registration, string Vin, string? CancellationReason);

@@ -40,11 +40,21 @@ public static class TestData
 
     public static VehicleDetails Vehicle(string vin = "WVWZZZ1KZAW123456") => new(Vin.Create(vin), "AB12 CDE", "Volkswagen", "Golf");
 
-    public static CustomerDetails Customer(int n = 1) =>
+    /// <summary>
+    /// A customer whose email is on a reserved domain (<c>example.com</c>), which the notification dispatcher never sends to; pass
+    /// <paramref name="email"/> (e.g. <see cref="DeliverableEmail"/>) when a test needs the email to be sent.
+    /// </summary>
+    public static CustomerDetails Customer(int n = 1, string? email = null) =>
         new(
             string.Create(CultureInfo.InvariantCulture, $"Customer {n}"),
-            string.Create(CultureInfo.InvariantCulture, $"customer{n}@example.com"),
+            email ?? string.Create(CultureInfo.InvariantCulture, $"customer{n}@example.com"),
             string.Create(CultureInfo.InvariantCulture, $"+44 7700 9{n % 100000:D5}"));
+
+    /// <summary>
+    /// An address the notification dispatcher does send to (not a reserved domain). Tests deliver only to a capturing sender or a
+    /// Mailpit container; <c>.local</c> is the multicast-DNS special-use name (RFC 6762), never resolved on the public internet.
+    /// </summary>
+    public static string DeliverableEmail(int n = 1) => string.Create(CultureInfo.InvariantCulture, $"customer{n}@inbox.keyloop.local");
 
     /// <summary>A valid VIN that differs per <paramref name="n"/> (its last six characters are <paramref name="n"/> modulo 10⁶).</summary>
     public static string VinFor(int n) => string.Create(CultureInfo.InvariantCulture, $"WVWZZZ1KZAW{n % 1_000_000:D6}");
@@ -54,9 +64,10 @@ public static class TestData
     /// concurrent requests are distinct requests (and distinct idempotency fingerprints).
     /// </summary>
     public static BookAppointmentRequest BookingRequest(
-        Guid serviceTypeId, DateTime startUtc, int customerIndex = 1, Guid? preferredBayId = null, Guid? preferredTechnicianId = null, string? notes = null)
+        Guid serviceTypeId, DateTime startUtc, int customerIndex = 1, Guid? preferredBayId = null, Guid? preferredTechnicianId = null, string? notes = null,
+        string? email = null)
     {
-        var customer = Customer(customerIndex);
+        var customer = Customer(customerIndex, email);
         return new BookAppointmentRequest(
             serviceTypeId,
             startUtc,
@@ -69,14 +80,15 @@ public static class TestData
 
     /// <summary>A confirmed appointment on <see cref="BookingDay"/> (or the date of <paramref name="startUtc"/>) built through the aggregate, so it raises <c>AppointmentBooked</c>.</summary>
     public static Appointment NewAppointment(
-        Dealership dealership, ServiceType serviceType, ServiceBay bay, Technician technician, DateTime startUtc, int customer = 1, string vin = "WVWZZZ1KZAW123456")
+        Dealership dealership, ServiceType serviceType, ServiceBay bay, Technician technician, DateTime startUtc, int customer = 1, string vin = "WVWZZZ1KZAW123456",
+        string? email = null)
     {
         ArgumentNullException.ThrowIfNull(dealership);
         var window = dealership.ResolveOperatingWindow(LocalTimeConverter.ToLocalDate(startUtc, dealership.TimeZone))
             ?? throw new InvalidOperationException("The dealership is closed on that date.");
         return Appointment.Book(
             Guid.CreateVersion7(), dealership, serviceType, bay, technician, TimeSlot.FromStart(startUtc, serviceType.Duration), window,
-            Customer(customer), Vehicle(vin), notes: null, Now);
+            Customer(customer, email), Vehicle(vin), notes: null, Now);
     }
 
     /// <summary>
@@ -113,7 +125,7 @@ public static class TestData
     public sealed record Workshop(
         Dealership Dealership, ServiceType Interim, ServiceBay Bay1, ServiceBay Bay2, Technician Technician1, Technician Technician2)
     {
-        public Appointment Book(DateTime startUtc, ServiceBay? bay = null, Technician? technician = null, int customer = 1) =>
-            NewAppointment(Dealership, Interim, bay ?? Bay1, technician ?? Technician1, startUtc, customer);
+        public Appointment Book(DateTime startUtc, ServiceBay? bay = null, Technician? technician = null, int customer = 1, string? email = null) =>
+            NewAppointment(Dealership, Interim, bay ?? Bay1, technician ?? Technician1, startUtc, customer, email: email);
     }
 }

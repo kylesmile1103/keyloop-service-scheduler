@@ -1,57 +1,83 @@
+using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Serialization;
+
 namespace Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 
-public enum NotificationStatus { Pending, Sent, Failed }
+/// <summary>
+/// Pending includes leased rows, whose next attempt is the lease expiry. Sent, Failed (dead letter) and Suppressed (never sent, by the
+/// recipient policy) are terminal.
+/// </summary>
+public enum NotificationStatus { Pending, Sent, Failed, Suppressed }
 
-/// <summary>Immutable content and durable delivery state. Pending includes leased rows, whose next attempt is the lease expiry.</summary>
+/// <summary>The fixed categories stored in <see cref="NotificationOutboxEntry.LastFailure"/>; provider text is never stored or logged.</summary>
+public static class NotificationOutcomes
+{
+    public const string Timeout = "Timeout";
+    public const string SenderError = "SenderError";
+    public const string LeaseExpired = "LeaseExpired";
+    public const string RenderFailed = "RenderFailed";
+    public const string ReservedDomain = "ReservedDomain";
+}
+
+/// <summary>Immutable appointment snapshot and durable delivery state (SYSTEM_DESIGN §8.9).</summary>
 public sealed class NotificationOutboxEntry
 {
     private NotificationOutboxEntry() { }
     public Guid Id { get; private set; }
     public Guid AppointmentId { get; private set; }
     public NotificationKind Kind { get; private set; }
+    /// <summary>A column of its own: the dispatcher's recipient policy (and Task 20's caps) read it without the payload.</summary>
     public string Recipient { get; private set; } = string.Empty;
-    public string Subject { get; private set; } = string.Empty;
-    public string TextBody { get; private set; } = string.Empty;
-    public string HtmlBody { get; private set; } = string.Empty;
+    /// <summary>The <see cref="NotificationSnapshot"/> as JSON (a <c>jsonb</c> column), rendered into the email at dispatch.</summary>
+    public string Payload { get; private set; } = string.Empty;
     public DateTime CreatedAt { get; private set; }
     public DateTime NextAttemptAt { get; private set; }
     public NotificationStatus Status { get; private set; }
     public int Attempts { get; private set; }
     public Guid? ClaimToken { get; private set; }
     public DateTime? SentAt { get; private set; }
-    /// <summary>A fixed category only; provider exceptions may contain PII and are never persisted or logged.</summary>
+    /// <summary>A fixed <see cref="NotificationOutcomes"/> category: the last failure, or why the row was suppressed.</summary>
     public string? LastFailure { get; private set; }
 
-    public static NotificationOutboxEntry Create(NotificationKind kind, NotificationDetails details, DateTime occurredAtUtc)
+    /// <summary>Staged inside the booking or cancel's SaveChanges: in-memory work only, so it cannot fail or slow the change.</summary>
+    public static NotificationOutboxEntry Create(NotificationKind kind, string recipient, NotificationSnapshot snapshot, DateTime occurredAtUtc)
     {
-        ArgumentNullException.ThrowIfNull(details);
+        ArgumentNullException.ThrowIfNull(recipient);
+        ArgumentNullException.ThrowIfNull(snapshot);
         if (occurredAtUtc.Kind != DateTimeKind.Utc)
         {
             throw new ArgumentException("An outbox timestamp must be UTC.", nameof(occurredAtUtc));
         }
-        var id = Guid.CreateVersion7(new DateTimeOffset(occurredAtUtc, TimeSpan.Zero));
-        var message = NotificationTemplate.Render(id, kind, details);
         return new NotificationOutboxEntry
         {
-            Id = id, AppointmentId = details.AppointmentId, Kind = kind, Recipient = message.Recipient,
-            Subject = message.Subject, TextBody = message.TextBody, HtmlBody = message.HtmlBody,
+            Id = Guid.CreateVersion7(new DateTimeOffset(occurredAtUtc, TimeSpan.Zero)), AppointmentId = snapshot.AppointmentId, Kind = kind,
+            Recipient = recipient, Payload = JsonSerializer.Serialize(snapshot, SchedulerJsonContext.Default.NotificationSnapshot),
             CreatedAt = occurredAtUtc, NextAttemptAt = occurredAtUtc,
         };
     }
 
-    public EmailMessage ToMessage() => new(Id, Recipient, Subject, TextBody, HtmlBody);
-
-    public void MarkExhausted()
-    {
-        Status = NotificationStatus.Failed;
-        ClaimToken = null;
-        LastFailure = "LeaseExpired";
-    }
+    public NotificationSnapshot ReadSnapshot() =>
+        JsonSerializer.Deserialize(Payload, SchedulerJsonContext.Default.NotificationSnapshot)
+            ?? throw new JsonException("The notification payload is empty.");
 
     public void Claim(DateTime nowUtc, TimeSpan lease)
     {
         ClaimToken = Guid.NewGuid();
         Attempts++;
         NextAttemptAt = nowUtc + lease;
+    }
+
+    public void MarkExhausted()
+    {
+        Status = NotificationStatus.Failed;
+        ClaimToken = null;
+        LastFailure = NotificationOutcomes.LeaseExpired;
+    }
+
+    public void Suppress(string reason)
+    {
+        Status = NotificationStatus.Suppressed;
+        ClaimToken = null;
+        LastFailure = reason;
     }
 }
