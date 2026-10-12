@@ -10,6 +10,7 @@ export function fakeEnv() {
       newUniqueId: vi.fn(), idFromString: vi.fn(), getByName: vi.fn(), jurisdiction: vi.fn(),
     },
     DB_URL: { get: vi.fn().mockResolvedValue("local-test-database-value") },
+    API_IMAGE: "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:local-test",
     AUTH_TEAM_DOMAIN: "https://local-fixture.cloudflareaccess.com",
     AUTH_AUDIENCE: "local-validation-audience",
     AUTH_ADMIN: "",

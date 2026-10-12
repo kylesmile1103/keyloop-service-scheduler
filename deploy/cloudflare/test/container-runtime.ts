@@ -7,6 +7,12 @@ export class FakeContainerRuntime {
   readonly starts: StartConfig[] = [];
   readonly proxied: Request[] = [];
   readonly intercepted: string[] = [];
+  readonly signals: number[] = [];
+  destroys = 0;
+  /** Time the process takes to exit after SIGTERM, as Kestrel drains. */
+  stopAfterMs = 0;
+  /** A process that never handles SIGTERM, so only a kill stops it. */
+  ignoresSigterm = false;
   private readyAt = Number.POSITIVE_INFINITY;
   private exits: (() => void)[] = [];
 
@@ -30,7 +36,15 @@ export class FakeContainerRuntime {
     this.exits.splice(0).forEach(resolve => resolve());
   }
 
-  signal(): void {
+  signal(signo: number): void {
+    this.signals.push(signo);
+    if (this.ignoresSigterm && signo === 15) return;
+    if (this.stopAfterMs > 0) setTimeout(() => this.exit(), this.stopAfterMs);
+    else this.exit();
+  }
+
+  async destroy(): Promise<void> {
+    this.destroys++;
     this.exit();
   }
 
@@ -55,8 +69,8 @@ export class FakeContainerRuntime {
   }
 }
 
-export function fakeContainerState(runtime: FakeContainerRuntime) {
-  const values = new Map<string, unknown>();
+/** Durable Object storage survives a deploy; pass the same map to a new instance to model one. */
+export function fakeContainerState(runtime: FakeContainerRuntime, values = new Map<string, unknown>()) {
   const kv = new Map<string, unknown>();
   return {
     id: { toString: () => "fake-api-object" },

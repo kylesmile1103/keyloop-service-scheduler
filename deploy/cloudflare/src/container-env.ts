@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { accessSettings } from "./auth.ts";
 import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.ts";
 import { requiredSecret } from "./secrets.ts";
@@ -38,6 +39,17 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
     throw new Error("Notifications require an approved recipient allowlist");
   }
   return { addresses, domains };
+}
+
+/**
+ * SHA-256 digest of everything the Durable Object starts the API container with: the image reference, internet access and
+ * the environment, secret values included, so that a changed setting, rotated secret or new image is detected. Only the
+ * digest is stored or compared; the values are never persisted or logged.
+ */
+export function startFingerprint(start: { image: string; enableInternet: boolean; env: Record<string, string> }): string {
+  const env = Object.entries(start.env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  // node:crypto (nodejs_compat) hashes synchronously, so the check adds no extra await to a request.
+  return createHash("sha256").update(JSON.stringify(["keyloop-api-container-start/v1", start.image, start.enableInternet, env])).digest("hex");
 }
 
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {

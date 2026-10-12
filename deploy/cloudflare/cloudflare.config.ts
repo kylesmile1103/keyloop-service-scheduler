@@ -40,6 +40,9 @@ export default defineConfig({
       ASSETS: bindings.assets(),
       API: bindings.durableObject({ worker: "keyloop-scheduler", exportName: "ApiContainer" }),
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),
+      // Part of the container start fingerprint (src/index.ts), so a rollout to another image restarts the container
+      // with the current configuration instead of the start options the platform kept from the previous image.
+      API_IMAGE: bindings.text(settings.apiImage),
       ...(settings.triageEnabled === "true" ? {
         AI_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_ai_token" }),
         TRIAGE_IMAGES: bindings.r2({ name: settings.triageBucket }),

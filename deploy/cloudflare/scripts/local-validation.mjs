@@ -64,6 +64,8 @@ if (action === "build" && result.status === 0) {
   assert.equal(worker.previewUrls, false);
   assert.deepEqual(worker.env.EMAIL.allowedSenderAddresses, ["notifications@keyloop.kylesmile.me"]);
   assert.equal(worker.env.DB_URL.secretName, "keyloop_prod_db_url");
+  assert.equal(worker.env.API_IMAGE.value, taskEnv.KEYLOOP_API_IMAGE);
+  assert.equal(container.image?.reference ?? container.image, taskEnv.KEYLOOP_API_IMAGE);
   assert.equal(worker.env.EMAIL_SENDING_ENABLED.value, "false");
   assert.equal(worker.env.OTLP_RELAY_LIMITER.type, "rate-limit");
   assert.equal(worker.exports.ApiContainer.container, "keyloop-scheduler-api");

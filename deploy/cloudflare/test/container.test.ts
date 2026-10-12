@@ -1,6 +1,8 @@
+import { build } from "esbuild";
+import { convertV4MiniflareOptions, Miniflare, Response as MiniflareResponse } from "miniflare";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { containerEnv } from "../src/container-env";
-import { ApiContainer } from "../src/index";
+import { containerEnv, startFingerprint } from "../src/container-env";
+import { ApiContainer, START_FINGERPRINT_KEY, STOP_GRACE_MS } from "../src/index";
 import { FakeContainerRuntime, fakeContainerState, settle } from "./container-runtime";
 import { fakeEnv, edgeRequest } from "./helpers";
 import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "json" };
@@ -211,5 +213,199 @@ describe("container lifecycle with the real Container class", () => {
     await expect(api.fetch(edgeRequest("/api"))).rejects.toThrow("keyloop_prod_db_url is unavailable");
     expect(runtime.starts).toHaveLength(0);
     expect(runtime.proxied).toHaveLength(0);
+  });
+});
+
+describe("start configuration fingerprint", () => {
+  const start = { image: "registry.example/api:a", enableInternet: true, env: { B: "2", A: "1", ConnectionStrings__schedulerdb: "local-secret-value" } };
+  it("is a SHA-256 hex digest that never contains the values", async () => {
+    const fingerprint = startFingerprint(start);
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(fingerprint).not.toContain("local-secret-value");
+  });
+  it("ignores key order but changes with any value, secret, image or internet access", async () => {
+    const base = startFingerprint(start);
+    expect(startFingerprint({ ...start, env: { A: "1", ConnectionStrings__schedulerdb: "local-secret-value", B: "2" } })).toBe(base);
+    for (const changed of [
+      { ...start, env: { ...start.env, ConnectionStrings__schedulerdb: "rotated-secret-value" } },
+      { ...start, env: { ...start.env, Triage__Enabled: "true" } },
+      { ...start, image: "registry.example/api:b" },
+      { ...start, enableInternet: false },
+    ]) expect(startFingerprint(changed)).not.toBe(base);
+  });
+  it("hashes identically in workerd with nodejs_compat", async () => {
+    const bundle = await build({ entryPoints: [new URL("./fingerprint-runtime-entry.ts", import.meta.url).pathname], bundle: true,
+      write: false, format: "esm", platform: "browser", external: ["node:crypto"] });
+    const mf = new Miniflare(convertV4MiniflareOptions({ modules: true, script: bundle.outputFiles[0]!.text,
+      compatibilityDate: "2026-10-11", compatibilityFlags: ["nodejs_compat"], cf: false,
+      unsafeDevRegistryPath: new URL("../build/fingerprint-dev-registry/", import.meta.url).pathname,
+      outboundService: () => new MiniflareResponse("Network forbidden", { status: 503 }),
+    }));
+    try {
+      const response = await mf.dispatchFetch("https://fingerprint.test/", { method: "POST", body: JSON.stringify(start) });
+      expect(await response.text()).toBe(startFingerprint(start));
+    } finally {
+      await mf.dispose();
+    }
+  }, 30_000);
+});
+
+// A deploy replaces the Durable Object instance but keeps its storage and the running container. The platform also restarts
+// a container on an image rollout with the start options it kept, so only the Durable Object can apply a new configuration.
+describe("configuration changes reach a running container", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  function deploy(runtime: FakeContainerRuntime, storage: Map<string, unknown>, configure: (env: Env) => void = () => {}) {
+    const { env, mocks } = fakeEnv();
+    configure(env);
+    return { api: new ApiContainer(fakeContainerState(runtime, storage), env), env, mocks };
+  }
+
+  async function serve(api: ApiContainer, path = "/api/v1/dealerships", advanceMs = 2_000) {
+    const response = settle(api.fetch(edgeRequest(path)));
+    await vi.advanceTimersByTimeAsync(advanceMs);
+    return response;
+  }
+
+  async function warmContainer(readyAfterMs = 1_000) {
+    const runtime = new FakeContainerRuntime(readyAfterMs);
+    const storage = new Map<string, unknown>();
+    const first = deploy(runtime, storage);
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    return { runtime, storage, first };
+  }
+
+  const enableTriage = (env: Env) => { env.TRIAGE_ENABLED = "true" as Env["TRIAGE_ENABLED"]; };
+
+  it("restarts the running container once with the new environment after a settings deploy (the live triage incident)", async () => {
+    const { runtime, storage } = await warmContainer();
+    expect(runtime.starts[0]!.env).toMatchObject({ Triage__Enabled: "false" });
+    const next = deploy(runtime, storage, enableTriage);
+    const first = settle(next.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(100);
+    const concurrent = settle(next.api.fetch(edgeRequest("/api/v1/features")));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await first).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(await concurrent).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.starts).toHaveLength(2);
+    expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true", Triage__ApiToken: "test-token", Triage__Model: "@cf/cloudflare/clef-flash" });
+    expect(runtime.proxied.map(request => new URL(request.url).pathname)).toEqual(["/api/v1/dealerships", "/api/v1/dealerships", "/api/v1/features"]);
+    // Checked once per instance: later requests neither reread Secrets Store nor restart (F5).
+    const reads = next.mocks.DB_URL.get.mock.calls.length;
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(reads);
+    expect(runtime.starts).toHaveLength(2);
+  });
+
+  it("restarts a container that was started before fingerprints were recorded", async () => {
+    const runtime = new FakeContainerRuntime(1_000);
+    runtime.start({ enableInternet: true, env: { Triage__Enabled: "false" } });
+    await vi.advanceTimersByTimeAsync(1_000);
+    const storage = new Map<string, unknown>([["__CF_CONTAINER_STATE", { status: "healthy", lastChange: Date.now() }]]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const next = deploy(runtime, storage, enableTriage);
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true" });
+    expect(log.mock.calls.map(call => String(call[0])).filter(line => line.includes("ApiContainerRestart")))
+      .toEqual([JSON.stringify({ event: "ApiContainerRestart", reason: "unrecorded" })]);
+  });
+
+  it("keeps the running container through a deploy that changes nothing it is started with", async () => {
+    const { runtime, storage } = await warmContainer();
+    const next = deploy(runtime, storage);
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([]);
+    expect(runtime.starts).toHaveLength(1);
+    expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a rotated Secrets Store value at the first request after the next deploy, not before", async () => {
+    const { runtime, storage, first } = await warmContainer();
+    first.mocks.DB_URL.get.mockResolvedValue("rotated-local-test-value");
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts).toHaveLength(1);
+    const next = deploy(runtime, storage, env => {
+      (env.DB_URL as unknown as { get: () => Promise<string> }).get = vi.fn().mockResolvedValue("rotated-local-test-value");
+    });
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts).toHaveLength(2);
+    expect(runtime.starts[1]!.env).toMatchObject({ ConnectionStrings__schedulerdb: "rotated-local-test-value" });
+  });
+
+  it("restarts under the current configuration after a rollout to another image", async () => {
+    const { runtime, storage } = await warmContainer();
+    const next = deploy(runtime, storage, env => { env.API_IMAGE = "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:previous"; });
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.starts).toHaveLength(2);
+    expect(runtime.starts[1]!.env).toEqual(runtime.starts[0]!.env);
+  });
+
+  it("waits for a draining API to exit, then keeps the 60 s readiness window for the restarted one", async () => {
+    const { runtime, storage } = await warmContainer();
+    runtime.stopAfterMs = 10_000;
+    runtime.readyAfterMs = 59_000;
+    const next = deploy(runtime, storage, enableTriage);
+    const response = settle(next.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(runtime.starts).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(runtime.starts).toHaveLength(2);
+    let settled = false;
+    void response.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(57_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await response).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.destroys).toBe(0);
+  });
+
+  it("kills an API that ignores SIGTERM after the grace period, then starts it with the new environment", async () => {
+    const { runtime, storage } = await warmContainer();
+    runtime.ignoresSigterm = true;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const next = deploy(runtime, storage, enableTriage);
+    const response = settle(next.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(STOP_GRACE_MS - 1_000);
+    expect(runtime.destroys).toBe(0);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await response).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.destroys).toBe(1);
+    expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true" });
+    expect(errors.mock.calls.map(call => String(call[0]))).toContain(JSON.stringify({ event: "ApiContainerStopTimeout" }));
+  });
+
+  it("keeps serving a healthy container when its configuration cannot be read, and checks again on the next request", async () => {
+    const { runtime, storage } = await warmContainer();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const next = deploy(runtime, storage);
+    next.mocks.DB_URL.get.mockRejectedValueOnce(new Error("local-sensitive-value"));
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(errors.mock.calls.map(call => String(call[0]))).toEqual([JSON.stringify({ event: "ApiContainerConfigUnverified" })]);
+    expect(runtime.signals).toEqual([]);
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
+    expect(runtime.starts).toHaveLength(1);
+  });
+
+  it("stores only a digest of the start configuration and logs no values", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { runtime, storage } = await warmContainer();
+    deploy(runtime, storage, env => { env.AUTH_ADMIN = "admin@fixture.test"; });
+    const next = deploy(runtime, storage, env => { env.AUTH_ADMIN = "admin@fixture.test"; enableTriage(env); });
+    expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(storage.get(START_FINGERPRINT_KEY)).toMatch(/^[0-9a-f]{64}$/);
+    const persisted = JSON.stringify([...storage.entries()]);
+    const logged = JSON.stringify(log.mock.calls);
+    for (const value of ["local-test-database-value", "test-token", "admin@fixture.test", "reviewer@keyloop.kylesmile.me"]) {
+      expect(persisted).not.toContain(value);
+      expect(logged).not.toContain(value);
+    }
   });
 });
