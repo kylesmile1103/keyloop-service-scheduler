@@ -3,6 +3,7 @@ using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
@@ -91,4 +92,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
+// Task 28a: the date-range appointments read (shared summaries and status are registered above).
+[JsonSerializable(typeof(AppointmentListItemResponse))]
+[JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

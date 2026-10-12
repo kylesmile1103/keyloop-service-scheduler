@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -53,6 +53,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.TriageBookingResponse,
         SchedulerJsonContext.Default.TriageServiceCandidate,
         SchedulerJsonContext.Default.TriagePreferredDate,
+        SchedulerJsonContext.Default.AppointmentListItemResponse,
     ];
 
     private static readonly JsonSerializerOptions Canonical = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -178,6 +179,9 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "413"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "422"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "429"),
+                ("GET /api/v1/dealerships/{dealershipId}/appointments", "400"),
+                ("GET /api/v1/dealerships/{dealershipId}/appointments", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/appointments", "429"),
                 ("GET /api/v1/appointments/{appointmentId}", "404"),
                 ("GET /api/v1/appointments/{appointmentId}", "429"),
                 ("POST /api/v1/appointments/{appointmentId}/cancel", "400"),
@@ -265,6 +269,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "200", "ServiceTypeResponse[]"),
                 ("GET /api/v1/dealerships/{dealershipId}/availability", "200", "AvailabilityResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "201", "AppointmentResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/appointments", "200", "AppointmentListItemResponse[]"),
                 ("GET /api/v1/appointments/{appointmentId}", "200", "AppointmentResponse"),
                 ("POST /api/v1/appointments/{appointmentId}/cancel", "200", "AppointmentResponse"),
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "200", "WorkshopScheduleResponse"),
@@ -322,6 +327,33 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private async Task<JsonNode> ServedAsync() => JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
+
+    [Fact]
+    public async Task Range_read_documents_required_dates_and_optional_repeatable_status_names()
+    {
+        var document = await ServedAsync();
+        var operation = document["paths"]!["/api/v1/dealerships/{dealershipId}/appointments"]!["get"]!;
+        Text(operation["operationId"]).ShouldBe("ListAppointments");
+        var parameters = operation["parameters"]!.AsArray();
+        foreach (var name in new[] { "from", "to" })
+        {
+            var parameter = parameters.Single(p => Text(p?["name"]) == name)!;
+            parameter["required"]!.GetValue<bool>().ShouldBeTrue();
+            Text(parameter["schema"]?["type"]).ShouldBe("string");
+            Text(parameter["schema"]?["format"]).ShouldBe("date");
+            Text(parameter["description"]).ShouldNotBeNullOrWhiteSpace();
+            Text(parameter["example"]).ShouldNotBeNullOrWhiteSpace();
+        }
+
+        var status = parameters.Single(p => Text(p?["name"]) == "status")!;
+        (status["required"]?.GetValue<bool>() ?? false).ShouldBeFalse();
+        // OpenAPI omits these when they equal the query-parameter defaults: form style, with explode=true.
+        (Text(status["style"]) ?? "form").ShouldBe("form");
+        (status["explode"]?.GetValue<bool>() ?? true).ShouldBeTrue();
+        Text(status["schema"]?["type"]).ShouldBe("array");
+        status["schema"]!["items"]!["enum"]!.AsArray().Select(v => v!.GetValue<string>()).ShouldBe(Enum.GetNames<AppointmentStatus>());
+        status["example"]!.AsArray().Select(v => v!.GetValue<string>()).ShouldBe(["Confirmed", "Completed"]);
+    }
 
     /// <summary>Each operation as <c>"METHOD /path"</c>, in document order.</summary>
     private static IEnumerable<(string Name, JsonObject Operation)> Operations(JsonNode document) =>

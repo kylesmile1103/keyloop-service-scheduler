@@ -11,6 +11,7 @@ using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
@@ -112,6 +113,8 @@ builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityVali
 builder.Services.AddScoped<BookAppointmentHandler>();
 builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
 builder.Services.AddScoped<GetAppointmentHandler>();
+builder.Services.AddScoped<ListAppointmentsHandler>();
+builder.Services.AddScoped<IValidator<ListAppointmentsQuery>, ListAppointmentsValidator>();
 builder.Services.AddScoped<CancelAppointmentHandler>();
 builder.Services.AddScoped<IValidator<CancelAppointmentRequest>, CancelAppointmentValidator>();
 builder.Services.AddScoped<GetWorkshopScheduleHandler>();
