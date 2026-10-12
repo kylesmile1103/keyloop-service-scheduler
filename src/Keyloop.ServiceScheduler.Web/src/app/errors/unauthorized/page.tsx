@@ -1,6 +1,6 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/errors/unauthorized/components/unauthorized-error.tsx`,
 // Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
-import { KeyRound, LogIn } from "lucide-react"
+import { LogIn } from "lucide-react"
 
 import { buttonVariants } from "@/components/ui/button"
 import { signInUrl } from "@/lib/session"
@@ -16,8 +16,7 @@ export default function UnauthorizedPage() {
   return (
     <ErrorPage
       title="Sign in to continue"
-      illustration="closed-day"
-      badge={KeyRound}
+      illustration="unauthorized"
       action={
         signIn ? (
           <a href={signIn} className={buttonVariants()}>

@@ -57,7 +57,7 @@ describe("error pages", () => {
     expect(screen.getByText("Sign-in is not enabled in this environment, so every page is open without it.")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
-    expect(container.querySelector('img[src*="closed-day"]')).toHaveAttribute("alt", "")
+    expect(container.querySelectorAll("img")).toHaveLength(1)
     expect(document.title).toBe("Sign in to continue – Keyloop Service Scheduler")
   })
 
@@ -76,7 +76,7 @@ describe("error pages", () => {
     expect(await heading("Something went wrong on the server")).toBeInTheDocument()
     expect(screen.getByText(traceId)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Copy trace ID" })).toBeInTheDocument()
-    expect(container.querySelector('img[src*="error-connection"]')).toHaveAttribute("alt", "")
+    expect(container.querySelectorAll("img")).toHaveLength(1)
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
     await waitFor(() => expect(router.state.location.pathname).toBe("/appointments"))
@@ -105,6 +105,31 @@ describe("error pages", () => {
 
     expect(await heading("Page not found")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
+  })
+
+  // Each status has its own picture (wave 2), described by the images README's alt text: the key and open padlock, the
+  // barrier, the open bonnet, the lift and the closed road are what the page shows beside its headline.
+  it.each([
+    [401, ERROR_PAGES.unauthorized, "Sign in to continue", "unauthorized.webp", "Car key fob beside an open padlock inviting sign-in."],
+    [403, ERROR_PAGES.forbidden, "No access to this page", "forbidden.webp", "Workshop bay behind a safety barrier with a wrench role badge."],
+    [404, ERROR_PAGES.notFound, "Page not found", "not-found.webp", "Directional road sign pointing toward a short road closed by a barrier."],
+    [500, ERROR_PAGES.internalServerError, "Something went wrong on the server", "server-error.webp", "Generic silver hatchback with an open bonnet, a steam wisp and a nearby wrench."],
+    [503, ERROR_PAGES.underMaintenance, "Down for maintenance", "maintenance.webp", "Silver hatchback raised on a two-post lift beside cones and a progress indicator."],
+  ])("shows the %i page its own illustration, with its alt text", async (_status, path, title, file, alt) => {
+    const { container } = renderAt(path)
+
+    expect(await heading(title)).toBeInTheDocument()
+    const picture = screen.getByRole("img", { name: alt })
+    expect(picture.getAttribute("src")).toMatch(new RegExp(`/${file.replace(".", "\\.")}$`))
+    expect(picture).toHaveAttribute("width", "1200")
+    expect(picture).toHaveAttribute("height", "900")
+    // One picture and no icon tile over it: the tiles only told apart pages that shared one picture.
+    expect(container.querySelectorAll("main img")).toHaveLength(1)
+    expect(container.querySelector("main svg.lucide-key-round, main svg.lucide-lock-keyhole, main svg.lucide-construction")).toBeNull()
+  })
+
+  it("shows every other server failure (5xx) the server-error page", () => {
+    expect([500, 502, 504, 599].map(errorPageFor)).toEqual(Array(4).fill(ERROR_PAGES.internalServerError))
   })
 
   it("keeps each page inside the app's frame, with its navigation", async () => {

@@ -147,7 +147,10 @@ describe("app shell", () => {
 
     expect(await pageHeading("Page not found")).toBeInTheDocument()
     expect(screen.getByText("/no-such-page")).toBeInTheDocument()
-    expect(container.querySelector('img[src*="empty-schedule"]')).toHaveAttribute("alt", "")
+    expect(container.querySelector('img[src$="/not-found.webp"]')).toHaveAttribute(
+      "alt",
+      "Directional road sign pointing toward a short road closed by a barrier."
+    )
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
     expect(document.title).toBe("Page not found – Keyloop Service Scheduler")
   })

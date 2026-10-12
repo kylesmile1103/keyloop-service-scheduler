@@ -9,7 +9,7 @@ export default function NotFoundPage() {
   const { pathname } = useLocation()
 
   return (
-    <ErrorPage title="Page not found" illustration="empty-schedule" action={<DispatchBoardLink />}>
+    <ErrorPage title="Page not found" illustration="not-found" action={<DispatchBoardLink />}>
       <p>
         Nothing lives at <code className="font-mono text-[0.9em] break-all text-foreground">{pathname}</code>.
       </p>
