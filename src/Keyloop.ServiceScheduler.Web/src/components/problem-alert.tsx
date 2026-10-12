@@ -1,5 +1,5 @@
 import { CircleX, Clock, RotateCw, TriangleAlert } from "lucide-react"
-import type { ReactNode } from "react"
+import type { ReactNode, Ref } from "react"
 
 import { CopyButton } from "@/components/copy-button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -29,6 +29,11 @@ interface ProblemAlertProps {
   children?: ReactNode
   /** Actions in place of, or next to, the retry. */
   actions?: ReactNode
+  /**
+   * Makes the alert itself able to take focus (`tabIndex` -1, the focus ring), for a view that moves focus to it when the
+   * control that was pressed went away with the last answer.
+   */
+  focusRef?: Ref<HTMLDivElement>
   className?: string
 }
 
@@ -65,13 +70,21 @@ export function ProblemAlert({
   tone = "error",
   children,
   actions,
+  focusRef,
   className,
 }: ProblemAlertProps) {
   const { summary, traceId } = describeFailure(error)
   const { icon: Icon, alert, title: titleClass, detail } = tones[tone]
 
   return (
-    <Alert variant={tone === "error" ? "destructive" : "default"} data-tone={tone} className={cn("px-4 py-3", alert, className)}>
+    <Alert
+      ref={focusRef}
+      tabIndex={focusRef ? -1 : undefined}
+      variant={tone === "error" ? "destructive" : "default"}
+      data-tone={tone}
+      // The focus ring shows only on an alert that can take focus (one with `focusRef`).
+      className={cn("px-4 py-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50", alert, className)}
+    >
       <Icon aria-hidden="true" />
       <AlertTitle className={cn("font-semibold wrap-break-word", titleClass)}>{title}</AlertTitle>
       <AlertDescription className={cn("flex flex-col gap-2", detail)}>

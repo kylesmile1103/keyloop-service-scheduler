@@ -7,7 +7,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarDays, Check, ChevronRight, CircleAlert, LoaderCircle, RotateCw } from "lucide-react"
-import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, type ReactNode, type Ref, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Controller, type FieldPath, useForm, useWatch } from "react-hook-form"
 import { labelDayButton } from "react-day-picker"
 
@@ -39,6 +39,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import {
   describeFailure,
@@ -164,7 +165,9 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   const idempotencyKey = useRef(crypto.randomUUID())
   const lastRequest = useRef<BookAppointmentRequest | null>(null)
   const stepHeading = useRef<HTMLHeadingElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const problemRef = useRef<HTMLDivElement>(null)
+  const alertRef = useRef<HTMLDivElement>(null)
   const moved = useRef(false)
   const [waiting, startWaiting] = useCountdown()
 
@@ -235,15 +238,28 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
     },
   })
 
+  // The last refusal, kept while this booking is tried again (Try again, a suggested start, Book): the alert and the
+  // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
+  const failure = useMutationFailure(book)
+
   // The new step's heading takes focus, so keyboard and screen-reader users start at its top (DESIGN_SYSTEM 11.14).
   useEffect(() => {
     if (moved.current) stepHeading.current?.focus()
   }, [step])
 
-  // A refusal comes into view where the user is looking (the step may be scrolled to its last field).
-  useEffect(() => {
-    if (book.isError) problemRef.current?.scrollIntoView?.({ block: "nearest" })
-  }, [book.isError, book.failureCount])
+  // A refusal comes into view where the user is looking (the step may be scrolled to its last field). When the control that
+  // was pressed went with the last one (a suggested start that is now taken too, Try again when the answer is a conflict),
+  // focus moves to the new refusal, or to the first field it marked, instead of falling to the dialog. A layout effect: in
+  // the same commit as the removal, before the dialog's focus guard puts lost focus on the dialog itself.
+  useLayoutEffect(() => {
+    if (!failure) return
+    problemRef.current?.scrollIntoView?.({ block: "nearest" })
+    if (formRef.current?.contains(document.activeElement)) return
+    const refusedField = formPaths.find((path) => form.getFieldState(path).error)
+    if (alertRef.current) alertRef.current.focus()
+    else if (refusedField) form.setFocus(refusedField)
+    else stepHeading.current?.focus()
+  }, [failure, form])
 
   function goTo(next: Step) {
     moved.current = true
@@ -276,11 +292,12 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
 
   /** The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded. */
   function retry() {
-    if (!lastRequest.current) return
+    if (!lastRequest.current || book.isPending) return
     book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })
   }
 
   function bookAt(slot: { startUtc: string }) {
+    if (book.isPending) return
     form.setValue("startUtc", slot.startUtc, { shouldValidate: true })
     submit()
   }
@@ -297,7 +314,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   const sheet = layout === "sheet"
 
   return (
-    <form noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+    <form ref={formRef} noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
       <header className={cn("flex flex-col gap-3 border-b px-4 pt-4 pb-3 sm:px-6", sheet && "pt-[max(1rem,env(safe-area-inset-top))]")}>
         {/* Room for the close button on the title only, so the stepper has the whole width and its names fit on a phone. */}
         <div className="flex flex-col gap-0.5 pr-10">
@@ -336,11 +353,13 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
             timeZone={timeZone}
             onChangeTime={back}
             problem={
-              book.isError && !fieldErrorsOnly(book.error) ? (
+              failure && !fieldErrorsOnly(failure) ? (
                 <BookingProblem
-                  error={book.error}
+                  error={failure}
+                  alertRef={alertRef}
                   waiting={waiting}
                   busy={book.isPending}
+                  booking={book.isPending ? book.variables?.body.startUtc : undefined}
                   onPick={bookAt}
                   onRetry={retry}
                   onChangeTime={() => {
@@ -897,9 +916,14 @@ function FormError({ id, message }: { id?: string; message?: string }) {
 
 interface BookingProblemProps {
   error: unknown
+  /** The alert, for the dialog to focus when the control that was pressed went with the last refusal. */
+  alertRef: Ref<HTMLDivElement>
   /** Seconds left of a rate limit's wait. */
   waiting: number
+  /** True while this booking is tried again: the refusal stays, and its controls wait (focusable) for the answer. */
   busy: boolean
+  /** The start being booked meanwhile (`startUtc`), so a suggested start that was picked says it is booking. */
+  booking?: string
   onPick: (slot: { startUtc: string; startLocal: string }) => void
   onRetry: () => void
   onChangeTime: () => void
@@ -911,7 +935,7 @@ interface BookingProblemProps {
  * (with what is missing, or a way back to pick another time), a rate limit with its wait, or a failure with a safe retry.
  * Field errors (`400`) are on their fields; this shows only the ones no field owns.
  */
-function BookingProblem({ error, waiting, busy, onPick, onRetry, onChangeTime, onStartOver }: BookingProblemProps) {
+function BookingProblem({ error, alertRef, waiting, busy, booking, onPick, onRetry, onChangeTime, onStartOver }: BookingProblemProps) {
   const problem = parseProblem(error)
   const slug = problem ? problemSlug(problem) : ""
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
@@ -919,7 +943,7 @@ function BookingProblem({ error, waiting, busy, onPick, onRetry, onChangeTime, o
   if (slug === "validation-error" && problem) {
     const unclaimed = unclaimedErrors(problem)
     return (
-      <ProblemAlert tone="warning" title="Check the highlighted details" error={error}>
+      <ProblemAlert tone="warning" title="Check the highlighted details" error={error} focusRef={alertRef}>
         <ul className="list-disc pl-4">
           {unclaimed.map(([path, message]) => (
             <li key={path}>{message}</li>
@@ -933,17 +957,17 @@ function BookingProblem({ error, waiting, busy, onPick, onRetry, onChangeTime, o
     // The API lists them nearest first; in time order they are easier to scan.
     const suggestions = [...(problem?.suggestedSlots ?? [])].sort((a, b) => a.startUtc.localeCompare(b.startUtc))
     return (
-      <ProblemAlert tone="warning" title="Slot just taken - pick another time" error={error}>
+      <ProblemAlert tone="warning" title="Slot just taken - pick another time" error={error} focusRef={alertRef}>
         {suggestions.length > 0 ? (
           <span className="flex flex-col gap-2 pt-1">
             <span className="text-sm font-medium">Free nearby, same service:</span>
-            <SuggestedSlotChips slots={suggestions} onPick={onPick} disabled={busy} />
+            <SuggestedSlotChips slots={suggestions} onPick={onPick} disabled={busy} booking={booking} />
           </span>
         ) : (
           <span>No other start is free that day.</span>
         )}
         <span>
-          <Button type="button" variant="link" className="h-auto px-0" onClick={onChangeTime}>
+          <Button type="button" variant="link" className="h-auto px-0" onClick={onChangeTime} disabled={busy}>
             Choose another time
           </Button>
         </span>
@@ -961,13 +985,14 @@ function BookingProblem({ error, waiting, busy, onPick, onRetry, onChangeTime, o
         tone="warning"
         title={problem?.title ?? "This booking breaks a workshop rule"}
         error={error}
+        focusRef={alertRef}
         actions={
           timeRules.has(slug) ? (
-            <Button type="button" variant="outline" size="sm" onClick={onChangeTime}>
+            <Button type="button" variant="outline" size="sm" onClick={onChangeTime} disabled={busy}>
               Pick another time
             </Button>
           ) : slug === "idempotency-key-reuse" ? (
-            <Button type="button" variant="outline" size="sm" onClick={onStartOver}>
+            <Button type="button" variant="outline" size="sm" onClick={onStartOver} disabled={busy}>
               Start a new booking
             </Button>
           ) : undefined
@@ -982,20 +1007,25 @@ function BookingProblem({ error, waiting, busy, onPick, onRetry, onChangeTime, o
 
   if (status === 429) {
     return (
-      <ProblemAlert tone="info" title={waiting > 0 ? `Too many requests - try again in ${waiting} s` : "Too many requests - try again now"} error={error} />
+      <ProblemAlert
+        tone="info"
+        title={waiting > 0 ? `Too many requests - try again in ${waiting} s` : "Too many requests - try again now"}
+        error={error}
+        focusRef={alertRef}
+      />
     )
   }
 
   if (status === 404) {
-    return <ProblemAlert tone="warning" title={problem?.title ?? "Not found"} error={error} />
+    return <ProblemAlert tone="warning" title={problem?.title ?? "Not found"} error={error} focusRef={alertRef} />
   }
 
   if (status !== undefined && status < 500) {
-    return <ProblemAlert tone="warning" title={problem?.title ?? `The server answered ${status}`} error={error} />
+    return <ProblemAlert tone="warning" title={problem?.title ?? `The server answered ${status}`} error={error} focusRef={alertRef} />
   }
 
   return (
-    <ProblemAlert title="Couldn’t book the appointment" error={error} onRetry={onRetry} retrying={busy}>
+    <ProblemAlert title="Couldn’t book the appointment" error={error} onRetry={onRetry} retrying={busy} focusRef={alertRef}>
       <span>Trying again is safe: it sends the same booking, which the server can only make once.</span>
     </ProblemAlert>
   )
@@ -1027,7 +1057,11 @@ function MissingList({ label, names }: { label: string; names: readonly string[]
   )
 }
 
-/** The phone sheet's last state: the booking-success illustration, what was booked, and where to go next. */
+/**
+ * The phone sheet's last state: the booking-success illustration, what was booked, and where to go next. Book left with
+ * the form, so View on board takes focus as the state mounts (in the commit, before the sheet's focus guard would put lost
+ * focus on the sheet itself).
+ */
 function BookedState({
   appointment,
   timeZone,
@@ -1048,7 +1082,7 @@ function BookedState({
       role="status"
       action={
         <>
-          <Button type="button" onClick={onViewOnBoard}>
+          <Button type="button" onClick={onViewOnBoard} autoFocus>
             View on board
             <ChevronRight aria-hidden="true" />
           </Button>

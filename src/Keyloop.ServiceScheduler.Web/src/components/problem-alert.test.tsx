@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import { ProblemAlert } from "@/components/problem-alert"
@@ -51,5 +52,18 @@ describe("problem alert", () => {
     render(<ProblemAlert title="Couldn’t book the appointment" error={failure} onRetry={() => {}} retryDisabled />)
 
     expectUnavailableButFocusable(screen.getByRole("button", { name: "Try again" }))
+  })
+
+  it("can take focus itself through focusRef, out of the tab order, and only then", () => {
+    const alertRef = createRef<HTMLDivElement>()
+    const { rerender } = render(<ProblemAlert title="Slot just taken - pick another time" error={failure} tone="warning" />)
+    expect(screen.getByRole("alert")).not.toHaveAttribute("tabindex")
+
+    rerender(<ProblemAlert title="Slot just taken - pick another time" error={failure} tone="warning" focusRef={alertRef} />)
+    const alert = screen.getByRole("alert")
+    expect(alertRef.current).toBe(alert)
+    expect(alert).toHaveAttribute("tabindex", "-1")
+    alertRef.current!.focus()
+    expect(alert).toHaveFocus()
   })
 })

@@ -544,6 +544,161 @@ describe("booking an appointment", () => {
     expect(reads()).toBe(before + 1)
   })
 
+  it("keeps the failure and keyboard focus on Try again while the booking is sent again, and sends nothing on a second press", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({
+      book: async () => {
+        await held
+        return new Response("", { status: 503, statusText: "Service Unavailable" })
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const alert = await within(scope).findByRole("alert")
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    held = new Promise<void>((resolve) => (answer = resolve))
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await within(scope).findByRole("button", { name: "Booking…" })
+    expect(bookingRequests(api.requests)).toHaveLength(2)
+    // The failure stays while the same booking is sent again, so focus stays in the dialog, on Try again.
+    expect(alert).toBeInTheDocument()
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    expect(within(scope).getByRole("button", { name: "Book" })).toBeInTheDocument()
+    const [, second, ...more] = bookingRequests(api.requests)
+    expect(more).toHaveLength(0)
+    expect(second.headers.get("Idempotency-Key")).toBe(bookingRequests(api.requests)[0].headers.get("Idempotency-Key"))
+  })
+
+  it("keeps keyboard focus on a suggested start while it books, and moves it to the new refusal when that start is taken too", async () => {
+    const takenAgain = {
+      ...slotUnavailable,
+      detail: "Every qualified bay or technician is busy at 10:30.",
+      traceId: "00-7e1b4c8d9e0f1a2b5d2c3f0a3c4d5e6f-2b3c4d5e6f7a8b1a-01",
+      suggestedSlots: [
+        { startUtc: "2026-10-13T10:00:00Z", endUtc: "2026-10-13T11:00:00Z", startLocal: "2026-10-13T11:00+01:00" },
+        { startUtc: "2026-10-13T10:30:00Z", endUtc: "2026-10-13T11:30:00Z", startLocal: "2026-10-13T11:30+01:00" },
+      ],
+    }
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    let attempts = 0
+    const api = mockBoardApi({
+      book: async () => {
+        if (++attempts === 1) return problemResponse(409, slotUnavailable)
+        await held
+        return problemResponse(409, takenAgain)
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const alert = await within(scope).findByRole("alert")
+    const chip = within(alert).getByRole("button", { name: "Book at 10:30 instead" })
+    held = new Promise<void>((resolve) => (answer = resolve))
+    chip.focus()
+    fireEvent.click(chip)
+
+    await within(scope).findByRole("button", { name: "Booking…" })
+    expect(bookingRequests(api.requests)).toHaveLength(2)
+    // The refusal and its starts stay while the picked one is booked: focus stays on it, and it says what it is doing.
+    expect(chip).toBeInTheDocument()
+    expectUnavailableButFocusable(chip)
+    expect(chip).toHaveFocus()
+    expect(chip).toHaveAttribute("aria-busy", "true")
+    expect(within(chip).getByText("Booking…")).toBeInTheDocument()
+    expectUnavailableButFocusable(within(alert).getByRole("button", { name: "Book at 11:00 instead" }))
+    expect(within(alert).getByRole("button", { name: "Choose another time" })).toBeDisabled()
+    fireEvent.click(chip)
+    fireEvent.click(within(alert).getByRole("button", { name: "Book at 11:00 instead" }))
+
+    answer()
+    // 10:30 went too: its chip leaves with the old refusal, and focus moves to the new one instead of the dialog.
+    expect(await within(scope).findByText(takenAgain.detail)).toBeInTheDocument()
+    expect(chip).not.toBeInTheDocument()
+    const refusal = within(scope).getByRole("alert")
+    expect(refusal).toHaveFocus()
+    expectAvailable(within(refusal).getByRole("button", { name: "Book at 11:30 instead" }))
+    expect(bookingRequests(api.requests)).toHaveLength(2)
+  })
+
+  it("keeps keyboard focus on a suggested start that the next refusal offers again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    let attempts = 0
+    const api = mockBoardApi({
+      book: async () => {
+        if (++attempts > 1) await held
+        return problemResponse(409, slotUnavailable)
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const chip = within(await within(scope).findByRole("alert")).getByRole("button", { name: "Book at 10:30 instead" })
+    held = new Promise<void>((resolve) => (answer = resolve))
+    chip.focus()
+    fireEvent.click(chip)
+    await within(scope).findByRole("button", { name: "Booking…" })
+
+    answer()
+    await waitFor(() => expectAvailable(chip))
+    expect(chip).toHaveFocus()
+    expect(within(chip).getByText("Book this time")).toBeInTheDocument()
+    expect(bookingRequests(api.requests)).toHaveLength(2)
+  })
+
+  it("moves keyboard focus to the field the API refused when the pressed start leaves with the old refusal", async () => {
+    let attempts = 0
+    mockBoardApi({
+      book: () =>
+        ++attempts === 1
+          ? problemResponse(409, slotUnavailable)
+          : problemResponse(400, {
+              type: `${problems}validation-error`,
+              title: "Validation failed",
+              status: 400,
+              detail: "One or more fields are invalid.",
+              traceId: "00-2af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+              errors: { "vehicle.vin": ["VIN check digit is wrong."] },
+            }),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const chip = within(await within(scope).findByRole("alert")).getByRole("button", { name: "Book at 10:30 instead" })
+    chip.focus()
+    fireEvent.click(chip)
+
+    expect(await within(scope).findByText("VIN check digit is wrong.")).toBeInTheDocument()
+    // Every message sits under its field, so the refusal above the form goes, and the chip with it.
+    expect(within(scope).queryByText("Slot just taken - pick another time")).not.toBeInTheDocument()
+    expect(chip).not.toBeInTheDocument()
+    expect(within(scope).getByRole("textbox", { name: "VIN" })).toHaveFocus()
+  })
+
   it("starts the next booking with a new idempotency key", async () => {
     const api = mockBoardApi()
     renderBoard(readingBoard)
@@ -702,9 +857,13 @@ describe("booking an appointment on a phone", () => {
     expect(within(scope).getByRole("textbox", { name: "Phone" })).toHaveAttribute("inputmode", "tel")
     expect(within(scope).getByRole("textbox", { name: "VIN" })).toHaveAttribute("autocapitalize", "characters")
     fillCustomerAndVehicle(scope)
-    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    const book = within(scope).getByRole("button", { name: "Book" })
+    book.focus()
+    fireEvent.click(book)
 
     expect(await within(scope).findByRole("heading", { level: 2, name: "Booked" })).toBeInTheDocument()
+    // Book left with the form: its next step takes focus, so it does not fall to the sheet.
+    expect(within(scope).getByRole("button", { name: "View on board" })).toHaveFocus()
     expect(within(scope).getByText("Interim Service · Bay 3 - Heavy duty · Ben Okafor")).toBeInTheDocument()
     expect(within(scope).getByRole("button", { name: "Book another" })).toBeInTheDocument()
     expect(scope.querySelector('img[src*="booking-success"]')).toHaveAttribute("alt", "")

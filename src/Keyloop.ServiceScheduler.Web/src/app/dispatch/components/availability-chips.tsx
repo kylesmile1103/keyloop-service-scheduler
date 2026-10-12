@@ -1,3 +1,4 @@
+import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { useQuery } from "@tanstack/react-query"
@@ -182,33 +183,42 @@ export function AvailabilityChips({
 
 /**
  * A conflict's suggested starts (the 409's `suggestedSlots`) as the same chips, but as plain buttons: one click books at
- * that time.
+ * that time. While a booking is out they all wait, focusable (`focusableWhenDisabled`): the one that was pressed keeps
+ * keyboard focus, and says it is booking.
  */
 export function SuggestedSlotChips({
   slots,
   onPick,
   disabled = false,
+  booking,
 }: {
   slots: ReadonlyArray<{ startUtc: string; startLocal: string }>
   onPick: (slot: { startUtc: string; startLocal: string }) => void
   disabled?: boolean
+  /** The start (`startUtc`) being booked, if it is one of these. */
+  booking?: string
 }) {
   return (
     <ul aria-label="Suggested start times" className="flex flex-wrap gap-2">
-      {slots.map((slot) => (
-        <li key={slot.startUtc}>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onPick(slot)}
-            aria-label={`Book at ${localTime(slot.startLocal)} instead`}
-            className={cn(chip, "text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50")}
-          >
-            <span>{localTime(slot.startLocal)}</span>
-            <span className={chipLine}>Book this time</span>
-          </button>
-        </li>
-      ))}
+      {slots.map((slot) => {
+        const pending = disabled && slot.startUtc === booking
+        return (
+          <li key={slot.startUtc}>
+            <ButtonPrimitive
+              type="button"
+              disabled={disabled}
+              focusableWhenDisabled
+              onClick={() => onPick(slot)}
+              aria-label={`Book at ${localTime(slot.startLocal)} instead`}
+              aria-busy={pending || undefined}
+              className={cn(chip, "text-foreground hover:bg-accent data-disabled:pointer-events-none data-disabled:opacity-50")}
+            >
+              <span>{localTime(slot.startLocal)}</span>
+              <span className={chipLine}>{pending ? "Booking…" : "Book this time"}</span>
+            </ButtonPrimitive>
+          </li>
+        )
+      })}
     </ul>
   )
 }
