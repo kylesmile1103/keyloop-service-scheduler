@@ -46,3 +46,8 @@ export function nextOpenDate(dealership: DealershipResponse, date: string): stri
   }
   return null
 }
+
+/** `date` itself when the dealership opens that day, else the next day it opens; `date` when it never opens. */
+export function firstOpenDate(dealership: DealershipResponse, date: string): string {
+  return openingHoursOn(dealership, weekdayOf(date)) ? date : (nextOpenDate(dealership, date) ?? date)
+}

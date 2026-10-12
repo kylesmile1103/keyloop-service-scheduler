@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { munich, reading } from "@/test/dealerships"
-import { hourMarks, nextOpenDate, openingHoursOn, weekdayIn } from "./opening-hours"
+import { firstOpenDate, hourMarks, nextOpenDate, openingHoursOn, weekdayIn } from "./opening-hours"
 
 describe("weekdayIn", () => {
   it("names the weekday as the API does", () => {
@@ -54,5 +54,18 @@ describe("nextOpenDate", () => {
   it("is null for a dealership that never opens", () => {
     const shut = { ...reading, operatingHours: reading.operatingHours.map((day) => ({ ...day, opensAt: null, closesAt: null })) }
     expect(nextOpenDate(shut, "2026-10-13")).toBeNull()
+  })
+})
+
+describe("firstOpenDate", () => {
+  it("is the day itself when the dealership opens that day, else the next day it opens", () => {
+    expect(firstOpenDate(reading, "2026-10-14")).toBe("2026-10-14") // Wednesday, open
+    expect(firstOpenDate(reading, "2026-10-18")).toBe("2026-10-19") // Sunday, closed → Monday
+    expect(firstOpenDate(munich, "2026-10-17")).toBe("2026-10-19") // Saturday, closed at weekends → Monday
+  })
+
+  it("keeps the day for a dealership that never opens", () => {
+    const shut = { ...reading, operatingHours: reading.operatingHours.map((day) => ({ ...day, opensAt: null, closesAt: null })) }
+    expect(firstOpenDate(shut, "2026-10-18")).toBe("2026-10-18")
   })
 })

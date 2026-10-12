@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
+import { formatDay } from "@/app/dispatch/lib/calendar-date"
 import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, scheduledFrom } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
@@ -171,6 +172,21 @@ describe("booking an appointment", () => {
     expect(await within(scope).findByText("VIN must be 17 characters (no I, O, Q)")).toBeInTheDocument()
     expect(within(scope).getByRole("textbox", { name: "VIN" })).toHaveAttribute("aria-invalid", "true")
     expect(bookingRequests(api.requests)).toHaveLength(0)
+  })
+
+  // Today is Tuesday 13 October; Reading is closed on Sundays.
+  it.each([
+    { board: "the board's open day", date: "2026-10-14", starts: "Wednesday 14 October 2026" },
+    { board: "the next open day after a closed one", date: "2026-10-18", starts: "Monday 19 October 2026" },
+    { board: "today instead of a past day", date: "2026-10-12", starts: "Tuesday 13 October 2026" },
+  ])("starts on $board", async ({ date, starts }) => {
+    mockBoardApi()
+    renderBoard(`${readingBoard}&date=${date}`)
+    await screen.findByRole("button", { name: `Choose date, ${formatDay(date, "long")}` })
+
+    const scope = await openDialog()
+
+    expect(within(scope).getByRole("button", { name: /^Date, / })).toHaveAccessibleName(`Date, ${starts}`)
   })
 
   it("asks for a start time once the service is chosen", async () => {

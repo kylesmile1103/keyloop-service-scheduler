@@ -64,7 +64,10 @@ export interface BookingDialogProps {
   dealership: DealershipResponse
   /** The board's schedule: its bays and technicians are the preferred-resource choices. */
   schedule: WorkshopScheduleResponse | undefined
-  /** The day the dialog starts on (`yyyy-MM-dd`): the board's day, or today when the board shows a past one. */
+  /**
+   * The day the dialog starts on (`yyyy-MM-dd`): the board's day (today when the board shows a past one), moved on to the
+   * next day the dealership opens when that day is closed, since a closed day cannot be picked.
+   */
   initialDate: string
   today: string
   /** Phones: a full-screen sheet that ends on a success state instead of closing (DESIGN_SYSTEM 11.14). */

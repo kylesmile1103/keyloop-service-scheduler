@@ -28,6 +28,7 @@ import { useNow } from "./hooks/use-now"
 import { useSelectedDealership } from "./hooks/use-selected-dealership"
 import { localTime } from "./lib/appointment-text"
 import { formatDay, todayIn } from "./lib/calendar-date"
+import { firstOpenDate } from "./lib/opening-hours"
 import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
 
 /** How often the board reads its schedule again while auto-refresh is on (SYSTEM_DESIGN §15). */
@@ -285,7 +286,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
         onOpenChange={(open) => setBooking((previous) => ({ ...previous, open }))}
         dealership={dealership}
         schedule={schedule.data}
-        initialDate={date >= today ? date : today}
+        initialDate={firstOpenDate(dealership, date >= today ? date : today)}
         today={today}
         fullScreen={agenda}
         onBooked={onBooked}
