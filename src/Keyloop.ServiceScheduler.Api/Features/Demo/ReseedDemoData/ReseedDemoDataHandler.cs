@@ -12,7 +12,8 @@ namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 
 /// <summary>
 /// Puts the demo back to its starting point (Addendum C §C3): deletes every appointment of the demo dealerships, in any status, with its
-/// history rows and the idempotency keys that would replay it, then books the deterministic demo week again
+/// history rows and the idempotency keys that would replay it, restores the seeded competence of seeded technicians whose HV level
+/// nobody confirmed (<see cref="ReferenceDataSeed.RestoreSeededCompetenceAsync"/>), then books the deterministic demo week again
 /// (<see cref="DemoAppointmentSeeder"/>, after <see cref="ReferenceDataSeed"/> in case the catalogue is gone), all in one transaction.
 /// </summary>
 /// <remarks>
@@ -77,6 +78,7 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
         var deleted = await appointments.ExecuteDeleteAsync(ct);
 
         await ReferenceDataSeed.EnsureSeededAsync(db, clock, ct);
+        await ReferenceDataSeed.RestoreSeededCompetenceAsync(db, ct);
         var created = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct);
 
         await transaction.CommitAsync(ct);

@@ -110,9 +110,39 @@ public static class ReferenceDataSeed
 
     private static Technician Tech(Dealership dealership, string name, string employeeNumber, params Certification[] certifications) =>
         Technician.Create(TechnicianId(employeeNumber), dealership.Id, name, employeeNumber, certifications,
-            hvLevel: employeeNumber switch { "T-1002" or "T-1005" or "M-2002" => 3, "T-1006" => 1, _ => 2 },
-            hvLevelValidUntil: new DateOnly(2028, 12, 31), hvLevelConfirmed: true,
-            brandSpecialisms: dealership.Id == ReadingDealershipId ? ["VOLKSWAGEN"] : ["BMW"]);
+            hvLevel: SeededHvLevel(employeeNumber), hvLevelValidUntil: SeededHvLevelValidUntil, hvLevelConfirmed: true,
+            brandSpecialisms: SeededBrands(dealership.Id));
+
+    /// <summary>The seeded technicians' employee numbers, at Reading then Munich.</summary>
+    private static readonly string[] SeededEmployeeNumbers = ["T-1001", "T-1002", "T-1003", "T-1004", "T-1005", "T-1006", "M-2001", "M-2002", "M-2003"];
+
+    private static readonly DateOnly SeededHvLevelValidUntil = new(2028, 12, 31);
+
+    private static int SeededHvLevel(string employeeNumber) => employeeNumber switch { "T-1002" or "T-1005" or "M-2002" => 3, "T-1006" => 1, _ => 2 };
+
+    private static string[] SeededBrands(Guid dealershipId) => dealershipId == ReadingDealershipId ? ["VOLKSWAGEN"] : ["BMW"];
+
+    /// <summary>
+    /// Demo reseed only (never startup): gives each seeded technician whose HV level nobody confirmed the seeded, confirmed competence.
+    /// A database seeded before vehicle-aware requirements keeps its technicians through migration and startup seeding, with the legacy
+    /// HV certification as level 3 unconfirmed and every other level 0, so Unknown brake and MOT work would have no qualified technician
+    /// once the flag is on. A confirmed level is a person's decision and is kept; technicians outside the seed are never touched.
+    /// </summary>
+    /// <returns>The number of technicians restored.</returns>
+    public static async Task<int> RestoreSeededCompetenceAsync(SchedulerDbContext db, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var ids = SeededEmployeeNumbers.Select(TechnicianId).ToArray();
+        var unconfirmed = (await db.Technicians.Where(t => ids.Contains(t.Id) && !t.HvLevelConfirmed).ToListAsync(ct))
+            .Where(t => SeededEmployeeNumbers.Contains(t.EmployeeNumber, StringComparer.Ordinal)).ToList();
+        foreach (var technician in unconfirmed)
+        {
+            technician.SetCompetence(SeededHvLevel(technician.EmployeeNumber), SeededHvLevelValidUntil, confirmed: true, SeededBrands(technician.DealershipId));
+        }
+
+        await db.SaveChangesAsync(ct);
+        return unconfirmed.Count;
+    }
 
     private static ServiceType Service(string code, string name, int minutes, BayCapability[] capabilities, Certification[] certifications) =>
         ServiceType.Create(ServiceTypeId(code), code, name, ServiceDuration.Create(minutes), capabilities, certifications);

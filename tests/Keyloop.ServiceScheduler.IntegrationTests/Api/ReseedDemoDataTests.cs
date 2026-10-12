@@ -244,6 +244,50 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         });
 
     /// <summary>The reseed route among the endpoints <paramref name="host"/> mapped (none where it is not mapped).</summary>
+    /// <summary>
+    /// An existing developer database keeps its technicians through migration and startup seeding: the legacy HV certification
+    /// becomes level 3 unconfirmed and every other level 0, which leaves Unknown brake and MOT work without a qualified technician
+    /// once vehicle-aware requirements are on. The demo reseed puts the demo back to its starting point, so it restores the seeded,
+    /// confirmed competence of the seeded technicians whose level nobody confirmed; a confirmed level is a person's decision and stays.
+    /// </summary>
+    [Fact]
+    public async Task Reseed_restores_seeded_competence_only_where_no_level_was_confirmed()
+    {
+        var amelia = ReferenceDataSeed.TechnicianId("T-1001");
+        var ben = ReferenceDataSeed.TechnicianId("T-1002");
+        var chloe = ReferenceDataSeed.TechnicianId("T-1003");
+        var hans = ReferenceDataSeed.TechnicianId("M-2002");
+        await _factory.WithDbAsync(async db =>
+        {
+            // What the migration leaves on a database seeded before Task 31a, and one level a person has since confirmed.
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE technicians SET hv_level = 0, hv_level_valid_until = NULL, hv_level_confirmed = false, brand_specialisms = ARRAY[]::text[] WHERE id IN ({amelia}, {chloe});
+                UPDATE technicians SET hv_level = 3, hv_level_valid_until = NULL, hv_level_confirmed = false, brand_specialisms = ARRAY[]::text[] WHERE id IN ({ben}, {hans});
+                UPDATE technicians SET hv_level = 1, hv_level_valid_until = '2027-01-31', hv_level_confirmed = true WHERE id = {chloe};
+                """, Ct);
+            await ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct);
+        });
+        (await CompetenceAsync(amelia)).ShouldBe((0, null, false), "startup seeding never rewrites an existing technician");
+
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+
+        var validUntil = new DateOnly(2028, 12, 31);
+        (await CompetenceAsync(amelia)).ShouldBe((2, validUntil, true));
+        (await CompetenceAsync(ben)).ShouldBe((3, validUntil, true));
+        (await CompetenceAsync(hans)).ShouldBe((3, validUntil, true));
+        (await CompetenceAsync(chloe)).ShouldBe((1, new DateOnly(2027, 1, 31), true), "a confirmed level is kept");
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == amelia, Ct))).BrandSpecialisms.ShouldBe(["VOLKSWAGEN"]);
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == hans, Ct))).BrandSpecialisms.ShouldBe(["BMW"]);
+    }
+
+    private Task<(int Level, DateOnly? ValidUntil, bool Confirmed)> CompetenceAsync(Guid technicianId) =>
+        _factory.WithDbAsync(async db =>
+        {
+            var technician = await db.Technicians.AsNoTracking().SingleAsync(t => t.Id == technicianId, Ct);
+            return (technician.HvLevel, technician.HvLevelValidUntil, technician.HvLevelConfirmed);
+        });
+
     private static List<RouteEndpoint> ReseedEndpoints(WebApplicationFactory<Program> host) =>
         host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
             .Where(endpoint => endpoint.RoutePattern.RawText == Route)
