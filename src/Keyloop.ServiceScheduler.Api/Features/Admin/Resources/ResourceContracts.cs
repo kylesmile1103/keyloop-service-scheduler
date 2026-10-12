@@ -12,7 +12,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
 /// <param name="Certifications">Task qualifications. Empty is permitted.</param>
 /// <param name="IsActive">False deactivates without changing existing appointments.</param>
 /// <param name="HvLevel">HV level, zero to four; unconfirmed levels still count.</param>
-/// <param name="HvLevelValidUntil">Inclusive dealership-local expiry; null means unlimited.</param>
+/// <param name="HvLevelValidUntil">Inclusive dealership-local expiry; null means unlimited. Required: send null explicitly.</param>
 /// <param name="HvLevelConfirmed">A person's confirmation of the recorded level.</param>
 /// <param name="BrandSpecialisms">At most 16 normalized OEM codes of at most 32 characters, data only.</param>
 public sealed record TechnicianWriteRequest(
@@ -21,7 +21,7 @@ public sealed record TechnicianWriteRequest(
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<Certification>))] Certification[] Certifications,
     [property: JsonRequired] bool IsActive,
     [property: JsonRequired, Range(0, 4)] int HvLevel,
-    DateOnly? HvLevelValidUntil,
+    [property: JsonRequired] DateOnly? HvLevelValidUntil,
     [property: JsonRequired] bool HvLevelConfirmed,
     [property: Required] string[] BrandSpecialisms);
 

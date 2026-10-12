@@ -12,7 +12,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
 /// <param name="Condition" example="ServicePowertrain">ServicePowertrain, VehicleClass or LiveDiagnosis.</param>
 /// <param name="Powertrains">Nonempty only for ServicePowertrain. Unknown inherits every concrete HV rule.</param>
 /// <param name="ServiceCodes">Existing global service codes, nonempty only for ServicePowertrain.</param>
-/// <param name="VehicleClass">Required only for VehicleClass.</param>
+/// <param name="VehicleClass">Non-null only for VehicleClass; send null explicitly for the other conditions.</param>
 /// <param name="MinimumHvLevel" example="2">Monotone minimum 0..4.</param>
 /// <param name="BayCapabilities">Additional equipment constraints.</param>
 /// <param name="Certifications">Additional task qualifications.</param>
@@ -23,7 +23,7 @@ public sealed record RequirementRuleInput(
     [property: JsonRequired, JsonConverter(typeof(ExactEnumNameConverter<RequirementCondition>))] RequirementCondition Condition,
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<Powertrain>))] Powertrain[] Powertrains,
     [property: Required] string[] ServiceCodes,
-    [property: JsonConverter(typeof(ExactEnumNameConverter<VehicleClass>))] VehicleClass? VehicleClass,
+    [property: JsonRequired, JsonConverter(typeof(ExactEnumNameConverter<VehicleClass>))] VehicleClass? VehicleClass,
     [property: JsonRequired, Range(0, 4)] int MinimumHvLevel,
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<BayCapability>))] BayCapability[] BayCapabilities,
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<Certification>))] Certification[] Certifications);

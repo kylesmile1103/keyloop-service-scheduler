@@ -11,9 +11,15 @@ internal static class AdminEndpointConventions
         .RequireAuthorization(SchedulerAuthentication.Admin)
         .ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesRateLimitedProblem();
 
-    public static RouteHandlerBuilder AdminWrite(this RouteHandlerBuilder route, string name, bool edit) =>
-        EditProblems(route.AdminRead(name).RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
-            .ProducesValidationProblem().ProducesProblem(413), edit);
+    /// <summary>
+    /// An Admin write: the booking write limit, the edit preconditions when <paramref name="edit"/>, and the body problems (400 field
+    /// errors, 413 over 64 KiB) only when the operation reads a body.
+    /// </summary>
+    public static RouteHandlerBuilder AdminWrite(this RouteHandlerBuilder route, string name, bool edit, bool body = true)
+    {
+        var write = route.AdminRead(name).RequireRateLimiting(SchedulerRateLimiting.BookingPolicy);
+        return EditProblems(body ? write.ProducesValidationProblem().ProducesProblem(413) : write, edit);
+    }
 
     private static RouteHandlerBuilder EditProblems(RouteHandlerBuilder route, bool edit) => edit
         ? route.ProducesProblem(412).ProducesProblem(428).WithResponseHeader(412, "ETag", "Current strong version; also present in currentETag.")

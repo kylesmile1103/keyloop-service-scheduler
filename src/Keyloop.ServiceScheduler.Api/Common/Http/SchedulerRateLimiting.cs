@@ -15,7 +15,8 @@ namespace Keyloop.ServiceScheduler.Api.Common.Http;
 /// <summary>
 /// Rate limiting with one-minute sliding windows, partitioned per verified email, otherwise client IP (ARCHITECTURE §11.2): the
 /// <c>global</c> limiter applies to every request except health probes; the stricter <see cref="BookingPolicy"/> write policy is
-/// added to the state-changing endpoints (booking, cancellation and the Development-only demo reseed) with
+/// added to the state-changing endpoints (booking, cancellation, vehicle-profile resolution, the Admin resource and policy writes, and the
+/// Development-only demo reseed) with
 /// <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>, and <see cref="TriagePolicy"/> to the triage evaluation and
 /// photo upload. A rejection is a 429 <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>.
 /// <c>Security:RateLimiting:Enabled=false</c> (SystemTest) turns all policies off.

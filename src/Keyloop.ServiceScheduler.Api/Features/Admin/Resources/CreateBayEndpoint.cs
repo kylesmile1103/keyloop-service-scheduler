@@ -15,7 +15,8 @@ public sealed class CreateBayEndpoint : IEndpoint
             .AdminWrite("CreateBay", edit: false)
             .AddEndpointFilter<ValidationFilter<BayWriteRequest>>()
             .Produces<AdminBayResponse>(201)
-            .WithResponseHeader(201, "ETag", "Strong xmin version; echo in If-Match for an edit.");
+            .WithResponseHeader(201, "ETag", "Strong xmin version; echo in If-Match for an edit.")
+            .WithResponseHeader(201, "Location", "Path of the created bay's Admin read.", "uri-reference");
 
     /// <summary>Create a service bay</summary>
     /// <response code="201">Created resource; Location points at its Admin read.</response>

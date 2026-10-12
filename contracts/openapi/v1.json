@@ -2328,6 +2328,13 @@
                   "type": "string"
                 }
               },
+              "Location": {
+                "description": "Path of the created technician's Admin read.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
+                }
+              },
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
                 "schema": {
@@ -3042,44 +3049,6 @@
               }
             }
           },
-          "400": {
-            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
-            "headers": {
-              "X-Request-Id": {
-                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
-                "schema": {
-                  "type": "string",
-                  "format": "uuid"
-                }
-              }
-            },
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Body exceeds the 64 KiB limit.",
-            "headers": {
-              "X-Request-Id": {
-                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
-                "schema": {
-                  "type": "string",
-                  "format": "uuid"
-                }
-              }
-            },
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "412": {
             "description": "Stale version, precondition-failed with current and currentETag.",
             "headers": {
@@ -3326,6 +3295,13 @@
                 "description": "Strong xmin version; echo in If-Match for an edit.",
                 "schema": {
                   "type": "string"
+                }
+              },
+              "Location": {
+                "description": "Path of the created bay's Admin read.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
                 }
               },
               "X-Request-Id": {
@@ -3922,7 +3898,7 @@
             "description": "Current policy and ordered typed rules.",
             "headers": {
               "ETag": {
-                "description": "Current policy version. A dry-run returns the unchanged version tag.",
+                "description": "Current policy version, quoted policy-{version}; send it in If-Match to preview or publish.",
                 "schema": {
                   "type": "string"
                 }
@@ -4304,6 +4280,11 @@
             "name": "resourceKind",
             "in": "query",
             "schema": {
+              "enum": [
+                "technician",
+                "bay",
+                "policy"
+              ],
               "type": "string"
             }
           },
@@ -4534,6 +4515,11 @@
             "format": "uuid"
           },
           "resourceKind": {
+            "enum": [
+              "technician",
+              "bay",
+              "policy"
+            ],
             "type": "string"
           },
           "resourceId": {
@@ -4541,6 +4527,14 @@
             "format": "uuid"
           },
           "action": {
+            "enum": [
+              "create",
+              "edit",
+              "deactivate",
+              "reactivate",
+              "confirm-hv",
+              "publish"
+            ],
             "type": "string"
           },
           "actor": {
@@ -5343,6 +5337,14 @@
           "reasonCodes": {
             "type": "array",
             "items": {
+              "enum": [
+                "technician-inactive",
+                "technician-certification-removed",
+                "technician-hv-expired",
+                "technician-hv-level-lowered",
+                "bay-inactive",
+                "bay-capability-removed"
+              ],
               "type": "string"
             },
             "description": "Bounded qualification-lapse codes, in stable order; never resource names or visitor text."
@@ -5672,7 +5674,6 @@
           }
         }
       },
-      "JsonElement": { },
       "OperatingWindowResponse": {
         "required": [
           "startUtc",
@@ -6050,7 +6051,7 @@
                 "type": "null"
               },
               {
-                "description": "Required only for VehicleClass.",
+                "description": "Non-null only for VehicleClass; send null explicitly for the other conditions.",
                 "$ref": "#/components/schemas/VehicleClass"
               }
             ]
@@ -6443,7 +6444,7 @@
               "null",
               "string"
             ],
-            "description": "Inclusive dealership-local expiry; null means unlimited.",
+            "description": "Inclusive dealership-local expiry; null means unlimited. Required: send null explicitly.",
             "format": "date"
           },
           "hvLevelConfirmed": {

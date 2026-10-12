@@ -21,9 +21,9 @@ export type AdminBayResponse = {
  */
 export type AdminHistoryItem = {
     id: string;
-    resourceKind: string;
+    resourceKind: 'technician' | 'bay' | 'policy';
     resourceId: string;
-    action: string;
+    action: 'create' | 'edit' | 'deactivate' | 'reactivate' | 'confirm-hv' | 'publish';
     actor: string;
     atUtc: string;
     /**
@@ -450,7 +450,7 @@ export type CompetenceWarningResponse = {
     /**
      * Bounded qualification-lapse codes, in stable order; never resource names or visitor text.
      */
-    reasonCodes: Array<string>;
+    reasonCodes: Array<'technician-inactive' | 'technician-certification-removed' | 'technician-hv-expired' | 'technician-hv-level-lowered' | 'bay-inactive' | 'bay-capability-removed'>;
 };
 
 /**
@@ -617,8 +617,6 @@ export type HttpValidationProblemDetails = {
      */
     current?: AdminTechnicianResponse | AdminBayResponse | AdminPolicyResponse;
 };
-
-export type JsonElement = unknown;
 
 /**
  * The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times.
@@ -1008,7 +1006,7 @@ export type TechnicianWriteRequest = {
      */
     hvLevel: number;
     /**
-     * Inclusive dealership-local expiry; null means unlimited.
+     * Inclusive dealership-local expiry; null means unlimited. Required: send null explicitly.
      */
     hvLevelValidUntil: null | string;
     /**
@@ -2197,10 +2195,6 @@ export type ConfirmTechnicianHvLevelData = {
 
 export type ConfirmTechnicianHvLevelErrors = {
     /**
-     * Invalid fields, validation-error with errors keyed by JSON path.
-     */
-    400: HttpValidationProblemDetails;
-    /**
      * Sign-in required, unauthenticated.
      */
     401: ProblemDetails;
@@ -2216,10 +2210,6 @@ export type ConfirmTechnicianHvLevelErrors = {
      * Stale version, precondition-failed with current and currentETag.
      */
     412: ProblemDetails;
-    /**
-     * Body exceeds the 64 KiB limit.
-     */
-    413: ProblemDetails;
     /**
      * If-Match required, precondition-required.
      */
@@ -2582,7 +2572,7 @@ export type GetAdminHistoryData = {
         dealershipId: string;
     };
     query?: {
-        resourceKind?: string;
+        resourceKind?: 'technician' | 'bay' | 'policy';
         resourceId?: string;
         offset?: number;
         limit?: number;

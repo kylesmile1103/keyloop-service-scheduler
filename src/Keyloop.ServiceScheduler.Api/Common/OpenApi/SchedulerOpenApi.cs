@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -326,6 +328,8 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
+    private static List<JsonNode> Strings(IEnumerable<string> values) => [.. values.Select(value => (JsonNode)JsonValue.Create(value))];
+
     internal static Task TransformDocument(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
     {
         document.Info = new OpenApiInfo
@@ -379,6 +383,30 @@ internal static class SchedulerOpenApi
                     new OpenApiSchemaReference("AdminPolicyResponse", document)],
             };
         }
+        // Closed vocabularies the API writes as plain strings, enumerated from their single source, so a rename or a new value changes the
+        // contract and the generated client (OpenApiContractTests pins each enum against that source).
+        if (document.Components.Schemas is { } schemas)
+        {
+            if (schemas.TryGetValue("CompetenceWarningResponse", out var warning) && warning is OpenApiSchema { Properties: { } warningProperties }
+                && warningProperties.TryGetValue("reasonCodes", out var reasonCodes) && reasonCodes is OpenApiSchema { Items: OpenApiSchema reasons })
+            {
+                reasons.Enum = Strings(CompetenceReasonCodes.All);
+            }
+            if (schemas.TryGetValue("AdminHistoryItem", out var item) && item is OpenApiSchema { Properties: { } itemProperties })
+            {
+                if (itemProperties.TryGetValue("resourceKind", out var kind) && kind is OpenApiSchema kindSchema) { kindSchema.Enum = Strings(AdminVocabulary.ResourceKinds); }
+                if (itemProperties.TryGetValue("action", out var action) && action is OpenApiSchema actionSchema) { actionSchema.Enum = Strings(AdminVocabulary.Actions); }
+            }
+            // AdminHistoryItem's before/after unions above replaced the only use of JsonElement; drop the empty, unreferenced component.
+            schemas.Remove("JsonElement");
+        }
+        if (document.Paths?.Values.SelectMany(path => path.Operations?.Values ?? Enumerable.Empty<OpenApiOperation>())
+                .SingleOrDefault(operation => operation.OperationId == "GetAdminHistory") is { Parameters: { } historyParameters }
+            && historyParameters.SingleOrDefault(parameter => parameter.Name == "resourceKind")?.Schema is OpenApiSchema kindFilter)
+        {
+            kindFilter.Enum = Strings(AdminVocabulary.ResourceKinds);
+        }
+
         // The order is explicit (a sorted set ranked by the fixed list), not a hash set's enumeration order, so the build-time document
         // is byte-stable. A tag outside the list (a review miss) is kept after the fixed ones, by name, rather than silently dropped.
         var tags = new SortedSet<OpenApiTag>(TagOrder.Instance);

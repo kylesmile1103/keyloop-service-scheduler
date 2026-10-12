@@ -45,7 +45,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
     {
         var id = technicianId ?? Guid.CreateVersion7(clock.GetUtcNow());
         var changeId = Guid.CreateVersion7(clock.GetUtcNow());
-        var action = "create";
+        var action = AdminVocabulary.Create;
         try
         {
             var response = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
@@ -63,7 +63,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                     row = await TechnicianAsync(dealershipId, id, ct);
                     AdminPreconditions.Check(ifMatch, AdminPreconditions.ResourceTag(row.RowVersion), AdminResourceMapper.ToResponse(row));
                     before = JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.TechnicianWriteRequest);
-                    action = request is null ? "confirm-hv" : row.IsActive != request.IsActive ? request.IsActive ? "reactivate" : "deactivate" : "edit";
+                    action = request is null ? AdminVocabulary.ConfirmHv : row.IsActive != request.IsActive ? request.IsActive ? AdminVocabulary.Reactivate : AdminVocabulary.Deactivate : AdminVocabulary.Edit;
                     if (request is null)
                     {
                         row.ConfirmHvLevel();
@@ -82,19 +82,19 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                         request.HvLevel, request.HvLevelValidUntil, request.HvLevelConfirmed, request.BrandSpecialisms);
                     db.Technicians.Add(row);
                 }
-                db.AdminChanges.Add(Change(changeId, dealershipId, "technician", id, action, before,
+                db.AdminChanges.Add(Change(changeId, dealershipId, AdminVocabulary.Technician, id, action, before,
                     JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.TechnicianWriteRequest)));
                 await db.SaveChangesAsync(ct);
                 return AdminResourceMapper.ToResponse(row);
             });
-            Count("technician", action);
+            Count(AdminVocabulary.Technician, action);
             return response;
         }
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
             var current = await GetTechnicianAsync(dealershipId, id, ct);
-            if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct)) { Count("technician", action); return current; }
+            if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct)) { Count(AdminVocabulary.Technician, action); return current; }
             throw new AdminPreconditionException(412, AdminPreconditions.ResourceTag(current.Version), current);
         }
         catch (DbUpdateException ex) when (PostgresErrorClassifier.Classify(ex) == PostgresFailure.EmployeeNumberDuplicate)
@@ -107,7 +107,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
     {
         var id = bayId ?? Guid.CreateVersion7(clock.GetUtcNow());
         var changeId = Guid.CreateVersion7(clock.GetUtcNow());
-        var action = "create";
+        var action = AdminVocabulary.Create;
         try
         {
             var response = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
@@ -122,7 +122,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                     row = await BayAsync(dealershipId, id, ct);
                     AdminPreconditions.Check(ifMatch, AdminPreconditions.ResourceTag(row.RowVersion), AdminResourceMapper.ToResponse(row));
                     before = JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.BayWriteRequest);
-                    action = row.IsActive != request.IsActive ? request.IsActive ? "reactivate" : "deactivate" : "edit";
+                    action = row.IsActive != request.IsActive ? request.IsActive ? AdminVocabulary.Reactivate : AdminVocabulary.Deactivate : AdminVocabulary.Edit;
                     row.Edit(request.Name, request.Capabilities, request.IsActive);
                     db.Entry(row).Property(t => t.IsActive).IsModified = true;
                 }
@@ -131,19 +131,19 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                     row = ServiceBay.Create(id, dealershipId, request.Name, request.Capabilities, request.IsActive);
                     db.ServiceBays.Add(row);
                 }
-                db.AdminChanges.Add(Change(changeId, dealershipId, "bay", id, action, before,
+                db.AdminChanges.Add(Change(changeId, dealershipId, AdminVocabulary.Bay, id, action, before,
                     JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.BayWriteRequest)));
                 await db.SaveChangesAsync(ct);
                 return AdminResourceMapper.ToResponse(row);
             });
-            Count("bay", action);
+            Count(AdminVocabulary.Bay, action);
             return response;
         }
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
             var current = await GetBayAsync(dealershipId, id, ct);
-            if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct)) { Count("bay", action); return current; }
+            if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct)) { Count(AdminVocabulary.Bay, action); return current; }
             throw new AdminPreconditionException(412, AdminPreconditions.ResourceTag(current.Version), current);
         }
     }

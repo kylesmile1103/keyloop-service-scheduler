@@ -15,7 +15,8 @@ public sealed class CreateTechnicianEndpoint : IEndpoint
             .AdminWrite("CreateTechnician", edit: false)
             .AddEndpointFilter<ValidationFilter<TechnicianWriteRequest>>()
             .Produces<AdminTechnicianResponse>(201)
-            .WithResponseHeader(201, "ETag", "Strong xmin version; echo in If-Match for an edit.");
+            .WithResponseHeader(201, "ETag", "Strong xmin version; echo in If-Match for an edit.")
+            .WithResponseHeader(201, "Location", "Path of the created technician's Admin read.", "uri-reference");
 
     /// <summary>Create a technician</summary>
     /// <response code="201">Created resource; Location points at its Admin read.</response>

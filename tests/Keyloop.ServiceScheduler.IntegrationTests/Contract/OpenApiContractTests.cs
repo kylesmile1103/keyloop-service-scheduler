@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
@@ -196,6 +198,46 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             .ShouldBeEmpty("non-string enum values");
     }
 
+    /// <summary>
+    /// Task 30a's closed vocabularies are written as plain strings, so the contract enumerates them from their single source in code:
+    /// a renamed or added reason, action or resource kind changes the contract and the generated client instead of passing silently.
+    /// </summary>
+    [Fact]
+    public async Task Admin_and_competence_vocabularies_are_closed_string_enums()
+    {
+        var document = await ServedAsync();
+        var schemas = document["components"]!["schemas"]!.AsObject();
+        Strings(schemas["CompetenceWarningResponse"]!["properties"]!["reasonCodes"]!["items"]!["enum"]).ShouldBe(CompetenceReasonCodes.All);
+        Strings(schemas["AdminHistoryItem"]!["properties"]!["resourceKind"]!["enum"]).ShouldBe(AdminVocabulary.ResourceKinds);
+        Strings(schemas["AdminHistoryItem"]!["properties"]!["action"]!["enum"]).ShouldBe(AdminVocabulary.Actions);
+        var history = Operations(document).Single(o => Text(o.Operation["operationId"]) == "GetAdminHistory").Operation;
+        Strings(history["parameters"]!.AsArray().Single(p => Text(p?["name"]) == "resourceKind")!["schema"]!["enum"]).ShouldBe(AdminVocabulary.ResourceKinds);
+        schemas.ContainsKey("JsonElement").ShouldBeFalse("no empty, unreferenced component");
+    }
+
+    /// <summary>Admin operations document the headers they send and only the problems they can return.</summary>
+    [Fact]
+    public async Task Admin_operations_document_their_headers_and_only_reachable_problems()
+    {
+        var document = await ServedAsync();
+        var operations = Operations(document).ToDictionary(o => Text(o.Operation["operationId"])!, o => o.Operation);
+        foreach (var create in new[] { "CreateTechnician", "CreateBay" })
+        {
+            var headers = operations[create]["responses"]!["201"]!["headers"]!.AsObject();
+            headers.ContainsKey("ETag").ShouldBeTrue(create);
+            Text(headers["Location"]?["schema"]?["format"]).ShouldBe("uri-reference", create);
+        }
+        // The confirmation reads no body, so it can return neither field errors nor 413.
+        var confirm = operations["ConfirmTechnicianHvLevel"]["responses"]!.AsObject();
+        confirm.ContainsKey("400").ShouldBeFalse();
+        confirm.ContainsKey("413").ShouldBeFalse();
+        confirm.ContainsKey("412").ShouldBeTrue();
+        confirm.ContainsKey("428").ShouldBeTrue();
+        Text(operations["GetRequirementPolicy"]["responses"]!["200"]!["headers"]!["ETag"]!["description"]).ShouldNotBeNull().ShouldNotContain("dry-run");
+    }
+
+    private static IEnumerable<string> Strings(JsonNode? values) => values.ShouldNotBeNull().AsArray().Select(v => v!.GetValue<string>());
+
     [Fact]
     public async Task Every_error_response_is_a_problem_document_with_a_trace_id()
     {
@@ -247,8 +289,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "403"),
                 ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "404"),
                 ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "429"),
-                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "400"),
-                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "413"),
                 ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "412"),
                 ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "428"),
                 ("GET /api/v1/dealerships/{dealershipId}/bays", "401"),

@@ -161,6 +161,56 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         finally { foreach (var response in responses) { response.Dispose(); } }
     }
 
+    /// <summary>
+    /// Deterministic form of the race above: both edits pass the If-Match pre-check with the same ETag, and the second commits between the
+    /// first one's check and its UPDATE. Only the xmin-conditional update can refuse the first, so this pins the concurrency token and the
+    /// DbUpdateConcurrencyException path (412 with the winner's state and ETag, no audit row for the loser).
+    /// </summary>
+    [Theory]
+    [InlineData("technician")]
+    [InlineData("bay")]
+    public async Task Edit_that_loses_after_its_If_Match_check_is_refused_by_the_conditional_update(string kind)
+    {
+        var path = kind == "technician" ? Technician : Bay;
+        using var read = await _client.GetAsync(path, Ct);
+        var etag = read.Headers.ETag!.ToString();
+        var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!;
+        HttpClient client = null!;
+        HttpResponseMessage? winner = null;
+        var race = new BeforeResourceUpdate(kind == "technician" ? "technicians" : "service_bays", async ct =>
+        {
+            var second = body.DeepClone();
+            second["name"] = "Winning edit";
+            winner = await SendAsync(client, HttpMethod.Put, path, second.ToJsonString(), etag, ct);
+        });
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true")
+            .ConfigureTestServices(s => s.AddDbContext<SchedulerDbContext>((_, options) => options.AddInterceptors(race))));
+        client = host.CreateClient();
+        try
+        {
+            body["name"] = "Losing edit";
+            race.Arm();
+            using var loser = await SendAsync(client, HttpMethod.Put, path, body.ToJsonString(), etag, Ct);
+            race.Fired.ShouldBe(1);
+            winner.ShouldNotBeNull().StatusCode.ShouldBe(HttpStatusCode.OK, await winner.Content.ReadAsStringAsync(Ct));
+            var winnerTag = winner.Headers.ETag.ShouldNotBeNull().ToString();
+            loser.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed, await loser.Content.ReadAsStringAsync(Ct));
+            var problem = JsonNode.Parse(await loser.Content.ReadAsStringAsync(Ct))!;
+            problem["type"]!.GetValue<string>().ShouldEndWith("/precondition-failed");
+            problem["current"]!["name"]!.GetValue<string>().ShouldBe("Winning edit");
+            problem["currentETag"]!.GetValue<string>().ShouldBe(winnerTag);
+            loser.Headers.ETag.ShouldNotBeNull().ToString().ShouldBe(winnerTag);
+            var changes = await _factory.WithDbAsync(db => db.AdminChanges.AsNoTracking().ToListAsync(Ct));
+            changes.Count.ShouldBe(1);
+            changes[0].After.ShouldContain("Winning edit");
+        }
+        finally
+        {
+            winner?.Dispose();
+            client.Dispose();
+        }
+    }
+
     [Theory]
     [InlineData("technician")]
     [InlineData("bay")]
@@ -371,22 +421,45 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         if (kind == "policy") { JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["saved"]!.GetValue<bool>().ShouldBeFalse(); }
     }
 
+    /// <summary>
+    /// A field the contract marks required must be sent, even where null is a valid value: a client that leaves out
+    /// <c>hvLevelValidUntil</c> must not silently make an expired HV level unlimited (and so qualify the technician again).
+    /// </summary>
     [Theory]
-    [InlineData("technician")]
-    [InlineData("bay")]
-    [InlineData("policy")]
-    public async Task Missing_write_mode_fields_cannot_silently_deactivate_or_publish(string kind)
+    [InlineData("technician", "isActive")]
+    [InlineData("technician", "hvLevelValidUntil")]
+    [InlineData("bay", "isActive")]
+    [InlineData("policy", "dryRun")]
+    [InlineData("policy", "vehicleClass")]
+    public async Task Missing_write_mode_fields_cannot_silently_deactivate_or_publish(string kind, string field)
     {
         var path = kind == "policy" ? Site + "/requirement-policy" : kind == "technician" ? Technician : Bay;
         using var read = await _client.GetAsync(path, Ct);
         var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!.AsObject();
-        if (kind == "policy") { body["previewDate"] = "2026-10-13"; }
-        else { body.Remove("isActive"); }
+        if (kind == "policy")
+        {
+            // The read has no dryRun; the vehicleClass case is otherwise a complete save of the current rules.
+            body["previewDate"] = "2026-10-13";
+            if (field == "vehicleClass")
+            {
+                body["dryRun"] = false;
+                body["rules"]![0]!.AsObject().Remove("vehicleClass").ShouldBeTrue();
+            }
+        }
+        else { body.Remove(field).ShouldBeTrue(); }
         using var response = await Send(HttpMethod.Put, path, body.ToJsonString(), read.Headers.ETag!.ToString());
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync(Ct));
         using var current = await _client.GetAsync(path, Ct);
         current.Headers.ETag!.ToString().ShouldBe(read.Headers.ETag!.ToString());
         (await _factory.WithDbAsync(db => db.AdminChanges.CountAsync(Ct))).ShouldBe(0);
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string path, string? json, string? etag, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (json is not null) { request.Content = new StringContent(json, Encoding.UTF8, "application/json"); }
+        if (etag is not null) { request.Headers.TryAddWithoutValidation("If-Match", etag); }
+        return await client.SendAsync(request, ct);
     }
 
     private async Task<HttpResponseMessage> Send(HttpMethod method, string path, string? json, string? etag = null)

@@ -54,14 +54,16 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         // Rows arrive ordered by start, so each bay's list is too. The reader lists every resource of the dealership and an
         // appointment's bay and technician are always the dealership's own, so a missing key is corrupt data: it fails loudly.
         var appointmentsByBay = day.Bays.ToDictionary(b => b.Id, _ => new List<ScheduledAppointmentResponse>());
+        var rulesByVersion = new Dictionary<int, IReadOnlyList<RequirementRule>>();
         foreach (var appointment in scheduled)
         {
             var response = ScheduleMapper.ToResponse(appointment, ScheduleMapper.ToSummary(serviceTypes[appointment.ServiceTypeId]), technicianSummaries[appointment.TechnicianId], zone);
-            if (competence)
+            // Completed and no-show rows stay on the board as history; only appointments still holding resources can need review.
+            if (competence && AppointmentCompetenceReader.AppliesTo(appointment.Status))
             {
                 var service = serviceTypes[appointment.ServiceTypeId];
-                var requirements = await AppointmentCompetenceReader.RequirementsAsync(db, dealership.Id, service,
-                    appointment.RecordedRequirements, appointment.Allocation, appointment.Profile ?? VehicleProfile.Unknown, appointment.NeedsLiveDiagnosis, ct);
+                var requirements = await AppointmentCompetenceReader.RequirementsAsync(db, dealership.Id, service, appointment.RecordedRequirements,
+                    appointment.Allocation, appointment.Profile ?? VehicleProfile.Unknown, appointment.NeedsLiveDiagnosis, rulesByVersion, ct);
                 var warning = AppointmentCompetenceReader.Evaluate(requirements,
                     day.Bays.Single(b => b.Id == appointment.BayId), day.Technicians.Single(t => t.Id == appointment.TechnicianId),
                     LocalTimeConverter.ToLocalDate(appointment.Slot.StartUtc, zone));

@@ -160,14 +160,16 @@ public static class ReferenceDataSeed
     /// Demo reseed only (never startup): gives each seeded technician whose HV level nobody confirmed the seeded, confirmed competence.
     /// A database seeded before vehicle-aware requirements keeps its technicians through migration and startup seeding, with the legacy
     /// HV certification as level 3 unconfirmed and every other level 0, so Unknown brake and MOT work would have no qualified technician
-    /// once the flag is on. A confirmed level is a person's decision and is kept; technicians outside the seed are never touched.
+    /// once the flag is on. A confirmed level is a person's decision and is kept; technicians outside the seed are never touched. Since
+    /// Task 30a an Admin can also save an unconfirmed level deliberately, so a technician with any Admin audit row is a person's decision
+    /// too and is skipped: the reseed never raises a qualification an Admin lowered, and the latest audit <c>after</c> stays true.
     /// </summary>
     /// <returns>The number of technicians restored.</returns>
     public static async Task<int> RestoreSeededCompetenceAsync(SchedulerDbContext db, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(db);
         var ids = SeededEmployeeNumbers.Select(TechnicianId).ToArray();
-        var unconfirmed = (await db.Technicians.Where(t => ids.Contains(t.Id) && !t.HvLevelConfirmed).ToListAsync(ct))
+        var unconfirmed = (await NeverAdminEdited(db, db.Technicians.Where(t => ids.Contains(t.Id) && !t.HvLevelConfirmed)).ToListAsync(ct))
             .Where(t => SeededEmployeeNumbers.Contains(t.EmployeeNumber, StringComparer.Ordinal)).ToList();
         foreach (var technician in unconfirmed)
         {
@@ -178,12 +180,15 @@ public static class ReferenceDataSeed
         return unconfirmed.Count;
     }
 
-    /// <summary>Demo reseed only: add the seeded damage qualification, preserving every other certification and confirmed HV level.</summary>
+    /// <summary>
+    /// Demo reseed only: add the seeded damage qualification, preserving every other certification and confirmed HV level. A technician an
+    /// Admin has edited is skipped, so a deliberately removed certification stays removed.
+    /// </summary>
     public static async Task<int> RestoreSeededDamageCertificationAsync(SchedulerDbContext db, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(db);
         var ids = new[] { TechnicianId("T-1005"), TechnicianId("M-2002") };
-        var technicians = await db.Technicians.Where(t => ids.Contains(t.Id)).ToListAsync(ct);
+        var technicians = await NeverAdminEdited(db, db.Technicians.Where(t => ids.Contains(t.Id))).ToListAsync(ct);
         var restored = technicians.Where(t =>
             ((t.Id == TechnicianId("T-1005") && t.EmployeeNumber == "T-1005" && t.DealershipId == ReadingDealershipId) ||
              (t.Id == TechnicianId("M-2002") && t.EmployeeNumber == "M-2002" && t.DealershipId == MunichDealershipId)) &&
@@ -195,6 +200,10 @@ public static class ReferenceDataSeed
         await db.SaveChangesAsync(ct);
         return restored.Length;
     }
+
+    /// <summary>The technicians with no Admin audit row (create, edit, deactivation, reactivation or HV confirmation).</summary>
+    private static IQueryable<Technician> NeverAdminEdited(SchedulerDbContext db, IQueryable<Technician> technicians) =>
+        technicians.Where(t => !db.AdminChanges.Any(a => a.DealershipId == t.DealershipId && a.ResourceKind == AdminVocabulary.Technician && a.ResourceId == t.Id));
 
     private static ServiceType Service(string code, string name, int minutes, BayCapability[] capabilities, Certification[] certifications) =>
         ServiceType.Create(ServiceTypeId(code), code, name, ServiceDuration.Create(minutes), capabilities, certifications);

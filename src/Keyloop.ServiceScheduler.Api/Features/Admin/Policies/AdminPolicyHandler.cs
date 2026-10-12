@@ -25,8 +25,8 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
         var result = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             db.ChangeTracker.Clear();
-            // The existing seeding lock is first and only: no dealership lock or resource update in this transaction.
-            // It serializes version publication with both startup seed and demo reseed, retaining their existing lock order.
+            // The seeding lock first: it serializes version publication with startup seeding, the demo reseed and other publications.
+            // A save then takes the dealership lock (below), the reseed's existing order, so the order stays cycle-free.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             await SeedingLock.AcquireAsync(db, ct);
             var completed = await db.AdminChanges.AsNoTracking().SingleOrDefaultAsync(a => a.Id == changeId, ct);
@@ -77,6 +77,10 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
                 await transaction.RollbackAsync(ct);
                 return new PolicyEditResponse(false, policy, request.PreviewDate, changes);
             }
+            // A save commits under the dealership lock (ADR-029 Task 30a amendment): a booking holding it finishes under the version it
+            // resolved first, and a booking that resolved the old version but waits for it re-resolves under its lock. A dry-run never
+            // takes it. No resource row is updated, and a booking never takes the seeding lock, so no cycle can form.
+            await DealershipLock.AcquireAsync(db, dealershipId, ct);
             // Retain the effective default even on a previously unconfigured site, for older appointments and audit.
             if (!await db.RequirementRules.AnyAsync(r => r.DealershipId == dealershipId, ct)
                 && !await db.RequirementPolicyVersions.AnyAsync(r => r.DealershipId == dealershipId, ct))
@@ -85,7 +89,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             }
             db.RequirementPolicyVersions.Add(new() { DealershipId = dealershipId, Version = next });
             db.RequirementRules.AddRange(nextRules);
-            db.AdminChanges.Add(resources.Change(changeId, dealershipId, "policy", dealershipId, "publish",
+            db.AdminChanges.Add(resources.Change(changeId, dealershipId, AdminVocabulary.Policy, dealershipId, AdminVocabulary.Publish,
                 JsonSerializer.Serialize(current, SchedulerJsonContext.Default.AdminPolicyResponse),
                 JsonSerializer.Serialize(policy, SchedulerJsonContext.Default.AdminPolicyResponse)));
             pendingResult = new PolicyEditResponse(true, policy, request.PreviewDate, changes);
@@ -96,7 +100,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             bool Bookable(JobRequirements requirements) => roster.Bays.Any(b => b.Satisfies(requirements))
                 && roster.Technicians.Any(t => t.Satisfies(requirements, request.PreviewDate));
         });
-        if (result.Saved) { AdminResourcesHandler.Count("policy", "publish"); }
+        if (result.Saved) { AdminResourcesHandler.Count(AdminVocabulary.Policy, AdminVocabulary.Publish); }
         return result;
     }
 

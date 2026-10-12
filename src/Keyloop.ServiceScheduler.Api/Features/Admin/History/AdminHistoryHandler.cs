@@ -18,7 +18,7 @@ public sealed class AdminHistoryHandler(SchedulerDbContext db, AdminResourcesHan
     public async Task<AdminHistoryResponse> ReadAsync(Guid site, string? resourceKind, Guid? resourceId, int? offset, int? limit, CancellationToken ct)
     {
         await resources.EnsureDealershipAsync(site, ct);
-        if (resourceKind is not null && resourceKind is not ("technician" or "bay" or "policy"))
+        if (resourceKind is not null && !AdminVocabulary.ResourceKinds.Contains(resourceKind))
         {
             throw new AdminFieldException("resourceKind", "Use technician, bay or policy.");
         }

@@ -14,7 +14,7 @@ public sealed class GetRequirementPolicyEndpoint : IEndpoint
         app.MapGet("/dealerships/{dealershipId:guid}/requirement-policy", HandleAsync)
             .AdminRead("GetRequirementPolicy")
             .Produces<AdminPolicyResponse>(200)
-            .WithResponseHeader(200, "ETag", "Current policy version. A dry-run returns the unchanged version tag.");
+            .WithResponseHeader(200, "ETag", "Current policy version, quoted policy-{version}; send it in If-Match to preview or publish.");
 
     /// <summary>Get the dealership requirement policy</summary>
     /// <response code="200">Current policy and ordered typed rules.</response>

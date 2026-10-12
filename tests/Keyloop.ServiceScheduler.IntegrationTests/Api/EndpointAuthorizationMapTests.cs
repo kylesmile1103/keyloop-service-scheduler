@@ -1,8 +1,10 @@
 using System.Net;
+using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -94,6 +96,25 @@ public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLi
         {
             actual[route].ShouldBe(access, route);
         }
+    }
+
+    /// <summary>
+    /// Admin writes carry the stricter <c>booking</c> write limit on top of the global one, like every other state-changing route;
+    /// Admin reads stay on the global limit. SystemTest turns limiting off, so the declaration itself is what is pinned here.
+    /// </summary>
+    [Fact]
+    public void Admin_writes_and_only_writes_carry_the_booking_write_rate_limit()
+    {
+        var admin = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Where(e => Access(e) == "Admin" && e.RoutePattern.RawText!.StartsWith("/api/v1/dealerships/", StringComparison.Ordinal))
+            .SelectMany(e => (e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? ["*"])
+                .Select(method => (Route: $"{method} {e.RoutePattern.RawText}", Policy: e.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName)))
+            .ToList();
+        admin.Count.ShouldBe(12);
+        var writes = admin.Where(e => !e.Route.StartsWith("GET ", StringComparison.Ordinal)).ToList();
+        writes.Count.ShouldBe(6);
+        writes.ShouldAllBe(e => e.Policy == SchedulerRateLimiting.BookingPolicy);
+        admin.Except(writes).ShouldAllBe(e => e.Policy == null);
     }
 
     [Theory]
