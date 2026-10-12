@@ -1,11 +1,13 @@
 import { useCallback, useEffect } from "react"
 import { useNavigation, useSearchParams } from "react-router-dom"
 
+import { DATE_PARAM } from "@/lib/workshop-params"
+
 import { isCalendarDate } from "../lib/calendar-date"
 import type { LaneMode } from "../lib/schedule"
 
-/** The search parameter naming the board's day (`yyyy-MM-dd`); without it the board shows today. */
-export const DATE_PARAM = "date"
+export { DATE_PARAM }
+
 /** The search parameter naming the lane view; without it the lanes are bays. */
 export const LANES_PARAM = "lanes"
 

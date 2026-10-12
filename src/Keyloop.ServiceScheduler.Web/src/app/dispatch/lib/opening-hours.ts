@@ -1,6 +1,6 @@
-import type { DayOfWeek, DealershipResponse } from "@/api/types.gen"
+import type { DayOfWeek, DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 
-import { shiftDate, weekdayOf } from "./calendar-date"
+import { formatDay, shiftDate, weekdayOf } from "./calendar-date"
 
 export interface OpeningHours {
   /** Local wall-clock time, `HH:mm`. */
@@ -50,4 +50,26 @@ export function nextOpenDate(dealership: DealershipResponse, date: string): stri
 /** `date` itself when the dealership opens that day, else the next day it opens; `date` when it never opens. */
 export function firstOpenDate(dealership: DealershipResponse, date: string): string {
   return openingHoursOn(dealership, weekdayOf(date)) ? date : (nextOpenDate(dealership, date) ?? date)
+}
+
+/**
+ * "Open today 08:00–18:00 (Europe/London).": a workshop day's hours in the dealership's own zone, which also names the zone
+ * every time on the page is in. From the schedule's window once it arrives, the weekly hours until then.
+ */
+export function daySentence(
+  dealership: DealershipResponse,
+  date: string,
+  today: string,
+  schedule: WorkshopScheduleResponse | undefined
+): string {
+  const window = schedule?.operatingWindow
+  const weekly = openingHoursOn(dealership, weekdayOf(date))
+  const hours =
+    schedule === undefined
+      ? weekly && `${weekly.opensAt}–${weekly.closesAt}`
+      : window && `${window.opensAtLocal.slice(11, 16)}–${window.closesAtLocal.slice(11, 16)}`
+  const zone = `(${dealership.timeZoneId}).`
+  if (date === today) return hours ? `Open today ${hours} ${zone}` : `Closed today ${zone}`
+  const day = formatDay(date, "long")
+  return hours ? `Open ${hours} on ${day} ${zone}` : `Closed on ${day} ${zone}`
 }

@@ -12,7 +12,7 @@ import { describeFailure, failureKey } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { formatDay, weekdayOf } from "../lib/calendar-date"
-import { hourMarks, nextOpenDate, openingHoursOn } from "../lib/opening-hours"
+import { daySentence, hourMarks, nextOpenDate, openingHoursOn } from "../lib/opening-hours"
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { formatLocalTime } from "../lib/time-grid"
 import { BoardMessage, BoardPanel, BoardPlaceholder } from "./board-placeholder"
@@ -50,20 +50,6 @@ interface ScheduleBoardProps {
 /** The whole local hours a window covers, as the timeline draws them ("08:00" … "17:00"). */
 function windowHours(window: OperatingWindowResponse): string[] {
   return hourMarks({ opensAt: window.opensAtLocal.slice(11, 16), closesAt: window.closesAtLocal.slice(11, 16) })
-}
-
-/** "Open today 08:00–18:00 (Europe/London).", from the schedule's window once it arrives, the weekly hours until then. */
-function daySentence(dealership: DealershipResponse, date: string, today: string, schedule: WorkshopScheduleResponse | undefined) {
-  const window = schedule?.operatingWindow
-  const weekly = openingHoursOn(dealership, weekdayOf(date))
-  const hours =
-    schedule === undefined
-      ? weekly && `${weekly.opensAt}–${weekly.closesAt}`
-      : window && `${window.opensAtLocal.slice(11, 16)}–${window.closesAtLocal.slice(11, 16)}`
-  const zone = `(${dealership.timeZoneId}).`
-  if (date === today) return hours ? `Open today ${hours} ${zone}` : `Closed today ${zone}`
-  const day = formatDay(date, "long")
-  return hours ? `Open ${hours} on ${day} ${zone}` : `Closed on ${day} ${zone}`
 }
 
 /**

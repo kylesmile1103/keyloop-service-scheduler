@@ -5,13 +5,13 @@ import { useNavigation, useSearchParams } from "react-router-dom"
 import { getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { toast } from "@/components/ui/toast"
+import { DEALERSHIP_PARAM } from "@/lib/workshop-params"
 
 import { todayIn } from "../lib/calendar-date"
 import { nextOpenDate } from "../lib/opening-hours"
 import { useNow } from "./use-now"
 
-/** The search parameter that names the board's dealership: `/dispatch?dealership=<id>`. */
-export const DEALERSHIP_PARAM = "dealership"
+export { DEALERSHIP_PARAM }
 
 /**
  * The dealership the board shows, kept in the address so a reload or a shared link opens the same workshop.

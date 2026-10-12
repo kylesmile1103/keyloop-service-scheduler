@@ -4,16 +4,15 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } 
 
 import { getDealershipsOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
+import { FailedState } from "@/components/failed-state"
 import { IllustratedState } from "@/components/illustrated-state"
 import { BaseLayout } from "@/components/layouts/base-layout"
-import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useQueryFailure } from "@/hooks/use-query-failure"
-import { describeFailure, failureKey } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { AppointmentSheet } from "./components/appointment-sheet"
@@ -103,35 +102,6 @@ export default function DispatchPage() {
         )}
       </div>
     </BaseLayout>
-  )
-}
-
-/**
- * A whole view that failed to load (DESIGN_SYSTEM 12.1): the error-connection state with the API's words and trace id. It
- * stays while Try again reads again; the button disables itself meanwhile but keeps focus, ready for another try if that
- * one fails too.
- */
-function FailedState({ title, error, onRetry, retrying }: { title: string; error: unknown; onRetry: () => void; retrying: boolean }) {
-  const { summary, traceId } = describeFailure(error)
-  return (
-    <IllustratedState
-      role="alert"
-      illustration="error-connection"
-      level={2}
-      title={title}
-      action={
-        <Button type="button" onClick={onRetry} disabled={retrying} focusableWhenDisabled>
-          <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
-          Try again
-        </Button>
-      }
-      className="px-4"
-    >
-      <p key={failureKey(error)} className="wrap-break-word">
-        {summary}
-      </p>
-      {traceId && <TraceIdRow traceId={traceId} className="max-w-full" />}
-    </IllustratedState>
   )
 }
 
