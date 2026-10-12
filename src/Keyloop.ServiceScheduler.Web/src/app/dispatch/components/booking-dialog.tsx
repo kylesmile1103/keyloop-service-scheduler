@@ -6,7 +6,7 @@
  * free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
  */
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarDays, Check, ChevronRight, CircleAlert, LoaderCircle, RotateCw } from "lucide-react"
 import { type FormEvent, type ReactNode, type Ref, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Controller, type FieldPath, useForm, useWatch } from "react-hook-form"
@@ -47,6 +47,7 @@ import { useCountdown } from "@/hooks/use-countdown"
 import { useWriteAccess, type WriteAccess } from "@/hooks/use-current-user"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
 import { featureLabel } from "@/lib/features"
 import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
@@ -59,6 +60,7 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
+import { cachedCapabilities } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
 
@@ -123,6 +125,7 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...flow }: Booki
 }
 
 type Layout = "dialog" | "sheet"
+type BookVariables = Parameters<NonNullable<ReturnType<typeof bookAppointmentMutation>["mutationFn"]>>[0]
 type Step = 1 | 2
 
 interface BookingFlowProps extends Omit<BookingDialogProps, "open" | "onOpenChange" | "fullScreen"> {
@@ -187,6 +190,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   const access = useWriteAccess()
   const blocked = access.state === "sign-in" || access.state === "denied"
   const blockedId = useId()
+  const discardedId = useId()
 
   const form = useForm<BookingFormInput, unknown, BookingForm>({
     resolver: zodResolver(bookingSchema),
@@ -211,16 +215,19 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
 
+  // Who is signed in changed before Book's answer arrived, so the answer was thrown away (`useWriteMutation`).
+  const [answerDiscarded, setAnswerDiscarded] = useState(false)
   const generated = bookAppointmentMutation()
-  const book = useMutation({
-    ...generated,
+  const book = useWriteMutation({
     // The generated mutation, inside a `ui.book_appointment` span whose fetch carries `traceparent` to the API, so one trace
-    // runs from the click to PostgreSQL in the Aspire dashboard.
-    mutationFn: (variables, context) =>
+    // runs from the click to PostgreSQL in the Aspire dashboard. Checked as it is sent; an answer that arrives after the
+    // identity changed is thrown away, with no toast, no closing and nothing kept.
+    mutationFn: (variables: BookVariables, _guard, context) =>
       withSpan("ui.book_appointment", ({ fetch }) => generated.mutationFn!({ ...variables, fetch }, context), {
         "keyloop.dealership_id": dealershipId,
         "keyloop.service_type_id": variables.body.serviceTypeId,
       }),
+    onDiscarded: () => setAnswerDiscarded(true),
     onSuccess: (appointment) => {
       idempotencyKey.current = crypto.randomUUID()
       const day = appointment.startLocal.slice(0, 10)
@@ -327,10 +334,12 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   }
 
   function submit(event?: FormEvent) {
-    if (blocked) {
+    // The identity in the cache decides too, not only the last render: `/me` may have changed since.
+    if (blocked || !cachedCapabilities(queryClient).canWrite) {
       event?.preventDefault()
       return
     }
+    setAnswerDiscarded(false)
     void form.handleSubmit(
       (values) => {
         const body = toBookingRequest(values)
@@ -347,7 +356,8 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
 
   /** The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded. */
   function retry() {
-    if (!lastRequest.current || book.isPending || blocked) return
+    if (!lastRequest.current || book.isPending || blocked || !cachedCapabilities(queryClient).canWrite) return
+    setAnswerDiscarded(false)
     book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })
   }
 
@@ -360,6 +370,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   function bookAnother() {
     form.reset(blank(date))
     book.reset()
+    setAnswerDiscarded(false)
     triage.reset()
     setCopiedNotes("")
     setBooked(null)
@@ -451,6 +462,14 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
       </div>
 
       {!booked && blocked && <BlockedNotice id={blockedId} access={access} sheet={sheet} />}
+      {!booked && !blocked && answerDiscarded && (
+        <div className={cn("border-t px-4 py-3 sm:px-6", sheet && "bg-popover")}>
+          <WriteReason
+            id={discardedId}
+            reason="Who is signed in changed before the answer to Book arrived, so it isn’t shown. Book again to see it: with the same details this booking can’t be made twice."
+          />
+        </div>
+      )}
       {!booked && (
         <footer
           className={cn(

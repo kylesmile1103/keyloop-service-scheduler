@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { LoaderCircle } from "lucide-react"
 import { type FormEvent, type ReactNode, type RefObject, useId, useRef, useState } from "react"
 
@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 import { formatLocalTime } from "@/lib/local-time"
 import { cachedCapabilities } from "@/lib/session"
@@ -324,6 +325,8 @@ function Pending({ loading, children }: { loading: boolean; children: ReactNode 
   return loading ? <Skeleton className="h-4 w-40" /> : children
 }
 
+type CancelVariables = Parameters<NonNullable<ReturnType<typeof cancelAppointmentMutation>["mutationFn"]>>[0]
+
 interface CancelFormProps {
   /** Whether this account may cancel: the form for Admin and Service advisor, the reason for any other role. */
   access: WriteAccess
@@ -340,10 +343,14 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
   const errorId = useId()
   const countId = useId()
   const deniedId = useId()
+  const queryClient = useQueryClient()
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
-  const cancel = useMutation({
-    ...cancelAppointmentMutation(),
+  const generated = cancelAppointmentMutation()
+  // Checked as it is sent, and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a late
+  // answer neither caches the record nor shows a toast for the next caller.
+  const cancel = useWriteMutation({
+    mutationFn: (variables: CancelVariables, _guard, context) => generated.mutationFn!(variables, context),
     onSuccess: (cancelled) => {
       toast.add({
         type: "success",
@@ -367,6 +374,8 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    // The identity in the cache decides, not the last render: `/me` may have changed since.
+    if (!cachedCapabilities(queryClient).canWrite) return
     const trimmed = reason.trim()
     if (!trimmed) {
       setMissingReason(true)

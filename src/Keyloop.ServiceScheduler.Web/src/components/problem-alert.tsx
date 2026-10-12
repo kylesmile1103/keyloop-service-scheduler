@@ -17,8 +17,10 @@ interface ProblemAlertProps {
   onRetry?: () => void
   /** True while the retry is in flight. */
   retrying?: boolean
-  /** Keeps the retry action disabled (a rate limit's wait). */
+  /** Keeps the retry action disabled (a rate limit's wait, an account that may not make the request). */
   retryDisabled?: boolean
+  /** The id of what says why the retry is unavailable, read with it (`aria-describedby`). */
+  retryDescribedBy?: string
   /**
    * `error` (the default) for a failure to load or save; `warning` for a refusal that reflects the current state or a
    * business rule, such as a `409` conflict or a `422`: the request was understood, and the screen should be read again
@@ -67,6 +69,7 @@ export function ProblemAlert({
   onRetry,
   retrying = false,
   retryDisabled = false,
+  retryDescribedBy,
   tone = "error",
   children,
   actions,
@@ -105,6 +108,7 @@ export function ProblemAlert({
                 disabled={retrying || retryDisabled}
                 // It disables itself while the retry is out: focus stays on it, ready for another try if that one fails.
                 focusableWhenDisabled
+                aria-describedby={retryDescribedBy}
                 className="text-foreground"
               >
                 <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
