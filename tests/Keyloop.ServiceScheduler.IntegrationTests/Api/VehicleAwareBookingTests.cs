@@ -83,6 +83,38 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         body.RootElement.GetProperty("firedRules").EnumerateArray().Select(r => r.GetString()).ShouldContain("hv-live-diagnosis");
     }
 
+    [Fact]
+    public async Task A_heavy_vehicle_gets_the_heavy_lift_and_the_heavy_vehicle_technician()
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        var service = ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE");
+        var start = TestData.LondonTime(10);
+        using var availability = JsonDocument.Parse(await client.GetStringAsync(
+            $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/availability?serviceTypeId={service}&date=2026-10-13&vehicleClass=Heavy", Ct));
+        var slot = availability.RootElement.GetProperty("slots").EnumerateArray().Single(s => s.GetProperty("startUtc").GetDateTime() == start);
+        slot.GetProperty("freeBays").GetInt32().ShouldBe(1);
+        slot.GetProperty("freeTechnicians").GetInt32().ShouldBe(1);
+        var request = TestData.BookingRequest(service, start);
+        request = request with { Vehicle = request.Vehicle with { Profile = new VehicleProfileRequest(VehicleClass: VehicleClass.Heavy) } };
+
+        using var response = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), request, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
+        var booked = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
+        booked.Bay.Id.ShouldBe(ReferenceDataSeed.BayId("reading", 3));
+        booked.Technician.Id.ShouldBe(ReferenceDataSeed.TechnicianId("T-1004"));
+        var allocation = booked.Allocation.ShouldNotBeNull();
+        allocation.MinimumHvLevel.ShouldBe(2);
+        allocation.FiredRules.ShouldBe(["hv-routine", "heavy-vehicle"]);
+        allocation.DecidedBy.ShouldBe(AllocationCriterion.OnlyQualifiedResource);
+        allocation.BayDecidedBy.ShouldBe(AllocationCriterion.OnlyQualifiedResource);
+        var profile = booked.Vehicle.Profile.ShouldNotBeNull();
+        profile.VehicleClass.ShouldBe(VehicleClass.Heavy);
+        profile.Provenance.VehicleClass.ShouldBe(ProfileSource.Declared);
+        profile.Provenance.Powertrain.ShouldBe(ProfileSource.Unknown);
+    }
+
     [Theory]
     [InlineData("Anonymous", 401)]
     [InlineData("Unknown", 403)]

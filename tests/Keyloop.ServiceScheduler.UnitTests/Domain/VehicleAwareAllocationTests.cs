@@ -127,6 +127,108 @@ public sealed class VehicleAwareAllocationTests
         result.Decision.DecidedBy.ShouldBe(decidedBy);
     }
 
+    public static TheoryData<string, int, AllocationCriterion> BayGoldenCases => new()
+    {
+        { "surplus", 1, AllocationCriterion.SurplusCompetences },
+        { "load", 1, AllocationCriterion.LowestLoad },
+        { "name", 2, AllocationCriterion.Name },
+        { "id", 1, AllocationCriterion.Id },
+        { "preferred", 2, AllocationCriterion.PreferredResource },
+        { "only", 1, AllocationCriterion.OnlyQualifiedResource },
+    };
+
+    [Theory]
+    [MemberData(nameof(BayGoldenCases))]
+    public void Golden_bay_table(string scenario, int expected, AllocationCriterion bayDecidedBy)
+    {
+        var requirements = new JobRequirements(new HashSet<BayCapability> { BayCapability.StandardLift }, new HashSet<Certification> { Certification.Brakes }, 0, 1, []);
+        // Bay 1 sorts after bay 2 by name unless the scenario's criterion says otherwise, so only that criterion can pick bay 1.
+        var first = ServiceBay.Create(Id(1), Site, scenario == "id" ? "Same" : "B", [BayCapability.StandardLift]);
+        var second = ServiceBay.Create(Id(2), Site, scenario == "id" ? "Same" : "A",
+            scenario is "surplus" or "preferred" ? [BayCapability.StandardLift, BayCapability.EvHighVoltage] : [BayCapability.StandardLift]);
+        var load = new Dictionary<Guid, int> { [second.Id] = scenario == "load" ? 1 : 0 };
+        var busy = scenario == "only" ? new HashSet<Guid> { second.Id } : new HashSet<Guid>();
+        var technician = Technician.Create(Id(10), Site, "A", "A", [Certification.Brakes]);
+
+        var result = AllocationPolicy.Allocate([second, first], [technician], requirements, Day, busy, new HashSet<Guid>(), load,
+            scenario == "preferred" ? second.Id : null, null).ShouldNotBeNull();
+
+        result.Bay.Id.ShouldBe(Id(expected));
+        result.Decision.BayDecidedBy.ShouldBe(bayDecidedBy);
+        result.Decision.DecidedBy.ShouldBe(AllocationCriterion.OnlyQualifiedResource);
+        result.Decision.Reasons.ShouldBeEmpty();
+    }
+
+    public static TheoryData<string, string> ReasonCases => new()
+    {
+        { "technician-not-at-dealership", "preferred-technician:not-at-dealership" },
+        { "technician-inactive", "preferred-technician:inactive" },
+        { "technician-missing-certifications", "preferred-technician:missing-certifications" },
+        { "technician-minimum-hv-level", "preferred-technician:minimum-hv-level" },
+        { "technician-hv-expired", "preferred-technician:hv-expired" },
+        { "technician-busy", "preferred-technician:busy" },
+        { "bay-not-at-dealership", "preferred-bay:not-at-dealership" },
+        { "bay-inactive", "preferred-bay:inactive" },
+        { "bay-missing-capabilities", "preferred-bay:missing-capabilities" },
+        { "bay-busy", "preferred-bay:busy" },
+    };
+
+    /// <summary>A preferred resource that cannot be used leaves two equal candidates: the name decides, and one reason says why.</summary>
+    [Theory]
+    [MemberData(nameof(ReasonCases))]
+    public void An_unusable_preference_is_explained_and_the_rest_are_compared(string scenario, string reason)
+    {
+        var requirements = new JobRequirements(new HashSet<BayCapability> { BayCapability.StandardLift }, new HashSet<Certification> { Certification.Brakes }, 2, 1, []);
+        ServiceBay[] bays =
+        [
+            ServiceBay.Create(Id(1), Site, "A", [BayCapability.StandardLift]),
+            ServiceBay.Create(Id(2), Site, "B", [BayCapability.StandardLift]),
+            ServiceBay.Create(Id(3), Site, "C", scenario == "bay-missing-capabilities" ? [BayCapability.EvHighVoltage] : [BayCapability.StandardLift],
+                isActive: scenario != "bay-inactive"),
+        ];
+        Technician[] technicians =
+        [
+            Technician.Create(Id(10), Site, "A", "A", [Certification.Brakes], hvLevel: 2, hvLevelConfirmed: true),
+            Technician.Create(Id(11), Site, "B", "B", [Certification.Brakes], hvLevel: 2, hvLevelConfirmed: true),
+            Technician.Create(Id(12), Site, "C", "C", scenario == "technician-missing-certifications" ? [Certification.GeneralService] : [Certification.Brakes],
+                isActive: scenario != "technician-inactive", hvLevel: scenario switch { "technician-minimum-hv-level" => 1, "technician-hv-expired" => 3, _ => 2 },
+                // Expired on the day before the appointment's local date; the inclusive bound itself is the next test.
+                hvLevelValidUntil: scenario == "technician-hv-expired" ? Day.AddDays(-1) : null, hvLevelConfirmed: true),
+        ];
+        var busyBays = scenario == "bay-busy" ? new HashSet<Guid> { Id(3) } : new HashSet<Guid>();
+        var busyTechnicians = scenario == "technician-busy" ? new HashSet<Guid> { Id(12) } : new HashSet<Guid>();
+        Guid? preferredBay = scenario.StartsWith("bay-", StringComparison.Ordinal) ? scenario == "bay-not-at-dealership" ? Id(98) : Id(3) : null;
+        Guid? preferredTechnician = scenario.StartsWith("technician-", StringComparison.Ordinal)
+            ? scenario == "technician-not-at-dealership" ? Id(99) : Id(12) : null;
+
+        var result = AllocationPolicy.Allocate(bays, technicians, requirements, Day, busyBays, busyTechnicians, new Dictionary<Guid, int>(),
+            preferredBay, preferredTechnician).ShouldNotBeNull();
+
+        result.Decision.Reasons.ShouldBe([reason]);
+        result.Bay.Id.ShouldBe(Id(1));
+        result.Technician.Id.ShouldBe(Id(10));
+        result.Decision.BayDecidedBy.ShouldBe(AllocationCriterion.Name);
+        result.Decision.DecidedBy.ShouldBe(AllocationCriterion.Name);
+        result.Decision.PreferredBayId.ShouldBe(preferredBay);
+        result.Decision.PreferredTechnicianId.ShouldBe(preferredTechnician);
+    }
+
+    [Fact]
+    public void A_preferred_technician_whose_level_expires_on_the_appointment_date_is_still_chosen()
+    {
+        var requirements = new JobRequirements(new HashSet<BayCapability>(), new HashSet<Certification>(), 3, 1, []);
+        var bay = ServiceBay.Create(Id(1), Site, "A", []);
+        var other = Technician.Create(Id(10), Site, "A", "A", [], hvLevel: 3, hvLevelConfirmed: true);
+        var preferred = Technician.Create(Id(11), Site, "B", "B", [], hvLevel: 3, hvLevelValidUntil: Day, hvLevelConfirmed: false);
+
+        var result = AllocationPolicy.Allocate([bay], [other, preferred], requirements, Day, new HashSet<Guid>(), new HashSet<Guid>(),
+            new Dictionary<Guid, int>(), null, preferred.Id).ShouldNotBeNull();
+
+        result.Technician.Id.ShouldBe(preferred.Id);
+        result.Decision.DecidedBy.ShouldBe(AllocationCriterion.PreferredResource);
+        result.Decision.Reasons.ShouldBeEmpty();
+    }
+
     [Fact]
     public void An_ICE_declaration_cannot_relax_explicit_live_HV_work()
     {
