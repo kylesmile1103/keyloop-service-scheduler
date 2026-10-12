@@ -115,6 +115,7 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
         reading.Select(s => s.Id).ShouldBe(munich.Select(s => s.Id), "the catalogue is global; only bookable differs");
         munich.Select(s => (s.Name, s.Bookable)).ShouldBe(
         [
+            ("Accident Damage Assessment", true),
             ("Air-Con Regas", false),
             ("Brake Pads & Discs", true),
             ("Diagnostic Fault Finding", false),

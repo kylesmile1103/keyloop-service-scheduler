@@ -352,7 +352,7 @@ export type CancelAppointmentRequest = {
     reason: string;
 };
 
-export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle';
+export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle' | 'DamageAssessment';
 
 /**
  * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.

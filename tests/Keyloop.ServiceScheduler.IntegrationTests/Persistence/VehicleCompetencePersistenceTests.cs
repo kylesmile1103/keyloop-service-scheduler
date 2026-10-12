@@ -55,7 +55,7 @@ public sealed class VehicleCompetencePersistenceTests(PostgresFixture pg)
         await ReferenceDataSeed.EnsureSeededAsync(db, TestData.Clock(), Ct);
         db.ChangeTracker.Clear();
         (await db.Technicians.SingleAsync(t => t.Id == hv, Ct)).HvLevelConfirmed.ShouldBeFalse();
-        (await db.RequirementRules.CountAsync(Ct)).ShouldBe(6);
+        (await db.RequirementRules.CountAsync(Ct)).ShouldBe(7);
     }
 
     private static Task<List<string>> Exclusions(SchedulerDbContext db) => db.Database.SqlQuery<string>($"""

@@ -2707,7 +2707,8 @@
           "MotTester",
           "WheelAlignment",
           "AirConditioning",
-          "HeavyVehicle"
+          "HeavyVehicle",
+          "DamageAssessment"
         ],
         "type": "string"
       },

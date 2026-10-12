@@ -37,6 +37,9 @@ public sealed class Technician : Entity
 
     public bool IsActive { get; private set; }
 
+    public void GrantCertification(Certification certification) =>
+        Certifications = Guard.DefinedSet(Certifications.Append(certification), nameof(certification));
+
     public int HvLevel { get; private set; }
     public DateOnly? HvLevelValidUntil { get; private set; }
     public bool HvLevelConfirmed { get; private set; }

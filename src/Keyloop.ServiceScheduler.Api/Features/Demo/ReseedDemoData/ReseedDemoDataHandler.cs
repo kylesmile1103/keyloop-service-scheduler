@@ -79,6 +79,7 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
 
         await ReferenceDataSeed.EnsureSeededAsync(db, clock, ct);
         await ReferenceDataSeed.RestoreSeededCompetenceAsync(db, ct);
+        await ReferenceDataSeed.RestoreSeededDamageCertificationAsync(db, ct);
         var created = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct);
 
         await transaction.CommitAsync(ct);

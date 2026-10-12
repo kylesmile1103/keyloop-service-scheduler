@@ -32,7 +32,7 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
         await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
         var second = await CountsAsync();
 
-        first.ShouldBe((2, 9, 9, 10, 14));
+        first.ShouldBe((2, 9, 9, 11, 14));
         second.ShouldBe(first);
     }
 

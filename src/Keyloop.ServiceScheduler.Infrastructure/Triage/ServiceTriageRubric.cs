@@ -29,5 +29,8 @@ internal static class ServiceTriageRubric
             ["air conditioning not cold", "weak cabin cooling", "aircon regas"], ["engine overheating", "heater not warm", "EV charging fault"]),
         ["DIAG-FAULT-FINDING"] = new("Diagnostic Fault Finding", "General vehicle fault and warning light diagnosis",
             ["engine warning light", "rough running", "unexplained fault code", "vehicle will not start"], ["known brake pad wear", "EV charging fault", "routine scheduled service"]),
+        ["ACCIDENT-DAMAGE-ASSESSMENT"] = new("Accident Damage Assessment", "Inspection and estimate of collision damage, not the repair itself",
+            ["crash damage", "dented panel or bumper after impact", "broken headlights after a collision", "impact damage to glass, wheels or suspension"],
+            ["bodywork or paint repair", "glass or tyre replacement", "headlight fault without an impact", "unrelated air conditioning fault", "live high voltage diagnosis"]),
     }.ToFrozenDictionary(StringComparer.Ordinal);
 }

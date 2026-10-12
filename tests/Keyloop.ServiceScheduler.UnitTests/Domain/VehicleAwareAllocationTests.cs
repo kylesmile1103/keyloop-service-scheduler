@@ -23,7 +23,7 @@ public sealed class VehicleAwareAllocationTests
         {
             var profile = VehicleProfile.Unknown with { Powertrain = (Powertrain)random.Next(7), VehicleClass = (VehicleClass)random.Next(4) };
             var code = RequirementRule.HvServiceCodes[random.Next(RequirementRule.HvServiceCodes.Count)];
-            var service = ServiceType.Create(Id(90), code, code, ServiceDuration.Create(60), [BayCapability.StandardLift], [Certification.Brakes]);
+            var service = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes().Single(s => s.Code == code);
             var rules = RequirementRule.DefaultPolicy(Site).Select(rule => rule with
             {
                 MinimumHvLevel = random.Next(rule.MinimumHvLevel, 5),
@@ -48,7 +48,7 @@ public sealed class VehicleAwareAllocationTests
             var bays = Enumerable.Range(1, 5).Select(i => ServiceBay.Create(Id(i), Site, $"Bay {i}",
                 random.Next(2) == 0 ? [BayCapability.StandardLift] : [BayCapability.StandardLift, BayCapability.EvHighVoltage, BayCapability.HeavyDutyLift])).ToArray();
             var technicians = Enumerable.Range(10, 8).Select(i => Technician.Create(Id(i), Site, $"Tech {i}", $"T{i}",
-                random.Next(2) == 0 ? [Certification.Brakes] : [Certification.Brakes, Certification.HeavyVehicle],
+                random.Next(2) == 0 ? [Certification.Brakes] : [.. Enum.GetValues<Certification>()],
                 hvLevel: random.Next(5), hvLevelValidUntil: Day.AddDays(random.Next(-1, 2)), hvLevelConfirmed: random.Next(2) == 0)).ToArray();
             var result = AllocationPolicy.Allocate(bays, technicians, requirements, Day, new HashSet<Guid>(), new HashSet<Guid>(), new Dictionary<Guid, int>(), null, null);
             if (result is not null)
@@ -75,7 +75,7 @@ public sealed class VehicleAwareAllocationTests
             {
                 foreach (var vehicleClass in new[] { VehicleClass.Car, VehicleClass.Heavy })
                 {
-                    var service = ServiceType.Create(Id(90), code, code, ServiceDuration.Create(60), [BayCapability.StandardLift], [Certification.GeneralService]);
+                    var service = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes().Single(s => s.Code == code);
                     var unknown = RequirementResolver.Resolve(service, VehicleProfile.Unknown with { VehicleClass = vehicleClass }, RequirementRule.DefaultPolicy(Site), live);
                     foreach (var powertrain in new[] { Powertrain.MildHybrid, Powertrain.FullHybrid, Powertrain.PluginHybrid, Powertrain.BatteryElectric, Powertrain.FuelCell })
                     {
@@ -88,6 +88,28 @@ public sealed class VehicleAwareAllocationTests
                 }
             }
         }
+    }
+
+    [Theory]
+    [InlineData(Powertrain.Ice, 13, 0, "")]
+    [InlineData(Powertrain.BatteryElectric, 11, 3, "hv-post-collision")]
+    [InlineData(Powertrain.Unknown, 11, 3, "hv-post-collision")]
+    public void Damage_assessment_golden_allocation_requires_both_the_task_skill_and_HV_level(Powertrain powertrain, int expected, int minimum, string rule)
+    {
+        var service = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes()
+            .Single(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT");
+        var requirements = RequirementResolver.Resolve(service, VehicleProfile.Unknown with { Powertrain = powertrain }, RequirementRule.DefaultPolicy(Site));
+        var bay = ServiceBay.Create(Id(1), Site, "Standard", [BayCapability.StandardLift]);
+        var routine = Technician.Create(Id(10), Site, "A", "A", [Certification.DamageAssessment], hvLevel: 2);
+        var collision = Technician.Create(Id(11), Site, "B", "B", [Certification.DamageAssessment], hvLevel: 3, hvLevelValidUntil: Day);
+        var noTaskSkill = Technician.Create(Id(12), Site, "C", "C", [Certification.Diagnostics], hvLevel: 4);
+        var expired = Technician.Create(Id(13), Site, "D", "D", [Certification.DamageAssessment], hvLevel: 3, hvLevelValidUntil: Day.AddDays(-1));
+        var result = AllocationPolicy.Allocate([bay], [noTaskSkill, expired, collision, routine], requirements, Day,
+            new HashSet<Guid>(), new HashSet<Guid>(), new Dictionary<Guid, int>(), null, null).ShouldNotBeNull();
+        result.Technician.Id.ShouldBe(Id(expected));
+        result.Decision.DecidedBy.ShouldBe(powertrain == Powertrain.Ice ? AllocationCriterion.SurplusCompetences : AllocationCriterion.OnlyQualifiedResource);
+        result.Decision.MinimumHvLevel.ShouldBe(minimum);
+        result.Decision.FiredRules.ShouldBe(rule.Length == 0 ? [] : [rule]);
     }
 
     public static TheoryData<int, int, AllocationCriterion> GoldenCases => new(

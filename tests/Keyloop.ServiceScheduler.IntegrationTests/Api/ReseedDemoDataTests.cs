@@ -281,6 +281,36 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == hans, Ct))).BrandSpecialisms.ShouldBe(["BMW"]);
     }
 
+    [Fact]
+    public async Task Reseed_restores_only_the_named_seeded_damage_certifications_and_keeps_confirmed_levels()
+    {
+        var eva = ReferenceDataSeed.TechnicianId("T-1005");
+        var hans = ReferenceDataSeed.TechnicianId("M-2002");
+        await _factory.WithDbAsync(async db =>
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE technicians SET certifications = array_remove(certifications, 'DamageAssessment') WHERE id IN ({eva}, {hans});
+                UPDATE technicians SET hv_level = 1, hv_level_confirmed = true, hv_level_valid_until = '2027-01-31' WHERE id = {eva};
+                """, Ct);
+            await ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct);
+        });
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == eva, Ct)))
+            .Certifications.ShouldNotContain(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment);
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await _factory.WithDbAsync(async db =>
+        {
+            var technicians = await db.Technicians.AsNoTracking().ToListAsync(Ct);
+            technicians.Where(t => t.Certifications.Contains(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment))
+                .Select(t => t.Id).ShouldBe([eva, hans], ignoreOrder: true);
+            var restored = technicians.Single(t => t.Id == eva);
+            restored.Certifications.ShouldBe([Keyloop.ServiceScheduler.Domain.Resources.Certification.GeneralService,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.AirConditioning, Keyloop.ServiceScheduler.Domain.Resources.Certification.Diagnostics,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment], ignoreOrder: true);
+        });
+        (await CompetenceAsync(eva)).ShouldBe((1, new DateOnly(2027, 1, 31), true));
+    }
+
     private Task<(int Level, DateOnly? ValidUntil, bool Confirmed)> CompetenceAsync(Guid technicianId) =>
         _factory.WithDbAsync(async db =>
         {

@@ -8,6 +8,8 @@ public enum RequirementCondition { ServicePowertrain, VehicleClass, LiveDiagnosi
 /// <summary>Closed, typed policy vocabulary persisted as reference data. Effects only add constraints; no expressions or runtime discovery.</summary>
 public sealed record RequirementRule
 {
+    public const int DefaultPolicyVersion = 2;
+    public const string PostCollisionRuleCode = "hv-post-collision";
     public Guid Id { get; init; }
     public Guid DealershipId { get; init; }
     public int PolicyVersion { get; init; }
@@ -23,7 +25,7 @@ public sealed record RequirementRule
 
     public static IReadOnlyList<string> HvServiceCodes { get; } =
         ["WHEEL-ALIGNMENT", "MOT-TEST", "INTERIM-SERVICE", "FULL-SERVICE", "BRAKES-PADS-DISCS", "DIAG-FAULT-FINDING",
-            "HEAVY-VAN-SERVICE", "AIRCON-REGAS", "EV-BATTERY-CHECK", "EV-CHARGING-FAULT"];
+            "HEAVY-VAN-SERVICE", "AIRCON-REGAS", "EV-BATTERY-CHECK", "EV-CHARGING-FAULT", "ACCIDENT-DAMAGE-ASSESSMENT"];
 
     public static IReadOnlyList<RequirementRule> DefaultPolicy(Guid dealershipId)
     {
@@ -34,6 +36,7 @@ public sealed record RequirementRule
             Rule("hv-routine", 20, 2, ["INTERIM-SERVICE", "FULL-SERVICE", "BRAKES-PADS-DISCS", "DIAG-FAULT-FINDING", "HEAVY-VAN-SERVICE"]),
             Rule("hv-aircon", 30, 3, ["AIRCON-REGAS"]),
             Rule("hv-components", 40, 3, ["EV-BATTERY-CHECK", "EV-CHARGING-FAULT"]) with { BayCapabilities = [BayCapability.EvHighVoltage] },
+            Rule(PostCollisionRuleCode, 45, 3, ["ACCIDENT-DAMAGE-ASSESSMENT"]),
             Rule("heavy-vehicle", 50, 0, []) with { Condition = RequirementCondition.VehicleClass, Powertrains = [], VehicleClass = Scheduling.VehicleClass.Heavy,
                 BayCapabilities = [BayCapability.HeavyDutyLift], Certifications = [Certification.HeavyVehicle] },
             Rule("hv-live-diagnosis", 60, 4, []) with { Condition = RequirementCondition.LiveDiagnosis, Powertrains = [], BayCapabilities = [BayCapability.EvHighVoltage] },
@@ -41,7 +44,7 @@ public sealed record RequirementRule
 
         RequirementRule Rule(string code, int order, int level, string[] services) => new()
         {
-            Id = DeterministicGuid.Create($"requirement-rule:{dealershipId}:1:{code}"), DealershipId = dealershipId, PolicyVersion = 1,
+            Id = DeterministicGuid.Create($"requirement-rule:{dealershipId}:{DefaultPolicyVersion}:{code}"), DealershipId = dealershipId, PolicyVersion = DefaultPolicyVersion,
             Code = code, Order = order, Condition = RequirementCondition.ServicePowertrain, Powertrains = hv, ServiceCodes = services, MinimumHvLevel = level,
         };
     }

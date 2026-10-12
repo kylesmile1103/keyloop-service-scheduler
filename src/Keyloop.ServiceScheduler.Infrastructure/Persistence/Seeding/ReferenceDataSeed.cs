@@ -25,7 +25,7 @@ public static class ReferenceDataSeed
 
     public static Guid TechnicianId(string employeeNumber) => DeterministicGuid.Create($"technician:{employeeNumber}");
 
-    /// <summary>Adds a fresh catalogue and policy, or fills missing policies at existing dealerships without changing their technicians.</summary>
+    /// <summary>Adds missing damage-assessment reference data and versions policy upgrades without changing existing resources or bookings.</summary>
     /// <returns>The number of rows added (0 when already seeded).</returns>
     public static async Task<int> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, CancellationToken ct)
     {
@@ -33,12 +33,32 @@ public static class ReferenceDataSeed
         ArgumentNullException.ThrowIfNull(clock);
         if (await db.Dealerships.AnyAsync(ct))
         {
-            // Upgrade policy reference data only. Existing competence decisions, including migrated unconfirmed levels, are preserved.
-            var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(ct);
-            var configured = await db.RequirementRules.Select(r => r.DealershipId).Distinct().ToListAsync(ct);
-            foreach (var site in sites.Except(configured))
+            if (!await db.ServiceTypes.AnyAsync(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT", ct))
             {
-                db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site));
+                db.ServiceTypes.Add(CreateServiceTypes().Single(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT"));
+            }
+            // Copy the latest policy before adding the new constraint. Old versions and custom effects are retained.
+            var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(ct);
+            var policies = await db.RequirementRules.AsNoTracking().ToListAsync(ct);
+            foreach (var site in sites)
+            {
+                var existing = policies.Where(r => r.DealershipId == site).ToArray();
+                if (existing.Length == 0)
+                {
+                    db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site));
+                    continue;
+                }
+                var version = existing.Max(r => r.PolicyVersion);
+                var latest = existing.Where(r => r.PolicyVersion == version).ToArray();
+                if (latest.Any(r => r.Code == RequirementRule.PostCollisionRuleCode))
+                {
+                    continue;
+                }
+                var collision = RequirementRule.DefaultPolicy(site).Single(r => r.Code == RequirementRule.PostCollisionRuleCode);
+                db.RequirementRules.AddRange(latest.Append(collision).Select(r => r with
+                {
+                    Id = DeterministicGuid.Create($"requirement-rule:{site}:{version + 1}:{r.Code}"), PolicyVersion = version + 1,
+                }));
             }
             return await db.SaveChangesAsync(ct);
         }
@@ -70,10 +90,10 @@ public static class ReferenceDataSeed
             Tech(reading, "Ben Okafor", "T-1002", GeneralService, HighVoltageElectrical, Certification.Diagnostics),
             Tech(reading, "Chloe Nguyen", "T-1003", GeneralService, Certification.WheelAlignment, Brakes),
             Tech(reading, "Daniel Moss", "T-1004", GeneralService, HeavyVehicle, Brakes),
-            Tech(reading, "Eva Lindqvist", "T-1005", GeneralService, Certification.AirConditioning, Certification.Diagnostics),
+            Tech(reading, "Eva Lindqvist", "T-1005", GeneralService, Certification.AirConditioning, Certification.Diagnostics, DamageAssessment),
             Tech(reading, "Farid Haddad", "T-1006", GeneralService, MotTester, Certification.Diagnostics),
             Tech(munich, "Greta Vogel", "M-2001", GeneralService, Brakes),
-            Tech(munich, "Hans Richter", "M-2002", GeneralService, HighVoltageElectrical),
+            Tech(munich, "Hans Richter", "M-2002", GeneralService, HighVoltageElectrical, DamageAssessment),
             Tech(munich, "Ingrid Bauer", "M-2003", GeneralService, HeavyVehicle, Certification.Diagnostics),
         ];
 
@@ -85,8 +105,7 @@ public static class ReferenceDataSeed
         db.ServiceTypes.AddRange(serviceTypes);
         db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(reading.Id));
         db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(munich.Id));
-        await db.SaveChangesAsync(ct);
-        return 2 + bays.Length + technicians.Length + serviceTypes.Length + 12;
+        return await db.SaveChangesAsync(ct);
     }
 
     internal static ServiceType[] CreateServiceTypes() =>
@@ -102,6 +121,7 @@ public static class ReferenceDataSeed
             Service("HEAVY-VAN-SERVICE", "Heavy Van Service", 180, [HeavyDutyLift], [HeavyVehicle]),
             Service("AIRCON-REGAS", "Air-Con Regas", 60, [BayCapability.AirConditioning], [Certification.AirConditioning]),
             Service("DIAG-FAULT-FINDING", "Diagnostic Fault Finding", 60, [BayCapability.Diagnostics], [Certification.Diagnostics]),
+            Service("ACCIDENT-DAMAGE-ASSESSMENT", "Accident Damage Assessment", 60, [StandardLift], [DamageAssessment]),
         ];
 
 
@@ -142,6 +162,24 @@ public static class ReferenceDataSeed
 
         await db.SaveChangesAsync(ct);
         return unconfirmed.Count;
+    }
+
+    /// <summary>Demo reseed only: add the seeded damage qualification, preserving every other certification and confirmed HV level.</summary>
+    public static async Task<int> RestoreSeededDamageCertificationAsync(SchedulerDbContext db, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var ids = new[] { TechnicianId("T-1005"), TechnicianId("M-2002") };
+        var technicians = await db.Technicians.Where(t => ids.Contains(t.Id)).ToListAsync(ct);
+        var restored = technicians.Where(t =>
+            ((t.Id == TechnicianId("T-1005") && t.EmployeeNumber == "T-1005" && t.DealershipId == ReadingDealershipId) ||
+             (t.Id == TechnicianId("M-2002") && t.EmployeeNumber == "M-2002" && t.DealershipId == MunichDealershipId)) &&
+            !t.Certifications.Contains(DamageAssessment)).ToArray();
+        foreach (var technician in restored)
+        {
+            technician.GrantCertification(DamageAssessment);
+        }
+        await db.SaveChangesAsync(ct);
+        return restored.Length;
     }
 
     private static ServiceType Service(string code, string name, int minutes, BayCapability[] capabilities, Certification[] certifications) =>
