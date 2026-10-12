@@ -2,6 +2,8 @@
 
 A dealership appointment needs a compatible service bay and a certified technician for its entire duration. This Keyloop Principal Engineer take-home implements that booking engine with .NET 10, vertical slices and a DDD domain, EF Core and PostgreSQL, plus a React dispatch board for demonstrating bookings, conflicts and cancellations. PostgreSQL owns the overlap invariant; Aspire provides the local application model and correlated telemetry. The backend is the evaluated deliverable, and the board is its demo harness.
 
+**Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Jev through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. The React intake UI awaits the dispatch-board integration.
+
 **Draft status, `TODO(final-gate)`:** this README describes the intended integrated submission. The CI tooling branch predates the AppHost, cancellation, concurrency-proof and frontend integration. Reviewed work on other branches is identified below; commands that depend on it need a clean-clone rehearsal after integration. Final test totals, coverage, durations, screenshots and deployment results remain pending.
 
 ## Prerequisites
@@ -35,11 +37,28 @@ The API resource's **Reseed demo data** command replaces the demo dealerships' a
 
 **`TODO(final-gate)`:** record the integrated startup result and add approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports. No screenshot is embedded until that evidence exists.
 
+## Optional booking intake triage
+
+The backend exposes `GetBookingTriageStatus` (`GET /api/v1/booking-triage`) and `TriageBookingRequest` (`POST /api/v1/dealerships/{id}/booking-triage`, body `{ "description": "Brakes squeal, it's an EV, need it Thursday." }`). The response includes `suggest`, `confirm` or `no-match`, up to three bookable service candidates with probabilities and an optional local date. Confirm a service before requesting availability; the operation never books or stores the description. Disabled or unavailable suggestions return `503 triage-unavailable` and leave manual selection available. See [SYSTEM_DESIGN §8.10](docs/SYSTEM_DESIGN.md#810-booking-intake-triage).
+
+An operator must first load Unified Billing credits, provision an account-scoped **Workers AI Read** token, and configure the `keyloop-scheduler` AI Gateway with log collection off and a rate limit. Only after that approval, the developer can run these two commands themselves (the placeholders are intentionally not credentials):
+
+```bash
+dotnet user-secrets set 'Parameters:cloudflare-account-id' '<32-hex-account-id>' --project src/Keyloop.ServiceScheduler.AppHost
+dotnet user-secrets set 'Parameters:cloudflare-ai-token' '<workers-ai-read-token>' --project src/Keyloop.ServiceScheduler.AppHost
+```
+
+The AppHost passes `Triage__*` only when both optional parameters are present, and starts without them. Never put the token in appsettings. The four-second total timeout, 0.70 suggestion confidence, 0.10 candidate floor, 0.60 date confidence and 500-character limit are configurable in `Triage`; `Security:RateLimiting:TriagePermitsPerMinute` defaults to 10. Cloudflare container deployment uses `KEYLOOP_TRIAGE_ENABLED=false` by default, with optional account/gateway settings and the `keyloop_prod_ai_token` Secrets Store binding when enabled. Public enablement requires stakeholder approval.
+
+All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` category is implemented but has never been run; it requires a separate stakeholder-approved run with `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes `docs/media/triage-live-golden-set.md`. Ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. Vendor latency, accuracy and cost claims remain unverified.
+
 ## Run the tests
 
 The .NET tests use xunit.v3 on **Microsoft.Testing.Platform**. Pass project paths with `--project`; use MTP's `--coverage` option when collecting coverage.
 
 ```bash
+mkdir -p /tmp/kl26
+export TMPDIR=/tmp/kl26
 dotnet restore
 dotnet build -c Release -warnaserror --no-restore
 
@@ -47,7 +66,7 @@ dotnet build -c Release -warnaserror --no-restore
 dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests -c Release --no-build
 
 # Real PostgreSQL integration tests, including contract and concurrency tests.
-dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release --no-build
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release --no-build --filter "Category!=LiveAi"
 
 # Adversarial concurrency proof only.
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release --no-build \
