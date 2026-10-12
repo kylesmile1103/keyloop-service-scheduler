@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
 import { Navigate, type RouteObject } from "react-router-dom"
 
+import { KeepSearch } from "@/components/router/keep-search"
 import { RootErrorBoundary, RootFallback, RootLayout } from "@/components/router/root-layout"
 
 /**
@@ -18,6 +19,17 @@ export const routes: RouteObject[] = [
   // Workshop
   { path: "/dispatch", lazy: page(() => import("@/app/dispatch/page")) },
   { path: "/appointments", lazy: page(() => import("@/app/appointments/page")) },
+  // Resources, the admin area: its layout mounts Refine core, so only this subtree loads it (ADR-027, ADR-028)
+  {
+    path: "/resources",
+    lazy: page(() => import("@/app/admin/layout")),
+    children: [
+      { index: true, element: <KeepSearch to="technicians" /> },
+      { path: "technicians", lazy: page(() => import("@/app/admin/technicians/page")) },
+      { path: "bays", lazy: page(() => import("@/app/admin/bays/page")) },
+      { path: "services", lazy: page(() => import("@/app/admin/services/page")) },
+    ],
+  },
   // Catch-all route for 404
   { path: "*", lazy: page(() => import("@/app/errors/not-found/page")) },
 ]

@@ -78,6 +78,20 @@ describe("app shell", () => {
     expect(appointments).not.toHaveAttribute("aria-current")
   })
 
+  it("lists the Resources pages after the Workshop ones, carrying the dealership but not the day", async () => {
+    renderAt(`/dispatch?dealership=${reading.id}&date=2026-10-14`)
+    await pageHeading("Dispatch board")
+
+    const resources = screen.getByRole("navigation", { name: "Resources" })
+    expect(within(resources).getAllByRole("link").map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["Technicians", `/resources/technicians?dealership=${reading.id}`],
+      ["Bays", `/resources/bays?dealership=${reading.id}`],
+      ["Services", `/resources/services?dealership=${reading.id}`],
+    ])
+    const groups = screen.getAllByRole("navigation").map((nav) => nav.getAttribute("aria-labelledby") && nav.textContent)
+    expect(groups.findIndex((text) => text?.startsWith("Technicians"))).toBeGreaterThan(groups.findIndex((text) => text?.startsWith("Dispatch board")))
+  })
+
   it("moves between pages from the sidebar", async () => {
     const { router } = renderAt("/dispatch")
     await pageHeading("Dispatch board")
