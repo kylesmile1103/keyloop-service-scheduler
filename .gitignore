@@ -26,9 +26,6 @@ coverage/
 !.vscode/tasks.json
 .DS_Store
 Thumbs.db
-# Reference clones live outside this repo; this folder only carries provenance notes
-references/*
-!references/README.md
 # Logs
 *.log
 npm-debug.log*

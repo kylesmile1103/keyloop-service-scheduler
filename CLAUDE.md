@@ -86,7 +86,7 @@ For a fresh, isolated AppHost verification, supply a temporary password and disa
 - Test names describe behaviour (`Rejects_off_grid_start_422`); domain tests use `FakeTimeProvider` at `2026-10-12T08:00:00Z` and book on `2026-10-13`.
 - The AppHost smoke test lives in `tests/Keyloop.ServiceScheduler.AspireTests`, not in the integration tests: Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016). It supplies the database password and strips persistence, so it never evaluates or writes the persisted password default and never mounts `keyloop-scheduler-pgdata` (configuration can still load user secrets). Create/build/start/readiness share a five-minute deadline; failed setup and failed stop both dispose the application, with stop bounded to 30 seconds.
 - Integration tests need Docker; the concurrency test runs five rounds and its assertions are not to be loosened - a failure is a design defect.
-- `references/` holds provenance notes only; the reference clones live outside the repo and the AGPL one (MiroTalk) must never be copied.
+- The reference clones live outside the repo (`../references/`, provenance table in the README's licence section); the AGPL one (MiroTalk) must never be copied.
 - Commit messages: Conventional Commits, ending with exactly one `Co-Authored-By` trailer for the current author; Codex uses `Co-Authored-By: OpenAI Codex (gpt-6.1-sol) <noreply@openai.com>`.
 - When interacting with Cloudflare, use the `cf` CLI unless the project has a
   Wrangler configuration file.

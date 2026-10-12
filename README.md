@@ -177,7 +177,6 @@ contracts/openapi/v1.json     Committed build-time API contract
 docs/                        System design, plans and walkthrough
 scripts/                     Contract export and AOT measurement
 .github/                     CI and dependency updates
-references/README.md         Reference provenance
 ```
 
 Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard both the project files and the compiled assembly references.
@@ -378,7 +377,15 @@ The [video walkthrough guide](docs/VIDEO_WALKTHROUGH.md) gives the planned archi
 
 ## Licence and attribution
 
-The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template, Vite variant**, and MIT shadcn/ui primitives. Keep their copyright and permission notices; [reference provenance](references/README.md) records the upstreams. The frontend branch contains `src/Keyloop.ServiceScheduler.Web/THIRD-PARTY-NOTICES.md`, which lists copied source and its modifications. No repository-wide application licence is inferred from the template's licence.
+The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template, Vite variant**, and MIT shadcn/ui primitives. Keep their copyright and permission notices; the upstreams are listed below. The frontend branch contains `src/Keyloop.ServiceScheduler.Web/THIRD-PARTY-NOTICES.md`, which lists copied source and its modifications. No repository-wide application licence is inferred from the template's licence.
+
+Reference material, kept outside this repository (one level up, never committed):
+
+| Reference | Upstream | Licence | Used for |
+|-----------|----------|---------|----------|
+| shadcn-dashboard-landing-template (vite-version) | https://github.com/shadcnstore/shadcn-dashboard-landing-template | MIT | App shell, `components/ui/*`, Tailwind v4 tokens, ESLint/TS config (vendored, "own your components") |
+| carcareco | https://github.com/rene98c/carcareco | see upstream | Domain inspiration only (vehicle/work-order shape); no code copied |
+| MiroTalk WEB (booking module) | https://github.com/miroslavpejic85/mirotalkwebrtc | AGPL-3.0 | Design inspiration only (availability model, DST handling, re-check-then-insert); **no code copied** |
 
 The initial frontend uses Inter under **SIL Open Font License 1.1**. The approved design-system adoption selects **Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono**, also OFL fonts, with package-provided licence notices. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The private `design/images/README.md` records prompts, refinements, alt text and provenance; no image-model version is asserted.
 

@@ -75,7 +75,7 @@ The brief invites reasonable assumptions for ambiguous requirements. Each one be
 | **A-12** | **Minimum lead time and booking horizon are configurable** (Development: 0 min / 90 days; Production: 60 min / 90 days). | The demo needs same-day bookings; production should not accept bookings "in two minutes". |
 | **A-13** | **PostgreSQL 17** (Aspire's default image, pinned). Exclusion constraints and `btree_gist` have been stable since PostgreSQL 9.x. | No bleeding-edge dependency; `WITHOUT OVERLAPS` (PG 18) was considered and rejected because unique constraints cannot be partial. |
 | **A-14** | **Seed data is deterministic in identity** (fixed GUIDs and names) and **relative in time** (sample appointments are placed in the upcoming week at seed time so the demo board is never empty). | Deterministic IDs make tests and demos repeatable; relative dates keep the dispatch board populated. |
-| **A-15** | The reference clones (`references/`) are **not** committed; only MIT-licensed shadcn/ui components are vendored into the Web project. | MiroTalk is AGPL-licensed; copying it would taint the submission. Ideas were borrowed, code was not. |
+| **A-15** | The reference clones (`../references/`, outside the repository; provenance in the README) are **not** committed; only MIT-licensed shadcn/ui components are vendored into the Web project. | MiroTalk is AGPL-licensed; copying it would taint the submission. Ideas were borrowed, code was not. |
 
 ---
 
