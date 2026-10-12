@@ -3,6 +3,19 @@ import { containerEnv } from "../src/container-env";
 import { ApiContainer } from "../src/index";
 import { FakeContainerRuntime, fakeContainerState, settle } from "./container-runtime";
 import { fakeEnv, edgeRequest } from "./helpers";
+import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "json" };
+
+// The core-only profile: notifications, email, triage and the OTLP relay off. The .NET integration test
+// CloudflareContainerEnvTests boots the API with the committed fixture, so both sides are pinned to the same contract.
+function coreEnv() {
+  const { env } = fakeEnv();
+  return Object.assign(env, {
+    NOTIFICATIONS_ENABLED: "false" as Env["NOTIFICATIONS_ENABLED"], EMAIL_SENDING_ENABLED: "false" as Env["EMAIL_SENDING_ENABLED"],
+    EMAIL_ALLOWED_ADDRESSES: "", OTLP_RELAY_ENABLED: "false" as Env["OTLP_RELAY_ENABLED"],
+    TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"], TRIAGE_ACCOUNT_ID: "",
+    AUTH_ADMIN: "admin@fixture.test", AUTH_SERVICE_ADVISOR: "advisor@fixture.test", AUTH_VIEWER: "@viewers.fixture.test",
+  });
+}
 
 describe("container startup and Secrets Store", () => {
   it("builds the Cloudflare Production env including F2 and the allowlist", async () => {
@@ -21,6 +34,15 @@ describe("container startup and Secrets Store", () => {
     expect(settings).not.toHaveProperty("ASPNETCORE_HTTPS_PORT");
     expect(settings).not.toHaveProperty("EMAIL_API_TOKEN");
     expect(settings).not.toHaveProperty("GRAFANA_OTLP_BASIC_BROWSER");
+  });
+  it("selects no email provider while notifications are disabled, because the API refuses the reserved Cloudflare one", async () => {
+    const settings = await containerEnv(coreEnv());
+    expect(settings).toMatchObject({ Notifications__Enabled: "false", Notifications__Provider: "None" });
+    expect(settings).toEqual(coreEnvFixture);
+  });
+  it("keeps the Cloudflare provider for enabled notifications, so that start still fails loudly until its adapter exists", async () => {
+    const { env } = fakeEnv();
+    expect(await containerEnv(env)).toMatchObject({ Notifications__Enabled: "true", Notifications__Provider: "Cloudflare" });
   });
   it.each([null, "", "   "])("fails before starting with a missing DB secret", async value => {
     const { env, mocks } = fakeEnv();

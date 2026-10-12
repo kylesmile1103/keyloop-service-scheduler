@@ -20,5 +20,10 @@
     <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Domain\Keyloop.ServiceScheduler.Domain.csproj" />
     <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The Worker's container environment for the core profile, pinned by deploy/cloudflare/test/container.test.ts and booted by
+         CloudflareContainerEnvTests, so the edge and the API are tested against the same contract. -->
+    <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-core.json" Link="Fixtures\cloudflare-container-env-core.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>
 </Project>

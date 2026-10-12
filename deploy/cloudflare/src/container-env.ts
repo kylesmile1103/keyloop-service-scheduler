@@ -43,8 +43,8 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
   const access = accessSettings(env.AUTH_TEAM_DOMAIN, env.AUTH_AUDIENCE, env.AUTH_ADMIN, env.AUTH_SERVICE_ADVISOR, env.AUTH_VIEWER);
   triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
-  const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS,
-    env.NOTIFICATIONS_ENABLED === "true");
+  const notificationsEnabled = env.NOTIFICATIONS_ENABLED === "true";
+  const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS, notificationsEnabled);
   const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
   const db = await requiredSecret(env.DB_URL, "keyloop_prod_db_url");
   const result: Record<string, string> = {
@@ -60,8 +60,10 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     Security__ForwardedHeaders__KnownNetworks__0: "0.0.0.0/0",
     Security__ForwardedHeaders__KnownNetworks__1: "::/0",
     Security__RateLimiting__BookingPermitsPerMinute: "120",
-    Notifications__Enabled: env.NOTIFICATIONS_ENABLED === "true" ? "true" : "false",
-    Notifications__Provider: "Cloudflare",
+    Notifications__Enabled: notificationsEnabled ? "true" : "false",
+    // The API refuses to start with the reserved Cloudflare provider, enabled or not, until its relay adapter exists (ARCHITECTURE
+    // section 10). Disabled notifications therefore select None, so a core deployment starts; enabling them still fails loudly.
+    Notifications__Provider: notificationsEnabled ? "Cloudflare" : "None",
     Notifications__FromAddress: SENDER,
     Notifications__FromDisplayName: env.NOTIFY_FROM_NAME,
     Notifications__Relay__BaseUrl: "http://email.internal",

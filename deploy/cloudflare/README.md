@@ -41,7 +41,7 @@ Configure these environment variables when evaluating `cloudflare.config.ts`. Th
 | `KEYLOOP_ACCESS_ADMIN` | Empty; comma-separated exact emails or `@domain` role members, supplied outside the repository |
 | `KEYLOOP_ACCESS_SERVICE_ADVISOR` | Same, for booking/cancel/triage operators |
 | `KEYLOOP_ACCESS_VIEWER` | Same, for authenticated full reads and appointment details |
-| `KEYLOOP_NOTIFICATIONS_ENABLED` | `false`; passed to the API at container start |
+| `KEYLOOP_NOTIFICATIONS_ENABLED` | `false`; passed to the API at container start. `false` selects the API provider `None`; `true` selects the reserved `Cloudflare` provider, which the API refuses at startup until `RelayEmailSender` exists |
 | `KEYLOOP_EMAIL_SENDING_ENABLED` | `false`; independent Worker kill switch |
 | `KEYLOOP_EMAIL_TRANSPORT` | `binding`, or explicit `rest` fallback |
 | `KEYLOOP_EMAIL_ACCOUNT_ID` | Existing account ID, needed for REST only |
@@ -68,7 +68,7 @@ The committed source of truth is [ARCHITECTURE's Cloudflare deployment view](../
 4. **REQUIRES USER CONFIRMATION:** choose exact reviewer addresses, read the account quota and set a lower daily cap. Test outbound handler access and a controlled send to an approved mailbox which is **not** a verified destination before enabling public sending (F3). Temporarily opening the kill switch for that test is itself an approved live action. `E_RECIPIENT_NOT_ALLOWED` requires transport review and possible explicit REST selection; REST HTTP 403 / code 10105 requires resolving account entitlement. No transport switches automatically.
 5. **REQUIRES USER CONFIRMATION:** enable integrations after their gates pass. Verify SPA deep links, API navigation JSON, no public health/Scalar/reseed route, trusted client IP and HSTS, reserved-domain suppression, the book/cancel/30-way result, direct Neon TCP 5432 access, and sleep/wake timing. Use a new instance name if the Durable Object was already created without the WEUR hint. Measure cold start against the 60-second port-ready window (F11).
 
-The .NET side must provide `RelayEmailSender`, recipient suppression and cap accounting, stale-notification suppression after sleep, Production-with-demo-data startup without a reseed key, and forwarding middleware before rate limiting. API Grafana export and remote observability resources are separate work. Neon Free compute exhaustion suspends service until the next period or an upgrade; its restore window is six hours (F8). Container log pricing changes on 2026-12-01 (F9).
+The .NET side must provide `RelayEmailSender`, recipient suppression and cap accounting, stale-notification suppression after sleep, Production-with-demo-data startup without a reseed key, and forwarding middleware before rate limiting. The last two are in place, and `CloudflareContainerEnvTests` boots the API with the Worker's core environment (`test/fixtures/container-env-core.json`, pinned by `test/container.test.ts`); the first three are still missing, so notifications must stay disabled. API Grafana export and remote observability resources are separate work. Neon Free compute exhaustion suspends service until the next period or an upgrade; its restore window is six hours (F8). Container log pricing changes on 2026-12-01 (F9).
 
 ## Optional intake triage
 
