@@ -13,6 +13,7 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/availability", HandleAsync)
             .WithName("GetAvailability")
+            .AllowAnonymous() // public read (ADR-027)
             .WithTags(ApiTags.Availability)
             .AddEndpointFilter<ValidationFilter<GetAvailabilityQuery>>()
             .Produces<AvailabilityResponse>(StatusCodes.Status200OK)

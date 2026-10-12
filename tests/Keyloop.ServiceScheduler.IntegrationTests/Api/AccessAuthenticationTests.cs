@@ -152,12 +152,21 @@ public sealed class AccessAuthenticationTests(PostgresFixture pg) : IAsyncLifeti
     [InlineData("outage")]
     [InlineData("malformed")]
     [InlineData("oversize")]
+    [InlineData("malformed-modulus")]
+    [InlineData("html")]
     public async Task Jwks_failures_deny_writes_without_logging_token_or_email(string failure)
     {
         var token = Token();
         var logs = new CapturingLoggerProvider();
-        var keys = new StubKeys(failure == "malformed" ? "{}" : failure == "oversize" ? new string('x', 70 * 1024) : Jwks(),
-            failure == "outage" ? $"{token} advisor@keyloop.test" : null);
+        var body = failure switch
+        {
+            "malformed" => "{}",
+            "oversize" => new string('x', 70 * 1024),
+            "malformed-modulus" => """{"keys":[{"kty":"RSA","kid":"integration-key","n":"!!!***","e":"AQAB"}]}""",
+            "html" => "<html><body>Sign in</body></html>",
+            _ => Jwks(),
+        };
+        var keys = new StubKeys(body, failure == "outage" ? $"{token} advisor@keyloop.test" : null);
         using var host = AccessHost(keys, logs);
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Clear();
@@ -167,6 +176,11 @@ public sealed class AccessAuthenticationTests(PostgresFixture pg) : IAsyncLifeti
             using var response = await client.PostAsync("/api/v1/dealerships/11111111-1111-1111-1111-111111111111/appointments", null, Ct);
             response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         }
+        // Public reads and identity discovery treat an unverifiable token as anonymous rather than failing the request.
+        using var me = JsonDocument.Parse(await client.GetStringAsync("/api/v1/me", Ct));
+        me.RootElement.GetProperty("authenticated").GetBoolean().ShouldBeFalse();
+        using var dealerships = await client.GetAsync("/api/v1/dealerships", Ct);
+        dealerships.StatusCode.ShouldBe(HttpStatusCode.OK);
         keys.Calls.ShouldBe(1, "failures use the same refresh floor as random-kid attacks");
         logs.Entries.Where(entry => entry.Level > LogLevel.Debug)
             .ShouldNotContain(entry => entry.Message.Contains(token, StringComparison.Ordinal)

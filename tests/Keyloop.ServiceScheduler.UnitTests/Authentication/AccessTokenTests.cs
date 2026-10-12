@@ -22,13 +22,18 @@ public sealed class AccessTokenTests : IDisposable
     [InlineData("wrong-issuer", false)]
     [InlineData("wrong-audience", false)]
     [InlineData("expired", false)]
+    [InlineData("expired-inside-skew", true)]
+    [InlineData("expired-beyond-skew", false)]
     [InlineData("not-yet-valid", false)]
+    [InlineData("not-before-inside-skew", true)]
+    [InlineData("not-before-beyond-skew", false)]
     [InlineData("no-expiry", false)]
     [InlineData("nbf-after-exp", false)]
     [InlineData("unsigned", false)]
     [InlineData("hs256", false)]
     [InlineData("tampered", false)]
     [InlineData("no-email", false)]
+    [InlineData("overlong-email", false)]
     [InlineData("no-kid", false)]
     [InlineData("unknown-kid", false)]
     [InlineData("malformed", false)]
@@ -95,6 +100,32 @@ public sealed class AccessTokenTests : IDisposable
         transport.Calls.ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData("!!!***")]
+    [InlineData("")]
+    public async Task A_malformed_key_is_discarded_and_the_valid_keys_still_verify(string modulus)
+    {
+        var document = JsonNode.Parse(Jwks("key-one"))!;
+        document["keys"]!.AsArray().Insert(0, new JsonObject { ["kty"] = "RSA", ["kid"] = "key-bad", ["n"] = modulus, ["e"] = "AQAB" });
+        using var transport = new JwksHandler(document.ToJsonString());
+        using var client = new HttpClient(transport);
+        using var keys = new AccessSigningKeys(client, Options.Create(_settings), _clock);
+        var validator = new AccessTokenValidator(keys, Options.Create(_settings), _clock);
+
+        (await validator.ValidateAsync(Token("valid"), TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        (await keys.GetAsync("key-one", TestContext.Current.CancellationToken)).Select(key => key.KeyId).ShouldBe(["key-one"]);
+    }
+
+    [Fact]
+    public async Task A_key_set_with_only_malformed_keys_is_unavailable()
+    {
+        using var transport = new JwksHandler("""{"keys":[{"kty":"RSA","kid":"key-one","n":"!!!***","e":"AQAB"}]}""");
+        using var client = new HttpClient(transport);
+        using var keys = new AccessSigningKeys(client, Options.Create(_settings), _clock);
+
+        await Should.ThrowAsync<InvalidOperationException>(() => keys.GetAsync("key-one", TestContext.Current.CancellationToken));
+    }
+
     internal string Token(string variant, string kid = "key-one")
     {
         if (variant == "malformed")
@@ -118,14 +149,35 @@ public sealed class AccessTokenTests : IDisposable
         {
             ["iss"] = variant == "wrong-issuer" ? "https://evil.test" : _settings.TeamDomain,
             ["aud"] = new JsonArray(variant == "wrong-audience" ? "other" : variant == "second-audience" ? "aud-two" : "aud-one"),
-            ["exp"] = variant == "expired" ? now - 60 : now + 300,
-            ["nbf"] = variant == "not-yet-valid" ? now + 60 : variant == "nbf-after-exp" ? now + 400 : now - 1,
+            // Each lifetime variant breaks exactly one clause: expired tokens keep nbf well before exp, so only the expiry
+            // check can reject them, and the 30-second skew boundary is pinned on both sides for exp and nbf.
+            ["exp"] = variant switch
+            {
+                "expired" => now - 60,
+                "expired-inside-skew" => now - 29,
+                "expired-beyond-skew" => now - 31,
+                _ => now + 300,
+            },
+            ["nbf"] = variant switch
+            {
+                "expired" or "expired-inside-skew" or "expired-beyond-skew" => now - 600,
+                "not-yet-valid" => now + 60,
+                "not-before-inside-skew" => now + 29,
+                "not-before-beyond-skew" => now + 31,
+                "nbf-after-exp" => now + 400,
+                _ => now - 1,
+            },
             ["email"] = "advisor@keyloop.test", ["name"] = "Test Advisor", ["sub"] = "unit-user",
             ["roles"] = new JsonArray("Admin"),
         };
         if (variant == "no-email")
         {
             payload.Remove("email");
+        }
+
+        if (variant == "overlong-email")
+        {
+            payload["email"] = $"{new string('a', 64)}@{new string('b', 63)}.{new string('c', 63)}.{new string('d', 57)}.test"; // 255 characters
         }
 
         if (variant == "no-expiry")

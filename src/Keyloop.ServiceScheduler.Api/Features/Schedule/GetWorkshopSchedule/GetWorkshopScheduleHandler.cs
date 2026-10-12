@@ -18,6 +18,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 /// <see cref="DayScheduleReader"/> from the dealership already loaded. Every bay and technician is listed, active or not, so that
 /// appointments on a resource taken out of service stay visible; each bay holds its appointments overlapping the operating window in
 /// every status except <see cref="AppointmentStatus.Cancelled"/>, ordered by start. A closed day has no window and no appointments.
+/// Customer names, VINs and registrations pass through <see cref="PersonalData"/>, the audience policy shared with the range read.
 /// Throws <see cref="NotFoundException"/> (404 <c>not-found</c>) for an unknown dealership. Nothing is tracked or locked.
 /// </summary>
 public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options)
@@ -25,6 +26,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
     public async Task<WorkshopScheduleResponse> HandleAsync(GetWorkshopScheduleQuery query, ClaimsPrincipal caller, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(caller);
 
         // ValidationFilter has already rejected a missing or malformed date.
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
@@ -50,8 +52,8 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         foreach (var appointment in scheduled)
         {
             var response = ScheduleMapper.ToResponse(appointment, serviceTypes[appointment.ServiceTypeId], technicianSummaries[appointment.TechnicianId], zone);
-            var (name, vin) = PersonalData.ForCaller(caller, response.CustomerName, response.Vin);
-            appointmentsByBay[appointment.BayId].Add(response with { CustomerName = name, Vin = vin });
+            var visible = PersonalData.ForCaller(caller, appointment.CustomerName, Vin.Create(appointment.Vin), appointment.Registration);
+            appointmentsByBay[appointment.BayId].Add(response with { CustomerName = visible.CustomerName, Vin = visible.Vin, Registration = visible.Registration });
         }
 
         return Response(

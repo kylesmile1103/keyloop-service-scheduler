@@ -25,7 +25,10 @@ public sealed class AppointmentHistoryEntry
 
     public DateTime OccurredAtUtc { get; private set; }
 
-    /// <summary><c>system</c>, or <c>anonymous:&lt;ip&gt;</c> for an HTTP request (see <c>CurrentActor</c>).</summary>
+    /// <summary>
+    /// <c>system</c>, <c>user:&lt;verified email&gt;</c> for an authenticated HTTP request, or <c>anonymous:&lt;ip&gt;</c> otherwise;
+    /// at most <see cref="CurrentActor.MaxLength"/> characters (see <see cref="CurrentActor"/>).
+    /// </summary>
     public string Actor { get; private set; }
 
     /// <summary>The event serialised as JSON (a <c>jsonb</c> column).</summary>

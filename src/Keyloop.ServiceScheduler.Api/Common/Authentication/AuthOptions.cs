@@ -89,7 +89,10 @@ public sealed class AuthOptions : IValidatableObject
         && team.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
         && value == $"https://{uri.Host}";
 
-    internal static bool ValidEmail(string value) => MailAddress.TryCreate(value, out var address)
+    /// <summary>The longest address SMTP can carry (RFC 5321 path limit). The audit actor column holds <c>user:</c> plus this.</summary>
+    internal const int MaxEmailLength = 254;
+
+    internal static bool ValidEmail(string value) => value.Length <= MaxEmailLength && MailAddress.TryCreate(value, out var address)
         && address.Address == value && value.Count(c => c == '@') == 1 && !value.Any(char.IsWhiteSpace);
 
     private static bool ValidMember(string value) => value.StartsWith('@')

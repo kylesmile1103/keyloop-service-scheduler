@@ -11,7 +11,7 @@ public sealed record CurrentUserResponse(bool Authenticated, string? Email, stri
 public sealed class GetCurrentUserEndpoint : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder app) => app.MapGet("/me", Handle)
-        .WithName("GetCurrentUser").WithTags("Identity")
+        .WithName("GetCurrentUser").WithTags("Identity").AllowAnonymous() // anonymous-safe identity discovery (ADR-027)
         .Produces<CurrentUserResponse>().ProducesRateLimitedProblem();
 
     /// <summary>Get the current caller and sign-in/out URLs</summary>

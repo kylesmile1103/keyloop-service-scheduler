@@ -12,6 +12,7 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/service-types", HandleAsync)
             .WithName("GetServiceTypes")
+            .AllowAnonymous() // public read (ADR-027)
             .WithTags(ApiTags.Catalog)
             .Produces<IReadOnlyList<ServiceTypeResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)

@@ -13,6 +13,7 @@ public sealed class GetWorkshopScheduleEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/schedule", HandleAsync)
             .WithName("GetWorkshopSchedule")
+            .AllowAnonymous() // public read; personal data is masked without a role (ADR-027)
             .WithTags(ApiTags.Schedule)
             .AddEndpointFilter<ValidationFilter<GetWorkshopScheduleQuery>>()
             .Produces<WorkshopScheduleResponse>(StatusCodes.Status200OK)
@@ -31,7 +32,8 @@ public sealed class GetWorkshopScheduleEndpoint : IEndpoint
     /// stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
     /// in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
     /// <c>operatingWindow</c> and no appointments, and keeps its lanes. Local times carry the zone's offset (<c>2026-10-13T10:00+01:00</c>).
-    /// Callers without an API role receive customer initials and the last six VIN characters; Admin, ServiceAdvisor and Viewer receive full values. Registration stays visible.
+    /// Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
+    /// customer initials, the VIN's last six characters and the registration's last three letters or digits.
     /// Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>

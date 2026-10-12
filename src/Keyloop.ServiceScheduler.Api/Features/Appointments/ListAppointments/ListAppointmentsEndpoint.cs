@@ -16,6 +16,7 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/appointments", HandleAsync)
             .WithName("ListAppointments")
+            .AllowAnonymous() // public read; personal data is masked without a role (ADR-027)
             .WithTags(ApiTags.Appointments)
             .AddEndpointFilter<ValidationFilter<ListAppointmentsQuery>>()
             .Produces<IReadOnlyList<AppointmentListItemResponse>>(StatusCodes.Status200OK)
@@ -50,18 +51,19 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
     /// 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
     /// union, for example by supplying both <c>status=Confirmed</c> and <c>status=Completed</c>. Ordered by start UTC, then id for equal starts.
     /// Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
-    /// hour. Callers without an API role receive customer initials and only the last six VIN characters.
-    /// Callers with Admin, ServiceAdvisor or Viewer receive full names and VINs. Registration plates remain visible. Returns an empty array when there are no matches.
+    /// hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
+    /// receives them masked: customer initials, the VIN's last six characters and the registration's last three letters or digits.
+    /// Returns an empty array when there are no matches.
     /// </remarks>
     /// <param name="query">The route and query parameters below, validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose appointments are read (the seeded Reading dealership in the example).</param>
     /// <param name="from" example="2026-10-12">First inclusive local date, exactly <c>yyyy-MM-dd</c>.</param>
     /// <param name="to" example="2026-10-25">Last inclusive local date, exactly <c>yyyy-MM-dd</c>; on or after from, spanning at most 62 calendar dates including both bounds.</param>
     /// <param name="status" example="Confirmed">Optional, repeatable, case-sensitive status names: Confirmed, CheckedIn, InProgress, Completed, Cancelled, NoShow. Omit to read every status.</param>
-    /// <param name="httpContext">Supplies the caller for the customer/VIN audience-policy seam.</param>
+    /// <param name="httpContext">Supplies the caller, whose roles decide full or masked personal data.</param>
     /// <param name="handler">Reads the range projection.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
-    /// <response code="200">An array of appointments ordered by start, with service, bay and technician summaries, masked customer initials and VIN suffixes; empty when there are no matches.</response>
+    /// <response code="200">An array of appointments ordered by start, then id, with service, bay and technician summaries and the customer name, VIN and registration (masked for callers without an API role); empty when there are no matches.</response>
     /// <response code="400">Missing or malformed dates, from after to, more than 62 inclusive days, or an invalid status (<c>validation-error</c>, with <c>errors</c> keyed <c>from</c>, <c>to</c> or <c>status</c>).</response>
     /// <response code="404">No dealership has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> and the <c>id</c>).</response>
     /// <response code="429">Too many requests from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>

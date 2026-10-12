@@ -40,8 +40,9 @@ internal static class SchedulerOpenApi
         Every error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under
         `https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:
 
-        Public reads are anonymous. Names and VINs are masked unless the caller has an API role. Writes require Admin or
-        ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me` discovers the caller.
+        Public reads are anonymous. Customer names, VINs and registrations are masked unless the caller has an API role. Writes
+        require Admin or ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me`
+        discovers the caller.
 
         - **401** - sign-in required (`unauthenticated`, with `loginUrl`).
         - **403** - the caller has no permitted role (`forbidden`).
@@ -86,7 +87,8 @@ internal static class SchedulerOpenApi
 
     internal static Task DocumentAccessSecurity(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
-        var protectedRoute = context.Description.ActionDescriptor.EndpointMetadata.OfType<IAuthorizeData>().Any();
+        // Deny by default (SchedulerAuthentication's fallback policy): only an explicitly anonymous operation is public.
+        var protectedRoute = !context.Description.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any();
         operation.Security =
         [
             new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("CloudflareAccess", context.Document)] = [] },

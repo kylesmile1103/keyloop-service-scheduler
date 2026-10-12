@@ -32,10 +32,7 @@ public sealed class AccessSigningKeys(HttpClient client, IOptions<AuthOptions> o
                 }
 
                 var keys = document.Keys.Where(key => key is not null && !string.IsNullOrWhiteSpace(key.Kid) && key.Kty == "RSA" && key.Alg is null or "RS256" && key.Use is null or "sig")
-                    .Select(key => (SecurityKey)new RsaSecurityKey(new RSAParameters
-                    {
-                        Modulus = Base64UrlEncoder.DecodeBytes(key.N), Exponent = Base64UrlEncoder.DecodeBytes(key.E),
-                    }) { KeyId = key.Kid }).ToArray();
+                    .Select(ToSigningKey).OfType<SecurityKey>().ToArray();
                 if (keys.Length == 0 || keys.Length > 16)
                 {
                     throw new InvalidOperationException("Access signing keys unavailable.");
@@ -51,6 +48,31 @@ public sealed class AccessSigningKeys(HttpClient client, IOptions<AuthOptions> o
             return _keys;
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>An RSA signing key, or null for a key whose modulus or exponent is missing or not base64url: it is discarded.</summary>
+    private static RsaSecurityKey? ToSigningKey(AccessJwk key)
+    {
+        if (string.IsNullOrEmpty(key.N) || string.IsNullOrEmpty(key.E))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new RsaSecurityKey(new RSAParameters { Modulus = Base64UrlEncoder.DecodeBytes(key.N), Exponent = Base64UrlEncoder.DecodeBytes(key.E) })
+            {
+                KeyId = key.Kid,
+            };
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     public void Dispose()

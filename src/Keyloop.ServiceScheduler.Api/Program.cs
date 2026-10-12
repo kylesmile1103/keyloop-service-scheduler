@@ -211,15 +211,17 @@ app.UseRateLimiter();
 app.UseAuthorization();
 app.UseMiddleware<CurrentActorMiddleware>();
 
+// Every endpoint declares its access: AllowAnonymous, a named policy, or the deny-by-default fallback (Admin only, ADR-027).
 app.MapDefaultEndpoints();
 if (apiReference)
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference(options => options
         .WithTitle("Keyloop Service Scheduler API")
         .WithDefaultHttpClient(ScalarTarget.Shell, ScalarClient.Curl)
         .ShowOperationId()
-        .ExpandAllTags());
+        .ExpandAllTags())
+        .AllowAnonymous();
 }
 
 AuthUrls.MapLogin(app);

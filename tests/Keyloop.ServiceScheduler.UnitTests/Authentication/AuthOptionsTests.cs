@@ -40,4 +40,22 @@ public sealed class AuthOptionsTests
         result.Failed.ShouldBeTrue();
         string.Join(" ", result.Failures!).ShouldNotContain("invalid-personal-data");
     }
+
+    [Theory]
+    [InlineData(254, true)]
+    [InlineData(255, false)]
+    public void Emails_are_bounded_by_the_RFC_5321_path_length(int length, bool valid)
+    {
+        // 64-character local part, three 63-or-fewer-character labels and ".test".
+        var email = $"{new string('a', 64)}@{new string('b', 63)}.{new string('c', 63)}.{new string('d', length - 198)}.test";
+        email.Length.ShouldBe(length);
+        AuthOptions.ValidEmail(email).ShouldBe(valid);
+    }
+
+    [Fact]
+    public void The_audit_actor_column_holds_the_longest_verified_email()
+    {
+        Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors.CurrentActor.MaxLength
+            .ShouldBeGreaterThanOrEqualTo("user:".Length + AuthOptions.MaxEmailLength);
+    }
 }

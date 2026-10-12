@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -46,17 +45,24 @@ public sealed class ListAppointmentsHandler(SchedulerDbContext db)
             appointments = appointments.Where(a => statuses.Contains(a.Status));
         }
 
+        // Only the summary columns of the service, bay and technician are read, never their whole rows.
         return from appointment in appointments
             join serviceType in db.ServiceTypes on appointment.ServiceTypeId equals serviceType.Id
             join bay in db.ServiceBays on appointment.BayId equals bay.Id
             join technician in db.Technicians on appointment.TechnicianId equals technician.Id
             orderby appointment.Slot.StartUtc, appointment.Id
             select new AppointmentListRow(appointment.Id, appointment.Status, appointment.Slot.StartUtc, appointment.Slot.EndUtc,
-                serviceType, bay, technician, appointment.Customer.Name, appointment.Vehicle.Vin, appointment.Vehicle.Registration);
+                serviceType.Id, serviceType.Code, serviceType.Name, serviceType.Duration, bay.Id, bay.Name, technician.Id, technician.Name,
+                appointment.Customer.Name, appointment.Vehicle.Vin, appointment.Vehicle.Registration);
     }
 }
 
-/// <summary>The projected columns, excluding contact details, notes and vehicle make/model.</summary>
+/// <summary>
+/// The projected columns: the appointment's own, the service/bay/technician summary columns, and the personal data the audience
+/// policy masks. Contact details, notes and vehicle make/model are not read.
+/// </summary>
 internal sealed record AppointmentListRow(
     Guid Id, AppointmentStatus Status, DateTime StartUtc, DateTime EndUtc,
-    ServiceType ServiceType, ServiceBay Bay, Technician Technician, string CustomerName, Vin Vin, string Registration);
+    Guid ServiceTypeId, string ServiceTypeCode, string ServiceTypeName, ServiceDuration ServiceTypeDuration,
+    Guid BayId, string BayName, Guid TechnicianId, string TechnicianName,
+    string CustomerName, Vin Vin, string Registration);

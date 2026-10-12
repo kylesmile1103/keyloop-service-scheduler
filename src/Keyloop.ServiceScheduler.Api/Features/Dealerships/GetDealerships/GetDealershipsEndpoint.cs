@@ -12,6 +12,7 @@ public sealed class GetDealershipsEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships", HandleAsync)
             .WithName("GetDealerships")
+            .AllowAnonymous() // public read (ADR-027)
             .WithTags(ApiTags.Dealerships)
             .Produces<IReadOnlyList<DealershipResponse>>(StatusCodes.Status200OK)
             .ProducesRateLimitedProblem();

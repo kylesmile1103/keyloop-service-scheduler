@@ -93,7 +93,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
-// Task 28a: the date-range appointments read (shared summaries and status are registered above).
+// The date-range appointments read (shared summaries and status are registered above) and the current caller.
 [JsonSerializable(typeof(AppointmentListItemResponse))]
 [JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
 [JsonSerializable(typeof(CurrentUserResponse))]

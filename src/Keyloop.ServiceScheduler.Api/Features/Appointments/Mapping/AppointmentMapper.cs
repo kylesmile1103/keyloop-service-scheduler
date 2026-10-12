@@ -23,10 +23,10 @@ public static partial class AppointmentMapper
     public static partial AppointmentResponse ToResponse(
         Appointment appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician, string startLocal, string endLocal);
 
-    /// <summary>A range item; the audience-policy wrapper supplies customer and VIN values before generated mapping.</summary>
+    /// <summary>A range item; <c>ListAppointmentsResponseMapper</c> supplies the summaries and the audience-policy values.</summary>
     internal static partial AppointmentListItemResponse ToListItem(
         AppointmentListRow appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician,
-        string startLocal, string endLocal, string customerName, string vin);
+        string startLocal, string endLocal, string customerName, string vin, string registration);
 
     public static partial CustomerResponse ToResponse(CustomerDetails customer);
 

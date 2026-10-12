@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Authentication;
@@ -12,6 +13,17 @@ public static class SchedulerAuthentication
     public const string BookingsWrite = "BookingsWrite";
     public const string AppointmentDetails = "AppointmentDetails";
     public const string Admin = "Admin";
+
+    /// <summary>
+    /// Deny by default. A mapped route that declares neither a policy nor <c>AllowAnonymous</c> is Admin-only, so a new endpoint
+    /// that forgets its access decision fails closed (EndpointAuthorizationMapTests also fails the build's tests). A request that
+    /// matched no route, or matched a path with the wrong method (the framework's 405 endpoint carries no route pattern), passes,
+    /// so routing still answers it with 404 or 405 instead of a misleading 401.
+    /// </summary>
+    internal static AuthorizationPolicy DenyByDefault { get; } = new AuthorizationPolicyBuilder()
+        .RequireAssertion(context => context.Resource is HttpContext http && http.GetEndpoint() is not RouteEndpoint
+            || context.User.Identity?.IsAuthenticated == true && context.User.IsInRole(SchedulerRoles.Admin))
+        .Build();
 
     public static IServiceCollection AddSchedulerAuthentication(this IServiceCollection services, IHostEnvironment environment)
     {
@@ -35,7 +47,8 @@ public static class SchedulerAuthentication
         services.AddAuthorizationBuilder()
             .AddPolicy(BookingsWrite, p => p.RequireAuthenticatedUser().RequireRole(SchedulerRoles.Admin, SchedulerRoles.ServiceAdvisor))
             .AddPolicy(AppointmentDetails, p => p.RequireAuthenticatedUser().RequireRole(SchedulerRoles.All))
-            .AddPolicy(Admin, p => p.RequireAuthenticatedUser().RequireRole(SchedulerRoles.Admin));
+            .AddPolicy(Admin, p => p.RequireAuthenticatedUser().RequireRole(SchedulerRoles.Admin))
+            .SetFallbackPolicy(DenyByDefault);
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuthorizationProblemHandler>();
         return services;
     }
@@ -98,7 +111,8 @@ public sealed class SchedulerAuthenticationHandler(
             return identity is null ? AuthenticateResult.Fail("Invalid Access identity.")
                 : AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ArgumentException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ArgumentException or FormatException
+            or InvalidOperationException or System.Security.Cryptography.CryptographicException)
         {
             // Do not attach the exception: transport and token exceptions can echo tokens or personal data.
             return AuthenticateResult.Fail("Access identity could not be verified.");

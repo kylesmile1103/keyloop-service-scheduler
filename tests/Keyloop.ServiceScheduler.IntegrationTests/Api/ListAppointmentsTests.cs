@@ -1,9 +1,12 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
@@ -119,7 +122,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     [Theory]
     [InlineData(null)]
     [InlineData("Bearer test-caller")]
-    public async Task Response_has_summaries_and_masks_customer_and_VIN_for_every_caller(string? authorization)
+    public async Task Response_has_summaries_and_masks_personal_data_for_callers_without_a_role(string? authorization)
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var appointment = Book(workshop, TestData.LondonTime(9), name: "  Alice   Louise Smith  ");
@@ -142,14 +145,51 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         item.GetProperty("startLocal").GetString().ShouldBe("2026-10-13T09:00+01:00");
         item.GetProperty("endLocal").GetString().ShouldBe("2026-10-13T10:00+01:00");
         item.GetProperty("customerName").GetString().ShouldBe("ALS");
-        item.GetProperty("vin").GetString().ShouldBe("123456");
-        item.GetProperty("registration").GetString().ShouldBe("AB12 CDE");
+        item.GetProperty("vin").GetString().ShouldBe("***********123456");
+        item.GetProperty("registration").GetString().ShouldBe("****CDE");
         item.GetProperty("serviceType").GetRawText().ShouldBe(
             $$"""{"id":"{{workshop.Interim.Id}}","code":"INTERIM-SERVICE","name":"INTERIM-SERVICE","durationMinutes":60}""");
         item.GetProperty("bay").GetRawText().ShouldBe($$"""{"id":"{{workshop.Bay1.Id}}","name":"Bay 1"}""");
         item.GetProperty("technician").GetRawText().ShouldBe($$"""{"id":"{{workshop.Technician1.Id}}","name":"Amelia Clarke"}""");
         body.RootElement.GetRawText().ShouldNotContain("Alice");
-        body.RootElement.GetRawText().ShouldNotContain("WVWZZZ1KZAW123456");
+        body.RootElement.GetRawText().ShouldNotContain("WVWZZZ1KZAW");
+        body.RootElement.GetRawText().ShouldNotContain("AB12");
+    }
+
+    [Fact]
+    public async Task Orders_by_start_then_id_whatever_the_physical_and_id_order()
+    {
+        // Ids are minted in reverse start order and rows are inserted latest first, one SaveChanges each, so neither the heap
+        // order nor the id order matches the start order. The equal-start pair (two bays) is inserted higher id first.
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+        var earliest = Book(workshop, TestData.LondonTime(8), id: IdAt(5));
+        var tieLow = Book(workshop, TestData.LondonTime(10), id: IdAt(3));
+        var tieHigh = Book(workshop, TestData.LondonTime(10), secondResource: true, id: IdAt(4));
+        var latest = Book(workshop, TestData.LondonTime(12), id: IdAt(1));
+        tieLow.Id.CompareTo(tieHigh.Id).ShouldBeLessThan(0);
+        foreach (var appointment in new[] { latest, tieHigh, tieLow, earliest })
+        {
+            await SaveAsync(appointment);
+        }
+
+        using var body = await GetAsync(workshop.Dealership.Id, "from=2026-10-13&to=2026-10-13");
+
+        Ids(body).ShouldBe([earliest.Id, tieLow.Id, tieHigh.Id, latest.Id]);
+    }
+
+    [Fact]
+    public void Range_query_selects_only_the_summary_columns_of_service_bay_and_technician()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<ListAppointmentsHandler>();
+        var sql = handler.RangeQuery(new ListAppointmentsQuery { DealershipId = Guid.NewGuid(), From = "2026-10-13", To = "2026-10-13" },
+            TestData.LondonTime(0), TestData.LondonTime(23)).ToQueryString();
+
+        sql.ShouldContain("duration_minutes", Case.Sensitive, "the service summary needs its duration");
+        foreach (var column in new[] { "required_bay_capabilities", "required_certifications", "capabilities", "certifications", "employee_number", "is_active" })
+        {
+            sql.ShouldNotContain(column, Case.Sensitive, $"whole service, bay or technician entities are projected:{Environment.NewLine}{sql}");
+        }
     }
 
     [Theory]
@@ -230,15 +270,18 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     private static Appointment Book(TestData.Workshop workshop, string start, bool secondResource = false) =>
         Book(workshop, Utc(start), secondResource);
 
-    private static Appointment Book(TestData.Workshop workshop, DateTime start, bool secondResource = false, string name = "Alice Smith")
+    private static Appointment Book(TestData.Workshop workshop, DateTime start, bool secondResource = false, string name = "Alice Smith", Guid? id = null)
     {
         // Historical rows may sit outside today's hours and cross midnight. Supply their original operating window explicitly.
         var slot = TimeSlot.FromStart(start, workshop.Interim.Duration);
-        return Appointment.Book(Guid.CreateVersion7(), workshop.Dealership, workshop.Interim,
+        return Appointment.Book(id ?? Guid.CreateVersion7(), workshop.Dealership, workshop.Interim,
             secondResource ? workshop.Bay2 : workshop.Bay1, secondResource ? workshop.Technician2 : workshop.Technician1,
             slot, new OperatingWindow(slot.StartUtc, slot.EndUtc),
             new CustomerDetails(name, "alice@example.com", "+44 7700 900001"), TestData.Vehicle(), null, TestData.Now);
     }
+
+    /// <summary>A version 7 id minted at a fixed millisecond, so that a larger <paramref name="millisecond"/> sorts later.</summary>
+    private static Guid IdAt(int millisecond) => Guid.CreateVersion7(TestData.DefaultNow.AddMilliseconds(millisecond));
 
     private static DateTime Utc(string value) => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
     private static string Url(Guid dealershipId, string query) => $"/api/v1/dealerships/{dealershipId}/appointments?{query}";

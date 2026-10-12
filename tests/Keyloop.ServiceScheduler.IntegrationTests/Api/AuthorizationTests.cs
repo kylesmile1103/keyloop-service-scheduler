@@ -205,12 +205,12 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("Anonymous", "ALS", "123456")]
-    [InlineData("Unknown", "ALS", "123456")]
-    [InlineData("Viewer", "Alice Louise Smith", "WVWZZZ1KZAW123456")]
-    [InlineData("ServiceAdvisor", "Alice Louise Smith", "WVWZZZ1KZAW123456")]
-    [InlineData("Admin", "Alice Louise Smith", "WVWZZZ1KZAW123456")]
-    public async Task Both_public_reads_mask_personal_data_unless_caller_has_any_role(string role, string name, string vin)
+    [InlineData("Anonymous", "ALS", "***********123456", "****CDE")]
+    [InlineData("Unknown", "ALS", "***********123456", "****CDE")]
+    [InlineData("Viewer", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
+    [InlineData("ServiceAdvisor", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
+    [InlineData("Admin", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
+    public async Task Both_public_reads_mask_personal_data_unless_caller_has_any_role(string role, string name, string vin, string registration)
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var appointment = TestData.NewAppointment(workshop.Dealership, workshop.Interim, workshop.Bay1, workshop.Technician1,
@@ -234,8 +234,63 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
                 ? body.RootElement.GetProperty("bays")[0].GetProperty("appointments")[0] : body.RootElement[0];
             item.GetProperty("customerName").GetString().ShouldBe(name);
             item.GetProperty("vin").GetString().ShouldBe(vin);
-            item.GetProperty("registration").GetString().ShouldBe("AB12 CDE");
+            item.GetProperty("registration").GetString().ShouldBe(registration);
+            if (role is "Anonymous" or "Unknown")
+            {
+                var raw = body.RootElement.GetRawText();
+                raw.ShouldNotContain("Alice");
+                raw.ShouldNotContain("WVWZZZ1KZAW");
+                raw.ShouldNotContain("AB12");
+            }
         }
+    }
+
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData("application/x-www-form-urlencoded")]
+    [InlineData("multipart/form-data; boundary=x")]
+    public async Task Cookie_authenticated_writes_reject_the_content_types_a_cross_site_form_can_send(string contentType)
+    {
+        // A cross-site form or no-CORS fetch can only send these simple content types; JSON-only binding answers 415 before any
+        // write, so an ambient Access cookie cannot be replayed into a booking or cancellation (ARCHITECTURE section 11.1, CSRF).
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, "ServiceAdvisor");
+        foreach (var route in new[]
+        {
+            $"/api/v1/dealerships/{workshop.Dealership.Id}/appointments",
+            "/api/v1/appointments/11111111-1111-1111-1111-111111111111/cancel",
+            $"/api/v1/dealerships/{workshop.Dealership.Id}/booking-triage",
+        })
+        {
+            using var content = new StringContent("{}");
+            content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(contentType);
+            using var response = await client.PostAsync(route, content, Ct);
+            response.StatusCode.ShouldBe(HttpStatusCode.UnsupportedMediaType, route);
+        }
+
+        (await _factory.WithDbAsync(db => db.Appointments.CountAsync(Ct))).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_verified_email_of_the_maximum_length_is_recorded_as_the_audit_actor()
+    {
+        // RFC 5321 limits a path to 254 characters; a 64-character local part on a long domain reaches it.
+        var email = $"{new string('a', 64)}@{new string('b', 63)}.{new string('c', 63)}.{new string('d', 56)}.test";
+        email.Length.ShouldBe(254);
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, "ServiceAdvisor");
+        client.DefaultRequestHeaders.Add("X-Test-Email", email);
+
+        using var booked = await client.PostJsonAsync($"/api/v1/dealerships/{workshop.Dealership.Id}/appointments",
+            TestData.BookingRequest(workshop.Interim.Id, TestData.LondonTime(9)), SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
+
+        booked.StatusCode.ShouldBe(HttpStatusCode.Created, await booked.Content.ReadAsStringAsync(Ct));
+        var actors = await _factory.WithDbAsync(db => db.AppointmentHistory.Select(h => h.Actor).ToListAsync(Ct));
+        actors.ShouldBe([$"user:{email}"]);
     }
 
 }
