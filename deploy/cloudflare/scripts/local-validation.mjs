@@ -20,6 +20,9 @@ const taskEnv = {
   KEYLOOP_EMAIL_MAX_PER_DAY: "100",
   KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY: "10",
   KEYLOOP_OTLP_RELAY_ENABLED: integrations ? "true" : "false",
+  KEYLOOP_TRIAGE_ENABLED: integrations ? "true" : "false",
+  KEYLOOP_TRIAGE_ACCOUNT_ID: integrations ? "00000000000000000000000000000000" : "",
+  KEYLOOP_TRIAGE_GATEWAY_ID: "keyloop-scheduler",
   KEYLOOP_GRAFANA_OTLP_ENDPOINT: integrations ? "https://otlp-gateway-local.grafana.net/otlp" : "",
   CLOUDFLARE_SEND_METRICS: "false",
   CF_SEND_TELEMETRY: "false",
@@ -65,9 +68,12 @@ if (action === "build" && result.status === 0) {
   assert.deepEqual(container.constraints.regions, ["WEUR"]);
   assert.equal(Boolean(worker.env.EMAIL_API_TOKEN), integrations);
   assert.equal(Boolean(worker.env.GRAFANA_OTLP_BASIC_BROWSER), integrations);
+  assert.equal(Boolean(worker.env.AI_TOKEN), integrations);
+  assert.equal(worker.env.TRIAGE_ENABLED.value, integrations ? "true" : "false");
   if (integrations) {
     assert.equal(worker.env.EMAIL_API_TOKEN.secretName, "keyloop_prod_email_api_token");
     assert.equal(worker.env.GRAFANA_OTLP_BASIC_BROWSER.secretName, "grafana-otlp-basic-browser");
+    assert.equal(worker.env.AI_TOKEN.secretName, "keyloop_prod_ai_token");
   }
   console.log(`Local build metadata verified (${integrations ? "REST email and OTLP" : "integrations disabled"})`);
   // cloudflare.config.ts must refuse an invalid setting at build time (src/settings.ts), not at the first send.

@@ -2,7 +2,14 @@ import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.
 import { requiredSecret } from "./secrets.ts";
 
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
-  "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY">;
+  "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY" |
+  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN">;
+
+export function triageSettings(enabled: string, account: string, gateway: string): void {
+  if (enabled !== "true" && enabled !== "false") throw new Error("Set KEYLOOP_TRIAGE_ENABLED to true or false");
+  if (enabled === "true" && !/^[a-f0-9]{32}$/i.test(account)) throw new Error("Set KEYLOOP_TRIAGE_ACCOUNT_ID to a 32-character hexadecimal account ID");
+  if (!/^[a-z0-9-]{1,64}$/i.test(gateway)) throw new Error("Configure a valid triage gateway slug");
+}
 
 function validatedCap(value: string, max: number, name: string): string {
   if (!/^[1-9]\d*$/.test(value) || Number(value) > max) throw new Error(`Configure a valid ${name}`);
@@ -32,6 +39,7 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
 }
 
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
+  triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
   const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS,
     env.NOTIFICATIONS_ENABLED === "true");
   const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
@@ -56,7 +64,13 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     Notifications__Recipients__MaxPerRecipientPerDay: caps.perRecipient,
     Notifications__Recipients__MaxPerDay: caps.perDay,
     Logging__Console__FormatterName: "json",
+    Triage__Enabled: env.TRIAGE_ENABLED,
   };
+  if (env.TRIAGE_ENABLED === "true") {
+    result.Triage__AccountId = env.TRIAGE_ACCOUNT_ID;
+    result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
+    result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");
+  }
   addresses.forEach((value, index) => { result[`Notifications__Recipients__AllowedAddresses__${index}`] = value; });
   domains.forEach((value, index) => { result[`Notifications__Recipients__AllowedDomains__${index}`] = value; });
   return result;

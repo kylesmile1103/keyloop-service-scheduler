@@ -1,4 +1,4 @@
-import { emailCaps, recipientAllowlist } from "./container-env.ts";
+import { emailCaps, recipientAllowlist, triageSettings } from "./container-env.ts";
 import { grafanaTracesUrl } from "./otlp.ts";
 
 // cloudflare.config.ts evaluates this, so a misconfigured deployment fails `cf build` instead of the first cold start,
@@ -28,6 +28,10 @@ export function edgeSettings(source: Source) {
   const notificationsEnabled = flag(source, "KEYLOOP_NOTIFICATIONS_ENABLED");
   const emailSendingEnabled = flag(source, "KEYLOOP_EMAIL_SENDING_ENABLED");
   const otlpRelayEnabled = flag(source, "KEYLOOP_OTLP_RELAY_ENABLED");
+  const triageEnabled = flag(source, "KEYLOOP_TRIAGE_ENABLED");
+  const triageAccountId = setting(source, "KEYLOOP_TRIAGE_ACCOUNT_ID", "");
+  const triageGatewayId = setting(source, "KEYLOOP_TRIAGE_GATEWAY_ID", "keyloop-scheduler");
+  triageSettings(triageEnabled, triageAccountId, triageGatewayId);
   const emailTransport = setting(source, "KEYLOOP_EMAIL_TRANSPORT", "binding");
   if (emailTransport !== "binding" && emailTransport !== "rest") throw new Error("Set KEYLOOP_EMAIL_TRANSPORT to binding or rest");
   const emailAccountId = setting(source, "KEYLOOP_EMAIL_ACCOUNT_ID", "");
@@ -47,5 +51,6 @@ export function edgeSettings(source: Source) {
     secretsStoreId, apiImage, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
     emailAllowedAddresses, emailAllowedDomains, emailMaxPerRecipientPerDay: caps.perRecipient, emailMaxPerDay: caps.perDay,
     otlpRelayEnabled, grafanaOtlpEndpoint,
+    triageEnabled, triageAccountId, triageGatewayId,
   };
 }

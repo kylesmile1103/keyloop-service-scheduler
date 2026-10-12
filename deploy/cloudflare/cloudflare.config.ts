@@ -39,6 +39,12 @@ export default defineConfig({
       ASSETS: bindings.assets(),
       API: bindings.durableObject({ worker: "keyloop-scheduler", exportName: "ApiContainer" }),
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),
+      ...(settings.triageEnabled === "true" ? {
+        AI_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_ai_token" }),
+      } : {}),
+      TRIAGE_ENABLED: bindings.text(settings.triageEnabled),
+      TRIAGE_ACCOUNT_ID: bindings.text(settings.triageAccountId),
+      TRIAGE_GATEWAY_ID: bindings.text(settings.triageGatewayId),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["notifications@keyloop.kylesmile.me"] }),
       // Disabled integrations must not require provisioning unused credentials.
       ...(settings.emailTransport === "rest" ? {
