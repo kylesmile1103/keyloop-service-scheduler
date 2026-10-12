@@ -180,7 +180,7 @@ scripts/                     Contract export and AOT measurement
 references/README.md         Reference provenance
 ```
 
-Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard the emitted assembly dependencies.
+Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard both the project files and the compiled assembly references.
 
 AppHost, Web and AspireTests are integration targets for this draft, as described above. Generated client files are regenerated from OpenAPI; hand-written runtime configuration stays separate from them.
 
