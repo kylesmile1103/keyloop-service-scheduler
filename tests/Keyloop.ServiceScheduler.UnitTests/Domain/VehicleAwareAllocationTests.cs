@@ -19,6 +19,7 @@ public sealed class VehicleAwareAllocationTests
     {
         var random = new Random(seed);
         var allocations = 0;
+        var allocatedCodes = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var trial = 0; trial < 500; trial++)
         {
             var profile = VehicleProfile.Unknown with { Powertrain = (Powertrain)random.Next(7), VehicleClass = (VehicleClass)random.Next(4) };
@@ -45,8 +46,11 @@ public sealed class VehicleAwareAllocationTests
                 concrete.BayCapabilities.IsSubsetOf(unknown.BayCapabilities).ShouldBeTrue();
                 concrete.Certifications.IsSubsetOf(unknown.Certifications).ShouldBeTrue();
             }
+            // Random equipment from every capability; about half the bays also carry the service's own, so each code stays feasible
+            // while rule-added capabilities (EV bay, heavy lift) are present only by chance.
             var bays = Enumerable.Range(1, 5).Select(i => ServiceBay.Create(Id(i), Site, $"Bay {i}",
-                random.Next(2) == 0 ? [BayCapability.StandardLift] : [BayCapability.StandardLift, BayCapability.EvHighVoltage, BayCapability.HeavyDutyLift])).ToArray();
+                Enum.GetValues<BayCapability>().Where(_ => random.Next(2) == 0)
+                    .Union(random.Next(2) == 0 ? service.RequiredBayCapabilities : []))).ToArray();
             var technicians = Enumerable.Range(10, 8).Select(i => Technician.Create(Id(i), Site, $"Tech {i}", $"T{i}",
                 random.Next(2) == 0 ? [Certification.Brakes] : [.. Enum.GetValues<Certification>()],
                 hvLevel: random.Next(5), hvLevelValidUntil: Day.AddDays(random.Next(-1, 2)), hvLevelConfirmed: random.Next(2) == 0)).ToArray();
@@ -54,6 +58,7 @@ public sealed class VehicleAwareAllocationTests
             if (result is not null)
             {
                 allocations++;
+                allocatedCodes[code] = allocatedCodes.GetValueOrDefault(code) + 1;
                 result.Bay.Satisfies(requirements).ShouldBeTrue($"seed {seed}, trial {trial}");
                 result.Technician.Satisfies(requirements, Day).ShouldBeTrue($"seed {seed}, trial {trial}");
                 var reversed = AllocationPolicy.Allocate(bays.Reverse().ToArray(), technicians.Reverse().ToArray(), requirements, Day,
@@ -64,6 +69,9 @@ public sealed class VehicleAwareAllocationTests
             }
         }
         allocations.ShouldBeGreaterThan(0, $"seed {seed} must exercise feasible allocations");
+        // Every service's own requirements must reach the allocator, not only those a generic lift can satisfy.
+        RequirementRule.HvServiceCodes.Where(code => allocatedCodes.GetValueOrDefault(code) == 0)
+            .ShouldBeEmpty($"seed {seed} never allocated these services");
     }
 
     [Fact]
