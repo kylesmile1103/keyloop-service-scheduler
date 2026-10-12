@@ -20,7 +20,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Authentication;
 /// </summary>
 internal static class PersonalData
 {
-    internal const string MaskedRegistration = "*******";
+    internal const string MaskedRegistration = VehicleDetails.MaskedRegistration;
 
     /// <summary>The values a caller receives.</summary>
     internal readonly record struct Values(string CustomerName, string Vin, string Registration);

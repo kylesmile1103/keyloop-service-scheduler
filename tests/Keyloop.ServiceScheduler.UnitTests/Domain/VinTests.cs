@@ -48,6 +48,18 @@ public class VinTests
     {
         var vin = Vin.Create("WVWZZZ1KZAW123456");
         vin.ToString().ShouldBe("***********123456");
-        new VehicleDetails(vin, "ab12 cde", "VW", "Golf").ToString().ShouldBe("***********123456 AB12 CDE VW Golf");
+    }
+
+    [Fact]
+    public void Vehicle_ToString_masks_both_the_VIN_and_the_whole_registration()
+    {
+        // Nothing logs a vehicle today; if anything ever formats one (a log, an exception, a record's generated ToString), no plate
+        // character or length escapes, matching the anonymous reads' registration mask.
+        var vehicle = new VehicleDetails(Vin.Create("WVWZZZ1KZAW123456"), "ab12 cde", "VW", "Golf");
+
+        vehicle.ToString().ShouldBe("***********123456 ******* VW Golf");
+        vehicle.ToString().ShouldNotContain("CDE");
+        VehicleDetails.MaskedRegistration.ShouldBe("*******");
+        new VehicleDetails(Vin.Create("WVWZZZ1KZAW123456"), "K1 NGS", "VW", "Golf").ToString().ShouldBe("***********123456 ******* VW Golf");
     }
 }
