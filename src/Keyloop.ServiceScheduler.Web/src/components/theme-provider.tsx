@@ -18,8 +18,12 @@ function subscribeToSystemTheme(onChange: () => void) {
 }
 
 function readTheme(storageKey: string, fallback: Theme): Theme {
-  const stored = localStorage.getItem(storageKey)
-  return stored === "dark" || stored === "light" || stored === "system" ? stored : fallback
+  try {
+    const stored = localStorage.getItem(storageKey)
+    return stored === "dark" || stored === "light" || stored === "system" ? stored : fallback
+  } catch {
+    return fallback
+  }
 }
 
 export function ThemeProvider({
@@ -47,7 +51,11 @@ export function ThemeProvider({
       theme,
       resolvedTheme,
       setTheme: (next: Theme) => {
-        localStorage.setItem(storageKey, next)
+        try {
+          localStorage.setItem(storageKey, next)
+        } catch {
+          // Storage may be blocked; the current page still supports theme changes.
+        }
         setTheme(next)
       },
     }),

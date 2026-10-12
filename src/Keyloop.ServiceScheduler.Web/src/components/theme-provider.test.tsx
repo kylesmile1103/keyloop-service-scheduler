@@ -35,6 +35,21 @@ function systemTheme(prefersDark: boolean) {
 const html = document.documentElement
 
 describe("theme", () => {
+  it("renders and switches theme when localStorage reads and writes are blocked", () => {
+    systemTheme(true)
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Blocked", "SecurityError")
+    })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Blocked", "SecurityError")
+    })
+    render(<ThemeProvider><ModeToggle /></ThemeProvider>)
+    expect(html).toHaveClass("dark")
+    fireEvent.click(screen.getByRole("button", { name: "Switch to light mode" }))
+    expect(html).toHaveClass("light")
+    expect(screen.getByRole("button", { name: "Switch to dark mode" })).toBeInTheDocument()
+  })
+
   it("follows the operating system while set to system", () => {
     const os = systemTheme(false)
     render(<ThemeProvider defaultTheme="system" storageKey="theme-test">{null}</ThemeProvider>)
