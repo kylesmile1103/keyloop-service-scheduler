@@ -45,6 +45,17 @@ export const diagnosticsServiceType: ServiceTypeResponse = {
   bookable: true,
 }
 
+/** The seeded Accident Damage Assessment (Task 32a), with the catalogue's id. */
+export const assessmentServiceType: ServiceTypeResponse = {
+  id: "651b016b-c559-8313-9f1c-d22ecd706059",
+  code: "ACCIDENT-DAMAGE-ASSESSMENT",
+  name: "Accident Damage Assessment",
+  durationMinutes: 60,
+  requiredBayCapabilities: ["StandardLift"],
+  requiredCertifications: ["DamageAssessment"],
+  bookable: true,
+}
+
 /** A triage answer: the recommendation, its candidates with their probabilities (most likely first) and the day asked for. */
 export function triageAnswer(
   recommendation: "suggest" | "confirm" | "no-match",

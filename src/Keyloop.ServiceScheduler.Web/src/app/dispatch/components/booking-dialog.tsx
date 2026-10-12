@@ -66,6 +66,7 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
+import { serviceHelp } from "@/lib/service-help"
 import { cachedIdentityKey } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
@@ -1074,6 +1075,9 @@ function StepOne({
                               <span className="font-medium">{candidate.name}</span>
                               <span className="text-xs text-muted-foreground tabular-nums">{`${candidate.durationMinutes} min`}</span>
                             </span>
+                            {serviceHelp(candidate.code) && (
+                              <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(candidate.code)}</span>
+                            )}
                             {candidate.bookable ? (
                               <CapabilityBadges
                                 capabilities={candidate.requiredBayCapabilities}
@@ -1103,6 +1107,7 @@ function StepOne({
                   />
                 </span>
               )}
+              {serviceHelp(service?.code) && <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(service?.code)}</span>}
               <FormError message={fieldState.error?.message} />
             </Field>
           )}

@@ -16,6 +16,7 @@ import { featureList } from "@/lib/features"
 import { illustrationAlt, illustrations } from "@/lib/illustrations"
 import { openingHoursOn } from "@/lib/opening-hours"
 import { authRefusalTitle, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
+import { serviceHelp } from "@/lib/service-help"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
@@ -387,15 +388,19 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
 }
 
 /**
- * One suggested service as a card in a radio group (arrow keys move, Space chooses): its name, duration and needs, and how
- * likely it is: "Likely" or "Possible" with the percentage, and a thin meter to compare the cards at a glance.
+ * One suggested service as a card in a radio group (arrow keys move, Space chooses): its name, duration, help line (for a
+ * service whose name alone could mislead) and needs, and how likely it is: "Likely" or "Possible" with the percentage, and
+ * a thin meter to compare the cards at a glance.
  */
 function CandidateCard({ candidate }: { candidate: Candidate }) {
   const descriptionId = useId()
+  const helpId = useId()
   const { serviceType, entry, usable, reason, likelihood, percent } = candidate
   const needs = entry ? featureList(entry.requiredBayCapabilities, entry.requiredCertifications, true) : []
-  // Described by why it cannot be chosen, or else by what it needs (when it needs more than every bay and technician has).
-  const described = !usable || needs.length > 0 ? descriptionId : undefined
+  const help = serviceHelp(serviceType.code)
+  // Described by its help line, then by why it cannot be chosen, or else by what it needs (when it needs more than every
+  // bay and technician has).
+  const described = [help ? helpId : null, !usable || needs.length > 0 ? descriptionId : null].filter(Boolean).join(" ") || undefined
 
   return (
     <Radio.Root
@@ -422,6 +427,11 @@ function CandidateCard({ candidate }: { candidate: Candidate }) {
           <span className="text-sm leading-snug font-semibold">{serviceType.name}</span>
           <span className="text-xs text-muted-foreground tabular-nums">{`${serviceType.durationMinutes} min`}</span>
         </span>
+        {help && (
+          <span id={helpId} className="text-xs text-pretty text-muted-foreground">
+            {help}
+          </span>
+        )}
         {usable ? (
           needs.length > 0 && entry && (
             <CapabilityBadges
