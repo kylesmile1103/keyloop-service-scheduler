@@ -9,7 +9,7 @@ import { reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
-import { interimServiceType } from "@/test/schedules"
+import { availabilityOn, interimServiceType } from "@/test/schedules"
 import {
   askedFor,
   brakesServiceType,
@@ -220,11 +220,65 @@ describe("suggesting a service from the issue", () => {
 
     expect(await within(scope).findByText("Sun 18 Oct")).toBeInTheDocument()
     expect(within(scope).getByText("The workshop is closed on Sundays, so the date is not changed.")).toBeInTheDocument()
+    expect(
+      within(scope).getByText("Likely: Brake Pads & Discs, 90%. Asked for Sunday 18 October, when the workshop is closed. Check it, then choose Use this.")
+    ).toHaveAttribute("role", "status")
     fireEvent.click(within(scope).getByRole("button", { name: "Use this" }))
 
     await waitFor(() => expect(within(scope).getByRole("combobox", { name: "Service" })).toHaveTextContent("Brake Pads & Discs"))
     expect(within(scope).getByRole("button", { name: /^Date, / })).toHaveAccessibleName("Date, Tuesday 13 October 2026")
     await waitFor(() => expect(availabilityReads(api.requests)).toContainEqual({ serviceTypeId: brakesServiceType.id, date: "2026-10-13" }))
+  })
+
+  it("says a day asked for that has already passed is not applied, without calling the workshop closed then", async () => {
+    const api = mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      // Monday, when Reading opens, but the day before today: an answer for a description sent just before midnight.
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.9]], askedFor("2026-10-12")),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Brakes grinding, can you do Monday?")
+
+    expect(await within(scope).findByText("Mon 12 Oct")).toBeInTheDocument()
+    expect(within(scope).getByText("That day has passed, so the date is not changed.")).toBeInTheDocument()
+    expect(within(scope).queryByText(/workshop is closed/)).not.toBeInTheDocument()
+    expect(
+      within(scope).getByText("Likely: Brake Pads & Discs, 90%. Asked for Monday 12 October, which has passed. Check it, then choose Use this.")
+    ).toHaveAttribute("role", "status")
+    fireEvent.click(within(scope).getByRole("button", { name: "Use this" }))
+
+    await waitFor(() => expect(within(scope).getByRole("combobox", { name: "Service" })).toHaveTextContent("Brake Pads & Discs"))
+    expect(within(scope).getByRole("button", { name: /^Date, / })).toHaveAccessibleName("Date, Tuesday 13 October 2026")
+    await waitFor(() => expect(availabilityReads(api.requests)).toContainEqual({ serviceTypeId: brakesServiceType.id, date: "2026-10-13" }))
+  })
+
+  it("drops a start chosen by hand when a suggestion is used, so a start for the new service and day is chosen again", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      // Each day's free starts are its own: Tuesday's 10:15 is not among Thursday's chips.
+      availability: (_, __, date) => availabilityOn(date),
+      triage: () => triageAnswer("suggest", [[brakesServiceType, 0.85]], askedFor("2026-10-15")),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await chooseInterimAt1015(scope)
+    await describeAndSuggest(scope)
+    fireEvent.click(await within(scope).findByRole("button", { name: "Use this" }))
+
+    await waitFor(() => expect(within(scope).getByRole("combobox", { name: "Service" })).toHaveTextContent("Brake Pads & Discs"))
+    expect(within(scope).getByRole("button", { name: /^Date, / })).toHaveAccessibleName("Date, Thursday 15 October 2026")
+    const starts = await within(scope).findByRole("radiogroup", { name: "Start time" })
+    await waitFor(() => expect(within(starts).getByRole("radio", { name: /^10:15/ })).toHaveFocus())
+    for (const chip of within(starts).getAllByRole("radio")) expect(chip).toHaveAttribute("aria-checked", "false")
+
+    // Nothing carries Tuesday's Interim start on to step 2: Next asks for a start instead.
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    expect(await within(scope).findByText("Pick a start time")).toBeInTheDocument()
+    expect(within(scope).getByRole("heading", { name: "Service and time" })).toBeInTheDocument()
+    expect(within(scope).queryByRole("heading", { name: "Customer and vehicle" })).not.toBeInTheDocument()
   })
 
   it("shows the shared problem alert when suggestions are unavailable, and booking by hand still works", async () => {

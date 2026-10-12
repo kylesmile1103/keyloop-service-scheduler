@@ -269,3 +269,17 @@ export const interimAvailability: AvailabilityResponse = {
   ],
   unavailableReason: null,
 }
+
+/** Interim Service's free starts on any day: 10:15 and 10:30 local (BST), on the day asked, so each day's starts are its own. */
+export function availabilityOn(date: string): AvailabilityResponse {
+  return {
+    ...interimAvailability,
+    date,
+    slots: interimAvailability.slots.map((slot) => ({
+      ...slot,
+      startUtc: `${date}${slot.startUtc.slice(10)}`,
+      endUtc: `${date}${slot.endUtc.slice(10)}`,
+      startLocal: `${date}${slot.startLocal.slice(10)}`,
+    })),
+  }
+}

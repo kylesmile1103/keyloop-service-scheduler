@@ -32,7 +32,6 @@ function capacity(slot: Pick<AvailabilitySlotResponse, "freeBays" | "freeTechnic
   return `${plural(slot.freeBays, "bay")} · ${plural(slot.freeTechnicians, "tech")}`
 }
 
-
 interface AvailabilityChipsProps {
   dealershipId: string
   /** The chosen service; until there is one, the chips ask for it. */
@@ -77,7 +76,12 @@ export function AvailabilityChips({ dealershipId, focusRequest = 0, ...view }: A
   useEffect(() => {
     if (focusRequest === 0 || handled.current === focusRequest || !settled) return
     handled.current = focusRequest
-    area.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"], [role="radio"], button')?.focus()
+    // One query each, in order of preference: a selector list would return whichever match comes first on the page.
+    const target =
+      area.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ??
+      area.current?.querySelector<HTMLElement>('[role="radio"]') ??
+      area.current?.querySelector<HTMLElement>("button")
+    target?.focus()
   }, [focusRequest, settled])
 
   return (

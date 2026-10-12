@@ -32,16 +32,16 @@ interface BookingTriageProps {
   current: { serviceTypeId: string; date: string }
   /** Notes already holds the person's own text, so ticking the box copies nothing (it never overwrites). */
   notesHaveOwnText: boolean
-  /** "Use this": the service, and the day asked for when the workshop is open then. */
+  /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
   onUse: (serviceTypeId: string, date: string | null) => void
 }
 
 /**
  * Booking intake triage in step 1 (SYSTEM_DESIGN §8.10, §15): the issue in the customer's words, "Suggest a service", and
  * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
- * possible ones (nothing chosen when the model is unsure), or a plain "no match". Using one sets the service and, when the
- * workshop is open that day, the day asked for; the free starts for them come next. A failure leaves the manual choice
- * below as it is.
+ * possible ones (nothing chosen when the model is unsure), or a plain "no match". Using one sets the service and, when that
+ * day is still to come and the workshop is open then, the day asked for; the free starts for them come next. A failure
+ * leaves the manual choice below as it is.
  */
 export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse }: BookingTriageProps) {
   const ids = { description: useId(), help: useId(), count: useId(), error: useId() }
@@ -184,12 +184,15 @@ function candidatesOf(response: TriageBookingResponse, serviceTypes: ServiceType
   })
 }
 
-/** The day asked for, and whether "Use this" sets it: only a day the workshop opens, from today on. */
+/** Why "Use this" leaves the day asked for alone: it has passed (an answer from before midnight), or the workshop is closed. */
+type DayNotUsed = "passed" | "closed"
+
+/** The day asked for, and why "Use this" leaves it alone, if it does: only a day from today on that the workshop opens is set. */
 function dayAskedFor(response: TriageBookingResponse, dealership: DealershipResponse, today: string) {
   const date = response.preferredDate?.date
   if (!date) return null
-  const open = date >= today && openingHoursOn(dealership, weekdayOf(date)) !== null
-  return { date, open }
+  const notUsed: DayNotUsed | null = date < today ? "passed" : openingHoursOn(dealership, weekdayOf(date)) === null ? "closed" : null
+  return { date, notUsed }
 }
 
 const dayName = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
@@ -198,7 +201,8 @@ const dayName = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 function announcement(response: TriageBookingResponse, dealership: DealershipResponse, today: string): string {
   const candidates = candidatesOf(response, undefined)
   const day = dayAskedFor(response, dealership, today)
-  const asked = day ? `Asked for ${dayName(day.date)}${day.open ? "" : ", when the workshop is closed"}. ` : ""
+  const why = day?.notUsed === "passed" ? ", which has passed" : day?.notUsed === "closed" ? ", when the workshop is closed" : ""
+  const asked = day ? `Asked for ${dayName(day.date)}${why}. ` : ""
   if (response.recommendation === "no-match" || candidates.length === 0) {
     return "No service here matches the description. Choose the service yourself."
   }
@@ -244,7 +248,7 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
   const day = dayAskedFor(response, dealership, today)
   // Only a candidate this dealership can book can be chosen (a "suggest" preselects its likely one only if so).
   const chosen = candidates.find((candidate) => candidate.serviceType.id === selected && candidate.usable) ?? null
-  const usableDate = day?.open ? day.date : null
+  const usableDate = day && day.notUsed === null ? day.date : null
   const inUse = chosen !== null && current.serviceTypeId === chosen.serviceType.id && (usableDate === null || current.date === usableDate)
   const matched = response.recommendation !== "no-match" && candidates.length > 0
 
@@ -273,7 +277,7 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
         </RadioGroup>
       )}
 
-      {matched && day && <DayAskedFor date={day.date} open={day.open} />}
+      {matched && day && <DayAskedFor date={day.date} notUsed={day.notUsed} />}
 
       {matched && (
         <div>
@@ -364,9 +368,9 @@ function CandidateCard({ candidate }: { candidate: Candidate }) {
   )
 }
 
-/** The day asked for: a chip, struck through with the reason when the workshop is closed then (it is not applied). */
-function DayAskedFor({ date, open }: { date: string; open: boolean }) {
-  const Icon = open ? CalendarDays : CalendarX2
+/** The day asked for: a chip, struck through with the reason when it has passed or the workshop is closed then (it is not applied). */
+function DayAskedFor({ date, notUsed }: { date: string; notUsed: DayNotUsed | null }) {
+  const Icon = notUsed === null ? CalendarDays : CalendarX2
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -374,16 +378,18 @@ function DayAskedFor({ date, open }: { date: string; open: boolean }) {
         <span
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-chip border border-input bg-card px-2.5 text-sm font-medium tabular-nums",
-            !open && "text-muted-foreground line-through"
+            notUsed !== null && "text-muted-foreground line-through"
           )}
         >
           <Icon aria-hidden="true" className="size-4 shrink-0" />
           <span>{formatDay(date, "short")}</span>
         </span>
       </div>
-      {!open && (
+      {notUsed !== null && (
         <p className="text-xs text-pretty text-muted-foreground">
-          {`The workshop is closed on ${weekdayOf(date)}s, so the date is not changed.`}
+          {notUsed === "passed"
+            ? "That day has passed, so the date is not changed."
+            : `The workshop is closed on ${weekdayOf(date)}s, so the date is not changed.`}
         </p>
       )}
     </div>

@@ -1,14 +1,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { AvailabilityResponse, BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
+import type { BookAppointmentRequest, WorkshopScheduleResponse } from "@/api/types.gen"
 import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
-import { interimAvailability, readingTuesday } from "@/test/schedules"
+import { availabilityOn, readingTuesday } from "@/test/schedules"
 
 // The concurrency stress panel (Task 17): N bookings for one slot at once, tallied live, with every answer listed.
 
@@ -31,20 +31,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
 })
-
-/** Interim Service's free starts on any day: 10:15 and 10:30 local (BST), on the day asked. */
-function availabilityOn(date: string): AvailabilityResponse {
-  return {
-    ...interimAvailability,
-    date,
-    slots: interimAvailability.slots.map((slot) => ({
-      ...slot,
-      startUtc: `${date}${slot.startUtc.slice(10)}`,
-      endUtc: `${date}${slot.endUtc.slice(10)}`,
-      startLocal: `${date}${slot.startLocal.slice(10)}`,
-    })),
-  }
-}
 
 /**
  * The API under contention: the first booking wins, every other one finds the slot taken. The winner then shows on
