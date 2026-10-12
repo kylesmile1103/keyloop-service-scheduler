@@ -1,6 +1,7 @@
 import { type ReactNode, useId, useRef } from "react"
 
 import { DevelopmentIdentityNote } from "@/components/auth/development-identity-note"
+import { IdentityCheckFailed } from "@/components/auth/identity-check-failed"
 import { SignInAction } from "@/components/auth/sign-in-action"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
@@ -16,6 +17,7 @@ interface SignInPromptProps {
  * Sign in to book (UI_DESIGN 11.20): what an anonymous visitor sees instead of the booking dialog, before anything is
  * entered, so no booking is half-typed and then lost to the sign-in's navigation. The picture, why booking needs an account,
  * and two actions: Sign in (focused, returning to this page) and Not now (focus goes back to the button that opened it).
+ * While `/me` cannot be read it also says so, with Try again.
  */
 export function SignInPrompt({ open, onOpenChange }: SignInPromptProps) {
   const signIn = useRef<HTMLAnchorElement>(null)
@@ -38,6 +40,7 @@ export function SignInPrompt({ open, onOpenChange }: SignInPromptProps) {
             details masked.
           </DialogDescription>
           <DevelopmentIdentityNote />
+          <IdentityCheckFailed className="items-center" />
         </div>
         <DialogFooter className="mx-0 mb-0 px-6 max-sm:*:w-full">
           <DialogClose render={<Button variant="outline" />}>Not now</DialogClose>
@@ -79,6 +82,7 @@ export function SignInPanel({ title, children, className }: SignInPanelProps) {
         </h3>
         <div className="flex flex-col gap-1 text-sm text-pretty text-muted-foreground">{children}</div>
         <DevelopmentIdentityNote />
+        <IdentityCheckFailed />
         <SignInAction size="sm" className="mt-1 self-start" />
       </div>
     </section>

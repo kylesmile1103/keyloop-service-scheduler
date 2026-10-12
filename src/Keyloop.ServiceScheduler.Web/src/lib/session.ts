@@ -1,3 +1,5 @@
+import type { QueryClient } from "@tanstack/react-query"
+
 import { getCurrentUserOptions } from "@/api/@tanstack/react-query.gen"
 import type { CurrentUserResponse } from "@/api/types.gen"
 
@@ -118,16 +120,36 @@ export const NO_ROLE_REASON =
 /**
  * The `/me` read. Fresh for a minute, so moving between pages does not ask again, but read again whenever the window
  * regains focus, so signing in or out in another tab is noticed on return. A failed read is not read again just because
- * another component that asks for it mounts (TanStack's `retryOnMount`): with no data it would go back to loading, and a
- * view that mounts a reader only once it has failed (Settings > Account's Sign in) would ask again for ever. Try again,
- * the window's focus and the next refusal read it again.
+ * another component that asks for it mounts, whether or not an earlier answer is cached (TanStack's `retryOnMount`
+ * covers only the case without one, and marks a failed re-read's data stale): with no data it would go back to loading,
+ * and a view that mounts a reader only once it has failed (Settings > Account's Sign in, a prompt's Try again) would ask
+ * again for ever. TanStack's own retry (lib/query-client.ts), Try again, the window's focus and the next refusal read it
+ * again.
  */
 export const currentUserQuery = () => ({
   ...getCurrentUserOptions(),
   staleTime: 60_000,
   refetchOnWindowFocus: "always" as const,
+  refetchOnMount: (query: { state: { status: string } }) => query.state.status !== "error",
   retryOnMount: false,
 })
 
 /** The `/me` query's key, to read it again after a refusal. */
 export const currentUserQueryKey = () => getCurrentUserOptions().queryKey
+
+/**
+ * Whether the cached `/me` can be trusted: its last read succeeded. A read that failed (even one TanStack is about to try
+ * again, and even with an earlier answer still cached) leaves nobody known, so nothing is allowed until `/me` answers.
+ */
+export function identityAnswered(state: { status: string; fetchFailureCount: number } | undefined): boolean {
+  return state?.status === "success" && state.fetchFailureCount === 0
+}
+
+/**
+ * What the cached `/me` allows at this moment, for a decision taken outside rendering: a read's `enabled` when it would
+ * run, a write as it is sent. Nothing unless its last read succeeded (`identityAnswered`), as `useCurrentUser` decides.
+ */
+export function cachedCapabilities(queryClient: QueryClient): Capabilities {
+  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
+  return capabilitiesOf(identityAnswered(state) ? state?.data : undefined)
+}

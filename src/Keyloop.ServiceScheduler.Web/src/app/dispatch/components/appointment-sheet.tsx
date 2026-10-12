@@ -9,7 +9,7 @@ import {
   getAvailabilityQueryKey,
   getWorkshopScheduleQueryKey,
 } from "@/api/@tanstack/react-query.gen"
-import type { AppointmentResponse, CurrentUserResponse, GetAvailabilityData } from "@/api/types.gen"
+import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
 import vehiclePlaceholder from "@/assets/illustrations/vehicle-placeholder.webp"
 import { SignInPanel } from "@/components/auth/sign-in-prompt"
 import { WriteReason } from "@/components/auth/write-reason"
@@ -26,7 +26,7 @@ import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, 
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 import { formatLocalTime } from "@/lib/local-time"
-import { capabilitiesOf, currentUserQueryKey } from "@/lib/session"
+import { cachedCapabilities } from "@/lib/session"
 import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
@@ -137,13 +137,10 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const writeAccess = writeAccessOf(current)
   const path = { appointmentId: appointment.id }
   const detailsOptions = getAppointmentOptions({ path })
-  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes,
-  // the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
-  // rendered for the new caller, and a visitor must never send the read.
-  const details = useQuery({
-    ...detailsOptions,
-    enabled: () => open && capabilitiesOf(queryClient.getQueryData<CurrentUserResponse>(currentUserQueryKey())).canViewDetails,
-  })
+  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes or
+  // fails, the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
+  // rendered for the new state, and a visitor (or nobody known) must never send the read.
+  const details = useQuery({ ...detailsOptions, enabled: () => open && cachedCapabilities(queryClient).canViewDetails })
   // Skeletons while the record may still come: until `/me` answers, and while a role's read is out.
   const recordLoading = detailsAccess === "checking" || (detailsAccess === "allowed" && details.isPending)
   // Kept while Try again reads the record again, so the alert and its focused button stay until the answer.

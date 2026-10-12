@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import type { CurrentUserResponse } from "@/api/types.gen"
 import { detailsAccessOf, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { createQueryClient } from "@/lib/query-client"
-import { NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
+import { cachedCapabilities, capabilitiesOf, currentUserQueryKey, NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
 import { jsonResponse, mockApi } from "@/test/mock-api"
 
@@ -69,6 +69,78 @@ describe("the current user", () => {
     expect(second.result.current.status).toBe("failed")
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(meRequests(api.requests)).toHaveLength(1)
+  })
+
+  it("counts a failed re-read as failed and signed out, though an earlier answer is still cached", async () => {
+    let failing = false
+    mockApi(() => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : jsonResponse(admin)))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.canWrite).toBe(true))
+
+    failing = true
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    await waitFor(() => expect(result.current.status).toBe("failed"))
+    // The answer from before the failure grants nothing any more, here or where a decision reads the cache.
+    expect(queryClient.getQueryData(currentUserQueryKey())).toEqual(admin)
+    expect(result.current.user).toBeUndefined()
+    expect(result.current.authenticated).toBe(false)
+    expect(writeAccessOf(result.current)).toEqual({ state: "sign-in" })
+    expect(detailsAccessOf(result.current)).toBe("sign-in")
+    expect(cachedCapabilities(queryClient)).toEqual(capabilitiesOf(undefined))
+    expect(result.current.error).not.toBeNull()
+
+    // Try again: still failed while it reads, then the answer.
+    failing = false
+    act(() => result.current.refetch())
+    expect(result.current.status).toBe("failed")
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+    expect(result.current.canWrite).toBe(true)
+    expect(cachedCapabilities(queryClient).canWrite).toBe(true)
+  })
+
+  it("does not read /me again on a later mount after a re-read failed either, though the earlier answer is cached", async () => {
+    let failing = false
+    const api = mockApi(() => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : jsonResponse(admin)))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+    failing = true
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await waitFor(() => expect(result.current.status).toBe("failed"))
+
+    const second = renderCurrentUser(queryClient)
+
+    expect(second.result.current.status).toBe("failed")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(meRequests(api.requests)).toHaveLength(2)
+  })
+
+  it("counts a read that failed once as failed while it is tried again on its own", async () => {
+    let reads = 0
+    mockApi(() => (++reads === 2 ? new Response("", { status: 502, statusText: "Bad Gateway" }) : jsonResponse(admin)))
+    // The production policy: a failed read is tried once more by itself (lib/query-client.ts), here after 100 ms.
+    const queryClient = createQueryClient()
+    queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: 1, retryDelay: 100 } })
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    const { result } = renderHook(() => useCurrentUser(), { wrapper })
+    await waitFor(() => expect(result.current.canWrite).toBe(true))
+
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+
+    await waitFor(() => expect(result.current.status).toBe("failed"))
+    expect(result.current.fetching).toBe(true)
+    expect(cachedCapabilities(queryClient).canWrite).toBe(false)
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+    expect(reads).toBe(3)
   })
 
   it("reads /me again when the window regains focus, so a sign-in in another tab is noticed", async () => {

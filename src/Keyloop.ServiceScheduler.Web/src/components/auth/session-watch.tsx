@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { describeFailure, failureStatus } from "@/lib/problem-details"
 import { currentUserQueryKey, identityKey } from "@/lib/session"
+
+/** The identity while `/me` cannot be read: nobody known, the same to the cache as a change of caller. */
+const UNKNOWN = "unknown"
 import { clearCallerData, refetchCallerData } from "@/lib/session-cache"
 
 interface SessionProblem {
@@ -23,8 +26,9 @@ interface SessionProblem {
  * - a `401` from any query or mutation opens "Your session has ended" with Sign in (the API's login path on this origin,
  *   back to this page; the problem's own `loginUrl` is never followed); a `403` opens "Your role doesn't allow that".
  *   Either reads `/me` again;
- * - when `/me` names another caller than before (signed in or out, another email, other roles), whatever the previous
- *   caller read is cleared (lib/session-cache.ts) and the views read it again as the new one.
+ * - when `/me` names another caller than before (signed in or out, another email, other roles), or cannot be read (nobody
+ *   is known until it answers again), whatever the previous caller read is cleared (lib/session-cache.ts) and the views
+ *   read it again as the new one.
  * Mounted once, after the routes in the root layout. The re-read can still come before a view has rendered for the new
  * caller, so a read only a role may make decides at fetch time from the cached identity (the details sheet's record).
  */
@@ -50,20 +54,31 @@ export function SessionWatch() {
       void queryClient.invalidateQueries({ queryKey: meKey })
     }
 
+    const becomes = (next: string) => {
+      if (identity !== null && next !== identity) {
+        clearCallerData(queryClient)
+        setChanges((count) => count + 1)
+      }
+      identity = next
+    }
+
     const stopQueries = queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated") return
       if (event.query.queryHash !== meHash) {
         if (event.action.type === "error") refused(event.action.error)
         return
       }
+      // A failed read, already at its first attempt (before TanStack's own retry): whoever was signed in may not be any
+      // more, so what they read goes now, as on any change; the next answer is a change again (and clears what was read
+      // meanwhile), even when it names the same caller.
+      if (event.action.type === "failed" || event.action.type === "error") {
+        becomes(UNKNOWN)
+        signedIn = false
+        return
+      }
       if (event.action.type !== "success") return
       const me = event.action.data as CurrentUserResponse
-      const next = identityKey(me)
-      if (identity !== null && next !== identity) {
-        clearCallerData(queryClient)
-        setChanges((count) => count + 1)
-      }
-      identity = next
+      becomes(identityKey(me))
       signedIn = me.authenticated
     })
     const stopMutations = queryClient.getMutationCache().subscribe((event) => {

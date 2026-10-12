@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { CurrentUserResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
-import { mockBoardApi } from "@/test/board-api"
+import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
@@ -260,5 +260,53 @@ describe("a booking dialog open when the identity changes", () => {
     expect(document.getElementById(book.getAttribute("aria-describedby")!)).toHaveTextContent(READ_ONLY_REASON)
     fireEvent.submit(book.closest("form")!)
     expect(writes(requests)).toHaveLength(0)
+  })
+})
+
+describe("a /me that fails after it has answered", () => {
+  it("withdraws booking and the whole record at once, clears what was read, and offers Try again", async () => {
+    let failing = false
+    const api = mockBoardApi({ me: () => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : admin) })
+    const { queryClient } = renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
+    fireEvent.keyDown(sheet, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
+    const recordsBefore = recordReads()
+    const schedulesBefore = requestsTo(api.requests, "/schedule").length
+
+    // A gateway error when the window regains focus: who is signed in is no longer known.
+    failing = true
+    refocus()
+
+    await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
+    // Booking asks to sign in, and says the check failed, with Try again.
+    fireEvent.click(await bookButton())
+    const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(within(prompt).getByText("Couldn’t check who is signed in, so the app treats you as signed out.")).toBeInTheDocument()
+    // The record is not read while nobody is known, even from a sheet opened again.
+    fireEvent.click(within(prompt).getByRole("button", { name: "Not now" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const reopened = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(within(reopened).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
+    fireEvent.keyDown(reopened, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    expect(recordReads()).toBe(recordsBefore)
+
+    // Try again, and /me answers: booking opens again.
+    failing = false
+    fireEvent.click(await bookButton())
+    const again = await screen.findByRole("dialog", { name: "Sign in to book" })
+    fireEvent.click(within(again).getByRole("button", { name: "Try again" }))
+    await waitFor(() => expect(screen.queryByText("Couldn’t check who is signed in, so the app treats you as signed out.")).not.toBeInTheDocument())
+    fireEvent.click(within(again).getByRole("button", { name: "Not now" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
+    fireEvent.click(await bookButton())
+    expect(await screen.findByRole("dialog", { name: "Book appointment" })).toBeInTheDocument()
   })
 })
