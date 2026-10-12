@@ -98,7 +98,7 @@ describe("a 401 or 403 from the server", () => {
     const dialog = await sessionDialog("Your session has ended")
     expect(within(dialog).getByText(/Anything not yet saved on this page, such as a booking being entered, will need entering again\./)).toBeInTheDocument()
     const signIn = within(dialog).getByRole("link", { name: "Sign in" })
-    // The problem's own login URL, coming back to this board rather than the API's "/".
+    // The API's login path, coming back to this board rather than the API's "/".
     expect(signIn).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(board)}`)
     await waitFor(() => expect(signIn).toHaveFocus())
     expect(within(dialog).getByText(traceId)).toBeInTheDocument()
@@ -112,6 +112,28 @@ describe("a 401 or 403 from the server", () => {
     // /me now says signed out: the sheet offers sign-in in place of the cancellation.
     expect(await within(sheet).findByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
     expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["another origin", "https://evil.example/login?prompt=login&returnTo=%2F"],
+    ["a protocol-relative address", "//evil.example/auth/login?returnTo=%2F"],
+    ["another path on this origin", "/somewhere/else?returnTo=%2F"],
+    ["a script URL", "javascript:alert(1)"],
+    ["a malformed URL", "http://["],
+  ])("signs in through this origin's /auth/login whatever a 401's loginUrl says (%s)", async (_, loginUrl) => {
+    let me: CurrentUserResponse = serviceAdvisor
+    mockBoardApi({
+      me: () => me,
+      cancel: () => {
+        me = anonymous
+        return problemResponse(401, { ...unauthenticated, loginUrl })
+      },
+    })
+    renderBoard(board)
+    await cancelInterim()
+
+    const dialog = await sessionDialog("Your session has ended")
+    expect(within(dialog).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(board)}`)
   })
 
   it("answers a 403 with what the role does not allow and who assigns roles, and reads /me again", async () => {

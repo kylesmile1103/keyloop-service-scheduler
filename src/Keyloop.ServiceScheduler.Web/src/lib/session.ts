@@ -2,10 +2,9 @@ import { getCurrentUserOptions } from "@/api/@tanstack/react-query.gen"
 import type { CurrentUserResponse } from "@/api/types.gen"
 
 /**
- * Who is using the app, as `GET /api/v1/me` answers (ADR-027): the verified identity, its API roles and the Access login
- * and logout addresses. The app never sees a credential: the browser carries the hostname's Access cookie to the API,
- * signing in and out are top-level navigations to the URLs the API gives, and nothing here reads, stores or forwards a
- * token. What the roles allow mirrors the API's policies (`BookingsWrite`, `AppointmentDetails`); the API stays the
+ * Who is using the app, as `GET /api/v1/me` answers (ADR-027): the verified identity and its API roles. The app never
+ * sees a credential: the browser carries the hostname's Access cookie to the API, signing in and out are top-level
+ * navigations to the API's fixed same-origin login and logout paths, and nothing here reads, stores or forwards a token. What the roles allow mirrors the API's policies (`BookingsWrite`, `AppointmentDetails`); the API stays the
  * judge, and a refusal it sends anyway is answered in one place (components/auth/session-watch.tsx).
  */
 
@@ -60,19 +59,43 @@ export function identityKey(user: CurrentUserResponse): string {
   return [user.authenticated ? "in" : "out", user.email?.toLowerCase() ?? "", [...user.roles].sort().join(",")].join("|")
 }
 
-/** The API's login path, for the moment before `/me` has answered (it gives the same path). */
-export const DEFAULT_LOGIN_URL = "/auth/login"
+/**
+ * The API's login path (`AuthUrls.Login`, ADR-027), on this origin: the only address Sign in ever leads to. `/me` and a
+ * `401` problem carry a `loginUrl` too, always this path with `returnTo=/`; the app builds its own instead of following
+ * one, so no answer (or anything that rewrites one on the way) can send a visitor to another origin or path.
+ */
+export const LOGIN_PATH = "/auth/login"
+
+/** The hostname's Access logout (`AuthUrls.Logout`), the only address Sign out leads to. */
+export const LOGOUT_PATH = "/cdn-cgi/access/logout"
 
 /**
- * The address to navigate to for signing in: the API's login URL with `returnTo` set to the local page to come back to
- * (path and search, so `?dealership=` and `?date=` survive). The API accepts only a local path there; the rest of its URL
- * is kept as given.
+ * A page the login may come back to, checked as the API's `AuthUrls.SafeReturnTo` checks it: a local path (one leading
+ * `/`, not `//`, so no scheme and no other host), without a backslash (browsers read `/\host` as `//host`), a control
+ * character or a lone surrogate (which no URL can carry). Anything else is `/`.
  */
-export function signInHref(loginUrl: string, returnTo: string): string {
-  const origin = window.location.origin
-  const url = new URL(loginUrl || DEFAULT_LOGIN_URL, origin)
-  url.searchParams.set("returnTo", returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/")
-  return url.origin === origin ? `${url.pathname}${url.search}` : url.href
+export function safeReturnTo(value: string): string {
+  if (!value.startsWith("/") || value.startsWith("//")) return "/"
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index)
+    // `\`, C0 controls, DEL and C1 controls (.NET's `char.IsControl`).
+    if (code === 0x5c || code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return "/"
+    if (code >= 0xdc00 && code <= 0xdfff) return "/"
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const low = value.charCodeAt(index + 1)
+      if (!(low >= 0xdc00 && low <= 0xdfff)) return "/"
+      index++
+    }
+  }
+  return value
+}
+
+/**
+ * The address to navigate to for signing in: the API's login path on this origin, with `returnTo` the local page to come
+ * back to (path and search, so `?dealership=` and `?date=` survive), or `/` when that is not a safe local path.
+ */
+export function signInHref(returnTo: string): string {
+  return `${LOGIN_PATH}?${new URLSearchParams({ returnTo: safeReturnTo(returnTo) })}`
 }
 
 /**

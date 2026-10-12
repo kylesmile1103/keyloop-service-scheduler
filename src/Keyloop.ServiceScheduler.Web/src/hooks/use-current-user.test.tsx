@@ -45,8 +45,7 @@ describe("the current user", () => {
     await waitFor(() => expect(result.current.status).toBe("ready"))
     expect(writeAccessOf(result.current)).toEqual(write)
     expect(detailsAccessOf(result.current)).toBe(details)
-    expect(result.current.loginUrl).toBe(me.loginUrl)
-    expect(result.current.logoutUrl).toBe(me.logoutUrl)
+    expect(result.current.logoutUrl).toBe("/cdn-cgi/access/logout")
   })
 
   it("treats an unanswered /me as signed out, so writes ask to sign in rather than fail", async () => {
@@ -55,7 +54,7 @@ describe("the current user", () => {
 
     await waitFor(() => expect(result.current.status).toBe("failed"))
     expect(writeAccessOf(result.current)).toEqual({ state: "sign-in" })
-    expect(result.current.loginUrl).toBe("/auth/login")
+    expect(result.current.logoutUrl).toBeNull()
   })
 
   it("does not read a failed /me again just because another component asks for it", async () => {

@@ -7,14 +7,12 @@ import { DevelopmentIdentityNote } from "@/components/auth/development-identity-
 import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
-import { describeFailure, failureStatus, problemLoginUrl } from "@/lib/problem-details"
+import { describeFailure, failureStatus } from "@/lib/problem-details"
 import { currentUserQueryKey, identityKey } from "@/lib/session"
 import { clearCallerData, refetchCallerData } from "@/lib/session-cache"
 
 interface SessionProblem {
   status: 401 | 403
-  /** The 401 problem's own login URL, when it carried one. */
-  loginUrl?: string
   traceId?: string
   /** Whether the API knew a signed-in user before this refusal (the session ended) or not (it never began). */
   wasSignedIn: boolean
@@ -22,8 +20,9 @@ interface SessionProblem {
 
 /**
  * The one place the app answers the server's word on identity (ARCHITECTURE §15, UI_DESIGN 11.20):
- * - a `401` from any query or mutation opens "Your session has ended" with Sign in (the problem's `loginUrl`, back to this
- *   page); a `403` opens "Your role doesn't allow that". Either reads `/me` again;
+ * - a `401` from any query or mutation opens "Your session has ended" with Sign in (the API's login path on this origin,
+ *   back to this page; the problem's own `loginUrl` is never followed); a `403` opens "Your role doesn't allow that".
+ *   Either reads `/me` again;
  * - when `/me` names another caller than before (signed in or out, another email, other roles), whatever the previous
  *   caller read is cleared (lib/session-cache.ts) and the views read it again as the new one.
  * Mounted once, after the routes in the root layout. The re-read can still come before a view has rendered for the new
@@ -45,7 +44,7 @@ export function SessionWatch() {
       const status = failureStatus(error)
       if (status !== 401 && status !== 403) return
       const { traceId } = describeFailure(error)
-      const next: SessionProblem = { status, loginUrl: problemLoginUrl(error), traceId, wasSignedIn: signedIn }
+      const next: SessionProblem = { status, traceId, wasSignedIn: signedIn }
       // The first refusal of a burst is the one to answer; the rest say the same.
       setProblem((current) => current ?? next)
       void queryClient.invalidateQueries({ queryKey: meKey })
@@ -125,7 +124,7 @@ function SessionProblemDialog({ problem, onClose }: { problem: SessionProblem | 
               {current.status === 401 ? (
                 <>
                   <DialogClose render={<Button variant="outline" />}>Not now</DialogClose>
-                  <SignInAction ref={signIn} loginUrl={current.loginUrl} />
+                  <SignInAction ref={signIn} />
                 </>
               ) : (
                 <DialogClose ref={close} render={<Button />}>

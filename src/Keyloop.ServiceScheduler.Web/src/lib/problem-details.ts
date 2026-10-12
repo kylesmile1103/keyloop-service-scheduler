@@ -83,12 +83,6 @@ export function authRefusalTitle(status: 401 | 403, action: string): string {
   return status === 401 ? `Couldn’t ${action}: you’re signed out` : `Couldn’t ${action}: your role doesn’t allow it`
 }
 
-/** The `loginUrl` a `401 unauthenticated` problem carries (ADR-027), if any. */
-export function problemLoginUrl(error: unknown): string | undefined {
-  const problem = parseProblem(error) ?? (isRecord(error) ? parseProblem(error.cause) : null)
-  return typeof problem?.loginUrl === "string" ? problem.loginUrl : undefined
-}
-
 export interface FailureDescription {
   /** One or two sentences for the person at the screen. */
   summary: string

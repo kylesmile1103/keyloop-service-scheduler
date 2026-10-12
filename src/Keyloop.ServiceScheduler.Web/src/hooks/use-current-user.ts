@@ -6,10 +6,10 @@ import {
   type Capabilities,
   capabilitiesOf,
   currentUserQuery,
-  DEFAULT_LOGIN_URL,
   type IdentitySource,
   identitySource,
   knownRoles,
+  LOGOUT_PATH,
   NO_ROLE_REASON,
   READ_ONLY_REASON,
   type Role,
@@ -22,7 +22,7 @@ export interface CurrentUser extends Capabilities {
   user: CurrentUserResponse | undefined
   authenticated: boolean
   roles: Role[]
-  loginUrl: string
+  /** Where Sign out leads (the hostname's Access logout), when `/me` offers one; Sign in builds its own (`signInHref`). */
   logoutUrl: string | null
   source: IdentitySource
   /** The failure behind `failed`. */
@@ -49,8 +49,7 @@ export function useCurrentUser(): CurrentUser {
     authenticated: user?.authenticated === true,
     roles: user?.authenticated ? knownRoles(user.roles) : [],
     ...capabilitiesOf(user),
-    loginUrl: user?.loginUrl ?? DEFAULT_LOGIN_URL,
-    logoutUrl: user?.logoutUrl ?? null,
+    logoutUrl: user?.logoutUrl ? LOGOUT_PATH : null,
     source: identitySource(),
     error: failure,
     fetching: query.isFetching,
