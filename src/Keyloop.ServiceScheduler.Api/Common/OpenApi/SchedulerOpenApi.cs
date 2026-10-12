@@ -219,6 +219,11 @@ internal static class SchedulerOpenApi
                 Type = JsonSchemaType.Array, Items = new OpenApiSchema { Type = JsonSchemaType.String },
                 Description = "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.",
             };
+            schema.Properties["rejectedFields"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.Array, Items = new OpenApiSchema { Type = JsonSchemaType.String },
+                Description = "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.",
+            };
             schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
             schema.Required.Add(TraceIdProperty);
         }

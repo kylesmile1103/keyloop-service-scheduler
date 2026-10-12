@@ -218,6 +218,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "429"),
                 ("GET /api/v1/dealerships/{dealershipId}/availability", "400"),
                 ("GET /api/v1/dealerships/{dealershipId}/availability", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/availability", "422"),
                 ("GET /api/v1/dealerships/{dealershipId}/availability", "429"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "400"),
                 ("POST /api/v1/dealerships/{dealershipId}/appointments", "404"),
@@ -271,8 +272,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         string[] rfc9457 = ["type", "title", "status", "detail", "instance"];
         foreach (var (schema, members) in new (string, string[])[]
                  {
-                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes"]),
-                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes"]),
+                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields"]),
+                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields"]),
                  })
         {
             var problem = schemas[schema].ShouldNotBeNull(schema);

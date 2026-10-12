@@ -345,6 +345,25 @@
               }
             }
           },
+          "422": {
+            "description": "A vehicle-aware input (`powertrain`, `manufacturer`, `vehicleClass`, or `needsLiveDiagnosis=true`) while vehicle-aware requirements are disabled in this deployment (`vehicle-aware-requirements-disabled`, with `rejectedFields`): it is refused rather than ignored.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).",
             "headers": {
@@ -584,7 +603,7 @@
             }
           },
           "422": {
-            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`, or `vehicle-profile-conflict`. Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.",
+            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -2866,6 +2885,13 @@
               "type": "string"
             },
             "description": "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence."
+          },
+          "rejectedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour."
           }
         }
       },
@@ -2983,6 +3009,13 @@
               "type": "string"
             },
             "description": "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence."
+          },
+          "rejectedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour."
           }
         }
       },
@@ -3550,12 +3583,7 @@
                 "type": "null"
               },
               {
-                "description": "Optional advisor declaration. Omission keeps powertrain Unknown; the server resolves manufacturer from VIN.",
-                "examples": [
-                  {
-                    "powertrain": "Unknown"
-                  }
-                ],
+                "description": "Optional advisor declaration, for example `{\"powertrain\":\"Ice\",\"declarationReason\":\"Engine checked at intake\"}`. Omission keeps\npowertrain Unknown; the server resolves manufacturer from VIN. Only with vehicle-aware requirements enabled: otherwise any profile\nis refused (422 `vehicle-aware-requirements-disabled`), which is why the example request sends none.",
                 "$ref": "#/components/schemas/VehicleProfileRequest"
               }
             ]

@@ -226,7 +226,10 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
             props.Select(p => p.Name).ShouldBe(properties, schema);
             props.Where(p => !Describes(p.Value, "description")).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without a description");
-            props.Where(p => !p.Value.TryGetProperty("$ref", out _) && Example(p.Value) is null).Select(p => p.Name).ShouldBeEmpty($"{schema} properties without an example");
+            // The one exception is vehicle.profile: refused while vehicle-aware requirements are disabled (the default), so the example
+            // booking sends it as null and its description carries an example instead.
+            props.Where(p => !p.Value.TryGetProperty("$ref", out _) && Example(p.Value) is null && (schema, p.Name) != ("VehicleRequest", "profile"))
+                .Select(p => p.Name).ShouldBeEmpty($"{schema} properties without an example");
         }
 
         foreach (var (schema, properties) in new (string, string[])[]
@@ -405,7 +408,11 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText())
                 : schema.TryGetProperty("oneOf", out var branches) ? branches.EnumerateArray().Select(Example).FirstOrDefault(e => e is not null) : null;
 
-    /// <summary>The object Scalar would send: each property's example, with nested objects built from their own schemas' examples.</summary>
+    /// <summary>
+    /// The object Scalar would send: each property's example, with nested objects built from their own schemas' examples. A nullable
+    /// member (a <c>oneOf</c> whose first branch is <c>null</c>) without an example is sent as null, the first branch: that is how
+    /// <c>vehicle.profile</c>, refused while vehicle-aware requirements are disabled, stays out of the example booking.
+    /// </summary>
     private static JsonObject ExampleOf(JsonElement schemas, string schema)
     {
         var example = new JsonObject();
@@ -414,11 +421,15 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
             var reference = property.Value.TryGetProperty("$ref", out var r) ? r.GetString() : null;
             example[property.Name] = reference is not null
                 ? ExampleOf(schemas, reference["#/components/schemas/".Length..])
-                : Example(property.Value) ?? throw new ShouldAssertException($"{schema}.{property.Name} has no example");
+                : Example(property.Value) ?? (FirstBranchIsNull(property.Value) ? null : throw new ShouldAssertException($"{schema}.{property.Name} has no example"));
         }
 
         return example;
     }
+
+    private static bool FirstBranchIsNull(JsonElement schema) =>
+        schema.TryGetProperty("oneOf", out var branches) && branches.GetArrayLength() > 0
+        && branches[0].TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "null";
 
     private static void ShouldBeDocumented(JsonElement operation, string operationId, string tag)
     {

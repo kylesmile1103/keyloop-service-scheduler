@@ -19,6 +19,7 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
             .Produces<AvailabilityResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesRateLimitedProblem();
 
     // The dealershipId, serviceTypeId and date <param> tags document the operation's parameters, which [AsParameters] flattens out
@@ -47,6 +48,7 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     /// <response code="200">The operating window and the bookable starts in ascending order with free bay and technician counts; no starts, and a reason when the day can have none.</response>
     /// <response code="400">The service type id or the date is missing or malformed, or the date is outside the bookable range (<c>validation-error</c>, <c>errors</c> keyed <c>serviceTypeId</c> or <c>date</c>).</response>
     /// <response code="404">No dealership or no service type has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> or <c>service-type</c> and the <c>id</c>).</response>
+    /// <response code="422">A vehicle-aware input (<c>powertrain</c>, <c>manufacturer</c>, <c>vehicleClass</c>, or <c>needsLiveDiagnosis=true</c>) while vehicle-aware requirements are disabled in this deployment (<c>vehicle-aware-requirements-disabled</c>, with <c>rejectedFields</c>): it is refused rather than ignored.</response>
     /// <response code="429">Too many requests from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Ok<AvailabilityResponse>> HandleAsync(
         [AsParameters] GetAvailabilityQuery query, [FromServices] GetAvailabilityHandler handler, CancellationToken cancellationToken) =>

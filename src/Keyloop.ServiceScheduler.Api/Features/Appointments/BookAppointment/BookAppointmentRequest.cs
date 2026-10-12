@@ -80,8 +80,12 @@ public sealed record CustomerRequest(string Name, string Email, string Phone)
 /// <summary>The vehicle to be serviced.</summary>
 public sealed record VehicleRequest(string Vin, string Registration, string Make, string Model, VehicleProfileRequest? Profile = null)
 {
-    /// <summary>Optional advisor declaration. Omission keeps powertrain Unknown; the server resolves manufacturer from VIN.</summary>
-    /// <example>{"powertrain":"Unknown"}</example>
+    /// <summary>
+    /// Optional advisor declaration, for example <c>{"powertrain":"Ice","declarationReason":"Engine checked at intake"}</c>. Omission keeps
+    /// powertrain Unknown; the server resolves manufacturer from VIN. Only with vehicle-aware requirements enabled: otherwise any profile
+    /// is refused (422 <c>vehicle-aware-requirements-disabled</c>), which is why the example request sends none.
+    /// </summary>
+    /// <example>null</example>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public VehicleProfileRequest? Profile { get; init; } = Profile;
 

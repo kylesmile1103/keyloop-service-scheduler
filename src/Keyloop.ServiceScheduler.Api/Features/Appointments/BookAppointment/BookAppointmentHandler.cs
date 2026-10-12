@@ -1,4 +1,5 @@
 using System.Data;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 using System.Diagnostics;
@@ -95,7 +96,10 @@ public sealed class BookAppointmentHandler(
                 return replay;
             }
 
-            // 2. The rules that need no lock: unknown ids (404), the horizon bound, opening hours, lead time, slot grid, qualified resources (422).
+            // 2. The rules that need no lock: vehicle-aware inputs the configuration cannot honour, unknown ids (404), the horizon bound,
+            //    opening hours, lead time, slot grid, qualified resources (422).
+            VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements,
+                ("needsLiveDiagnosis", request.NeedsLiveDiagnosis), ("vehicle.profile", request.Vehicle.Profile is not null));
             var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == command.DealershipId, ct)
                 ?? throw new NotFoundException(ProblemResources.Dealership, command.DealershipId);
             var serviceType = await db.ServiceTypes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == request.ServiceTypeId, ct)

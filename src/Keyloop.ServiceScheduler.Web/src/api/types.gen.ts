@@ -495,6 +495,10 @@ export type HttpValidationProblemDetails = {
      * vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.
      */
     conflictingAttributes?: Array<string>;
+    /**
+     * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
+     */
+    rejectedFields?: Array<string>;
 };
 
 /**
@@ -554,6 +558,10 @@ export type ProblemDetails = {
      * vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.
      */
     conflictingAttributes?: Array<string>;
+    /**
+     * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
+     */
+    rejectedFields?: Array<string>;
 };
 
 export type ProfileConflictChoice = 'UseDecoded';
@@ -1105,6 +1113,10 @@ export type GetAvailabilityErrors = {
      */
     404: ProblemDetails;
     /**
+     * A vehicle-aware input (`powertrain`, `manufacturer`, `vehicleClass`, or `needsLiveDiagnosis=true`) while vehicle-aware requirements are disabled in this deployment (`vehicle-aware-requirements-disabled`, with `rejectedFields`): it is refused rather than ignored.
+     */
+    422: ProblemDetails;
+    /**
      * Too many requests from this client (`rate-limited`, with `retryAfterSeconds` and `Retry-After`).
      */
     429: ProblemDetails;
@@ -1229,7 +1241,7 @@ export type BookAppointmentErrors = {
      */
     413: ProblemDetails;
     /**
-     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`, or `vehicle-profile-conflict`. Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.
+     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.
      */
     422: ProblemDetails;
     /**

@@ -53,7 +53,7 @@ Resolve a VIN through protected `POST /api/v1/vehicle-profiles/resolve` with `{ 
 
 Booking keeps its existing vehicle fields and accepts `vehicle.profile: { "powertrain": "Ice", "declarationReason": "Engine checked at intake" }`. The server records Declared provenance, the authenticated actor and reason in private history. For a WMI/manufacturer discrepancy, for example declaring `BMW` against WVW, acknowledge with `conflictChoice: "UseDecoded"`; otherwise booking returns `422 vehicle-profile-conflict`. Decoded facts are retained. Booking/details return `allocation` with criterion, policy version, resolved HV minimum, fired rules, preferred hints and exclusion reason codes. Schedule technicians expose level, validity, confirmation and brand data when enabled. Declaration text never goes to email or telemetry; public reads keep ADR-027 masking.
 
-The flag-off response and canonical request JSON stay compatible, including existing idempotency keys. Brand specialist preference, continuity, warranty/OEM rules, Clef questions, registries, multi-technician booking and new UI are later tasks.
+The flag-off response and canonical request JSON stay compatible, including existing idempotency keys. With the flag off, a booking with `needsLiveDiagnosis: true` or a `vehicle.profile`, and availability with any vehicle parameter, is refused with `422 vehicle-aware-requirements-disabled` (naming `rejectedFields`) rather than answered with the standard qualification. Brand specialist preference, continuity, warranty/OEM rules, Clef questions, registries, multi-technician booking and new UI are later tasks.
 
 ## Optional booking intake triage
 

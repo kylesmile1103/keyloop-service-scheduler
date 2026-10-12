@@ -297,6 +297,59 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         }
     }
 
+    /// <summary>
+    /// With the flag off, qualification is the legacy service-type check, so an explicit live-HV flag or a declared profile cannot be
+    /// honoured. Accepting them would let any certified technician take work the client explicitly marked as live HV.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, "needsLiveDiagnosis")]
+    [InlineData(false, true, "vehicle.profile")]
+    [InlineData(true, true, "needsLiveDiagnosis,vehicle.profile")]
+    public async Task Flag_off_refuses_vehicle_aware_booking_inputs_instead_of_ignoring_them(bool live, bool profile, string fields)
+    {
+        using var client = _factory.CreateClient();
+        var request = TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("EV-BATTERY-CHECK"), TestData.LondonTime(10)) with { NeedsLiveDiagnosis = live };
+        if (profile)
+        {
+            request = request with { Vehicle = request.Vehicle with { Profile = new VehicleProfileRequest() } };
+        }
+
+        using var response = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), request, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
+
+        var problem = await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, "vehicle-aware-requirements-disabled", Ct);
+        problem.GetProperty("rejectedFields").EnumerateArray().Select(f => f.GetString()).ShouldBe(fields.Split(','));
+        (await _factory.WithDbAsync(db => db.Appointments.CountAsync(Ct))).ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("powertrain=Ice", "powertrain")]
+    [InlineData("manufacturer=VOLKSWAGEN", "manufacturer")]
+    [InlineData("vehicleClass=Heavy", "vehicleClass")]
+    [InlineData("needsLiveDiagnosis=true", "needsLiveDiagnosis")]
+    [InlineData("needsLiveDiagnosis=true&vehicleClass=Unknown&powertrain=Unknown", "powertrain,vehicleClass,needsLiveDiagnosis")]
+    public async Task Flag_off_refuses_vehicle_aware_availability_inputs_instead_of_ignoring_them(string query, string fields)
+    {
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
+
+        using var response = await client.GetAsync(AvailabilityUrl("EV-BATTERY-CHECK") + "&" + query, Ct);
+
+        var problem = await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, "vehicle-aware-requirements-disabled", Ct);
+        problem.GetProperty("rejectedFields").EnumerateArray().Select(f => f.GetString()).ShouldBe(fields.Split(','));
+    }
+
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(false, "&needsLiveDiagnosis=false")]
+    [InlineData(true, "&needsLiveDiagnosis=true&powertrain=Ice&manufacturer=VOLKSWAGEN&vehicleClass=Car")]
+    public async Task Availability_without_vehicle_aware_inputs_or_with_the_flag_on_is_answered(bool enabled, string query)
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", enabled.ToString()));
+        using var client = host.CreateClient();
+        using var response = await client.GetAsync(AvailabilityUrl("INTERIM-SERVICE") + query, Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+    }
+
     [Fact]
     public async Task Latest_policy_is_used_and_the_booked_version_survives_a_later_policy_change()
     {
@@ -350,4 +403,7 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
     }
 
     private static string BookingUrl(Guid site) => $"/api/v1/dealerships/{site}/appointments";
+
+    private static string AvailabilityUrl(string serviceCode) =>
+        $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/availability?serviceTypeId={ReferenceDataSeed.ServiceTypeId(serviceCode)}&date=2026-10-13";
 }

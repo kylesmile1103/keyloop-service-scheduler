@@ -4,6 +4,7 @@ using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Features.Availability.Mapping;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles;
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -30,6 +31,9 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         // ValidationFilter has already rejected a missing or malformed service type id or date.
         var serviceTypeId = query.ServiceTypeId ?? throw new ArgumentException("The query has no service type id; validate it first.", nameof(query));
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
+
+        VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements, ("powertrain", query.Powertrain is not null),
+            ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.NeedsLiveDiagnosis == true));
 
         // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
         var started = Stopwatch.GetTimestamp();
