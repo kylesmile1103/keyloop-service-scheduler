@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, triageBookingRequest } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, triageBookingRequest } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -116,8 +116,8 @@ export const listAppointmentsQueryKey = (options: Options<ListAppointmentsData>)
  * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
  * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
  * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
- * hour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables
- * role-based full values. Registration plates remain visible. Returns an empty array when there are no matches.
+ * hour. Callers without an API role receive customer initials and only the last six VIN characters.
+ * Callers with Admin, ServiceAdvisor or Viewer receive full names and VINs. Registration plates remain visible. Returns an empty array when there are no matches.
  */
 export const listAppointmentsOptions = (options: Options<ListAppointmentsData>) => queryOptions<ListAppointmentsResponse, ListAppointmentsError, ListAppointmentsResponse, ReturnType<typeof listAppointmentsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -209,6 +209,7 @@ export const getWorkshopScheduleQueryKey = (options: Options<GetWorkshopSchedule
  * stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
  * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
  * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
+ * Callers without an API role receive customer initials and the last six VIN characters; Admin, ServiceAdvisor and Viewer receive full values. Registration stays visible.
  * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
  */
 export const getWorkshopScheduleOptions = (options: Options<GetWorkshopScheduleData>) => queryOptions<GetWorkshopScheduleResponse, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ReturnType<typeof getWorkshopScheduleQueryKey>>({
@@ -262,3 +263,23 @@ export const triageBookingRequestMutation = (options?: Partial<Options<TriageBoo
     };
     return mutationOptions;
 };
+
+export const getCurrentUserQueryKey = (options?: Options<GetCurrentUserData>) => createQueryKey('getCurrentUser', options);
+
+/**
+ * Get the current caller and sign-in/out URLs
+ *
+ * Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ */
+export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => queryOptions<GetCurrentUserResponse, GetCurrentUserError, GetCurrentUserResponse, ReturnType<typeof getCurrentUserQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getCurrentUser({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getCurrentUserQueryKey(options)
+});

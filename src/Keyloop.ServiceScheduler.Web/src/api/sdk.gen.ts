@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -24,7 +24,15 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  * Every dealership with its IANA time zone and weekly operating hours as local wall-clock times, ordered by name. Start here:
  * the catalogue, availability, booking and schedule routes are all scoped by a dealership id.
  */
-export const getDealerships = <ThrowOnError extends boolean = false>(options?: Options<GetDealershipsData, ThrowOnError>): RequestResult<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError> => (options?.client ?? client).get<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError>({ url: '/api/v1/dealerships', ...options });
+export const getDealerships = <ThrowOnError extends boolean = false>(options?: Options<GetDealershipsData, ThrowOnError>): RequestResult<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError> => (options?.client ?? client).get<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships',
+    ...options
+});
 
 /**
  * List the service catalogue for a dealership
@@ -33,7 +41,15 @@ export const getDealerships = <ThrowOnError extends boolean = false>(options?: O
  * certifications each requires. `bookable` is computed for this dealership: at least one active bay and one active
  * technician qualify. Whether a slot is free on a given day is a separate question for the availability route.
  */
-export const getServiceTypes = <ThrowOnError extends boolean = false>(options: Options<GetServiceTypesData, ThrowOnError>): RequestResult<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError> => (options.client ?? client).get<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/service-types', ...options });
+export const getServiceTypes = <ThrowOnError extends boolean = false>(options: Options<GetServiceTypesData, ThrowOnError>): RequestResult<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError> => (options.client ?? client).get<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/service-types',
+    ...options
+});
 
 /**
  * Find bookable start times for a service on a date
@@ -45,7 +61,15 @@ export const getServiceTypes = <ThrowOnError extends boolean = false>(options: O
  * daylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset
  * (`2026-10-13T10:00+01:00`). The answer is a snapshot; booking checks again.
  */
-export const getAvailability = <ThrowOnError extends boolean = false>(options: Options<GetAvailabilityData, ThrowOnError>): RequestResult<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError> => (options.client ?? client).get<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/availability', ...options });
+export const getAvailability = <ThrowOnError extends boolean = false>(options: Options<GetAvailabilityData, ThrowOnError>): RequestResult<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError> => (options.client ?? client).get<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/availability',
+    ...options
+});
 
 /**
  * List appointments for a local date range
@@ -54,10 +78,18 @@ export const getAvailability = <ThrowOnError extends boolean = false>(options: O
  * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
  * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
  * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
- * hour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables
- * role-based full values. Registration plates remain visible. Returns an empty array when there are no matches.
+ * hour. Callers without an API role receive customer initials and only the last six VIN characters.
+ * Callers with Admin, ServiceAdvisor or Viewer receive full names and VINs. Registration plates remain visible. Returns an empty array when there are no matches.
  */
-export const listAppointments = <ThrowOnError extends boolean = false>(options: Options<ListAppointmentsData, ThrowOnError>): RequestResult<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/appointments', ...options });
+export const listAppointments = <ThrowOnError extends boolean = false>(options: Options<ListAppointmentsData, ThrowOnError>): RequestResult<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/appointments',
+    ...options
+});
 
 /**
  * Book an appointment
@@ -69,6 +101,11 @@ export const listAppointments = <ThrowOnError extends boolean = false>(options: 
  * with the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.
  */
 export const bookAppointment = <ThrowOnError extends boolean = false>(options: Options<BookAppointmentData, ThrowOnError>): RequestResult<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError> => (options.client ?? client).post<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
     url: '/api/v1/dealerships/{dealershipId}/appointments',
     ...options,
     headers: {
@@ -84,7 +121,15 @@ export const bookAppointment = <ThrowOnError extends boolean = false>(options: O
  * it, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's `Location`
  * header points here.
  */
-export const getAppointment = <ThrowOnError extends boolean = false>(options: Options<GetAppointmentData, ThrowOnError>): RequestResult<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError> => (options.client ?? client).get<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError>({ url: '/api/v1/appointments/{appointmentId}', ...options });
+export const getAppointment = <ThrowOnError extends boolean = false>(options: Options<GetAppointmentData, ThrowOnError>): RequestResult<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError> => (options.client ?? client).get<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/appointments/{appointmentId}',
+    ...options
+});
 
 /**
  * Cancel an appointment
@@ -95,6 +140,11 @@ export const getAppointment = <ThrowOnError extends boolean = false>(options: Op
  * the appointment after this one read it, nothing is overwritten: read it again and decide.
  */
 export const cancelAppointment = <ThrowOnError extends boolean = false>(options: Options<CancelAppointmentData, ThrowOnError>): RequestResult<CancelAppointmentResponses, CancelAppointmentErrors, ThrowOnError> => (options.client ?? client).post<CancelAppointmentResponses, CancelAppointmentErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
     url: '/api/v1/appointments/{appointmentId}/cancel',
     ...options,
     headers: {
@@ -111,16 +161,33 @@ export const cancelAppointment = <ThrowOnError extends boolean = false>(options:
  * stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
  * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
  * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
+ * Callers without an API role receive customer initials and the last six VIN characters; Admin, ServiceAdvisor and Viewer receive full values. Registration stays visible.
  * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
  */
-export const getWorkshopSchedule = <ThrowOnError extends boolean = false>(options: Options<GetWorkshopScheduleData, ThrowOnError>): RequestResult<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError> => (options.client ?? client).get<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/schedule', ...options });
+export const getWorkshopSchedule = <ThrowOnError extends boolean = false>(options: Options<GetWorkshopScheduleData, ThrowOnError>): RequestResult<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError> => (options.client ?? client).get<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/schedule',
+    ...options
+});
 
 /**
  * Discover whether booking intake suggestions are enabled
  *
  * Use the feature flag and description limit to display the optional intake control.
  */
-export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(options?: Options<GetBookingTriageStatusData, ThrowOnError>): RequestResult<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError>({ url: '/api/v1/booking-triage', ...options });
+export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(options?: Options<GetBookingTriageStatusData, ThrowOnError>): RequestResult<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/booking-triage',
+    ...options
+});
 
 /**
  * Suggest bookable services and an optional preferred date from an intake description
@@ -128,10 +195,30 @@ export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(opt
  * A person must confirm a suggestion before asking for availability and booking. No description is stored.
  */
 export const triageBookingRequest = <ThrowOnError extends boolean = false>(options: Options<TriageBookingRequestData, ThrowOnError>): RequestResult<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError> => (options.client ?? client).post<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
     url: '/api/v1/dealerships/{dealershipId}/booking-triage',
     ...options,
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Get the current caller and sign-in/out URLs
+ *
+ * Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ */
+export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentUserData, ThrowOnError>): RequestResult<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/me',
+    ...options
 });

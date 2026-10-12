@@ -294,6 +294,18 @@ export type CancelAppointmentRequest = {
 export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle';
 
 /**
+ * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
+ */
+export type CurrentUserResponse = {
+    authenticated: boolean;
+    email: null | string;
+    displayName: null | string;
+    roles: Array<string>;
+    loginUrl: string;
+    logoutUrl: string;
+};
+
+/**
  * The customer's contact details.
  */
 export type CustomerRequest = {
@@ -402,6 +414,10 @@ export type HttpValidationProblemDetails = {
      * The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs.
      */
     traceId: string;
+    /**
+     * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
+     */
+    loginUrl?: string;
 };
 
 /**
@@ -436,6 +452,10 @@ export type ProblemDetails = {
      * The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs.
      */
     traceId: string;
+    /**
+     * Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.
+     */
+    loginUrl?: string;
 };
 
 /**
@@ -920,6 +940,14 @@ export type BookAppointmentErrors = {
      */
     400: HttpValidationProblemDetails;
     /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
      * No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).
      */
     404: ProblemDetails;
@@ -972,6 +1000,14 @@ export type GetAppointmentData = {
 
 export type GetAppointmentErrors = {
     /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
      * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
      */
     404: ProblemDetails;
@@ -1018,6 +1054,14 @@ export type CancelAppointmentErrors = {
      * The reason is missing, blank or longer than 500 characters (`validation-error`, `errors` keyed `reason`), or the body is not valid JSON.
      */
     400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
     /**
      * No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).
      */
@@ -1150,6 +1194,14 @@ export type TriageBookingRequestErrors = {
      */
     400: HttpValidationProblemDetails;
     /**
+     * Sign-in required (`unauthenticated`, with `loginUrl`).
+     */
+    401: ProblemDetails;
+    /**
+     * The caller's role does not permit this operation (`forbidden`).
+     */
+    403: ProblemDetails;
+    /**
      * No dealership has this id (not-found).
      */
     404: ProblemDetails;
@@ -1173,3 +1225,34 @@ export type TriageBookingRequestResponses = {
 };
 
 export type TriageBookingRequestResponse = TriageBookingRequestResponses[keyof TriageBookingRequestResponses];
+
+export type GetCurrentUserData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/me';
+};
+
+export type GetCurrentUserErrors = {
+    /**
+     * Too many requests (`rate-limited`, with `Retry-After`).
+     */
+    429: ProblemDetails;
+};
+
+export type GetCurrentUserError = GetCurrentUserErrors[keyof GetCurrentUserErrors];
+
+export type GetCurrentUserResponses = {
+    /**
+     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.
+     */
+    200: CurrentUserResponse;
+};
+
+export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
