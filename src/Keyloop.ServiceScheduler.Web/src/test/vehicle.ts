@@ -52,6 +52,17 @@ export const evChargingService: ServiceTypeResponse = {
   bookable: true,
 }
 
+/** Task 32a's inspection and estimate after a collision: a standard lift and a damage-assessment-certified technician. */
+export const assessmentService: ServiceTypeResponse = {
+  id: "651b016b-c559-8313-9f1c-d22ecd706059",
+  code: "ACCIDENT-DAMAGE-ASSESSMENT",
+  name: "Accident Damage Assessment",
+  durationMinutes: 60,
+  requiredBayCapabilities: ["StandardLift"],
+  requiredCertifications: ["DamageAssessment"],
+  bookable: true,
+}
+
 /** An allocation as a vehicle-aware booking answers it. */
 export function allocation(overrides: Partial<AllocationDecision> = {}): AllocationDecision {
   return {

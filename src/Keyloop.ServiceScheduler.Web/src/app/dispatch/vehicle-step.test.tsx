@@ -13,11 +13,13 @@ import { bays, interimAvailability, interimDetails, interimServiceType, technici
 import { brakesServiceType } from "@/test/triage"
 import {
   allocation,
+  assessmentService,
   decodedVolkswagen,
   diagnosticsService,
   liveDiagnosisGap,
   profileConflict,
   readingTuesdayWithCompetence,
+  undecoded,
   vehicleAwareDisabled,
   vehicleAwareOff,
   vehicleAwareOn,
@@ -656,6 +658,74 @@ describe("the allocation, explained after booking", () => {
     expect(why).toHaveTextContent("Amelia Clarke: the only free technician at HV level 2 or above with General service")
     expect(why).toHaveTextContent("Not as you asked")
     expect(why).toHaveTextContent("Farid Haddad holds HV level 1, below the level 2 this job needs.")
+  })
+})
+
+describe("an accident damage assessment (Task 32a)", () => {
+  // Default policy v2: a hybrid, electric, fuel-cell or Unknown vehicle after a collision needs HV level 3 (hv-post-collision).
+  const assessed = (body: BookAppointmentRequest) => ({
+    ...bookedFrom(body, { bay: bays.standard, technician: technicians.eva }),
+    serviceType: { id: assessmentService.id, code: assessmentService.code, name: assessmentService.name, durationMinutes: 60 },
+    vehicle: { ...bookedFrom(body).vehicle, profile: undecoded },
+    allocation: allocation({ decidedBy: "OnlyQualifiedResource", bayDecidedBy: "SurplusCompetences", policyVersion: 2, minimumHvLevel: 3, firedRules: ["hv-post-collision"] }),
+  })
+  const assessmentApi = () =>
+    vehicleApi({ serviceTypes: () => [interimServiceType, assessmentService, diagnosticsService], book: (_, body) => assessed(body) })
+
+  it("is counted for a vehicle whose powertrain isn't known, offers no live diagnosis, and is explained at level 3 on a phone", async () => {
+    phoneViewport()
+    const api = assessmentApi()
+    renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+    const scope = await screen.findByRole("dialog", { name: "Book appointment" })
+    await chooseService(scope, /^Accident Damage Assessment/)
+
+    // An inspection, not live working on the HV system.
+    const vehicle = within(scope).getByRole("group", { name: "Vehicle" })
+    expect(within(vehicle).queryByRole("switch", { name: "Needs live HV diagnosis" })).not.toBeInTheDocument()
+    expect(within(scope).getByText("Counted for a vehicle of unknown powertrain, planned as high-voltage.")).toBeInTheDocument()
+    await pickStart(scope)
+    expect(availabilityQueries(api.requests).at(-1)).toEqual({
+      serviceTypeId: assessmentService.id,
+      date: "2026-10-13",
+      powertrain: "Unknown",
+      vehicleClass: "Unknown",
+    })
+    await next(scope)
+    fillCustomer(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const why = await within(scope).findByRole("region", { name: "Why this allocation" })
+    expect(why).toHaveTextContent(
+      "Eva Lindqvist: the only free technician at HV level 3 or above with Damage assessment, for a vehicle whose powertrain isn't known, treated as high-voltage."
+    )
+    expect(why).toHaveTextContent("The job needed")
+    expect(why).toHaveTextContent("Component repair")
+    expect(within(why).getByRole("list", { name: "Because" })).toHaveTextContent(
+      "a collision may have damaged high-voltage cabling or parts, so assessing it needs someone trained to work on them switched off"
+    )
+    expect(why).toHaveTextContent("Policy version 2.")
+    const body = await bodyOf(bookings(api.requests)[0])
+    expect(body.serviceTypeId).toBe(assessmentService.id)
+    expect(body.vehicle).not.toHaveProperty("profile")
+    expect(body).not.toHaveProperty("needsLiveDiagnosis")
+  })
+
+  it("says why Eva in the toast on a wide screen", async () => {
+    assessmentApi()
+    renderBoard(board)
+    const scope = await openDialog()
+    await chooseService(scope, /^Accident Damage Assessment/)
+    await pickStart(scope)
+    await next(scope)
+    fillCustomer(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const toast = (await screen.findByText("Booked")).closest<HTMLElement>("[data-slot=toast]")!
+    expect(toast).toHaveTextContent("Accident Damage Assessment at 10:15 · Bay 1 - Standard · Eva Lindqvist")
+    expect(toast).toHaveTextContent(
+      "Eva Lindqvist: the only free technician at HV level 3 or above with Damage assessment, for a vehicle whose powertrain isn't known, treated as high-voltage."
+    )
   })
 })
 
