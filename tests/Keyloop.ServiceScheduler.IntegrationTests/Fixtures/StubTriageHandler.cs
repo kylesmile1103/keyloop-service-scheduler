@@ -15,7 +15,7 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     internal string? RawBody { get; set; }
     internal string ServiceChoice { get; set; } = "BRAKES-PADS-DISCS";
     internal string DateChoice { get; set; } = "2026-10-15";
-    internal double Confidence { get; set; } = 0.9;
+    internal double Confidence { get; set; } = 0.98;
     /// <summary>"run" (what /ai/run returned live: a completed run wrapping the model body), "result" or "bare".</summary>
     internal string Shape { get; set; } = "run";
     internal int? RetryAfter { get; set; }

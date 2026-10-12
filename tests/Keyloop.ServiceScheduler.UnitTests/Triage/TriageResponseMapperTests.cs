@@ -8,8 +8,11 @@ namespace Keyloop.ServiceScheduler.UnitTests.Triage;
 public sealed class TriageResponseMapperTests
 {
     [Theory]
-    [InlineData(0.7, "suggest")]
-    [InlineData(0.69999, "confirm")]
+    [InlineData(1.0, "suggest")]
+    [InlineData(0.95, "suggest")]
+    [InlineData(0.94999, "confirm")]
+    // The live golden set's vague "something feels odd" scored 0.86 while every clear request scored 1.00 (2026-10-12).
+    [InlineData(0.86, "confirm")]
     [InlineData(0.0, "confirm")]
     public void Confidence_threshold_is_inclusive_and_distinct_from_probability(double confidence, string expected)
     {

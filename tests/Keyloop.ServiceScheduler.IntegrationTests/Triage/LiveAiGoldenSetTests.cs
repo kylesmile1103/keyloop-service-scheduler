@@ -61,14 +61,15 @@ public sealed class LiveAiGoldenSetTests
                 if (response.PreferredDate?.Date == today.AddDays(days)) { dateCorrect++; }
             }
             // Fixture ids only. Neither customer text nor credentials go to the result report.
-            rows.Add($"| {rows.Count + 1} | {item.Code ?? "abstain"} | {answer.Service.Choice} | {response.Recommendation} | {matched} |");
+            rows.Add(string.Create(CultureInfo.InvariantCulture,
+                $"| {rows.Count + 1} | {item.Code ?? "abstain"} | {answer.Service.Choice} | {answer.Service.Confidence:F2} | {response.Recommendation} | {answer.PreferredDate.Choice} | {answer.PreferredDate.Confidence:F2} | {matched} |"));
         }
         latencies.Sort();
         double Percentile(double p) => latencies[(int)Math.Ceiling(latencies.Count * p) - 1];
         var report = new StringBuilder("# Live AI golden set\n\n");
         report.AppendLine(CultureInfo.InvariantCulture, $"Accuracy: {correct}/{GoldenSet.Length}. Abstain: {abstained}/{GoldenSet.Length}. Dates: {dateCorrect}/{dateCases}.");
         report.AppendLine(CultureInfo.InvariantCulture, $"Latency p50: {Percentile(0.5):F1} ms; p95: {Percentile(0.95):F1} ms. Input tokens: {tokens}.");
-        report.AppendLine("\n| Fixture | Expected | Choice | Recommendation | Correct |\n|---|---|---|---|---|");
+        report.AppendLine("\n| Fixture | Expected | Choice | Confidence | Recommendation | Date choice | Date confidence | Correct |\n|---|---|---|---|---|---|---|---|");
         foreach (var row in rows) { report.AppendLine(row); }
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Keyloop.ServiceScheduler.sln"))) { directory = directory.Parent; }
