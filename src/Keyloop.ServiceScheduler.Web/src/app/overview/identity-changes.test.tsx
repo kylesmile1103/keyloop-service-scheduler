@@ -2,18 +2,31 @@ import { focusManager } from "@tanstack/react-query"
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { CurrentUserResponse } from "@/api/types.gen"
-import { READ_ONLY_REASON } from "@/lib/session"
-import { defaultSchedule, mockBoardApi, rangeFromSchedules, requestsTo } from "@/test/board-api"
+import type { AppointmentResponse, CurrentUserResponse } from "@/api/types.gen"
+import { IDENTITY_CHECK_FAILED } from "@/components/auth/identity-check-failed"
+import { rangeReadOptions, rangeReadsOf } from "@/lib/appointment-range"
+import { currentUserQueryKey, READ_ONLY_REASON } from "@/lib/session"
+import { bookedFrom, defaultSchedule, mockBoardApi, rangeFromSchedules, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
-import { cachedText, expectNothingPersonal, maskedItem, maskedSchedule, recordDialogs, refocus } from "@/test/identity-change"
+import {
+  cachedText,
+  deferred,
+  expectNothingPersonal,
+  maskedItem,
+  maskedSchedule,
+  recordDialogs,
+  refocus,
+} from "@/test/identity-change"
 import { admin, anonymous, noRole, viewer } from "@/test/identities"
-import { renderBoard } from "@/test/render-board"
-import { interimDetails } from "@/test/schedules"
+import { pointerClick, renderBoard } from "@/test/render-board"
+import { interimDetails, interimServiceType } from "@/test/schedules"
+
+import { overviewWindow } from "./lib/overview"
 
 // The Overview and who is signed in (Task 28b, after Task 27b's review round 1, ARCHITECTURE §15). An upcoming row's
 // details sheet holds the row as one caller read it, outside the query cache, so it closes in the same render as a change
-// of identity.
+// of identity; the writes the page starts (Book appointment, cancelling from that sheet) are checked as they are sent, and
+// an answer that arrives for a previous caller is thrown away, with no toast and no re-read of the range.
 
 beforeAll(async () => {
   await Promise.all([import("@/app/overview/page"), import("@/app/dispatch/page")])
@@ -31,7 +44,14 @@ afterEach(() => {
 
 const overview = `/overview?dealership=${reading.id}`
 const interimRow = "Today, Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed"
+const rangeReads = (requests: readonly Request[]) => requestsTo(requests, "/appointments").filter((request) => request.method === "GET")
 const recordReads = (requests: readonly Request[]) => requestsTo(requests, `/api/v1/appointments/${interimDetails.id}`).length
+const writes = (requests: readonly Request[]) => requests.filter((request) => request.method !== "GET")
+const posts = (requests: readonly Request[], suffix: string) =>
+  requests.filter((request) => request.method === "POST" && new URL(request.url).pathname.endsWith(suffix))
+
+/** The Overview's range read on the fake today, as the page builds its key. */
+const rangeKey = () => rangeReadOptions(reading.id, overviewWindow("2026-10-13").from, overviewWindow("2026-10-13").to).queryKey
 
 type Caller = CurrentUserResponse | "unreadable"
 const holdsRole = (me: Caller) => me !== "unreadable" && me.authenticated && me.roles.length > 0
@@ -56,6 +76,29 @@ async function openInterim() {
   const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
   expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
   return sheet
+}
+
+const customer = {
+  Name: "Draft Private Customer",
+  Email: "draft.private@example.invalid",
+  Phone: "+44 7700 900777",
+  VIN: "WVWZZZ1KZAW654321",
+  Registration: "DR22 AFT",
+  Make: "Volkswagen",
+  Model: "Golf",
+}
+
+/** Book appointment's dialog, step 1 (Interim Service at 10:15) and step 2's customer and vehicle, ready for Book. */
+async function enterBooking() {
+  fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+  const dialog = await screen.findByRole("dialog", { name: "Book appointment" })
+  fireEvent.click(await within(dialog).findByRole("combobox", { name: "Service" }))
+  pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+  fireEvent.click(await within(dialog).findByRole("radio", { name: "10:15, 4 bays and 3 technicians free" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Next" }))
+  await within(dialog).findByRole("heading", { name: "Customer and vehicle" })
+  for (const [label, value] of Object.entries(customer)) fireEvent.change(within(dialog).getByRole("textbox", { name: label }), { target: { value } })
+  return dialog
 }
 
 describe("an upcoming appointment's details sheet when the identity changes", () => {
@@ -114,3 +157,134 @@ describe("an upcoming appointment's details sheet when the identity changes", ()
   })
 })
 
+describe.each<[string, CurrentUserResponse]>([
+  ["signs out", anonymous],
+  ["becomes a Viewer", viewer],
+])("an answer that arrives after the caller %s", (_, next) => {
+  it("to Book appointment is thrown away: no toast, nothing cached, and the range is not read again for it", async () => {
+    let me: Caller = admin
+    const answer = deferred<AppointmentResponse>()
+    const api = mockApiAs(() => me, { serviceTypes: () => [interimServiceType], book: () => answer.promise })
+    const { queryClient } = renderBoard(overview)
+    await screen.findByRole("region", { name: "Bookings per day" })
+    const dialog = await enterBooking()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    await waitFor(() => expect(posts(api.requests, "/appointments")).toHaveLength(1))
+    const body = await posts(api.requests, "/appointments")[0].clone().json()
+
+    me = next
+    refocus()
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey())).toEqual(next))
+    // The range is read again once, as the new caller; then the late answer arrives.
+    await waitFor(() => expect(queryClient.getQueryState(rangeKey())?.status).toBe("success"))
+    const rangeReadsBefore = rangeReads(api.requests).length
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    answer.release(bookedFrom(body))
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryAllByText("Booked")).toHaveLength(0)
+    expect(screen.queryByRole("button", { name: "View on board" })).not.toBeInTheDocument()
+    expect(invalidate).not.toHaveBeenCalled()
+    expect(rangeReads(api.requests)).toHaveLength(rangeReadsBefore)
+    expect(cachedText(queryClient)).not.toContain("draft.private@example.invalid")
+    expect(cachedText(queryClient)).not.toContain("Draft Private Customer")
+  })
+
+  it("to a cancellation from an upcoming row's sheet is thrown away: no toast, no record cached, and no range re-read", async () => {
+    let me: Caller = admin
+    const answer = deferred<AppointmentResponse>()
+    const api = mockApiAs(() => me, { cancel: () => answer.promise })
+    const { queryClient } = renderBoard(overview)
+    const sheet = await openInterim()
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    await waitFor(() => expect(posts(api.requests, "/cancel")).toHaveLength(1))
+
+    me = next
+    refocus()
+    await waitFor(() => expect(queryClient.getQueryData(currentUserQueryKey())).toEqual(next))
+    await waitFor(() => expect(queryClient.getQueryState(rangeKey())?.status).toBe("success"))
+    const rangeReadsBefore = rangeReads(api.requests).length
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    answer.release({ ...interimDetails, status: "Cancelled", cancellationReason: "Customer rang" })
+
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryAllByText("Appointment cancelled")).toHaveLength(0)
+    expect(invalidate).not.toHaveBeenCalled()
+    expect(rangeReads(api.requests)).toHaveLength(rangeReadsBefore)
+    expect(cachedText(queryClient)).not.toContain("sophie.turner@example.com")
+    expect(cachedText(queryClient)).not.toContain("Customer rang")
+  })
+})
+
+describe("a write from the Overview, checked as it is sent", () => {
+  it.each<[string, CurrentUserResponse]>([
+    ["signed out", anonymous],
+    ["a Viewer", viewer],
+  ])("sends no booking from Book appointment once the identity in the cache is %s, before the view has drawn it", async (_, next) => {
+    const api = mockApiAs(() => admin, { serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(overview)
+    const dialog = await enterBooking()
+
+    // The new identity is in the cache and Book is pressed before React has rendered it: only the send can stop the write.
+    queryClient.setQueryData(currentUserQueryKey(), next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(posts(api.requests, "/appointments")).toHaveLength(0)
+  })
+
+  it("sends no cancellation from an upcoming row's sheet", async () => {
+    const api = mockApiAs(() => admin)
+    const { queryClient } = renderBoard(overview)
+    const sheet = await openInterim()
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+
+    queryClient.setQueryData(currentUserQueryKey(), viewer)
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(posts(api.requests, "/cancel")).toHaveLength(0)
+  })
+})
+
+describe("a booking answered for the caller who sent it", () => {
+  it("still reads the Overview's range again", async () => {
+    const api = mockApiAs(() => admin, { serviceTypes: () => [interimServiceType] })
+    const { queryClient } = renderBoard(overview)
+    await screen.findByRole("region", { name: "Bookings per day" })
+    const dialog = await enterBooking()
+    const rangeReadsBefore = rangeReads(api.requests).length
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+
+    await screen.findByText("Booked")
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: rangeReadsOf(reading.id) })
+    await waitFor(() => expect(rangeReads(api.requests).length).toBeGreaterThan(rangeReadsBefore))
+  })
+})
+
+describe("while /me cannot be read", () => {
+  it("asks to sign in from Book appointment, says the check failed, and sends no write and no record read", async () => {
+    const { requests } = mockApiAs(() => "unreadable")
+    renderBoard(overview)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+    const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
+    expect(within(prompt).getByText(IDENTITY_CHECK_FAILED)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    fireEvent.click(within(prompt).getByRole("button", { name: "Not now" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
+
+    fireEvent.click(await screen.findByRole("button", { name: "Today, Interim Service, Bay 1 - Standard, 08:00 to 09:00, ST, Amelia Clarke, Confirmed" }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(within(sheet).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
+    expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(recordReads(requests)).toBe(0)
+    expect(writes(requests)).toHaveLength(0)
+  })
+})
