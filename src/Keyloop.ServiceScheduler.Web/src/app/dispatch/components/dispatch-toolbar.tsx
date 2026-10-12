@@ -101,7 +101,9 @@ export function DispatchToolbar({ dealershipSelect, board, onBookAppointment }: 
         {board && <DateNavigator dealership={board.dealership} date={board.date} today={board.today} onDateChange={board.onDateChange} />}
       </div>
       {(board || book) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        // Right-aligned beside the day controls, so when the row runs out Book appointment ends the second row at the right
+        // edge (Addendum B section B4) instead of sitting under the lane tabs.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 xl:justify-end">
           {board && (
             <>
               {laneTabs}
