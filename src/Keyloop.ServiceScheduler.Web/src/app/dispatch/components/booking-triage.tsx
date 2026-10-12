@@ -1,9 +1,9 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
-import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, MessageSquareText, ScanSearch } from "lucide-react"
+import { CalendarDays, CalendarX2, Check, CircleAlert, Info, LoaderCircle, MessageSquareText, NotebookPen, ScanSearch } from "lucide-react"
 import { useEffect, useId, useLayoutEffect, useRef } from "react"
 
-import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate } from "@/api/types.gen"
+import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate, TriageUncoveredIssue } from "@/api/types.gen"
 import { CapabilityBadges } from "@/components/capability-badges"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
@@ -20,7 +20,16 @@ import { serviceHelp } from "@/lib/service-help"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
-import { inspectionAction, inspectionService, NO_MATCH, noMatchNextSteps, phraseOf } from "../lib/triage-copy"
+import {
+  alsoMentioned,
+  inspectionAction,
+  inspectionService,
+  NO_MATCH,
+  noMatchNextSteps,
+  noticeApplies,
+  notesLine,
+  phraseOf,
+} from "../lib/triage-copy"
 
 interface BookingTriageProps {
   triage: BookingTriage
@@ -32,6 +41,10 @@ interface BookingTriageProps {
   current: { serviceTypeId: string; date: string }
   /** Notes already holds the person's own text, so ticking the box copies nothing (it never overwrites). */
   notesHaveOwnText: boolean
+  /** The booking's notes as they stand, so a line already added says so. */
+  notes: string
+  /** *Add to Notes* on the notice of what else the description mentioned: its fixed line, added once. */
+  onAddToNotes: (line: string) => void
   /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
   onUse: (serviceTypeId: string, date: string | null) => void
   /**
@@ -44,11 +57,23 @@ interface BookingTriageProps {
 /**
  * Booking intake triage in step 1 (ARCHITECTURE §8.10, §15): the issue in the customer's words, "Suggest a service", and
  * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
- * possible ones (nothing chosen when the model is unsure), or a plain no-match with what to do next. Using one sets the
- * service and, when that day is still to come and the workshop is open then, the day asked for; the free starts for
- * them come next. A failure leaves the manual choice below as it is.
+ * possible ones (nothing chosen when the model is unsure), or a plain no-match with what to do next. A further problem the
+ * description mentioned is named in fixed words beside the service it is outside (Task 32b). Using one sets the service
+ * and, when that day is still to come and the workshop is open then, the day asked for; the free starts for them come
+ * next. A failure leaves the manual choice below as it is.
  */
-export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse, blockedBy }: BookingTriageProps) {
+export function BookingTriageIntake({
+  triage,
+  dealership,
+  today,
+  serviceTypes,
+  current,
+  notesHaveOwnText,
+  notes,
+  onAddToNotes,
+  onUse,
+  blockedBy,
+}: BookingTriageProps) {
   const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
@@ -223,6 +248,8 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
           today={today}
           serviceTypes={serviceTypes}
           current={current}
+          notes={notes}
+          onAddToNotes={onAddToNotes}
           onUse={onUse}
         />
       )}
@@ -287,7 +314,14 @@ function dayAskedFor(response: TriageBookingResponse, dealership: DealershipResp
 
 const dayName = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 
-/** What the status region reads out for an answer: the cards, or the no-match and its next step, as the screen says them. */
+/** The name of the service an uncovered issue is outside, from the answer's candidates or else the catalogue. */
+function outsideName(response: TriageBookingResponse, serviceTypes: ServiceTypeResponse[] | undefined): string | null {
+  const id = response.uncoveredIssue?.outsideServiceTypeId
+  if (!id) return null
+  return response.services.find((candidate) => candidate.serviceType.id === id)?.serviceType.name ?? serviceTypes?.find((service) => service.id === id)?.name ?? null
+}
+
+/** What the status region reads out for an answer: the cards, what else was mentioned and the next step, as the screen says them. */
 function announcement(
   response: TriageBookingResponse,
   dealership: DealershipResponse,
@@ -295,8 +329,8 @@ function announcement(
   serviceTypes: ServiceTypeResponse[] | undefined
 ): string {
   const candidates = candidatesOf(response, undefined)
+  const issue = response.uncoveredIssue
   if (response.recommendation === "no-match" || candidates.length === 0) {
-    const issue = response.uncoveredIssue
     const inspection = inspectionService(serviceTypes)
     const mentioned = issue ? `Mentioned: ${phraseOf(issue.category)}. ` : ""
     const next = inspection ? `${inspectionAction(inspection)}, choose a service below or contact the workshop.` : noMatchNextSteps(false)
@@ -305,14 +339,17 @@ function announcement(
   const day = dayAskedFor(response, dealership, today)
   const why = day?.notUsed === "passed" ? ", which has passed" : day?.notUsed === "closed" ? ", when the workshop is closed" : ""
   const asked = day ? `Asked for ${dayName(day.date)}${why}. ` : ""
+  // Read with the answer's first choice: a suggestion's likely service, or nothing chosen yet.
+  const firstChoice = response.recommendation === "suggest" ? candidates[0].serviceType.id : null
+  const also = issue && noticeApplies(issue, firstChoice) ? `${alsoMentioned(issue.category, outsideName(response, serviceTypes))} ` : ""
   if (response.recommendation === "suggest") {
     const [top] = candidates
-    return `Likely: ${top.serviceType.name}, ${top.percent}%. ${asked}Check it, then choose Use this.`
+    return `Likely: ${top.serviceType.name}, ${top.percent}%. ${asked}${also}Check it, then choose Use this.`
   }
   const names = candidates.map((candidate) => candidate.serviceType.name).join(", ")
   return candidates.length === 1
-    ? `One service could fit: ${names}. ${asked}Choose it if it matches, then choose Use this.`
-    : `${candidates.length} services could fit: ${names}. ${asked}Choose one, then choose Use this.`
+    ? `One service could fit: ${names}. ${asked}${also}Choose it if it matches, then choose Use this.`
+    : `${candidates.length} services could fit: ${names}. ${asked}${also}Choose one, then choose Use this.`
 }
 
 /** The headline over the matched cards, in the same plain words, for one card or several. */
@@ -337,6 +374,8 @@ interface SuggestionsProps {
   today: string
   serviceTypes: ServiceTypeResponse[] | undefined
   current: { serviceTypeId: string; date: string }
+  notes: string
+  onAddToNotes: (line: string) => void
   onUse: (serviceTypeId: string, date: string | null) => void
 }
 
@@ -350,6 +389,8 @@ function Suggestions({
   today,
   serviceTypes,
   current,
+  notes,
+  onAddToNotes,
   onUse,
 }: SuggestionsProps) {
   const { response } = answer
@@ -360,6 +401,8 @@ function Suggestions({
   const usableDate = day && day.notUsed === null ? day.date : null
   const inUse = chosen !== null && current.serviceTypeId === chosen.serviceType.id && (usableDate === null || current.date === usableDate)
   const matched = response.recommendation !== "no-match" && candidates.length > 0
+  const issue = response.uncoveredIssue
+  const notice = matched && issue && noticeApplies(issue, chosen?.serviceType.id ?? null) ? issue : null
 
   return (
     <div aria-busy={pending || undefined} className="flex flex-col gap-3 border-t border-border pt-3">
@@ -384,6 +427,25 @@ function Suggestions({
             <CandidateCard key={candidate.serviceType.id} candidate={candidate} />
           ))}
         </RadioGroup>
+      )}
+
+      {/*
+        What else the description mentioned, beside the service it is outside. A polite region that stays on the page while
+        the cards do, so the notice is read out when choosing a card brings it back (its first appearance is read with the
+        answer, above); it never takes focus.
+      */}
+      {matched && (
+        <div aria-live="polite" className="empty:hidden">
+          {notice && (
+            <AlsoMentioned
+              issue={notice}
+              outsideName={outsideName(response, serviceTypes)}
+              notes={notes}
+              disabled={pending || stale}
+              onAddToNotes={onAddToNotes}
+            />
+          )}
+        </div>
       )}
 
       {matched && day && <DayAskedFor date={day.date} notUsed={day.notUsed} />}
@@ -464,6 +526,46 @@ function NoMatch({ response, serviceTypes, current, stale, pending, onUse }: NoM
         </Button>
       )}
       <p className="text-xs text-pretty text-muted-foreground">{noMatchNextSteps(inspection !== null)}</p>
+    </div>
+  )
+}
+
+interface AlsoMentionedProps {
+  issue: TriageUncoveredIssue
+  /** The service it is outside, when the answer names one the screen knows. */
+  outsideName: string | null
+  notes: string
+  /** The answer is out of date or another is on its way, as for Use this. */
+  disabled: boolean
+  onAddToNotes: (line: string) => void
+}
+
+/**
+ * "Also mentioned: …": a further problem in the description that the suggested service does not cover, in its fixed words
+ * (never the model's), with *Add to Notes*, which writes its line into the booking's notes once and then says so in place.
+ */
+function AlsoMentioned({ issue, outsideName, notes, disabled, onAddToNotes }: AlsoMentionedProps) {
+  const line = notesLine(issue.category)
+  const added = notes.split("\n").some((existing) => existing.trim() === line)
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-info/30 bg-info-subtle px-3 py-2.5 text-sm text-foreground">
+      <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        <p className="text-pretty">{alsoMentioned(issue.category, outsideName)}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => !added && !disabled && onAddToNotes(line)}
+          // Added, it stays where it is, focusable, saying so: the line is in the notes once.
+          disabled={added || disabled}
+          focusableWhenDisabled
+          className="bg-background"
+        >
+          {added ? <Check aria-hidden="true" /> : <NotebookPen aria-hidden="true" />}
+          {added ? "Added to Notes" : "Add to Notes"}
+        </Button>
+      </div>
     </div>
   )
 }

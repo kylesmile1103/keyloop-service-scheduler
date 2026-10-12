@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { BookAppointmentRequest } from "@/api/types.gen"
 import { mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
-import { expectUnavailableButFocusable } from "@/test/focus"
+import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { pointerClick, renderBoard } from "@/test/render-board"
 import { interimServiceType } from "@/test/schedules"
 import {
@@ -25,6 +26,8 @@ const readingBoard = `/dispatch?dealership=${reading.id}`
 const catalogue = () => [interimServiceType, brakesServiceType, diagnosticsServiceType, assessmentServiceType]
 const noMatch = "The workshop’s bookable services do not cover what you described."
 const inspection = "Book Diagnostic Fault Finding for an inspection"
+const crashNotice =
+  "Also mentioned: accident or body damage, which Diagnostic Fault Finding does not cover. One appointment books one service: add it to Notes or book it separately."
 const assessmentHelp = "Inspection and estimate of collision damage, not the repair itself."
 
 beforeEach(() => {
@@ -51,6 +54,26 @@ const announcement = (scope: HTMLElement) =>
   within(scope)
     .getAllByRole("status")
     .find((region) => region.classList.contains("sr-only") && region.closest("section[aria-label='Suggest a service from the issue']"))
+
+const bookingBody = async (requests: readonly Request[]) => {
+  const [booking] = requests.filter((request) => request.method === "POST" && new URL(request.url).pathname.endsWith("/appointments"))
+  return (await booking.clone().json()) as BookAppointmentRequest
+}
+
+function fillCustomerAndVehicle(scope: HTMLElement) {
+  const values: Record<string, string> = {
+    Name: "Grace Hopper",
+    Email: "grace.hopper@example.com",
+    Phone: "+44 7700 900123",
+    VIN: "WVWZZZ1KZAW654321",
+    Registration: "RK22 ABC",
+    Make: "Volkswagen",
+    Model: "Golf",
+  }
+  for (const [label, value] of Object.entries(values)) {
+    fireEvent.change(within(scope).getByRole("textbox", { name: label }), { target: { value } })
+  }
+}
 
 describe("a no-match", () => {
   it("says the bookable services do not cover it, and offers an inspection the dealership can book", async () => {
@@ -109,6 +132,166 @@ describe("a no-match", () => {
     // A no-match is not "also": nothing else was booked for it to sit beside.
     expect(within(scope).queryByText(/^Also mentioned/)).not.toBeInTheDocument()
     expect(within(scope).queryByRole("button", { name: "Add to Notes" })).not.toBeInTheDocument()
+  })
+})
+
+describe("what else the description mentioned", () => {
+  it("says it beside the suggestion, naming the service it is outside, in a polite region that takes no focus", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      // The stakeholder's sentence as the Task 32a report shapes it: diagnosis for the air-con, the crash left uncovered.
+      triage: () =>
+        triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "I crashed my Kia Sportage and headlines are broken, also the AC can't turn on")
+    const suggest = within(scope).getByRole("button", { name: "Suggest a service" })
+    suggest.focus()
+
+    const notice = await within(scope).findByText(crashNotice)
+    expect(notice.closest("[aria-live='polite']")).not.toBeNull()
+    expect(announcement(scope)).toHaveTextContent(`Likely: Diagnostic Fault Finding, 53%. ${crashNotice} Check it, then choose Use this.`)
+    expect(suggest).toHaveFocus()
+    expectAvailable(within(scope).getByRole("button", { name: "Add to Notes" }))
+  })
+
+  it("does not name a service when the answer gives none, and stays whichever candidate is chosen", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () =>
+        triageAnswer("confirm", [[diagnosticsServiceType, 0.45], [brakesServiceType, 0.4]], null, uncovered("GLASS", null)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Warning light and a cracked windscreen")
+
+    const notice = "Also mentioned: glass damage. One appointment books one service: add it to Notes or book it separately."
+    expect(await within(scope).findByText(notice)).toBeInTheDocument()
+    fireEvent.click(within(scope).getByRole("radio", { name: /^Brake Pads & Discs/ }))
+    await waitFor(() => expect(within(scope).getByRole("radio", { name: /^Brake Pads & Discs/ })).toHaveAttribute("aria-checked", "true"))
+    expect(within(scope).getByText(notice)).toBeInTheDocument()
+  })
+
+  it("goes while another candidate than the service it is outside is chosen, and comes back with it", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () =>
+        triageAnswer(
+          "confirm",
+          [[diagnosticsServiceType, 0.45], [brakesServiceType, 0.4]],
+          null,
+          uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)
+        ),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed, and a noise from the front")
+
+    // Nothing chosen yet: the notice says which service the damage is outside.
+    expect(await within(scope).findByText(crashNotice)).toBeInTheDocument()
+    fireEvent.click(within(scope).getByRole("radio", { name: /^Brake Pads & Discs/ }))
+    await waitFor(() => expect(within(scope).queryByText(crashNotice)).not.toBeInTheDocument())
+    fireEvent.click(within(scope).getByRole("radio", { name: /^Diagnostic Fault Finding/ }))
+    expect(await within(scope).findByText(crashNotice)).toBeInTheDocument()
+  })
+
+  it("shows nothing extra when the answer reports nothing else", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: () => triageAnswer("suggest", [[brakesServiceType, 0.9]]) })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Brakes squeal")
+
+    await within(scope).findByRole("radio", { name: /^Brake Pads & Discs/ })
+    expect(within(scope).queryByText(/Also mentioned/)).not.toBeInTheDocument()
+    expect(within(scope).queryByRole("button", { name: "Add to Notes" })).not.toBeInTheDocument()
+  })
+
+  it("adds its line to Notes after the copied description, once, and books with it", async () => {
+    const api = mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () =>
+        triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed it, and the AC will not switch on")
+
+    const add = await within(scope).findByRole("button", { name: "Add to Notes" })
+    add.focus()
+    fireEvent.click(add)
+    // Done in place: the same button says so, keeps focus and cannot add the line twice.
+    await waitFor(() => expect(add).toHaveAccessibleName("Added to Notes"))
+    expect(add).toHaveFocus()
+    expectUnavailableButFocusable(add)
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Use this" }))
+    fireEvent.click(await within(scope).findByRole("radio", { name: /^10:15/ }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    const notes = await within(scope).findByRole("textbox", { name: "Notes for the workshop" })
+    expect(notes).toHaveValue("Crashed it, and the AC will not switch on\nAlso mentioned: accident or body damage.")
+    expect(notes).toHaveAccessibleDescription("Copied from the description of the issue. Notes are saved with the booking.")
+
+    // Back on step 1 the line is still there, and the description's copy still follows the description.
+    fireEvent.click(within(scope).getByRole("button", { name: "Back" }))
+    expectUnavailableButFocusable(await within(scope).findByRole("button", { name: "Added to Notes" }))
+    fireEvent.change(within(scope).getByRole("textbox", { name: "Describe the issue" }), { target: { value: "Crashed it" } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    expect(await within(scope).findByRole("textbox", { name: "Notes for the workshop" })).toHaveValue(
+      "Crashed it\nAlso mentioned: accident or body damage."
+    )
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+    expect((await bookingBody(api.requests)).notes).toBe("Crashed it\nAlso mentioned: accident or body damage.")
+  })
+
+  it("adds only its line when the description is not copied, and says where the notes came from", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () =>
+        triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed it, call me on my mobile")
+    fireEvent.click(within(scope).getByRole("checkbox", { name: "Copy the description into Notes" }))
+    fireEvent.click(await within(scope).findByRole("button", { name: "Add to Notes" }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Use this" }))
+    fireEvent.click(await within(scope).findByRole("radio", { name: /^10:15/ }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+
+    const notes = await within(scope).findByRole("textbox", { name: "Notes for the workshop" })
+    expect(notes).toHaveValue("Also mentioned: accident or body damage.")
+    expect(notes).toHaveAccessibleDescription("Added from the suggestions on step 1. Notes are saved with the booking.")
+  })
+
+  it("adds its line after notes the person wrote, without replacing them", async () => {
+    mockBoardApi({
+      triageStatus: () => triageEnabled,
+      serviceTypes: catalogue,
+      triage: () =>
+        triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed it, and the AC will not switch on")
+    fireEvent.click(await within(scope).findByRole("button", { name: "Use this" }))
+    fireEvent.click(await within(scope).findByRole("radio", { name: /^10:15/ }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    fireEvent.change(await within(scope).findByRole("textbox", { name: "Notes for the workshop" }), { target: { value: "Customer waiting" } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Back" }))
+
+    fireEvent.click(await within(scope).findByRole("button", { name: "Add to Notes" }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    const notes = await within(scope).findByRole("textbox", { name: "Notes for the workshop" })
+    expect(notes).toHaveValue("Customer waiting\nAlso mentioned: accident or body damage.")
+    expect(notes).not.toHaveAccessibleDescription(/Copied from|Added from/)
   })
 })
 

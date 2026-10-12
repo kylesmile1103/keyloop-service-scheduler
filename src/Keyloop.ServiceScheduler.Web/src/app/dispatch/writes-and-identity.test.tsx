@@ -685,6 +685,8 @@ function TriageSection({ blocked }: { blocked: boolean }) {
         serviceTypes={[interimServiceType]}
         current={{ serviceTypeId: "", date: "2026-10-13" }}
         notesHaveOwnText={false}
+        notes=""
+        onAddToNotes={() => {}}
         onUse={() => {}}
       />
     </>

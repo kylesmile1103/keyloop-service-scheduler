@@ -1,4 +1,4 @@
-import type { ServiceTypeResponse, TriageUncoveredCategory } from "@/api/types.gen"
+import type { ServiceTypeResponse, TriageUncoveredCategory, TriageUncoveredIssue } from "@/api/types.gen"
 
 /**
  * The fixed words for a further problem the description mentioned (Task 32a's closed vocabulary, ARCHITECTURE §8.10): the
@@ -17,6 +17,27 @@ export const uncoveredPhrases = {
 /** A category's phrase; one this client does not know yet reads as the general one, never as its code. */
 export function phraseOf(category: TriageUncoveredCategory): string {
   return Object.hasOwn(uncoveredPhrases, category) ? uncoveredPhrases[category] : uncoveredPhrases.OTHER
+}
+
+/** The line *Add to Notes* writes into the booking's notes. */
+export const notesLine = (category: TriageUncoveredCategory) => `Also mentioned: ${phraseOf(category)}.`
+
+/**
+ * The notice beside a suggestion: what else the description mentioned, outside the service named when the answer says which
+ * one (`outsideServiceTypeId`), and what to do about it.
+ */
+export function alsoMentioned(category: TriageUncoveredCategory, outsideServiceName: string | null): string {
+  const outside = outsideServiceName ? `, which ${outsideServiceName} does not cover` : ""
+  return `Also mentioned: ${phraseOf(category)}${outside}. One appointment books one service: add it to Notes or book it separately.`
+}
+
+/**
+ * Whether the notice belongs beside the candidate chosen: the issue is outside Clef's own service, so it goes when another
+ * candidate is chosen; with nothing chosen yet (a `confirm`) it stays and names that service; with no service named
+ * (`outsideServiceTypeId: null`), it is outside every one.
+ */
+export function noticeApplies(issue: TriageUncoveredIssue, chosenServiceTypeId: string | null): boolean {
+  return issue.outsideServiceTypeId === null || chosenServiceTypeId === null || chosenServiceTypeId === issue.outsideServiceTypeId
 }
 
 /** The catalogue's code for the service that finds what is wrong: the next step offered after a no-match. */

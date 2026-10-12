@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import type { ServiceTypeResponse, TriageUncoveredCategory } from "@/api/types.gen"
 import { diagnosticsServiceType } from "@/test/triage"
 
-import { inspectionService, phraseOf, uncoveredPhrases } from "./triage-copy"
+import { alsoMentioned, inspectionService, noticeApplies, notesLine, phraseOf, uncoveredPhrases } from "./triage-copy"
 
 const web = path.resolve(__dirname, "../../../..")
 
@@ -46,6 +46,24 @@ describe("the fixed phrases for what else a description mentioned (Task 32a's cl
     expect(phraseOf("SEATBELTS" as TriageUncoveredCategory)).toBe("another vehicle issue")
   })
 
+  it("writes the notice, naming the service it is outside when that is known", () => {
+    expect(alsoMentioned("ACCIDENT_OR_BODY_DAMAGE", null)).toBe(
+      "Also mentioned: accident or body damage. One appointment books one service: add it to Notes or book it separately."
+    )
+    expect(alsoMentioned("ACCIDENT_OR_BODY_DAMAGE", "Diagnostic Fault Finding")).toBe(
+      "Also mentioned: accident or body damage, which Diagnostic Fault Finding does not cover. One appointment books one service: add it to Notes or book it separately."
+    )
+    expect(notesLine("AIR_CONDITIONING")).toBe("Also mentioned: air conditioning.")
+  })
+
+  it("belongs beside the service it is outside, or beside any choice when that is not known", () => {
+    const issue = { category: "GLASS" as const, probability: 0.8, confidence: 0.7, outsideServiceTypeId: "diag" }
+    expect(noticeApplies(issue, "diag")).toBe(true)
+    // Nothing chosen yet (a confirm): the notice says which service the issue is outside.
+    expect(noticeApplies(issue, null)).toBe(true)
+    expect(noticeApplies(issue, "brakes")).toBe(false)
+    expect(noticeApplies({ ...issue, outsideServiceTypeId: null }, "brakes")).toBe(true)
+  })
 })
 
 describe("the inspection offered after a no-match", () => {
