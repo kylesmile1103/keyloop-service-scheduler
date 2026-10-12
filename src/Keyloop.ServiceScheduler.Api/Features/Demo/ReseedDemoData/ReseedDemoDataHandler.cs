@@ -77,7 +77,7 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
         await db.AppointmentHistory.Where(h => appointments.Any(a => a.Id == h.AppointmentId)).ExecuteDeleteAsync(ct);
         var deleted = await appointments.ExecuteDeleteAsync(ct);
 
-        await ReferenceDataSeed.EnsureSeededAsync(db, clock, ct);
+        await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, ct);
         await ReferenceDataSeed.RestoreSeededCompetenceAsync(db, ct);
         await ReferenceDataSeed.RestoreSeededDamageCertificationAsync(db, ct);
         var created = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct);

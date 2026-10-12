@@ -25,6 +25,10 @@ internal static partial class InfrastructureLog
         Message = "Seed '{Seed}' completed: {Created} row(s) created")]
     public static partial void SeedCompleted(this ILogger logger, string seed, int created);
 
+    [LoggerMessage(EventId = 1107, EventName = "RequirementPolicyPublished", Level = LogLevel.Information,
+        Message = "Seeding published requirement policy version {PolicyVersion} for dealership {DealershipId}; previous latest version {PreviousVersion} (0: none)")]
+    public static partial void RequirementPolicyPublished(this ILogger logger, Guid dealershipId, int policyVersion, int previousVersion);
+
     [LoggerMessage(EventId = 1300, EventName = "NotificationSent", Level = LogLevel.Information,
         Message = "Notification {OutboxId} ({Kind}) for appointment {AppointmentId} accepted by the sender")]
     public static partial void NotificationSent(this ILogger logger, Guid outboxId, Guid appointmentId, string kind);

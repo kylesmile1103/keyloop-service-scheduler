@@ -53,7 +53,7 @@ public static class DatabaseInitializer
         if (options.SeedDemoData)
         {
             var clock = provider.GetRequiredService<TimeProvider>();
-            logger.SeedCompleted("reference-data", await ReferenceDataSeed.EnsureSeededAsync(db, clock, ct));
+            logger.SeedCompleted("reference-data", await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, ct));
             logger.SeedCompleted("demo-appointments", await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct));
         }
     }

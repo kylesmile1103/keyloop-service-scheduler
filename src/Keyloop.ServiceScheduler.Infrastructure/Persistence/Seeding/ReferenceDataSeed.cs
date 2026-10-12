@@ -3,7 +3,10 @@ using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using static Keyloop.ServiceScheduler.Domain.Resources.BayCapability;
 using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
 
@@ -25,12 +28,22 @@ public static class ReferenceDataSeed
 
     public static Guid TechnicianId(string employeeNumber) => DeterministicGuid.Create($"technician:{employeeNumber}");
 
-    /// <summary>Adds missing damage-assessment reference data and versions policy upgrades without changing existing resources or bookings.</summary>
+    /// <inheritdoc cref="EnsureSeededAsync(SchedulerDbContext, TimeProvider, ILogger, CancellationToken)"/>
+    public static Task<int> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, CancellationToken ct) =>
+        EnsureSeededAsync(db, clock, NullLogger.Instance, ct);
+
+    /// <summary>
+    /// Seeds an empty database; on an existing one, adds the missing damage-assessment service and versions the policy upgrade without
+    /// changing existing resources or bookings. The upgrade is one-shot per dealership: once any stored version contains
+    /// <see cref="RequirementRule.PostCollisionRuleCode"/>, a later version without it is a person's decision and stays the latest.
+    /// </summary>
+    /// <param name="logger">Receives one line per dealership for which this call publishes a policy version.</param>
     /// <returns>The number of rows added (0 when already seeded).</returns>
-    public static async Task<int> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, CancellationToken ct)
+    public static async Task<int> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, ILogger logger, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(logger);
         if (await db.Dealerships.AnyAsync(ct))
         {
             if (!await db.ServiceTypes.AnyAsync(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT", ct))
@@ -40,27 +53,36 @@ public static class ReferenceDataSeed
             // Copy the latest policy before adding the new constraint. Old versions and custom effects are retained.
             var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(ct);
             var policies = await db.RequirementRules.AsNoTracking().ToListAsync(ct);
+            var published = new List<(Guid Site, int Previous, int Version)>();
             foreach (var site in sites)
             {
                 var existing = policies.Where(r => r.DealershipId == site).ToArray();
                 if (existing.Length == 0)
                 {
                     db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site));
+                    published.Add((site, 0, RequirementRule.DefaultPolicyVersion));
+                    continue;
+                }
+                // Any version, not only the latest: a version published after the rule arrived and without it is an intentional removal.
+                if (existing.Any(r => r.Code == RequirementRule.PostCollisionRuleCode))
+                {
                     continue;
                 }
                 var version = existing.Max(r => r.PolicyVersion);
                 var latest = existing.Where(r => r.PolicyVersion == version).ToArray();
-                if (latest.Any(r => r.Code == RequirementRule.PostCollisionRuleCode))
-                {
-                    continue;
-                }
                 var collision = RequirementRule.DefaultPolicy(site).Single(r => r.Code == RequirementRule.PostCollisionRuleCode);
                 db.RequirementRules.AddRange(latest.Append(collision).Select(r => r with
                 {
                     Id = DeterministicGuid.Create($"requirement-rule:{site}:{version + 1}:{r.Code}"), PolicyVersion = version + 1,
                 }));
+                published.Add((site, version, version + 1));
             }
-            return await db.SaveChangesAsync(ct);
+            var added = await db.SaveChangesAsync(ct);
+            foreach (var (site, previous, version) in published)
+            {
+                logger.RequirementPolicyPublished(site, version, previous);
+            }
+            return added;
         }
 
         var now = clock.GetUtcNow().UtcDateTime;

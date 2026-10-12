@@ -92,8 +92,14 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
         booked.Allocation.ShouldNotBeNull().PolicyVersion.ShouldBe(7);
         var originalRules = await _factory.WithDbAsync(db => db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site).OrderBy(r => r.Order).ToListAsync(Ct));
         var resourcesBefore = await ResourcesAsync();
-        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct))).ShouldBe(15); // service + 7 Reading + 7 Munich
-        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct))).ShouldBe(0);
+        var logs = new CapturingLoggerProvider();
+        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(15); // service + 7 Reading + 7 Munich
+        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(0);
+        // One line per dealership that received a version, naming the previous latest one (0: Munich had none after the delete above).
+        logs.Entries.Select(e => (e.EventId.Id, e.Message)).ShouldBe([
+            (1107, $"Seeding published requirement policy version 8 for dealership {site}; previous latest version 7 (0: none)"),
+            (1107, $"Seeding published requirement policy version 2 for dealership {ReferenceDataSeed.MunichDealershipId}; previous latest version 0 (0: none)"),
+        ], ignoreOrder: true);
         (await ResourcesAsync()).ShouldBe(resourcesBefore);
         await _factory.WithDbAsync(async db =>
         {
@@ -115,6 +121,28 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
         var problem = await gap.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, "no-qualified-resources", Ct);
         problem.GetProperty("minimumHvLevel").GetInt32().ShouldBe(3);
         problem.GetProperty("missingCertifications").EnumerateArray().Select(c => c.GetString()).ShouldBe(["DamageAssessment"]);
+    }
+
+    [Fact]
+    public async Task Startup_upgrade_is_one_shot_and_keeps_a_later_operator_version_without_the_collision_rule()
+    {
+        // The fresh seed is v2 with hv-post-collision. An operator then publishes v3 without it (Task 30 editing).
+        var site = ReferenceDataSeed.ReadingDealershipId;
+        await _factory.WithDbAsync(async db =>
+        {
+            db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site).Where(r => r.Code != RequirementRule.PostCollisionRuleCode)
+                .Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 3 }));
+            await db.SaveChangesAsync(Ct);
+        });
+        var logs = new CapturingLoggerProvider();
+        (await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, logs.CreateLogger("seed"), Ct))).ShouldBe(0);
+        logs.Entries.ShouldBeEmpty();
+        await _factory.WithDbAsync(async db =>
+        {
+            var latest = await db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site).MaxAsync(r => r.PolicyVersion, Ct);
+            latest.ShouldBe(3);
+            (await db.RequirementRules.AsNoTracking().CountAsync(r => r.DealershipId == site && r.PolicyVersion == 3, Ct)).ShouldBe(6);
+        });
     }
 
     private Task<List<string>> ResourcesAsync() => _factory.WithDbAsync(db => db.Database.SqlQuery<string>($"""
