@@ -27,6 +27,9 @@ internal static class TriageGoldenSetReport
         internal string RawUncovered => Answer.UncoveredIssue.Choice!;
 
         internal string Exposed => Response.UncoveredIssue?.Category.ToString() ?? ClefQuestionBuilder.NoUncoveredIssue;
+
+        /// <summary>The raw category lies inside the scope of the service Clef chose, so the mapper never exposes it.</summary>
+        internal bool InChosenScope => UncoveredIssueScope.Covers(Answer.Service.Choice!, RawUncovered);
     }
 
     internal static readonly double[] UncoveredThresholds = [0.0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
@@ -44,7 +47,7 @@ internal static class TriageGoldenSetReport
         var count = samples.Count;
         var options = new TriageOptions();
         report.AppendLine(CultureInfo.InvariantCulture, $"Thresholds: service {options.SuggestThreshold:F2}, date {options.DateThreshold:F2}, uncovered {options.UncoveredIssueThreshold:F2}; candidate absolute {options.CandidateFloor:F2}, relative {options.RelativeCandidateFloor:F2}.");
-        report.AppendLine("Hinted fixtures name the main task or what is excluded (\"Main task\", \"Book X; also\", \"no ... needed\"); natural ones do not. The uncovered answer is scored against the service Clef chose: joint accuracy needs an accepted (service, uncovered) pair, and accuracy given the service counts only fixtures whose chosen service is accepted.\n");
+        report.AppendLine("Hinted fixtures name the main task or what is excluded (\"Main task\", \"Book X; also\", \"no ... needed\"); natural ones do not. The uncovered answer is scored against the service Clef chose: joint accuracy needs an accepted (service, uncovered) pair, and accuracy given the service counts only fixtures whose chosen service is accepted. Raw lines use the validated choice; exposed notices, the exposed matrix and the threshold sweep also apply same-scope suppression (a category inside the chosen service's own scope is never shown).\n");
         Line(report, "Service choice accuracy", samples, s => s.Expected is not null);
         Line(report, "Joint service and uncovered accuracy", samples, s => s.Expected?.Uncovered == s.RawUncovered);
         var given = samples.Where(s => s.Expected is not null).ToArray();
@@ -55,6 +58,9 @@ internal static class TriageGoldenSetReport
         var positive = given.Where(s => s.Expected!.Uncovered != ClefQuestionBuilder.NoUncoveredIssue).ToArray();
         var negative = given.Where(s => s.Expected!.Uncovered == ClefQuestionBuilder.NoUncoveredIssue).ToArray();
         report.AppendLine(CultureInfo.InvariantCulture, $"Uncovered given an accepted service: positive {positive.Count(s => s.RawUncovered == s.Expected!.Uncovered)}/{positive.Length}; NONE {negative.Count(s => s.RawUncovered == ClefQuestionBuilder.NoUncoveredIssue)}/{negative.Length}.");
+        var suppressed = samples.Where(s => s.InChosenScope).ToArray();
+        var suppressedAtThreshold = suppressed.Where(s => s.Answer.UncoveredIssue.Confidence >= options.UncoveredIssueThreshold).ToArray();
+        report.AppendLine(CultureInfo.InvariantCulture, $"Same-scope suppression (all fixtures): {suppressedAtThreshold.Length} at the configured threshold ({Fixtures(suppressedAtThreshold)}); {suppressed.Length} at any confidence ({Fixtures(suppressed)}).");
         report.AppendLine(CultureInfo.InvariantCulture, $"Exposed notices given an accepted service: correct {positive.Count(s => s.Exposed == s.Expected!.Uncovered)}/{positive.Length}; false {negative.Count(s => s.Exposed != ClefQuestionBuilder.NoUncoveredIssue)}; missed {positive.Count(s => s.Exposed == ClefQuestionBuilder.NoUncoveredIssue)}; wrong category {positive.Count(s => s.Exposed != ClefQuestionBuilder.NoUncoveredIssue && s.Exposed != s.Expected!.Uncovered)}.");
         foreach (var s in samples.Where(s => s.StakeholderCase))
         {
@@ -79,7 +85,7 @@ internal static class TriageGoldenSetReport
         report.AppendLine("| Threshold | Correct notices | False notices | Missed notices | Wrong category |\n|---|---|---|---|---|");
         foreach (var threshold in UncoveredThresholds)
         {
-            string Choice(Sample s) => s.Answer.UncoveredIssue.Confidence >= threshold ? s.RawUncovered : ClefQuestionBuilder.NoUncoveredIssue;
+            string Choice(Sample s) => s.Answer.UncoveredIssue.Confidence >= threshold && !s.InChosenScope ? s.RawUncovered : ClefQuestionBuilder.NoUncoveredIssue;
             report.AppendLine(CultureInfo.InvariantCulture, $"| {threshold:F2} | {positive.Count(s => Choice(s) == s.Expected!.Uncovered)} | {negative.Count(s => Choice(s) != ClefQuestionBuilder.NoUncoveredIssue)} | {positive.Count(s => Choice(s) == ClefQuestionBuilder.NoUncoveredIssue)} | {positive.Count(s => Choice(s) != ClefQuestionBuilder.NoUncoveredIssue && Choice(s) != s.Expected!.Uncovered)} |");
         }
         report.AppendLine("\n## Candidate retention by relative floor\n");
@@ -92,10 +98,10 @@ internal static class TriageGoldenSetReport
             report.AppendLine(CultureInfo.InvariantCulture, $"| {floor:F2} | {bookable.Count(s => kept[s.Fixture].Intersect(Bookable(s)).Any())}/{bookable.Length} | {kept.Values.Average(k => k.Length):F2} | {kept.Values.Count(k => k.Length == 1)} |");
         }
         report.AppendLine("\n## Per-fixture results\n");
-        report.AppendLine("| Fixture | Subset | Accepted (service+uncovered) | Service choice | Service confidence | Recommendation | Candidates | Accepted rank | Date expected | Date choice | Date confidence | Uncovered choice | Uncovered confidence | Exposed category | Outside service | Input tokens | Latency ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+        report.AppendLine("| Fixture | Subset | Accepted (service+uncovered) | Service choice | Service confidence | Recommendation | Candidates | Accepted rank | Date expected | Date choice | Date confidence | Uncovered choice | Uncovered confidence | Exposed category | Same scope | Outside service | Input tokens | Latency ms |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         foreach (var s in samples)
         {
-            report.AppendLine(CultureInfo.InvariantCulture, $"| {s.Fixture} | {(s.Hinted ? "hinted" : "natural")} | {string.Join(" / ", s.Accept.Select(a => $"{a.Service}+{a.Uncovered}"))} | {s.Answer.Service.Choice} | {s.Answer.Service.Confidence:F3} | {s.Response.Recommendation} | {s.Response.Services.Count} | {Rank(s)} | {s.Date} | {s.Answer.PreferredDate.Choice} | {s.Answer.PreferredDate.Confidence:F3} | {s.RawUncovered} | {s.Answer.UncoveredIssue.Confidence:F3} | {s.Exposed} | {(s.Response.UncoveredIssue is null ? "-" : Outside(s, services))} | {s.Answer.InputTokens?.ToString(CultureInfo.InvariantCulture) ?? "missing"} | {s.LatencyMs:F1} |");
+            report.AppendLine(CultureInfo.InvariantCulture, $"| {s.Fixture} | {(s.Hinted ? "hinted" : "natural")} | {string.Join(" / ", s.Accept.Select(a => $"{a.Service}+{a.Uncovered}"))} | {s.Answer.Service.Choice} | {s.Answer.Service.Confidence:F3} | {s.Response.Recommendation} | {s.Response.Services.Count} | {Rank(s)} | {s.Date} | {s.Answer.PreferredDate.Choice} | {s.Answer.PreferredDate.Confidence:F3} | {s.RawUncovered} | {s.Answer.UncoveredIssue.Confidence:F3} | {s.Exposed} | {YesNo(s.InChosenScope)} | {(s.Response.UncoveredIssue is null ? "-" : Outside(s, services))} | {s.Answer.InputTokens?.ToString(CultureInfo.InvariantCulture) ?? "missing"} | {s.LatencyMs:F1} |");
         }
         return report.ToString();
     }
@@ -107,6 +113,9 @@ internal static class TriageGoldenSetReport
     }
 
     private static string YesNo(bool value) => value ? "yes" : "no";
+
+    private static string Fixtures(IEnumerable<Sample> samples) =>
+        samples.Any() ? "fixtures " + string.Join(", ", samples.Select(s => s.Fixture.ToString(CultureInfo.InvariantCulture))) : "none";
 
     private static IEnumerable<string> Bookable(Sample sample) =>
         sample.Accept.Select(a => a.Service).Where(code => code != ClefQuestionBuilder.NoneOfThese).Distinct();
@@ -131,7 +140,7 @@ internal static class TriageGoldenSetReport
 
     private static void Confusion(StringBuilder report, IReadOnlyList<Sample> samples, Func<Sample, string> actual)
     {
-        report.AppendLine("Rows are expected for the chosen service, columns are actual. NONE includes suppressed notices in the exposed matrix.\n");
+        report.AppendLine("Rows are expected for the chosen service, columns are actual. In the exposed matrix NONE also counts notices below the threshold or inside the chosen service's scope.\n");
         report.AppendLine("| Expected / Actual | " + string.Join(" | ", Categories) + " |");
         report.AppendLine("|---|" + string.Concat(Categories.Select(_ => "---|")));
         foreach (var expected in Categories)
