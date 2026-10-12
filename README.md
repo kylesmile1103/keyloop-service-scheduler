@@ -6,6 +6,16 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** complete Task 17b Chrome QA, the final whole-branch review, the clean-clone verification with coverage and screenshots, and record a hosted CI run. Public deployment is a separate stakeholder gate.
 
+## Submission deliverables
+
+| Deliverable | Where |
+|---|---|
+| System Design Document (Part 1) | [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md), the entry point that maps each required item to [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Working code (Part 2, backend) | This repository: build, run and test instructions below |
+| AI Collaboration Narrative | [AI Collaboration Narrative](#ai-collaboration-narrative) in this README |
+| Tests that validate the core business logic | [Run the tests](#run-the-tests), including the adversarial concurrency proof |
+| Video (5 to 10 minutes) | [Video](#video) and the [walkthrough guide](docs/VIDEO_WALKTHROUGH.md) |
+
 ## Prerequisites
 
 - .NET SDK **10.0.100**, the version in [global.json](global.json), which allows `latestFeature` roll-forward.
