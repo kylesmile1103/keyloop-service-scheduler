@@ -59,12 +59,13 @@ describe("technicians list", () => {
     expect(document.title).toBe("Technicians – Keyloop Service Scheduler")
   })
 
-  it("is read-only: no control adds, edits or removes a technician", async () => {
+  it("is read-only for a Service advisor: Add technician is unavailable with the reason, and no row has actions", async () => {
     mockBoardApi()
     renderBoard(page)
 
     await table()
-    expect(screen.queryByRole("button", { name: /add|new|edit|delete|remove/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add technician" })).toHaveAttribute("aria-disabled", "true")
+    expect(screen.queryByRole("button", { name: /edit|delete|remove|^actions for/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: /name/i })).not.toBeInTheDocument()
   })
 

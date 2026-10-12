@@ -1,7 +1,8 @@
-import { CircleDashed, ShieldAlert } from "lucide-react"
+import { BadgeCheck, CircleDashed, LoaderCircle, ShieldAlert } from "lucide-react"
 
 import { HvLevelBadge } from "@/components/hv-level"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { formatDay } from "@/lib/calendar-date"
 import { cn } from "@/lib/utils"
 
@@ -81,13 +82,28 @@ export function CompetenceBlock({ competence }: { competence: Competence | null 
   )
 }
 
+/** A technician whose level nobody confirmed, for the note above the roster. */
+export interface UnconfirmedLevel {
+  id: string
+  name: string
+}
+
+interface UnconfirmedLevelsNoteProps {
+  levels: readonly UnconfirmedLevel[]
+  /** An Admin confirms each from the note (Task 30b); anyone else is told who can. */
+  onConfirm?: (id: string) => void
+  /** Technicians whose confirmation is being sent. */
+  pending?: ReadonlySet<string>
+}
+
 /**
  * Above the roster when a level nobody confirmed is on it: who, why (the migration carried the old high-voltage certificate
- * over as level 3 and every other technician as level 0), that it still counts when booking, and the way to the seeded,
- * confirmed levels on a demo database. Read-only until editing arrives, so the note does not offer a confirm button.
+ * over as level 3 and every other technician as level 0), and that it still counts when booking. An Admin gets a Confirm
+ * button per technician, one action each (Task 30b, UI_DESIGN 11.24); a Service advisor or a Viewer is told an Admin can.
  */
-export function UnconfirmedLevelsNote({ names }: { names: readonly string[] }) {
-  if (names.length === 0) return null
+export function UnconfirmedLevelsNote({ levels, onConfirm, pending = new Set() }: UnconfirmedLevelsNoteProps) {
+  if (levels.length === 0) return null
+  const names = levels.map((level) => level.name)
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
   return (
     <section
@@ -95,14 +111,40 @@ export function UnconfirmedLevelsNote({ names }: { names: readonly string[] }) {
       className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-foreground"
     >
       <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
-      <div className="flex flex-col gap-1 text-pretty">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 text-pretty">
         <p className="font-semibold text-warning">{`${names.length} HV ${names.length === 1 ? "level needs" : "levels need"} review`}</p>
         <p>{`${list}: carried over from the old high-voltage certificate (as level 3, everyone else as level 0) and not confirmed by anyone.`}</p>
         <p className="text-muted-foreground">
-          An unconfirmed level still counts when booking, so a technician at level 0 can’t take work on a vehicle that may be
-          high-voltage, which includes every booking without a declared powertrain. Levels can’t be edited here yet; on a demo
-          database, Reseed demo data (Admin) restores the seeded, confirmed levels.
+          {`An unconfirmed level still counts when booking, so a technician at level 0 can’t take work on a vehicle that may be high-voltage, which includes every booking without a declared powertrain. ${
+            onConfirm
+              ? "Confirm a level once you have checked it, or edit it if it is wrong. On a demo database, Reseed demo data (Admin) restores the seeded, confirmed levels."
+              : "A workshop Admin confirms or corrects them; on a demo database, Reseed demo data (Admin) restores the seeded, confirmed levels."
+          }`}
         </p>
+        {onConfirm && (
+          <ul className="flex flex-wrap gap-2 pt-1">
+            {levels.map((level) => (
+              <li key={level.id}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending.has(level.id)}
+                  focusableWhenDisabled
+                  onClick={() => onConfirm(level.id)}
+                  className="cursor-pointer bg-card"
+                >
+                  {pending.has(level.id) ? (
+                    <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <BadgeCheck aria-hidden="true" />
+                  )}
+                  {`Confirm ${level.name}'s level`}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   )

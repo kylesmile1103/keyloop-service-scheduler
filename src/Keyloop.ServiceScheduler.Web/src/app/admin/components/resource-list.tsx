@@ -43,8 +43,12 @@ interface ResourceListProps<TRow extends { id: string }> {
    * for the technicians and bays), which is then described: it shows what the headline does not say.
    */
   empty: { title: string; text: string; illustration?: Illustration }
-  /** The table's row actions slot, for Task 30's editing. */
+  /** Each row's actions (an Admin's menu, Task 30b): a trailing cell in the table; the cards place their own. */
   rowActions?: (row: TRow) => ReactNode
+  /** The list's own action in its header (Add technician, Add bay), at the right of the dealership's name. */
+  action?: ReactNode
+  /** A note under the header: why the action is unavailable to this role (`ReadOnlyNote`), or what just happened. */
+  notice?: ReactNode
 }
 
 /**
@@ -67,6 +71,8 @@ export function ResourceList<TRow extends { id: string }>({
   cards,
   empty,
   rowActions,
+  action,
+  notice,
 }: ResourceListProps<TRow>) {
   const headingId = useId()
   const list = useRef<HTMLElement>(null)
@@ -94,13 +100,17 @@ export function ResourceList<TRow extends { id: string }>({
           </h2>
           <p className="text-sm text-muted-foreground tabular-nums">{daySentence(dealership, today, today, read.day)}</p>
         </div>
-        {read.rows && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-            <RefreshCw aria-hidden="true" className={cn("size-3", read.fetching && "animate-spin")} />
-            {`Updated ${formatLocalTime(new Date(read.updatedAt).toISOString(), dealership.timeZoneId)}`}
-          </p>
-        )}
+        <div className={cn("flex items-center gap-3", phone && action && "w-full flex-col items-stretch")}>
+          {read.rows && (
+            <p className={cn("flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums", phone && action && "order-last")}>
+              <RefreshCw aria-hidden="true" className={cn("size-3", read.fetching && "animate-spin")} />
+              {`Updated ${formatLocalTime(new Date(read.updatedAt).toISOString(), dealership.timeZoneId)}`}
+            </p>
+          )}
+          {action}
+        </div>
       </div>
+      {notice && <div className={cn(phone ? "px-1" : "border-b px-4 py-3")}>{notice}</div>}
       {!read.rows && read.failure !== null ? (
         <FailedState title={`Couldn’t load the ${noun.other}`} error={read.failure} onRetry={retry} retrying={read.fetching} level={3} />
       ) : !read.rows ? (

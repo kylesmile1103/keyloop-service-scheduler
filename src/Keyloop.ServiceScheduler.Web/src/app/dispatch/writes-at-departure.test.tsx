@@ -3,16 +3,18 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
+import { routes } from "@/config/routes"
 import { client } from "@/lib/api-client"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { currentUserQueryKey } from "@/lib/session"
 import { clearCallerData } from "@/lib/session-cache"
+import { adminServer } from "@/test/admin-api"
 import { bookedFrom, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
-import { availabilityOn, interimServiceType } from "@/test/schedules"
+import { availabilityOn, interimServiceType, technicians as technicianIds } from "@/test/schedules"
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
 import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
@@ -34,6 +36,9 @@ import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])
+  // The Resources area's pages (Task 30b's edits, below), through the routes' own lazy imports.
+  const resources = routes.find((route) => route.path === "/resources")!
+  await Promise.all([resources, ...resources.children!].map((route) => (route.lazy as (() => Promise<unknown>) | undefined)?.()))
 })
 
 beforeEach(() => {
@@ -566,5 +571,166 @@ describe.each([
     for (const outcome of outcomes) expect(outcome).toEqual({ ...outcome, sent: outcome.reachedFetch })
     expect(outcomes.some((outcome) => outcome.reachedFetch === 0)).toBe(true)
     expect(outcomes.some((outcome) => outcome.reachedFetch === 1)).toBe(true)
+  })
+})
+
+// Task 30b: an Admin's edits in the Resources area are writes bound the same way, to an Admin (`writes: "admin"`). Each is
+// checked inside the fetch its request is given, so a change of who is signed in while the generated client prepares the
+// request sends nothing: signed out, a Viewer, `/me` unreadable, another Admin, and also the same email as a Service
+// advisor, which may still book but not edit. The same Admin gaining another role is the same writer.
+
+const technicians = `/resources/technicians?dealership=${reading.id}`
+const privateName = "Private Previous Admin Name"
+
+/** Requests of one method to a path that ends with `suffix`. */
+const sent = (requests: readonly Request[], method: string, suffix: string) =>
+  requests.filter((request) => request.method === method && new URL(request.url).pathname.endsWith(suffix))
+
+interface AdminWritePath {
+  name: string
+  page: string
+  method: "POST" | "PUT"
+  path: string
+  /** The server's state for this path (a level nobody confirmed, for Confirm HV level). */
+  server?: Parameters<typeof adminServer>[0]
+  open: () => Promise<() => void>
+  carries: string[]
+  answered: () => Promise<unknown>
+}
+
+async function adminRowAction(name: string, action: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for ${name}` }, { timeout: 10_000 }))
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }))
+}
+
+const adminWritePaths: AdminWritePath[] = [
+  {
+    name: "Save changes to a technician",
+    page: technicians,
+    method: "PUT",
+    path: `/technicians/${technicianIds.ben.id}`,
+    open: async () => {
+      await adminRowAction("Ben Okafor", "Edit")
+      const sheet = await screen.findByRole("dialog", { name: "Edit Ben Okafor" })
+      const name = await within(sheet).findByRole("textbox", { name: "Name" })
+      await waitFor(() => expect(name).toHaveValue("Ben Okafor"))
+      fireEvent.change(name, { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Save changes" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Technician saved"),
+  },
+  {
+    name: "Add technician",
+    page: technicians,
+    method: "POST",
+    path: "/technicians",
+    open: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add technician" }, { timeout: 10_000 }))
+      const sheet = await screen.findByRole("dialog", { name: "Add technician" })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: privateName } })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Employee number" }), { target: { value: "T-7777" } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Add technician" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Technician added"),
+  },
+  {
+    name: "Confirm HV level",
+    page: technicians,
+    method: "POST",
+    path: "/confirm-hv-level",
+    server: { technicians: (records) => records.map((record) => (record.id === technicianIds.ben.id ? { ...record, hvLevelConfirmed: false } : record)) },
+    open: async () => {
+      const note = await screen.findByRole("region", { name: "HV levels to review" }, { timeout: 10_000 })
+      const button = within(note).getByRole("button", { name: "Confirm Ben Okafor's level" })
+      return () => fireEvent.click(button)
+    },
+    carries: [],
+    answered: () => screen.findByText("HV level confirmed"),
+  },
+  {
+    name: "Deactivate a technician",
+    page: technicians,
+    method: "PUT",
+    path: `/technicians/${technicianIds.ben.id}`,
+    open: async () => {
+      await adminRowAction("Ben Okafor", "Deactivate")
+      const dialog = await screen.findByRole("dialog", { name: "Deactivate Ben Okafor?" })
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Technician deactivated"),
+  },
+]
+
+/**
+ * Changes who is signed in while the generated client prepares the first `method` request to `path` from now on (as
+ * `changeWhilePreparing`, for any method): records how many had reached fetch when the change landed.
+ */
+function changeWhileSending(api: { requests: Request[] }, queryClient: QueryClient, session: Session, method: string, path: string, change: Change) {
+  const at = { before: sent(api.requests, method, path).length, prepared: 0, reachedFetch: -1 }
+  const interceptor = (request: Request) => {
+    if (request.method === method && new URL(request.url).pathname.endsWith(path) && ++at.prepared === 1) {
+      at.reachedFetch = sent(api.requests, method, path).length
+      queueMicrotask(() => change.apply(queryClient, session))
+    }
+    return request
+  }
+  client.interceptors.request.use(interceptor)
+  onTestFinished(() => client.interceptors.request.eject(interceptor))
+  return at
+}
+
+function adminApi(session: Session, write: AdminWritePath) {
+  const me = () => session.me
+  return mockBoardApi({
+    me: () => (session.meFails ? problemResponse(500, { type: "about:blank", title: "Internal Server Error", status: 500 }) : session.me),
+    features: () => vehicleAwareOn,
+    admin: adminServer({ me, ...write.server }),
+  })
+}
+
+/** The same Admin with another role besides: the same writer. */
+const adminAlsoViewer: CurrentUserResponse = { ...admin, roles: ["Admin", "Viewer"] }
+
+describe.each(adminWritePaths)("$name, an Admin's edit, while the generated client prepares its request", (write) => {
+  it.each<Change>([
+    becomes("signs out", anonymous),
+    becomes("becomes a Viewer", viewer),
+    meFails,
+    becomes("is another Admin", otherAdmin),
+    becomes("is the same email as a Service advisor, who may book but not edit", sameEmailAdvisor),
+  ])("sends nothing when who is signed in $name, and keeps nothing of it", async (change) => {
+    const session: Session = { me: admin, meFails: false }
+    const api = adminApi(session, write)
+    const { queryClient } = renderBoard(write.page)
+    const press = await write.open()
+
+    const at = changeWhileSending(api, queryClient, session, write.method, write.path, change)
+    press()
+    await settle()
+
+    expect(at.prepared).toBe(1)
+    expect(at.reachedFetch).toBe(at.before)
+    expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before)
+    expect(screen.queryAllByText(/^Technician (saved|added|deactivated)$|^HV level confirmed$/)).toHaveLength(0)
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+    for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)
+  })
+
+  it("is still sent, once, and its answer used, when the same Admin gains another role", async () => {
+    const session: Session = { me: admin, meFails: false }
+    const api = adminApi(session, write)
+    const { queryClient } = renderBoard(write.page)
+    const press = await write.open()
+
+    const at = changeWhileSending(api, queryClient, session, write.method, write.path, becomes("same Admin", adminAlsoViewer))
+    press()
+
+    expect(await write.answered()).toBeInTheDocument()
+    expect(at.reachedFetch).toBe(at.before)
+    expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before + 1)
   })
 })

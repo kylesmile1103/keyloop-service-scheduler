@@ -2,6 +2,7 @@ import { fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
+import { adminServer } from "@/test/admin-api"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
@@ -9,7 +10,8 @@ import { jsonResponse } from "@/test/mock-api"
 import { renderBoard } from "@/test/render-board"
 
 // The Resources area needs a signed-in user with a role (Task 27b, ADR-027): the 401 page in place for a visitor who is
-// not signed in, the 403 page for an account without a role, the read-only lists for Viewer, Service advisor and Admin.
+// not signed in, the 403 page for an account without a role, the lists for Viewer, Service advisor and Admin (an Admin's
+// from the Admin reads, editable, Task 30b).
 
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/technicians/page"), import("@/app/admin/bays/page")])
@@ -57,7 +59,7 @@ describe("the Resources area's sign-in guard", () => {
     ["a Service advisor", serviceAdvisor],
     ["an Admin", admin],
   ])("lets %s read the lists", async (_, me) => {
-    mockBoardApi({ me: () => me })
+    mockBoardApi({ me: () => me, admin: adminServer({ me: () => me }) })
     renderBoard(technicians)
 
     expect(await screen.findByRole("table", { name: "Technicians" }, { timeout: 5000 })).toBeInTheDocument()

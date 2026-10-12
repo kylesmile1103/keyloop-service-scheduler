@@ -64,6 +64,11 @@ export interface BoardApiOptions {
   features?: () => Answer<FeatureSwitchesResponse>
   /** POST a VIN to resolve. By default: Volkswagen for a WVW VIN, the manufacturer not known for any other. */
   resolveVehicle?: (body: ResolveVehicleProfileRequest) => Answer<VehicleProfile>
+  /**
+   * The Admin routes of Task 30a (technicians, bays, the requirement policy, the change history), answered by an
+   * `adminServer` (src/test/admin-api.ts). Without one they are 404s, as on an API that has none.
+   */
+  admin?: { handle: (request: Request, url: URL) => Promise<Response | null> }
 }
 
 /** British Summer Time, as the fixtures' October dates are: a UTC instant as `yyyy-MM-ddTHH:mm+01:00`. */
@@ -247,6 +252,10 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
     let match: RegExpExecArray | null
 
     if (path === "/api/v1/me") return answer(options.me?.() ?? serviceAdvisor)
+    if (options.admin) {
+      const answered = await options.admin.handle(request, url)
+      if (answered) return answered
+    }
     if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
     if (path === "/api/v1/booking-triage") return answer(options.triageStatus?.() ?? triageDisabled)
     if (path === "/api/v1/features") return answer(options.features?.() ?? vehicleAwareOff)

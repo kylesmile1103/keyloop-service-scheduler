@@ -3,7 +3,7 @@ import { type BaseRecord, useList } from "@refinedev/core"
 import type { DealershipResponse } from "@/api/types.gen"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 
-import type { ResourceDay, ResourceListResponse, ResourceName } from "./data-provider"
+import type { ResourceDay, ResourceListResponse, ResourceName, ResourceView } from "./data-provider"
 import { type SchedulerHttpError, shownFailure } from "./http-error"
 
 /** One resource list's read, as the list's frame needs it. */
@@ -20,22 +20,23 @@ export interface ResourceRead<TRow> {
 }
 
 /**
- * A resource's list for one dealership's day, through Refine core's `useList` and the read-only data provider (ADR-031).
+ * A resource's list for one dealership's day, through Refine core's `useList` and the data provider (ADR-031); an Admin's
+ * view (`view: "admin"`) carries each record's version for an edit.
  * The whole list arrives at once (`pagination` off): the page searches, filters, sorts and pages it with TanStack Table.
  * Like the workshop pages it is read again when the window regains focus.
  */
 export function useResourceList<TRow extends BaseRecord>(
   resource: ResourceName,
-  { dealership, today }: { dealership: DealershipResponse; today: string }
+  { dealership, today, view = "workshop" }: { dealership: DealershipResponse; today: string; view?: ResourceView }
 ): ResourceRead<TRow> {
   const { result, query } = useList<TRow, SchedulerHttpError>({
     resource,
     pagination: { mode: "off" },
-    meta: { dealershipId: dealership.id, date: today },
+    meta: { dealershipId: dealership.id, date: today, view },
     queryOptions: { refetchOnWindowFocus: true },
   })
   // Names this read for the kept failure (Refine keys its own query), so another dealership's or day's never shows.
-  const failure = useQueryFailure(query, ["resources", resource, dealership.id, today])
+  const failure = useQueryFailure(query, ["resources", resource, dealership.id, today, view])
 
   return {
     rows: query.data ? result.data : undefined,

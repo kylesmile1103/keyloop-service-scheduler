@@ -69,12 +69,21 @@ Running the API on its own in Development, set `Auth__Development__Roles__0` to 
 |---|---|---|---|---|
 | Signed out | names as initials, VINs as their last six characters, plates as `*******` | the masked card and a sign-in panel; the record is not requested | a "Sign in to book" prompt instead of the booking dialog | the 401 page |
 | No role (signed in) | masked, as signed out | masked, with the reason | unavailable, with the reason on screen | the 403 page |
-| Viewer | full | full record | unavailable: "Your role can view bookings but not change them." | read-only lists |
-| Service advisor, Admin | full | full record | available | read-only lists (Admin-only editing is Task 30) |
+| Viewer | full | full record | unavailable: "Your role can view bookings but not change them." | read-only lists, with the reason |
+| Service advisor | full | full record | available | read-only lists, with the reason |
+| Admin | full | full record | available | lists, editing, the requirement policy and the change history (see [Admin editing](#admin-editing-task-30)) |
 
 Where a deployed build offers **Sign in** (the Access login, coming back to the same page, dealership and day) and **Sign out** (the hostname's Access logout), the development server shows **How to sign in**, which leads to those settings, and no Sign out. A refusal the UI did not foresee (a session that ended, a role removed) is answered once, with "Your session has ended" and Sign in for a `401` or "Your role doesn't allow that" for a `403`, and the app reads `/me` again; when the identity changes (or `/me` cannot be read, which counts as signed out at once), whatever the previous caller read is cleared and read again, an open details sheet closes, a booking being entered is discarded with a note saying so (unless the same email keeps a role that may book), and a write's answer that arrives afterwards is thrown away.
 
 **`TODO(final-gate)`:** add Task 17b's approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports, and record the final clean-clone startup. No screenshot is embedded until that evidence exists.
+
+## Admin editing (Task 30)
+
+An Admin edits the Resources area; a Service advisor or a Viewer sees the same lists read-only, with the reason on screen. Locally the API's Development identity is `admin@keyloop.test` / Admin, so the app opens as an Admin (see [Try each role locally](#try-each-role-locally) for the others).
+
+- **Technicians** (`/resources/technicians`): **Add technician**, and each row's menu: *Edit* (name, employee number, certifications; with vehicle-aware requirements on, the HV level 0 to 4 with its IMI-style name, valid until in the dealership's calendar, confirmed, and brand specialisms, which allocation does not use yet), *Confirm HV level* for a level nobody confirmed (also a button per technician in the "HV levels to review" note), *Deactivate* (after a preview of the upcoming appointments the board would then flag) or *Reactivate*, and *Change history*.
+- **Two Admins at once**: every edit is sent with the version it was made from (`If-Match`). Open the same technician in two tabs, save in one, then save in the other: the second says what the first changed and offers **Reapply my changes** (on top of theirs, saved only when you save again) or **Discard my changes**.
+- **The board** marks an appointment whose technician or bay no longer meets what it was booked with ("Review", and "needs review" in its label), and the details sheet names why; nothing is moved. Deactivate a technician with work this week, then open the dispatch board.
 
 ## Vehicle-aware allocation (ADR-029)
 

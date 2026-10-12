@@ -1,23 +1,36 @@
 import { functionalUpdate, type ColumnVisibilityState, useTable } from "@tanstack/react-table"
-import { useMemo, useState } from "react"
+import { Plus } from "lucide-react"
+import { useId, useMemo, useRef, useState } from "react"
 
+import type { AdminTechnicianResponse } from "@/api/types.gen"
 import type { Facet } from "@/components/data-table/data-table-faceted-filter"
 import type { SortChoice } from "@/components/data-table/filters-sheet"
+import { toast } from "@/components/ui/toast"
+import { useCurrentUser } from "@/hooks/use-current-user"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { certifications } from "@/lib/features"
 import { dataTableFeatures, PAGE_SIZES } from "@/lib/data-table"
 import { useVehicleAware } from "@/lib/feature-switches"
 
+import { AdminButton, ReadOnlyNote } from "../components/admin-access"
+import { DiscardedNote } from "../components/discarded-note"
 import { ResourceList } from "../components/resource-list"
 import { ResourcePage, type ResourceScope } from "../components/resource-page"
 import { TODAY_CHOICES } from "../lib/columns"
+import { historyHref } from "../lib/history-link"
+import { useRefreshAfterEdit } from "../lib/refresh"
 import type { TechnicianRecord } from "../lib/resources"
+import { useAdminAccess } from "../lib/use-admin-access"
+import { useOpenFor } from "../lib/use-open-for"
 import { useResourceList } from "../lib/use-resource-list"
 import { technicianColumns, technicianSearch } from "./columns"
 import { UnconfirmedLevelsNote } from "./competence"
 import { COMPETENCE_CHOICES, competenceColumns, competenceOf } from "./competence-model"
+import { ActivityDialog, TechnicianRowActions } from "./technician-actions"
 import { TechnicianCards } from "./technician-cards"
 import { TechnicianFigures } from "./technician-figures"
+import { type TechnicianEditing, TechnicianSheet } from "./technician-form"
+import { useConfirmLevel } from "./use-confirm-level"
 
 const TECHNICIANS = { one: "technician", other: "technicians" }
 const SEARCH = { label: "Search technicians", placeholder: "Name or employee number" }
@@ -57,7 +70,10 @@ function useColumnVisibility(withCompetence: boolean) {
 /** Stable empty rows: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: TechnicianRecord[] = []
 
-/** The Technicians page (`/resources/technicians`): the dealership's roster, read-only until Task 30. */
+/**
+ * The Technicians page (`/resources/technicians`): the dealership's roster. An Admin adds and edits technicians, confirms HV
+ * levels and deactivates or reactivates them (Task 30b); a Service advisor or a Viewer sees the same list read-only.
+ */
 export default function TechniciansPage() {
   return (
     <ResourcePage title="Technicians" description="Who works at the dealership, what they are certified for and how booked they are today.">
@@ -67,10 +83,31 @@ export default function TechniciansPage() {
 }
 
 function TechnicianList({ dealership, today, phone }: ResourceScope) {
-  const read = useResourceList<TechnicianRecord>("technicians", { dealership, today })
+  const access = useAdminAccess("technicians")
+  const reasonId = useId()
+  const read = useResourceList<TechnicianRecord>("technicians", { dealership, today, view: access.admin ? "admin" : "workshop" })
   const rows = read.rows ?? NO_ROWS
-  // HV competence (ADR-029): the schedule carries it to a role with vehicle-aware requirements on. Read-only until Task 30.
+  // HV competence (ADR-029): the schedule carries it to a role, the Admin read to an Admin, with vehicle-aware requirements on.
   const vehicleAware = useVehicleAware()
+  const refresh = useRefreshAfterEdit()
+  const { identity } = useCurrentUser()
+
+  // What is open, and for whom: an edit (or a deactivation) belongs to the identity it was opened for, and closes without
+  // saving in the same render as a change of who is signed in (`useOpenFor`), saying so when the new caller is an Admin too.
+  const editor = useOpenFor<TechnicianEditing>(identity)
+  const activity = useOpenFor<TechnicianRecord>(identity)
+  const opener = useRef<HTMLElement | null>(null)
+  const addButton = useRef<HTMLButtonElement>(null)
+
+  const saved = (record: AdminTechnicianResponse, title: string, description: string) => {
+    toast.add({ type: "success", title, description })
+    void refresh(dealership.id)
+    return record
+  }
+  const confirmLevel = useConfirmLevel({
+    dealership,
+    onDone: (record) => saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`),
+  })
   const showCompetence = vehicleAware && rows.some((row) => competenceOf(row, today) !== null)
   const columnVisibility = useColumnVisibility(showCompetence)
   const columns = useMemo(() => {
@@ -79,7 +116,9 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
     const at = technicianColumns.findIndex((column) => column.id === "certifications") + 1
     return [...technicianColumns.slice(0, at), ...competenceColumns(today), ...technicianColumns.slice(at)]
   }, [showCompetence, today])
-  const unconfirmed = showCompetence ? rows.filter((row) => competenceOf(row, today)?.confirmed === false).map((row) => row.name) : []
+  const unconfirmed = showCompetence
+    ? rows.filter((row) => competenceOf(row, today)?.confirmed === false).map((row) => ({ id: row.id, name: row.name }))
+    : []
 
   const table = useTable({
     features: dataTableFeatures,
@@ -115,10 +154,34 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
     ]
   }, [rows, showCompetence])
 
+  const rowActions = access.admin
+    ? (row: TechnicianRecord) => (
+        <TechnicianRowActions
+          row={row}
+          vehicleAware={vehicleAware}
+          historyHref={historyHref(dealership.id, "technician", row.id)}
+          onEdit={(target, trigger) => {
+            opener.current = trigger
+            editor.open({ mode: "edit", id: target.id, name: target.name })
+          }}
+          onActivity={(target, trigger) => {
+            opener.current = trigger
+            activity.open(target)
+          }}
+          onConfirm={confirmLevel.confirm}
+        />
+      )
+    : undefined
+
   return (
     <>
       <TechnicianFigures rows={read.rows} day={read.day} failed={read.failure !== null} />
-      <UnconfirmedLevelsNote names={unconfirmed} />
+      <UnconfirmedLevelsNote
+        levels={unconfirmed}
+        onConfirm={access.admin ? (id) => rows.find((row) => row.id === id) && confirmLevel.confirm(rows.find((row) => row.id === id)!) : undefined}
+        pending={confirmLevel.pending}
+      />
+      {confirmLevel.dialog}
       <ResourceList
         dealership={dealership}
         today={today}
@@ -130,9 +193,76 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
         sorts={showCompetence ? [...SORTS, COMPETENCE_SORT] : SORTS}
         table={table}
         read={read}
-        cards={(page) => <TechnicianCards rows={page} today={showCompetence ? today : null} />}
+        cards={(page) => <TechnicianCards rows={page} today={showCompetence ? today : null} actions={rowActions} />}
+        rowActions={rowActions}
+        action={
+          <AdminButton
+            ref={addButton}
+            admin={access.admin}
+            reasonId={reasonId}
+            onClick={() => {
+              opener.current = addButton.current
+              editor.open({ mode: "create" })
+            }}
+            className={phone ? "w-full" : undefined}
+          >
+            <Plus aria-hidden="true" />
+            Add technician
+          </AdminButton>
+        }
+        notice={
+          access.admin ? (
+            editor.discarded || activity.discarded ? (
+              <DiscardedNote>The technician you were editing was closed without saving: who is signed in changed.</DiscardedNote>
+            ) : null
+          ) : (
+            <ReadOnlyNote id={reasonId} reason={access.reason} />
+          )
+        }
         empty={{ title: "No technicians yet", text: "This dealership has no technicians on its roster.", illustration: "empty-technicians" }}
       />
+      {access.admin && (
+        <>
+          <TechnicianSheet
+            editing={editor.value}
+            open={editor.isOpen}
+            onOpenChange={(open) => !open && editor.close()}
+            dealership={dealership}
+            today={today}
+            phone={phone}
+            vehicleAware={vehicleAware}
+            returnFocus={() => opener.current}
+            onSaved={(record, editing) => {
+              editor.close()
+              saved(
+                record,
+                editing.mode === "edit" ? "Technician saved" : "Technician added",
+                editing.mode === "edit" ? `${record.name}: changes apply to new bookings.` : `${record.name} is on the roster and takes bookings.`
+              )
+            }}
+            onDiscarded={() => {
+              editor.close()
+              void refresh(dealership.id)
+            }}
+          />
+          <ActivityDialog
+            row={activity.value}
+            open={activity.isOpen}
+            onOpenChange={(open) => !open && activity.close()}
+            dealership={dealership}
+            today={today}
+            returnFocus={() => opener.current}
+            onDone={(record) => {
+              activity.close()
+              saved(
+                record,
+                record.isActive ? "Technician reactivated" : "Technician deactivated",
+                record.isActive ? `${record.name} takes new bookings again.` : `${record.name} takes no new bookings. Their appointments stay, flagged for review.`
+              )
+            }}
+          />
+        </>
+      )}
     </>
   )
 }
