@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 import { formatLocalTime } from "@/lib/local-time"
 import { capabilitiesOf, currentUserQueryKey } from "@/lib/session"
@@ -159,6 +160,8 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
     void queryClient.invalidateQueries({
       queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date } as GetAvailabilityData["query"] }),
     })
+    // Every range read of the dealership (the Overview and the Calendar), whatever its dates.
+    void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
   }
 
   return (

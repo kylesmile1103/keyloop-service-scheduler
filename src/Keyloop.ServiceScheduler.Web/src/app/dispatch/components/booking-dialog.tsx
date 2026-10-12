@@ -47,6 +47,7 @@ import { useCountdown } from "@/hooks/use-countdown"
 import { useWriteAccess, type WriteAccess } from "@/hooks/use-current-user"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
 import { featureLabel } from "@/lib/features"
 import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
@@ -229,6 +230,8 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
       void queryClient.invalidateQueries({
         queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: day } as GetAvailabilityData["query"] }),
       })
+      // Every range read of the dealership (the Overview's fortnight either side of today, the Calendar's week or month).
+      void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
       onBooked(appointment)
       if (layout === "sheet") setBooked(appointment)
       else onClose()

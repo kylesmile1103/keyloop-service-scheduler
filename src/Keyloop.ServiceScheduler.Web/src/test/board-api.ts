@@ -1,4 +1,5 @@
 import type {
+  AppointmentListItemResponse,
   AppointmentResponse,
   AvailabilityResponse,
   BookAppointmentRequest,
@@ -37,6 +38,11 @@ export interface BoardApiOptions {
   dealerships?: () => Answer<DealershipResponse[]>
   /** The schedule for a dealership and date. By default: Reading's Tuesday (Sunday closed), München's Tuesday. */
   schedule?: (dealershipId: string, date: string) => Answer<WorkshopScheduleResponse>
+  /**
+   * `GET /dealerships/{id}/appointments?from=&to=` (the range read): the appointments whose local start date falls in
+   * [from, to]. By default: every day's default schedule in the range (see `rangeFromSchedules`).
+   */
+  range?: (dealershipId: string, from: string, to: string, statuses: readonly string[]) => Answer<AppointmentListItemResponse[]>
   /** The dealership's catalogue. By default: Interim Service only. */
   serviceTypes?: (dealershipId: string) => Answer<ServiceTypeResponse[]>
   /** Free starts for a service on a date. By default: Interim Service's, whatever the service asked for. */
@@ -149,6 +155,28 @@ export function defaultSchedule(dealershipId: string, date: string): WorkshopSch
   return weekday === 0 ? { ...readingSunday, date } : movedTo(readingTuesday, date)
 }
 
+/** A schedule's appointments as the range read lists them: each with its bay, ordered by start, then id. */
+export function listItemsOf(schedule: WorkshopScheduleResponse): AppointmentListItemResponse[] {
+  return schedule.bays
+    .flatMap((bay) => bay.appointments.map((appointment) => ({ ...appointment, bay: { id: bay.id, name: bay.name } })))
+    .sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc) || a.id.localeCompare(b.id))
+}
+
+/**
+ * The range read the default way: each day's default schedule from `from` to `to`, in order. The fixtures repeat the same
+ * appointments every open day, so every day but the fixtures' own Tuesday (2026-10-13, whose ids `GET /appointments/{id}`
+ * knows) gets ids of its own: the first 28 characters of the fixture's, then the date's eight digits.
+ */
+export function rangeFromSchedules(dealershipId: string, from: string, to: string): AppointmentListItemResponse[] {
+  const items: AppointmentListItemResponse[] = []
+  for (let date = from; date <= to; date = shiftDate(date, 1)) {
+    for (const item of listItemsOf(defaultSchedule(dealershipId, date))) {
+      items.push(date === readingTuesday.date ? item : { ...item, id: `${item.id.slice(0, 28)}${date.replaceAll("-", "")}` })
+    }
+  }
+  return items
+}
+
 /** The whole record behind a board appointment, as GET /appointments/{id} answers. */
 export function detailsFor(appointment: ScheduledAppointmentResponse, bay: { id: string; name: string }): AppointmentResponse {
   if (appointment.id === interimDetails.id) return { ...interimDetails, status: appointment.status }
@@ -194,8 +222,9 @@ async function answer<T>(value: Answer<T>, status = 200): Promise<Response> {
 }
 
 /**
- * Stubs `fetch` with the dispatch board's API, routed by path: the signed-in identity, dealerships, schedule, service types,
- * availability, booking, one appointment and its cancellation, and booking intake triage (its status and its suggestions).
+ * Stubs `fetch` with the dispatch board's API, routed by path: the signed-in identity, dealerships, schedule, the range read,
+ * service types, availability, booking, one appointment and its cancellation, and booking intake triage (its status and its
+ * suggestions).
  * Each route can be replaced; requests are recorded as with `mockApi`.
  */
 export function mockBoardApi(options: BoardApiOptions = {}) {
@@ -226,6 +255,12 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
       const date = url.searchParams.get("date") ?? interimAvailability.date
       const serviceTypeId = url.searchParams.get("serviceTypeId") ?? ""
       return answer(options.availability?.(match[1], serviceTypeId, date) ?? { ...interimAvailability, date })
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/appointments$/.exec(path)) && request.method === "GET") {
+      const from = url.searchParams.get("from") ?? ""
+      const to = url.searchParams.get("to") ?? ""
+      const statuses = url.searchParams.getAll("status")
+      return answer(options.range?.(match[1], from, to, statuses) ?? rangeFromSchedules(match[1], from, to))
     }
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/appointments$/.exec(path)) && request.method === "POST") {
       const body = (await request.clone().json()) as BookAppointmentRequest
