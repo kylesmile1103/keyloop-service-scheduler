@@ -35,7 +35,8 @@ export interface BookAction {
   bookState: BookState
   /**
    * Opens the booking dialog on a day (`yyyy-MM-dd`; today without one), or the sign-in prompt for a visitor, as the cached
-   * `/me` decides when it is called (`cachedWriteAccess`), not as the page was last drawn; nothing for any other account.
+   * `/me` decides when it is called (`cachedWriteAccess`), not as the page was last drawn: the dialog exactly when the cache
+   * names an account that may book (`cachedWriter`, the account its writes are then bound to); nothing for any other.
    */
   open: (day?: string) => void
   /** The reason every Book action of the page names, on screen; `null` unless the account's role cannot book. */

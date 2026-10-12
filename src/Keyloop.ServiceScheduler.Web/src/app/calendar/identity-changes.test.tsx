@@ -380,6 +380,37 @@ describe("New appointment, decided from the cached /me as it is pressed", () => 
   })
 })
 
+describe("New appointment on a day, pressed for an account that may book that the page has not drawn yet", () => {
+  it.each<[string, CurrentUserResponse, CurrentUserResponse]>([
+    ["a visitor who has just signed in as an Admin", anonymous, admin],
+    ["another account that may book, after an Admin", admin, otherAdmin],
+  ])("for %s, opens the dialog drawn for them, and their booking is sent once", async (_, first, next) => {
+    let me: Caller = first
+    const api = mockApiAs(() => me)
+    const { queryClient } = renderBoard(calendar)
+    const control = await screen.findByRole("button", { name: "New appointment on Thursday 15 October" })
+    await waitFor(() => expect(control).not.toHaveAttribute("aria-disabled", "true"))
+
+    // A press opens the dialog exactly when a booking entered in it can be sent: both follow the writer the cache names.
+    me = next
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, control)).toBe(true)
+
+    const dialog = await screen.findByRole("dialog", { name: "Book appointment" })
+    expect(within(dialog).queryByText(/The session changed/)).not.toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Date, Thursday 15 October 2026" })).toBeInTheDocument()
+    fireEvent.click(await within(dialog).findByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+    fireEvent.click(await within(dialog).findByRole("radio", { name: "10:15, 4 bays and 3 technicians free" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Next" }))
+    await within(dialog).findByRole("heading", { name: "Customer and vehicle" })
+    for (const [label, value] of Object.entries(customer)) fireEvent.change(within(dialog).getByRole("textbox", { name: label }), { target: { value } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+
+    expect(await screen.findByText("Booked")).toBeInTheDocument()
+    expect(posts(api.requests, "/appointments")).toHaveLength(1)
+  })
+})
+
 describe("writes answered for the caller who sent them", () => {
   it("still read the week again: a booking from a day, then a cancellation from the sheet", async () => {
     const api = mockApiAs(() => admin)

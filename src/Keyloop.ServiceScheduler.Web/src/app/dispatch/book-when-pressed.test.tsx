@@ -1,14 +1,15 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
 import { IDENTITY_CHECK_FAILED } from "@/components/auth/identity-check-failed"
 import { READ_ONLY_REASON } from "@/lib/session"
-import { mockBoardApi } from "@/test/board-api"
+import { bookedFrom, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { pressBeforeTheChangeIsDrawn } from "@/test/identity-change"
-import { renderBoard } from "@/test/render-board"
+import { pointerClick, renderBoard } from "@/test/render-board"
+import { interimServiceType } from "@/test/schedules"
 
 // The board's Book appointment decides when it is pressed, from the `/me` the cache holds at that moment (Task 28b review
 // round 1, the same rule as the Overview's and the Calendar's): a press that lands after `/me` changed but before React
@@ -29,6 +30,8 @@ type Caller = CurrentUserResponse | "unreadable"
 
 const board = `/dispatch?dealership=${reading.id}`
 const writes = (requests: readonly Request[]) => requests.filter((request) => request.method !== "GET")
+const bookings = (requests: readonly Request[]) =>
+  requests.filter((request) => request.method === "POST" && new URL(request.url).pathname.endsWith("/appointments"))
 
 /** The board as an Admin sees it, Book appointment usable, with `/me` answering whatever `caller()` says from then on. */
 async function boardAsAdmin() {
@@ -76,5 +79,46 @@ describe("the board's Book appointment, decided from the cached /me as it is pre
     expect(within(prompt).getByText(IDENTITY_CHECK_FAILED)).toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
     expect(writes(api.requests)).toHaveLength(0)
+  })
+})
+
+// A press opens the dialog exactly when a booking entered in it can be sent: both are decided from the writer the cache
+// names (`cachedWriteAccess` from `cachedWriter`), so a press that lands before the board has drawn a new account that may
+// book opens a dialog drawn for that account, and its Book is sent once.
+describe("the board's Book appointment, pressed for an account that may book that the board has not drawn yet", () => {
+  it.each<[string, CurrentUserResponse, CurrentUserResponse]>([
+    ["a visitor who has just signed in as an Admin", anonymous, admin],
+    ["another account that may book, after an Admin", admin, { ...admin, email: "another.admin@keyloop.test", displayName: "Another Admin" }],
+  ])("for %s, opens the dialog drawn for them, and their booking is sent once", async (_, first, next) => {
+    const caller: { me: CurrentUserResponse } = { me: first }
+    const api = mockBoardApi({
+      me: () => caller.me,
+      serviceTypes: () => [interimServiceType],
+      book: (_, body) => bookedFrom(body),
+    })
+    const { queryClient } = renderBoard(board)
+    const book = await screen.findByRole("button", { name: "Book appointment" })
+    await waitFor(() => expect(book).not.toHaveAttribute("aria-disabled", "true"))
+
+    caller.me = next
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, book)).toBe(true)
+
+    const dialog = await screen.findByRole("dialog", { name: "Book appointment" })
+    expect(within(dialog).queryByText(/The session changed/)).not.toBeInTheDocument()
+    fireEvent.click(await within(dialog).findByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+    fireEvent.click(await within(dialog).findByRole("radio", { name: "10:15, 4 bays and 3 technicians free" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Next" }))
+    await within(dialog).findByRole("heading", { name: "Customer and vehicle" })
+    for (const [label, value] of Object.entries({ Name: "Pressed Customer", Email: "pressed@example.invalid", Phone: "+44 7700 900888" })) {
+      fireEvent.change(within(dialog).getByRole("textbox", { name: label }), { target: { value } })
+    }
+    for (const [label, value] of Object.entries({ VIN: "WVWZZZ1KZAW654322", Registration: "PR22 ESS", Make: "Volkswagen", Model: "Golf" })) {
+      fireEvent.change(within(dialog).getByRole("textbox", { name: label }), { target: { value } })
+    }
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+
+    expect(await screen.findByText("Booked")).toBeInTheDocument()
+    expect(bookings(api.requests)).toHaveLength(1)
   })
 })
