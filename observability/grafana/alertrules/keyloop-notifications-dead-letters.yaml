@@ -18,7 +18,7 @@ spec:
     severity: ticket
   annotations:
     summary: A customer notification exhausted its attempts and was dead-lettered.
-    description: 'SYSTEM_DESIGN section 12.3: investigate dead letters and sender configuration. Inspect event 1203 and the outbox id; do not resend blindly, a lost
+    description: 'SYSTEM_DESIGN section 12.3: investigate dead letters and sender configuration. Inspect event 1302 NotificationFailed and the outbox id; do not resend blindly, a lost
       provider acknowledgement can already mean the message was sent.'
     runbook_url: ${RUNBOOK_BASE_URL}#notification-dead-letters
     __dashboardUid__: keyloop-notifications

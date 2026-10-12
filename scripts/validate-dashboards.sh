@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Offline checks for observability/grafana. Never contacts Grafana.
-# Arguments pass through to validate.py: --notification-source DIR, --allow-planned-gauges, --alerts-dir DIR.
+# Arguments pass through to validate.py: --alerts-dir DIR.
 # Tools: gcx (GCX overrides the command) and Prometheus 3.x promtool (PROMTOOL overrides it, for example a
 # docker run command that mounts this repository at the same path).
 set -euo pipefail

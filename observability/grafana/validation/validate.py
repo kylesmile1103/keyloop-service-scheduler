@@ -22,11 +22,10 @@ from jsonschema.exceptions import ValidationError, best_match
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
-TELEMETRY = Path("src/Keyloop.ServiceScheduler.Api/Common/Telemetry")
-PLANNED = {
-    "scheduler.notifications.outbox_pending",
-    "scheduler.notifications.oldest_pending_age",
-}
+# Each assembly declares the instruments it records (ADR-025): Api the booking, availability and cancellation
+# instruments, Infrastructure the shared Meter and the notification instruments. Every folder is read.
+TELEMETRY = (Path("src/Keyloop.ServiceScheduler.Api/Common/Telemetry"),
+             Path("src/Keyloop.ServiceScheduler.Infrastructure/Telemetry"))
 DASHBOARDS = {"keyloop-booking-engine", "keyloop-api-health", "keyloop-notifications", "keyloop-frontend"}
 # Pinned from grafana-observability-plan.md section 5.2, SYSTEM_DESIGN section 12.3 and the Task 23 scope
 # (readiness). A changed threshold, pending period, window or severity must be a deliberate edit here.
@@ -152,6 +151,17 @@ def instruments_in_code(code):
     # Generic Create*<T>("name", "unit") and non-generic CreateObservableGauge("name", callback, "unit").
     pattern = r'Create(Counter|Histogram|ObservableGauge|Gauge)(?:<[^>]+>)?\(\s*"([^"]+)"([^;]+);'
     return {name: (kind, body) for kind, name, body in re.findall(pattern, code)}
+
+
+def telemetry_declarations(repo):
+    """Instruments declared in every TELEMETRY folder. A missing or empty folder fails instead of reading less."""
+    declarations = {}
+    for folder in TELEMETRY:
+        files = sorted((repo / folder).glob("*.cs"))
+        require(files, f"No telemetry code in {folder}; update TELEMETRY in validate.py if it moved")
+        for path in files:
+            declarations.update(instruments_in_code(path.read_text()))
+    return declarations
 
 
 def unit_declared(body, unit):
@@ -383,7 +393,7 @@ def load_resources(root, alerts_dir=None):
     return paths, resources
 
 
-def check_manifests(root=ROOT, repo=REPO, notification_source=None, allow_planned_gauges=False, alerts_dir=None):
+def check_manifests(root=ROOT, repo=REPO, alerts_dir=None):
     """All static checks. Returns the loaded resources and the alert templates for the tool stages."""
     paths, resources = load_resources(root, alerts_dir)
     expected = 1 + len(DASHBOARDS) + len(ALERTS)
@@ -418,20 +428,10 @@ def check_manifests(root=ROOT, repo=REPO, notification_source=None, allow_planne
 
     metrics = json.loads((root / "validation/metrics.json").read_text())
     series = {name: m for m in metrics for name in series_names(m)}
-    code = "\n".join(p.read_text() for p in sorted((repo / TELEMETRY).glob("*.cs")))
-    declarations = instruments_in_code(code)
+    declarations = telemetry_declarations(repo)
     design = (repo / "docs/SYSTEM_DESIGN.md").read_text().split("## 12. Observability", 1)[1].split("\n## 13.", 1)[0]
-    notification_design = ""
-    if notification_source:
-        telemetry = notification_source / TELEMETRY / "SchedulerTelemetry.cs"
-        require(telemetry.is_file(), "--notification-source must point to a scheduler worktree")
-        # Read only telemetry definitions; no checkout, build, or file writes in a sibling.
-        declarations.update({n: v for n, v in instruments_in_code(telemetry.read_text()).items()
-                             if n.startswith("scheduler.notifications.")})
-        notification_design = (notification_source / "docs/SYSTEM_DESIGN.md").read_text()
-        notification_design = notification_design.split("## 12. Observability", 1)[1].split("\n## 13.", 1)[0]
     defaults = (repo / "src/Keyloop.ServiceScheduler.ServiceDefaults/Extensions.cs").read_text()
-    used, missing, pending = set(), set(), set()
+    used, missing = set(), set()
     query_count = 0
     for resource in resources:
         for query, location in query_records(resource):
@@ -454,21 +454,14 @@ def check_manifests(root=ROOT, repo=REPO, notification_source=None, allow_planne
                     expected_kind = {"counter": "Counter", "histogram": "Histogram", "gauge": "ObservableGauge"}[metric["kind"]]
                     require(kind == expected_kind, f"Kind mismatch for {instrument}")
                     require(unit_declared(body, metric["unit"]), f"Unit mismatch for {instrument}")
-                    if metric["source"] == "scheduler":
-                        require(instrument in design, f"{instrument} missing from SYSTEM_DESIGN section 12")
-                    elif notification_design:
-                        require(instrument in notification_design, f"{instrument} missing from notification SYSTEM_DESIGN section 12")
-                elif instrument in PLANNED and allow_planned_gauges:
-                    pending.add(instrument)
+                    require(instrument in design, f"{instrument} missing from SYSTEM_DESIGN section 12")
                 else:
                     missing.add(instrument)
     if missing:
         raise ValueError("Instrument verification failed: " + ", ".join(sorted(missing)) +
-                         ". Supply --notification-source before merge. Review-only --allow-planned-gauges permits exactly G2's two gauges.")
+                         " not declared in " + ", ".join(map(str, TELEMETRY)))
     print(f"PASS: metric and label inventory, {query_count} PromQL/variable queries, {len(used)} distinct Mimir series; "
           "custom kinds/units match code; histogram quantiles group by le.")
-    for name in sorted(pending):
-        print(f"PENDING G2: {name} was not found; strict validation and deployment acceptance remain blocked.")
     print("Framework names: registered ASP.NET Core meters, source citations in validation/metrics.json.")
     print("target_info: generated by OTLP translation, not a custom code instrument.")
     return resources, templates
@@ -626,15 +619,11 @@ def run_gcx(resources, templates, root, out, gcx, alerts_dir=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--notification-source", type=Path, help="Read-only worktree for unmerged Task 19 instruments")
-    parser.add_argument("--allow-planned-gauges", action="store_true", help="Review only: report missing G2 gauges as pending")
     parser.add_argument("--alerts-dir", type=Path, help="Validate and lint locally prepared rules in place of source templates")
     args = parser.parse_args()
     out = ROOT / ".validation"
     try:
-        resources, templates = check_manifests(notification_source=args.notification_source,
-                                               allow_planned_gauges=args.allow_planned_gauges,
-                                               alerts_dir=args.alerts_dir and args.alerts_dir.resolve())
+        resources, templates = check_manifests(alerts_dir=args.alerts_dir and args.alerts_dir.resolve())
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir()
         # Behaviour tests always run on the templates; prepared rules were shown to equal them above.

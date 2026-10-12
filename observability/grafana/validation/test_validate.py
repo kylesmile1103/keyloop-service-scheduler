@@ -1,7 +1,10 @@
 """Self-tests for validate.py: each guard rejects the defect it exists for. Run by scripts/validate-dashboards.sh."""
 
+import contextlib
 import copy
+import io
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +41,45 @@ class Instruments(unittest.TestCase):
     def test_unit_must_be_a_whole_argument(self):
         body = ', ObserveAge, "ms", "Age in s")'
         self.assertFalse(v.unit_declared(body, "s"))
+
+
+class Telemetry(unittest.TestCase):
+    """Strict inventory against this tree: each assembly declares the instruments it records (ADR-025)."""
+
+    @staticmethod
+    def tree(directory, without=None, design=lambda text: text):
+        """The files the inventory reads, copied from this tree, minus one telemetry folder or with an edited design."""
+        repo = Path(directory)
+        for folder in v.TELEMETRY:
+            if folder != without:
+                shutil.copytree(v.REPO / folder, repo / folder)
+        defaults = Path("src/Keyloop.ServiceScheduler.ServiceDefaults/Extensions.cs")
+        (repo / defaults).parent.mkdir(parents=True)
+        shutil.copy(v.REPO / defaults, repo / defaults)
+        (repo / "docs").mkdir()
+        (repo / "docs/SYSTEM_DESIGN.md").write_text(design((v.REPO / "docs/SYSTEM_DESIGN.md").read_text()))
+        return repo
+
+    @staticmethod
+    def check(repo=v.REPO):
+        with contextlib.redirect_stdout(io.StringIO()):
+            v.check_manifests(repo=repo)
+
+    def test_strict_inventory_passes_on_this_tree(self):
+        self.check()
+
+    def test_every_telemetry_folder_is_required(self):
+        infrastructure = Path("src/Keyloop.ServiceScheduler.Infrastructure/Telemetry")
+        self.assertIn(infrastructure, v.TELEMETRY)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "No telemetry code in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry"):
+                self.check(self.tree(directory, without=infrastructure))
+
+    def test_notification_names_are_checked_against_this_design(self):
+        renamed = lambda text: text.replace("scheduler.notifications.retried", "scheduler.notifications.retries")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "scheduler.notifications.retried missing from SYSTEM_DESIGN section 12"):
+                self.check(self.tree(directory, design=renamed))
 
 
 class Labels(unittest.TestCase):

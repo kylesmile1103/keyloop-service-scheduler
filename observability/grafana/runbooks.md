@@ -30,9 +30,9 @@ Compare booking latency by outcome with lock wait p95, hottest dealerships, and 
 
 ## Outbox age
 
-Trigger: oldest Pending row older than 300 seconds, continuously for 10 minutes. This is the G2 ObservableGauge `scheduler.notifications.oldest_pending_age` in seconds, not the age-at-send histogram. The unmerged Task 19 tree declares the gauge; it is not in this branch. Missing data is `Ok` for evaluation but is a release acceptance failure until the gauge has been verified.
+Trigger: oldest Pending row older than 300 seconds, continuously for 10 minutes. This is the G2 ObservableGauge `scheduler.notifications.oldest_pending_age` in seconds, not the age-at-send histogram. Infrastructure `InfrastructureTelemetry.cs` declares the gauge. Missing data is `Ok` for evaluation but is a release acceptance failure until the gauge has been verified.
 
-Open Notifications. Check pending depth, oldest age, sends, retries, and dead letters by kind. Confirm the dispatcher and provider configuration, which default to disabled/None in Production until the adapter and operational configuration are approved. Rows are enqueued even when sending is disabled. Inspect notification events `1202` (retry), `1203` (terminal failure), `1204` (cycle failure), and `1205` (claim lost). These ids reflect the unmerged Task 19 code and require verification on integration.
+Open Notifications. Check pending depth, oldest age, sends, retries, and dead letters by kind. Confirm the dispatcher and provider configuration, which default to disabled/None in Production until the adapter and operational configuration are approved. Rows are enqueued even when sending is disabled. Inspect notification events `1301 NotificationRetried`, `1302 NotificationFailed` (terminal failure), `1303 NotificationDispatchCycleFailed` and `1304 NotificationClaimLost` (Infrastructure `InfrastructureLog`, SYSTEM_DESIGN section 12.1).
 
 Verify the backlog observer refreshes when dispatch is off, includes delayed retries and leased Pending rows, and reports zero for an empty queue. A failed observation must not publish a fabricated healthy zero. Compare database-wide gauge values across API instances: summing identical snapshots duplicates depth, so use a single observer or revise the aggregation after topology is known. At-least-once delivery means an uncertain provider acknowledgement can already represent a sent message. Do not blindly resend or clear claims; retain the outbox id as the correlation reference for a separately approved recovery.
 
@@ -40,7 +40,7 @@ Verify the backlog observer refreshes when dispatch is off, includes delayed ret
 
 Expected: no dead letters. The rule checks the last 15 minutes per `kind`, without a pending period, and counts a kind's first exported sample like Booking deadlocks. Severity is ticket: a customer did not receive a confirmation or cancellation email, which is not an outage.
 
-Open Notifications and inspect event `1203` (terminal failure) with its outbox id and kind. Check the sender configuration, the provider's response category and the recipient policy (a suppressed reserved-domain recipient is `scheduler.notifications.suppressed`, not a dead letter). At-least-once delivery means a lost provider acknowledgement can already represent a sent message: do not resend blindly. Any resend is a separately approved recovery that keeps the outbox id as its correlation reference.
+Open Notifications and inspect event `1302 NotificationFailed` (terminal failure) with its outbox id and kind. Check the sender configuration, the provider's response category and the recipient policy (a suppressed reserved-domain recipient is `scheduler.notifications.suppressed`, not a dead letter). At-least-once delivery means a lost provider acknowledgement can already represent a sent message: do not resend blindly. Any resend is a separately approved recovery that keeps the outbox id as its correlation reference.
 
 ## Readiness
 

@@ -84,7 +84,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.failed",
@@ -94,7 +94,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.retried",
@@ -104,7 +104,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.dispatch_duration",
@@ -114,7 +114,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.outbox_age",
@@ -124,7 +124,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 SchedulerTelemetry.cs and SYSTEM_DESIGN.md section 12.1; --notification-source supplies the sibling tree read-only until merge"
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.outbox_pending",
@@ -134,7 +134,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 brief G2; declared as a non-generic ObservableGauge in the unmerged Task 19 tree (SchedulerTelemetry.cs) and its SYSTEM_DESIGN section 12.1; --notification-source supplies it read-only until merge"
+    "evidence": "Task 19 brief G2; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.oldest_pending_age",
@@ -142,7 +142,7 @@
     "unit": "s",
     "labels": [],
     "source": "notifications",
-    "evidence": "Task 19 brief G2, superseding the plan's outbox_oldest_pending_age spelling; declared as a non-generic ObservableGauge in the unmerged Task 19 tree and its SYSTEM_DESIGN section 12.1"
+    "evidence": "Task 19 brief G2, superseding the plan's outbox_oldest_pending_age spelling; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/SYSTEM_DESIGN.md section 12.1"
   },
   {
     "instrument": "http.server.request.duration",
