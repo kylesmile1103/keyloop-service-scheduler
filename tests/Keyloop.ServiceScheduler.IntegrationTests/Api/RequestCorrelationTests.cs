@@ -136,12 +136,12 @@ public sealed class RequestCorrelationTests(PostgresFixture pg) : IAsyncLifetime
         var appointment = await booked.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
 
         var confirmed = logs.Entries.Where(e => e.EventId.Id == 1001).ShouldHaveSingleItem();
-        AssertScope(confirmed, "RequestId", requestId);
+        AssertScope(confirmed, "ClientRequestId", requestId);
         AssertScope(confirmed, "DealershipId", _workshop.Dealership.Id);
         AssertScope(confirmed, "AppointmentId", appointment.Id);
         AssertScope(confirmed, "IdempotencyKey", key);
         var insert = logs.Entries.Where(e => e.Category == "Microsoft.EntityFrameworkCore.Database.Command" && e.Message.Contains("INSERT INTO appointments", StringComparison.Ordinal)).ShouldHaveSingleItem();
-        AssertScope(insert, "RequestId", requestId);
+        AssertScope(insert, "ClientRequestId", requestId);
         AssertScope(insert, "DealershipId", _workshop.Dealership.Id);
         AssertScope(insert, "AppointmentId", appointment.Id);
         AssertScope(insert, "IdempotencyKey", key);
@@ -156,7 +156,7 @@ public sealed class RequestCorrelationTests(PostgresFixture pg) : IAsyncLifetime
         var update = logs.Entries.Where(e => e.Category == "Microsoft.EntityFrameworkCore.Database.Command" && e.Message.Contains("UPDATE appointments", StringComparison.Ordinal)).ShouldHaveSingleItem();
         foreach (var entry in new[] { cancellation, update })
         {
-            AssertScope(entry, "RequestId", cancelRequestId);
+            AssertScope(entry, "ClientRequestId", cancelRequestId);
             AssertScope(entry, "DealershipId", _workshop.Dealership.Id);
             AssertScope(entry, "AppointmentId", appointment.Id);
             entry.Scopes.Select(p => p.Key).ShouldNotContain("IdempotencyKey", "a cancellation has no booking key");
@@ -176,9 +176,9 @@ public sealed class RequestCorrelationTests(PostgresFixture pg) : IAsyncLifetime
         laterRequest.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
         var errorRequestId = laterRequest.Headers.GetValues("X-Request-Id").ShouldHaveSingleItem();
         Guid.TryParseExact(errorRequestId, "D", out _).ShouldBeTrue();
-        AssertScope(error, "RequestId", errorRequestId);
-        error.Scopes.Where(p => p.Key == "RequestId").Select(p => p.Value).ShouldNotContain(requestId);
-        error.Scopes.Where(p => p.Key == "RequestId").Select(p => p.Value).ShouldNotContain(cancelRequestId);
+        AssertScope(error, "ClientRequestId", errorRequestId);
+        error.Scopes.Where(p => p.Key == "ClientRequestId").Select(p => p.Value).ShouldNotContain(requestId);
+        error.Scopes.Where(p => p.Key == "ClientRequestId").Select(p => p.Value).ShouldNotContain(cancelRequestId);
     }
 
     [Fact]
@@ -203,7 +203,7 @@ public sealed class RequestCorrelationTests(PostgresFixture pg) : IAsyncLifetime
         await refused.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
 
         // One request flow. Its transaction (lock, check, suggestions, rollback) ran inside the scope of the once-minted appointment id ...
-        var flow = logs.Entries.Where(e => e.Scopes.Any(p => p.Key == "RequestId" && Equals(p.Value, requestId))).ToList();
+        var flow = logs.Entries.Where(e => e.Scopes.Any(p => p.Key == "ClientRequestId" && Equals(p.Value, requestId))).ToList();
         flow.Where(e => e.Category == "Microsoft.EntityFrameworkCore.Database.Command" && e.Message.Contains("pg_advisory_xact_lock", StringComparison.Ordinal))
             .ShouldHaveSingleItem().Scopes.Where(p => p.Key == "AppointmentId").ShouldHaveSingleItem().Value.ShouldBeOfType<Guid>();
 

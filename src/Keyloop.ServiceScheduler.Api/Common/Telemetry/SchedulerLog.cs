@@ -7,7 +7,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 internal static partial class SchedulerLog
 {
     // Typed scope state: no reflection or discovery. Nested scopes add ids as soon as they are known and flow through async EF work.
-    private static readonly Func<ILogger, string, IDisposable?> RequestScopeDefinition = LoggerMessage.DefineScope<string>("RequestId:{RequestId}");
+    private static readonly Func<ILogger, string, IDisposable?> RequestScopeDefinition = LoggerMessage.DefineScope<string>("ClientRequestId:{ClientRequestId}");
     private static readonly Func<ILogger, Guid, IDisposable?> DealershipScopeDefinition = LoggerMessage.DefineScope<Guid>("DealershipId:{DealershipId}");
     private static readonly Func<ILogger, Guid, IDisposable?> AppointmentScopeDefinition = LoggerMessage.DefineScope<Guid>("AppointmentId:{AppointmentId}");
     private static readonly Func<ILogger, string, IDisposable?> IdempotencyScopeDefinition = LoggerMessage.DefineScope<string>("IdempotencyKey:{IdempotencyKey}");
