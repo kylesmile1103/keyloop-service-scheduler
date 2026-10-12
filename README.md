@@ -43,7 +43,7 @@ The backend exposes `GetBookingTriageStatus` (`GET /api/v1/booking-triage`) and 
 
 On the dispatch board, the booking dialog's first step shows the intake only when the status says it is enabled: *Describe the issue*, *Suggest a service*, and the line "Suggestions by Jev (TypeSafe) via Cloudflare AI Gateway. Check before booking." Suggested services appear as cards marked *Likely* or *Possible* with their percentage and the equipment and certifications they need; *Use this* sets the service (and the day asked for, when that day is still to come and the workshop is open then), clears any start time already picked, and moves on to the free start times. Nothing is applied without that click. A failure shows the usual problem alert and leaves the service select as it was. *Copy the description into Notes* is ticked by default and never overwrites notes typed by hand; untick it to keep the description out of the booking. See [SYSTEM_DESIGN §15](docs/SYSTEM_DESIGN.md#15-dispatch-board-ui-harness).
 
-An operator must first load Unified Billing credits, provision an account-scoped **Workers AI Read** token, and configure the `keyloop-scheduler` AI Gateway with log collection off and a rate limit. Only after that approval, the developer can run these two commands themselves (the placeholders are intentionally not credentials):
+An operator must first load Unified Billing credits, provision an account-scoped **Workers AI Read** token, and configure the `keyloop-scheduler` AI Gateway with authentication on (required for Unified Billing), log collection off, zero data retention on and a rate limit. Only after that approval, the developer can run these two commands themselves (the placeholders are intentionally not credentials):
 
 ```bash
 dotnet user-secrets set 'Parameters:cloudflare-account-id' '<32-hex-account-id>' --project src/Keyloop.ServiceScheduler.AppHost
@@ -52,7 +52,7 @@ dotnet user-secrets set 'Parameters:cloudflare-ai-token' '<workers-ai-read-token
 
 The AppHost passes `Triage__*` only when both optional parameters are present, and starts without them. Never put the token in appsettings. The four-second total timeout, 0.70 suggestion confidence, 0.10 candidate floor, 0.60 date confidence and 500-character limit are configurable in `Triage`; `Security:RateLimiting:TriagePermitsPerMinute` defaults to 10. Cloudflare container deployment uses `KEYLOOP_TRIAGE_ENABLED=false` by default, with optional account/gateway settings and the `keyloop_prod_ai_token` Secrets Store binding when enabled. Public enablement requires stakeholder approval.
 
-All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` category is implemented but has never been run; it requires a separate stakeholder-approved run with `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes `docs/media/triage-live-golden-set.md`. Ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. Vendor latency, accuracy and cost claims remain unverified.
+All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` category runs only with the stakeholder's approval, `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes [`docs/media/triage-live-golden-set.md`](docs/media/triage-live-golden-set.md); ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. The first run (2026-10-12) scored 24/25 with p50 430 ms and p95 860 ms and about 1,940 input tokens per triage; see SYSTEM_DESIGN §14 for the one miss.
 
 ## Run the tests
 
