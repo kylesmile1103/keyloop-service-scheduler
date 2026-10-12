@@ -121,7 +121,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests -c Release --no-b
 # Real PostgreSQL integration tests, including contract and concurrency tests.
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release --no-build --filter "Category!=LiveAi"
 
-# Adversarial concurrency proof only.
+# Adversarial concurrency proofs only: the 30-way contention cases, xmin/cancel races and the Admin in-flight edit cases.
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release --no-build \
   --filter "FullyQualifiedName~Concurrency"
 
