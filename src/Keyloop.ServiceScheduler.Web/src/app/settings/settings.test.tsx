@@ -72,15 +72,18 @@ describe("appearance settings", () => {
 })
 
 describe("account settings", () => {
-  it("says plainly that sign-in is not enabled, and what the page will show once it is", async () => {
+  it("says the account is not shown yet, what each role may do, and what the page will show", async () => {
     renderAt("/settings/account")
 
     expect(await screen.findByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument()
-    expect(screen.getByRole("heading", { level: 2, name: "Anonymous mode" })).toBeInTheDocument()
-    const facts = screen.getByRole("list", { name: "Your account" })
-    expect(within(facts).getByText("Signed in as").nextElementSibling).toHaveTextContent("Not signed in")
-    expect(within(facts).getByText("Roles").nextElementSibling).toHaveTextContent("None")
-    expect(screen.getByText(/Admin, Service advisor or Viewer/)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: "Not shown in the app yet" })).toBeInTheDocument()
+    const facts = screen.getByRole("list", { name: "What each role may do" })
+    expect(within(facts).getByText("View the schedule").nextElementSibling).toHaveTextContent(/^Anyone; customer details are masked/)
+    expect(within(facts).getByText("Appointment details").nextElementSibling).toHaveTextContent("Admin, Service advisor or Viewer")
+    expect(within(facts).getByText("Book, cancel and triage").nextElementSibling).toHaveTextContent("Admin or Service advisor")
+    // The API records the authenticated actor (ADR-027); the page must not claim writes are anonymous.
+    expect(screen.queryByText(/anonymous/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/its role: Admin, Service advisor or Viewer/)).toBeInTheDocument()
     // A placeholder: no made-up user and nothing to edit.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /save|delete/i })).not.toBeInTheDocument()

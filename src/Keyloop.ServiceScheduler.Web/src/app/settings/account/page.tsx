@@ -7,10 +7,11 @@ import { BaseLayout } from "@/components/layouts/base-layout"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 
 /**
- * Account (`/settings/account`): who is signed in and with which roles. Authentication is designed but deferred
- * (ARCHITECTURE §11.3, ADR-010), so today the page says so instead of showing a made-up user, as the sidebar's user row
- * does; Task 27b fills it from `GET /api/v1/me` (the signed-in identity and its Admin, ServiceAdvisor or Viewer role). The
- * template's profile, password and delete-account forms are not kept: nothing here is editable.
+ * Account (`/settings/account`): who is signed in and with which roles. The API already authenticates every request
+ * (ADR-027) but the app does not show the account yet, so the page says what each role may do instead of showing a
+ * made-up user, as the sidebar's user row does; Task 27b fills it from `GET /api/v1/me` (the signed-in identity and its
+ * Admin, ServiceAdvisor or Viewer role). The template's profile, password and delete-account forms are not kept: nothing
+ * here is editable.
  */
 export default function AccountPage() {
   const headingId = useId()
@@ -25,24 +26,24 @@ export default function AccountPage() {
             </span>
             <div className="flex min-w-0 flex-col gap-1">
               <h2 id={headingId} className="font-heading text-lg leading-snug font-semibold">
-                Anonymous mode
+                Not shown in the app yet
               </h2>
               <p className="max-w-prose text-sm text-pretty text-muted-foreground">
-                Sign-in is not enabled in this environment. Bookings and cancellations are recorded as anonymous, by the
-                network address they came from.
+                The scheduler checks who you are on every request, but this app does not offer sign-in yet. What each role
+                may do:
               </p>
             </div>
           </CardHeader>
           <CardContent>
-            <ul aria-label="Your account" className="flex flex-col divide-y divide-border rounded-lg border border-border">
-              <Fact term="Signed in as" value="Not signed in" />
-              <Fact term="Roles" value="None in anonymous mode" />
-              <Fact term="Recorded as" value="anonymous, with your network address" />
+            <ul aria-label="What each role may do" className="flex flex-col divide-y divide-border rounded-lg border border-border">
+              <Fact term="View the schedule" value="Anyone; customer details are masked without a role" />
+              <Fact term="Appointment details" value="Admin, Service advisor or Viewer" />
+              <Fact term="Book, cancel and triage" value="Admin or Service advisor" />
             </ul>
           </CardContent>
           <CardFooter className="text-sm text-pretty text-muted-foreground">
-            When sign-in is enabled, this page shows the account you signed in with and its role: Admin, Service advisor or
-            Viewer.
+            Once the app offers sign-in, this page shows the account you signed in with and its role: Admin, Service advisor
+            or Viewer.
           </CardFooter>
         </Card>
       </div>

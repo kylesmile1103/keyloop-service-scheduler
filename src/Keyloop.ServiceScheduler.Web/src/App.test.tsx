@@ -114,11 +114,13 @@ describe("app shell", () => {
     expect(reference).toHaveAccessibleName(/opens in a new tab/)
   })
 
-  it("says plainly that sign-in is not enabled", async () => {
+  it("says plainly that the app does not show the signed-in account yet", async () => {
     renderAt("/dispatch")
     await pageHeading("Dispatch board")
 
-    expect(screen.getByText("Anonymous mode")).toBeInTheDocument()
+    expect(screen.getByText("Your account")).toBeInTheDocument()
+    expect(screen.getByText("Not shown in the app yet")).toBeInTheDocument()
+    expect(screen.queryByText(/anonymous mode/i)).not.toBeInTheDocument()
   })
 
   it("offers a skip link to the page content", async () => {

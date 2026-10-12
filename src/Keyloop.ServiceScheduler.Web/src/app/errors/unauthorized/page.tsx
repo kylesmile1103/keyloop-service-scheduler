@@ -9,7 +9,7 @@ import { DispatchBoardLink, ErrorPage } from "../components/error-page"
 
 /**
  * 401 (`/errors/unauthorized`): sign in to continue. Its action is Sign in, to the address the session gives (Task 27b
- * wires it to the Access login URL). While sign-in is not enabled the page says so and leads to the dispatch board.
+ * wires it to the Access login URL). Until the app offers sign-in the page says so and leads to the dispatch board.
  */
 export default function UnauthorizedPage() {
   const signIn = signInUrl()
@@ -29,7 +29,12 @@ export default function UnauthorizedPage() {
       }
     >
       <p>This page needs you to be signed in.</p>
-      {!signIn && <p>Sign-in is not enabled in this environment, so every page is open without it.</p>}
+      {!signIn && (
+        <p>
+          This app does not offer sign-in yet. Anyone may view the schedule, with customer details masked; booking and
+          cancelling need a workshop account.
+        </p>
+      )}
     </ErrorPage>
   )
 }

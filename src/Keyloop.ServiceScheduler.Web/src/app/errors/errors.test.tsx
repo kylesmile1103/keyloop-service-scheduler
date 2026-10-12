@@ -50,11 +50,12 @@ describe("error pages", () => {
     ])
   })
 
-  it("asks to sign in on a 401, and says that sign-in is not enabled here", async () => {
+  it("asks to sign in on a 401, and says the app does not offer sign-in yet", async () => {
     const { container } = renderAt(ERROR_PAGES.unauthorized)
 
     expect(await heading("Sign in to continue")).toBeInTheDocument()
-    expect(screen.getByText("Sign-in is not enabled in this environment, so every page is open without it.")).toBeInTheDocument()
+    expect(screen.getByText(/This app does not offer sign-in yet\. Anyone may view the schedule, with customer details masked; booking and cancelling need a workshop account\./)).toBeInTheDocument()
+    expect(screen.queryByText(/every page is open/)).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
     expect(container.querySelectorAll("img")).toHaveLength(1)
