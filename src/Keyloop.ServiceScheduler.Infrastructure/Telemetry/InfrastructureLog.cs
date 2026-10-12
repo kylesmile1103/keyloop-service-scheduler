@@ -5,6 +5,14 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 /// <summary>Source-generated persistence and notification logs with stable event ids and names (ADR-016).</summary>
 internal static partial class InfrastructureLog
 {
+    [LoggerMessage(EventId = 1400, EventName = "TriageUnavailable", Level = LogLevel.Warning,
+        Message = "Booking triage unavailable ({Reason}); manual service selection remains available")]
+    public static partial void TriageUnavailable(this ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 1401, EventName = "TriageRetry", Level = LogLevel.Information,
+        Message = "Retrying booking triage once after upstream status {Status}")]
+    public static partial void TriageRetry(this ILogger logger, int status);
+
     [LoggerMessage(EventId = 1005, EventName = "DomainEventObserverFailed", Level = LogLevel.Error,
         Message = "Domain event observer {Observer} failed after commit for {EventTypes}; the committed change stands")]
     public static partial void DomainEventObserverFailed(this ILogger logger, Exception exception, string observer, string eventTypes);

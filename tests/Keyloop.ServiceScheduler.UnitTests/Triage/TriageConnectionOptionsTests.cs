@@ -1,0 +1,29 @@
+using Keyloop.ServiceScheduler.Infrastructure.Triage;
+
+namespace Keyloop.ServiceScheduler.UnitTests.Triage;
+
+public sealed class TriageConnectionOptionsTests
+{
+    [Fact]
+    public void Disabled_defaults_need_no_credentials() => new TriageConnectionOptionsValidator().Validate(null, new()).Succeeded.ShouldBeTrue();
+
+    [Theory]
+    [InlineData("", "test-token")]
+    [InlineData("not-an-account", "test-token")]
+    [InlineData("00000000000000000000000000000000", "")]
+    [InlineData("00000000000000000000000000000000", "test-token\r\n")]
+    public void Enabled_options_reject_missing_or_unsafe_credentials_without_echoing_them(string account, string token)
+    {
+        var result = new TriageConnectionOptionsValidator().Validate(null, new() { Enabled = true, AccountId = account, ApiToken = token });
+        result.Failed.ShouldBeTrue();
+        result.Failures.ShouldNotContain(f => f.Contains("test-token", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("http://triage.test", 4)]
+    [InlineData("https://triage.test?token=test-token", 4)]
+    [InlineData("https://triage.test", 0)]
+    [InlineData("https://triage.test", 11)]
+    public void Url_and_timeout_are_bounded(string url, int seconds) =>
+        new TriageConnectionOptionsValidator().Validate(null, new() { BaseUrl = url, Timeout = TimeSpan.FromSeconds(seconds) }).Failed.ShouldBeTrue();
+}

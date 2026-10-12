@@ -69,7 +69,17 @@ public static class ReferenceDataSeed
             Tech(munich, "Ingrid Bauer", "M-2003", GeneralService, HeavyVehicle, Certification.Diagnostics),
         ];
 
-        ServiceType[] serviceTypes =
+        var serviceTypes = CreateServiceTypes();
+
+        db.Dealerships.AddRange(reading, munich);
+        db.ServiceBays.AddRange(bays);
+        db.Technicians.AddRange(technicians);
+        db.ServiceTypes.AddRange(serviceTypes);
+        await db.SaveChangesAsync(ct);
+        return 2 + bays.Length + technicians.Length + serviceTypes.Length;
+    }
+
+    internal static ServiceType[] CreateServiceTypes() =>
         [
             Service("INTERIM-SERVICE", "Interim Service", 60, [StandardLift], [GeneralService]),
             Service("FULL-SERVICE", "Full Service", 120, [StandardLift], [GeneralService]),
@@ -84,13 +94,6 @@ public static class ReferenceDataSeed
             Service("DIAG-FAULT-FINDING", "Diagnostic Fault Finding", 60, [BayCapability.Diagnostics], [Certification.Diagnostics]),
         ];
 
-        db.Dealerships.AddRange(reading, munich);
-        db.ServiceBays.AddRange(bays);
-        db.Technicians.AddRange(technicians);
-        db.ServiceTypes.AddRange(serviceTypes);
-        await db.SaveChangesAsync(ct);
-        return 2 + bays.Length + technicians.Length + serviceTypes.Length;
-    }
 
     private static ServiceBay Bay(Dealership dealership, string slug, int number, string name, params BayCapability[] capabilities) =>
         ServiceBay.Create(BayId(slug, number), dealership.Id, name, capabilities);
