@@ -8,7 +8,7 @@ import { createSchedulerDataProvider } from "./lib/data-provider"
 import { RESOURCES, refineOptions } from "./lib/refine"
 
 /**
- * The admin area's route element: Refine core, headless, around the resources pages (ARCHITECTURE §15, ADR-028). It is
+ * The admin area's route element: Refine core, headless, around the resources pages (ARCHITECTURE §15, ADR-031). It is
  * mounted for this route subtree only, and the subtree is its own code-split chunk, so the dispatch board, calendar and
  * overview never load Refine; they keep their generated query hooks. Refine shares the app's QueryClient, follows the
  * address through its React Router binding and reads through the read-only data provider over the generated client.

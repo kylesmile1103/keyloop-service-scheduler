@@ -31,7 +31,7 @@ export default defineConfig([
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
-  // One app, two areas (ARCHITECTURE §15, ADR-027): the admin area (Refine and the resources pages) and the workshop pages
+  // One app, two areas (ARCHITECTURE §15, ADR-030): the admin area (Refine and the resources pages) and the workshop pages
   // never import each other, so the board's first load never downloads Refine or admin code. Both may use components,
   // hooks, lib and api. src/module-boundaries.test.ts pins these patterns.
   {

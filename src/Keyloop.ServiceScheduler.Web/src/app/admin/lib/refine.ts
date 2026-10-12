@@ -11,7 +11,7 @@ export const RESOURCES: Array<ResourceProps & { name: ResourceName }> = [
 ]
 
 /**
- * Refine's options for this app (ADR-028):
+ * Refine's options for this app (ADR-031):
  * - `disableTelemetry`: Refine core otherwise sends a usage beacon to telemetry.refine.dev on start; nothing may leave for
  *   any origin but the app's (the production CSP's `connect-src 'self'` stays as it is).
  * - `reactQuery.clientConfig`: the app's own QueryClient, so Refine's lists and the board's reads share one cache.

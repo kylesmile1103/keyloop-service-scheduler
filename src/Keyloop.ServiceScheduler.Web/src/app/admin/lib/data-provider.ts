@@ -64,7 +64,7 @@ function paged<T>(records: readonly T[], pagination: Pagination | undefined): T[
 }
 
 /**
- * A read-only Refine data provider over the generated HeyAPI client, for the resources pages (ARCHITECTURE §15, ADR-028).
+ * A read-only Refine data provider over the generated HeyAPI client, for the resources pages (ARCHITECTURE §15, ADR-031).
  *
  * The API has no generic REST resources: technicians and bays come from the day's schedule read (`GET /schedule`) and
  * services from the catalogue (`GET /service-types`). Both reads go through the app's own QueryClient with the generated

@@ -14,7 +14,7 @@ import { reading } from "@/test/dealerships"
 import AdminLayout from "./layout"
 import type { TechnicianRecord } from "./lib/resources"
 
-// Refine core, mounted by the admin layout for the resources subtree only (ARCHITECTURE §15, ADR-028).
+// Refine core, mounted by the admin layout for the resources subtree only (ARCHITECTURE §15, ADR-031).
 
 const date = "2026-10-13"
 

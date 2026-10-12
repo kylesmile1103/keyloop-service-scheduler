@@ -20,7 +20,7 @@ export interface ResourceRead<TRow> {
 }
 
 /**
- * A resource's list for one dealership's day, through Refine core's `useList` and the read-only data provider (ADR-028).
+ * A resource's list for one dealership's day, through Refine core's `useList` and the read-only data provider (ADR-031).
  * The whole list arrives at once (`pagination` off): the page searches, filters, sorts and pages it with TanStack Table.
  * Like the workshop pages it is read again when the window regains focus.
  */
