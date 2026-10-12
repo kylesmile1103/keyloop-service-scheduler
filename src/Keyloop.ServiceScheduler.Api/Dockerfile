@@ -27,9 +27,11 @@ RUN dotnet publish src/Keyloop.ServiceScheduler.Api/Keyloop.ServiceScheduler.Api
         -p:UseAppHost=false -p:OpenApiGenerateDocumentsOnBuild=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
-# curl only serves the container health check below; the image has no other tooling.
+# curl only serves the container health check below. tini runs as PID 1: the kernel ignores a signal that PID 1 has no handler
+# for, so a crash's abort() (any unhandled startup exception) left dotnet spinning at full CPU instead of exiting. tini forwards
+# SIGTERM to dotnet for a graceful shutdown and exits with its status.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends curl \
+    && apt-get install --yes --no-install-recommends curl tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app ./
@@ -43,4 +45,4 @@ USER $APP_UID
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl --fail --silent --show-error --output /dev/null http://localhost:8080/alive || exit 1
 
-ENTRYPOINT ["dotnet", "Keyloop.ServiceScheduler.Api.dll"]
+ENTRYPOINT ["/usr/bin/tini", "--", "dotnet", "Keyloop.ServiceScheduler.Api.dll"]
