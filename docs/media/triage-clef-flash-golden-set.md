@@ -1,6 +1,6 @@
 # Clef-flash live AI golden set
 
-Historical two-question run (2026-10-12), with the original ten-service catalogue. Task 32a (2026-10-13) extends the opt-in runner to three questions and 45 fixtures. That extended set has not been run; its uncovered-issue threshold remains provisional until stakeholder approval and controller calibration.
+Historical two-question run (2026-10-12), with the original ten-service catalogue. Task 32a (2026-10-13) extends the opt-in runner to three questions and 49 fixtures (review round 1 added the stakeholder's own sentence and natural multi-issue cases). That extended set has not been run; its uncovered-issue threshold remains provisional until stakeholder approval and controller calibration.
 
 Model: @cf/cloudflare/clef-flash. Images: none (text regression set).
 
