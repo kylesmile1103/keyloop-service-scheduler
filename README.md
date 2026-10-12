@@ -312,7 +312,7 @@ The script forces a Release analyzer rebuild, preserves its build exit status an
 | Concern | Implementation | Residual work |
 |---|---|---|
 | Request dispatch, JSON | Request Delegate Generator and Api `SchedulerJsonContext`; Infrastructure `PersistenceJsonContext` for audit/outbox JSON; reflection-based JSON disabled | Register every new wire/extension type; a missing registration fails instead of falling back |
-| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks have replaced converter-based annotation (`33b3c65`) |
+| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks have replaced converter-based annotation (`533b1e0`) |
 | Endpoint/handler/validator discovery | Explicit registry and DI registrations | No assembly scanning |
 | Microsoft DI | Explicit registrations, framework container | Constructor discovery at startup, accepted in the budget |
 | FluentValidation | Explicit validators | Expression compilation remains; reconsider only if the brief's requirement is lifted |
@@ -323,7 +323,7 @@ The groundwork report at base `9f5a168` measured the following **historical base
 
 | Origin | Historical diagnostic count, TODO(final-gate) | Call sites and removal path |
 |---|---|---|
-| Application-owned | 1 IL2026 | `SchedulingOptions`: `RangeAttribute(Type, string, string)` on TimeSpan. Task 18a commit `33b3c65` replaces it with typed inclusive-bound checks through the generated validator; remeasure the integrated build |
+| Application-owned | 1 IL2026 | `SchedulingOptions`: `RangeAttribute(Type, string, string)` on TimeSpan. Task 18a commit `533b1e0` replaces it with typed inclusive-bound checks through the generated validator; remeasure the integrated build |
 | EF Core | 5: 1 IL2026 and 4 IL3050 | `SchedulerDbContext` constructor plus `DatabaseInitializer.GetPendingMigrationsAsync`, `GetMigrations`, `MigrateAsync`. Compiled-model/query evaluation and deployment-time migrations are the removal path, without a promise that compiled models alone remove the warnings |
 | FluentValidation / other | 0 emitted | Absence from this analyzer output does not establish reflection-free dependencies or whole-program trim safety |
 
@@ -364,7 +364,7 @@ Claude **Fable 5.1** designed the architecture and written plan, following the s
 
 The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [ARCHITECTURE.md §18](docs/ARCHITECTURE.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
 
-At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`37e31c0`, `e7e7b69`, `eb0d46f`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`0ce37bf` through `33b3c65`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes are integrated; the scope-disposal assertion is now covered in `RequestCorrelationTests`.
+At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`5cdebea`, `dfc9493`, `a098a67`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`cdc2e96` through `533b1e0`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes are integrated; the scope-disposal assertion is now covered in `RequestCorrelationTests`.
 
 Codex also produced original UI illustrations with OpenAI's image-generation tool and audited Aspire against `dotnet/aspire-samples`. The audit recommendations assigned to Task 14c are integrated in `a85d501` and `bc462ec` (Demo initialization, CLI bundle and validated proxy/network trust). Task 15c is integrated in `a574af9` and `ec455c3` (web publication with discovered upstream and port 8080, exact seeded JSON through Vite and CI web installation). The image tool did not expose its model identifier, so the coding model's name is not an image-model attribution.
 
@@ -396,14 +396,14 @@ The first rows reproduce the substance of the hand-off notes' defect log; later 
 | Task 14a | Contract inspection found overwritten body descriptions, untyped string enums, missing traceId schema and incomplete 429/Retry-After documentation | Transformers, response metadata and parity tests (`da69f02`, `9f5a168`) |
 | Task 11 / Codex M1 | Inconclusive booking-commit verification dropped events before the lock could settle them | Preserve the doubt until a conclusive read (`55ca317`) |
 | Task 11 | Independent review found cancellation forgot an in-doubt commit after another transient fault | Request-lifetime written-version marker and fault-injection regression (`2c055e1`) |
-| Codex I1 | Real validators and fallback startup logs leaked raw configuration values | Safe member/index and path/type diagnostics (`0ce37bf`) |
-| Codex I2 | Accepted sub-minute hours produced availability starts rejected by booking | Whole-minute domain guards and additive database CHECK (`425a738`) |
-| Codex I3 | Readiness reported healthy with an unmigrated database | Connectivity plus pending-migration check, with independent liveness (`acd2c01`, `5a3d23f`) |
-| Codex I4 | Extreme UTC start overflowed to 500 before horizon validation | Bound the start before slot arithmetic, preserving replay order (`b987141`) |
-| Codex I5 | Design falsely promised unkeyed client retries could never create another appointment | Corrected optional-key semantics and spare-capacity tests; stable UI key required (`2a50a8f`) |
-| Codex I6 | Promised X-Request-Id echo and business log scopes were absent | Bounded UUID echo, CORS exposure, Activity tags and scopes (`85067a5`) |
-| Codex I7 | Existing tests stayed green with HSTS removed | Non-loopback HTTPS deployment cases proven RED by middleware removal (`4641a08`) |
-| Task 18 AOT | Analyzer found application-owned trim-sensitive TimeSpan validation | Typed inclusive bounds through the generated validator (`33b3c65`) |
+| Codex I1 | Real validators and fallback startup logs leaked raw configuration values | Safe member/index and path/type diagnostics (`cdc2e96`) |
+| Codex I2 | Accepted sub-minute hours produced availability starts rejected by booking | Whole-minute domain guards and additive database CHECK (`d8b0417`) |
+| Codex I3 | Readiness reported healthy with an unmigrated database | Connectivity plus pending-migration check, with independent liveness (`bff9fc4`, `64f159f`) |
+| Codex I4 | Extreme UTC start overflowed to 500 before horizon validation | Bound the start before slot arithmetic, preserving replay order (`f34f5c8`) |
+| Codex I5 | Design falsely promised unkeyed client retries could never create another appointment | Corrected optional-key semantics and spare-capacity tests; stable UI key required (`8dac682`) |
+| Codex I6 | Promised X-Request-Id echo and business log scopes were absent | Bounded UUID echo, CORS exposure, Activity tags and scopes (`beb971c`) |
+| Codex I7 | Existing tests stayed green with HSTS removed | Non-loopback HTTPS deployment cases proven RED by middleware removal (`2622631`) |
+| Task 18 AOT | Analyzer found application-owned trim-sensitive TimeSpan validation | Typed inclusive bounds through the generated validator (`533b1e0`) |
 | Frontend 15a/15b | Theme did not follow system changes, a lazy-import test was vacuous, and client generation could delete hand-written runtime config | Theme behavior tests, import-side-effect probe and `output.clean=false` (`19fdf75`, `773103a`) |
 | Frontend 15b | A shared request-id setting reused one UUID for the session, and automatic dealership selection could cancel a pending sidebar navigation | Per-request interceptor and navigation-aware selection, with behavioural regressions (`773103a`) |
 
@@ -422,7 +422,7 @@ Task 18a's fixes are integrated, the scope-disposal assertion now observes one r
 
 The ledger records a controller error: `SendMessage` to workflow implementers resumed duplicate agents in the same worktrees instead of reaching the intended running instances. Both backend twins ran AppHost work, and one cleared the persisted database password. It was restored from the running container and checked without displaying it. In the frontend lane, a stop message reached the original instance and blocked its workflow while the resumed twin later completed the board. A checkout-style sweep instruction could have discarded the original's uncommitted work; the ledger explicitly records that no checkout occurred and the files remained intact. The adopted rule is to communicate mid-run changes through briefs/global constraints and workflow results rather than that messaging path, and verify exclusive worktree ownership before destructive maintenance.
 
-Separately, a hand-applied punctuation sweep collided with concurrent edits and corrupted ordinary text in `CLAUDE.md`. The repair waited for implementation commits, reapplied the exact character replacement deterministically to committed text, then rebuilt, regenerated contracts and tested before a separate style commit (`47fcb51`, `c156b83`, `a38342e`). The lesson is to avoid broad edits over an active implementer's files and validate the complete diff, not just the intended replacement. A killed frontend mutation run also left temporary mutants; the implementer restored and checked them before committing.
+Separately, a hand-applied punctuation sweep collided with concurrent edits and corrupted ordinary text in `CLAUDE.md`. The repair waited for implementation commits, reapplied the exact character replacement deterministically to committed text, then rebuilt, regenerated contracts and tested before a separate style commit in each lane (`c156b83`, `a38342e`). The lesson is to avoid broad edits over an active implementer's files and validate the complete diff, not just the intended replacement. A killed frontend mutation run also left temporary mutants; the implementer restored and checked them before committing.
 
 An earlier controller documentation commit polluted a task review range; the package was rebuilt to exclude it and later controller commits waited for implementation boundaries. These are process failures with recorded recovery, not examples of a flawless automated workflow. The final gate must still establish the integrated result.
 
