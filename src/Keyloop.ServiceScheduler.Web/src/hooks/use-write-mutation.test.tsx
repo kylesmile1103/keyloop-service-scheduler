@@ -257,3 +257,98 @@ describe("useWriteMutation", () => {
     })
   })
 })
+
+// Task 30: an Admin's edit in the Resources area is bound the same way, to an Admin. The same email as a Service advisor may
+// still book, but it is not the edit's writer, so the edit is not sent; an Admin who is also a Viewer is the same writer.
+describe("useWriteMutation for an Admin's edit (writes: admin)", () => {
+  const adminAlsoViewer: CurrentUserResponse = { ...admin, roles: ["Admin", "Viewer"] }
+  const serviceAdvisorOnly: CurrentUserResponse = { ...admin, email: "advisor@keyloop.test", roles: ["ServiceAdvisor"] }
+
+  function renderAdminWrite(drawnFor: CurrentUserResponse = admin) {
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(currentUserQueryKey(), drawnFor)
+    const send = vi.fn(async (variables: { name: string }) => ({ saved: variables.name }))
+    const onError = vi.fn()
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    const hook = renderHook(
+      () => useWriteMutation({ writes: "admin", mutationFn: (variables: { name: string }) => send(variables), onError }),
+      { wrapper }
+    )
+    const becomes = (user: CurrentUserResponse) => queryClient.setQueryData(currentUserQueryKey(), user)
+    return { ...hook, queryClient, send, onError, becomes }
+  }
+
+  it("is sent for an Admin", async () => {
+    const rendered = renderAdminWrite()
+
+    act(() => void rendered.result.current.mutate({ name: "Amelia Clarke" }))
+
+    await waitFor(() => expect(rendered.result.current.isSuccess).toBe(true))
+    expect(rendered.send).toHaveBeenCalledOnce()
+  })
+
+  it("starts nothing from a view drawn for a Service advisor, who may book but not edit", () => {
+    const rendered = renderAdminWrite(serviceAdvisorOnly)
+
+    expect(rendered.result.current.begin()).toBeNull()
+    expect(rendered.result.current.mutate({ name: "Amelia Clarke" })).toBe(false)
+    expect(rendered.send).not.toHaveBeenCalled()
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["signed out", anonymous],
+    ["a Viewer", viewer],
+    ["the same email as a Service advisor", sameEmailAdvisor],
+    ["another Admin", otherAdmin],
+  ])("sends nothing and keeps nothing once the identity in the cache is %s, before the hook has drawn it", async (_, next) => {
+    const rendered = renderAdminWrite()
+
+    act(() => {
+      rendered.becomes(next)
+      rendered.result.current.mutate({ name: "Amelia Clarke" })
+    })
+
+    await expectNothingKept(rendered)
+    expect(rendered.send).not.toHaveBeenCalled()
+    expect(rendered.onError).not.toHaveBeenCalled()
+  })
+
+  it("is still sent when the same Admin's email gains another role", async () => {
+    const rendered = renderAdminWrite()
+
+    act(() => {
+      rendered.becomes(adminAlsoViewer)
+      rendered.result.current.mutate({ name: "Amelia Clarke" })
+    })
+
+    await waitFor(() => expect(rendered.result.current.isSuccess).toBe(true))
+    expect(rendered.send).toHaveBeenCalledOnce()
+  })
+
+  it("refuses the request inside its fetch when the same email has become a Service advisor while it was prepared", async () => {
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(currentUserQueryKey(), admin)
+    const base = vi.fn<typeof fetch>(async () => new Response("{}"))
+    let prepare!: () => void
+    const prepared = new Promise<void>((resolve) => (prepare = resolve))
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    const hook = renderHook(
+      () =>
+        useWriteMutation({
+          writes: "admin",
+          mutationFn: async (variables: { name: string }, write) => {
+            await prepared
+            return (await write.fetch(base)("http://localhost:3000/api/v1/edits", { method: "PUT", body: JSON.stringify(variables) })).json()
+          },
+        }),
+      { wrapper }
+    )
+
+    act(() => void hook.result.current.mutate({ name: "Amelia Clarke" }))
+    queryClient.setQueryData(currentUserQueryKey(), sameEmailAdvisor)
+    await act(async () => prepare())
+
+    await expectNothingKept({ ...hook, queryClient })
+    expect(base).not.toHaveBeenCalled()
+  })
+})

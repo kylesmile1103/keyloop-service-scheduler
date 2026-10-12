@@ -9,7 +9,7 @@ import {
 import { useLayoutEffect, useRef } from "react"
 
 import { useCurrentUser } from "@/hooks/use-current-user"
-import { cachedWriter } from "@/lib/session"
+import { cachedWriterFor, type WriteKind } from "@/lib/session"
 import { type BoundWrite, bindWrite, CallerChangedError, WriteNotAllowedError } from "@/lib/session-cache"
 
 /** What a write's `mutationFn` is given to send with: the account check for each request, and for each step awaited. */
@@ -26,6 +26,11 @@ export interface WriteMutationOptions<TData, TError, TVariables extends object, 
   mutationFn: (variables: TVariables, write: WriteSend, context: MutationFunctionContext) => Promise<TData>
   /** An answer thrown away because who is signed in changed while the write ran (the view may say so). */
   onDiscarded?: (variables: TVariables) => void
+  /**
+   * Whose write it is: `bookings` (the default; book, cancel, suggestions: `CurrentUser.writer`) or `admin` (an edit in the
+   * Resources area, Task 30: `CurrentUser.adminWriter`, an Admin's email). The account checks below all use that writer.
+   */
+  writes?: WriteKind
 }
 
 /** Sends one write now, if it may still be sent: whether it was. */
@@ -46,8 +51,9 @@ export interface WriteMutationResult<TData, TError, TVariables, TOnMutateResult>
 }
 
 /**
- * `useMutation` for a write the API reserves for a role (book, cancel, ask for suggestions and upload their photos), bound
- * to the account it was made for (ARCHITECTURE §15):
+ * `useMutation` for a write the API reserves for a role (book, cancel, ask for suggestions and upload their photos; with
+ * `writes: "admin"`, an Admin's edit of a technician, a bay or the requirement policy), bound to the account it was made
+ * for (ARCHITECTURE §15):
  * - a write belongs to the writer the view was drawn for (`CurrentUser.writer`: the email of an account that may write).
  *   It is sent only while the identity in the cache is that account: checked when it is started (`begin`, `mutate`), again
  *   when it is sent (after a form's checks, and only while its view is still mounted), as its `mutationFn` starts, after
@@ -68,8 +74,9 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
   options: WriteMutationOptions<TData, TError, TVariables, TOnMutateResult>
 ): WriteMutationResult<TData, TError, TVariables, TOnMutateResult> {
   const queryClient = useQueryClient()
-  const { writer } = useCurrentUser()
-  const { mutationFn, onSuccess, onError, onSettled, onDiscarded, ...rest } = options
+  const current = useCurrentUser()
+  const { mutationFn, onSuccess, onError, onSettled, onDiscarded, writes = "bookings", ...rest } = options
+  const writer = writes === "admin" ? current.adminWriter : current.writer
   // The account each write was sent for, and the send bound to it (which caller its requests left as), by its variables
   // (one object per send).
   const boundTo = useRef(new WeakMap<object, string>())
@@ -96,7 +103,7 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
   const result = useMutation<TData, TError, TVariables, TOnMutateResult>({
     ...rest,
     mutationFn: async (variables, context) => {
-      const write = bindWrite(queryClient, boundTo.current.get(variables) ?? null)
+      const write = bindWrite(queryClient, boundTo.current.get(variables) ?? null, writes)
       sends.current.set(variables, write)
       write.guard()
       let data: TData
@@ -146,7 +153,7 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
   // Whether a write bound to `owner` may still be sent: its view is mounted and drawn for that account, and the identity
   // in the cache is that account.
   const mayStill = (owner: string | null) =>
-    owner !== null && mounted.current && drawnFor.current === owner && cachedWriter(queryClient) === owner
+    owner !== null && mounted.current && drawnFor.current === owner && cachedWriterFor(writes, queryClient) === owner
 
   const begin = (): SendWrite<TVariables> | null => {
     const owner = drawnFor.current

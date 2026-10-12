@@ -1,6 +1,6 @@
 import type { Query, QueryClient } from "@tanstack/react-query"
 
-import { cachedWriter } from "@/lib/session"
+import { cachedWriterFor, type WriteKind } from "@/lib/session"
 
 /**
  * Cache hygiene when the identity changes (ARCHITECTURE §15). The API answers the schedule, the range read and the
@@ -87,11 +87,15 @@ export interface BoundWrite {
   stale(): boolean
 }
 
-export function bindWrite(queryClient: QueryClient, owner: string | null): BoundWrite {
+/**
+ * `kind` names who may send it: `bookings` (the default: an account that may book, `cachedWriter`) or `admin` (an Admin's
+ * edit in the Resources area, `cachedWriterFor("admin")`, so the same email as a Service advisor is not its owner).
+ */
+export function bindWrite(queryClient: QueryClient, owner: string | null, kind: WriteKind = "bookings"): BoundWrite {
   // The caller the write's requests leave as: until the first leaves, the caller it began under.
   let generation = callerGeneration(queryClient)
   let left = false
-  const isOwner = () => owner !== null && cachedWriter(queryClient) === owner
+  const isOwner = () => owner !== null && cachedWriterFor(kind, queryClient) === owner
   const stale = () => callerGeneration(queryClient) !== generation
   return {
     fetch: (base) => (input, init) => {
