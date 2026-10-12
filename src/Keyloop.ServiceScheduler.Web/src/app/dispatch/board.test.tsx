@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AvailabilityResponse } from "@/api/types.gen"
-import { mockBoardApi, requestsTo } from "@/test/board-api"
+import { defaultSchedule, mockBoardApi, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
@@ -448,6 +448,39 @@ describe("dispatch board: details and cancellation", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: interimLabel })).toHaveFocus())
   })
 
+  it("keeps the failure and keyboard focus on Try again while the full record is read again, and after it fails again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({
+      appointment: async () => {
+        await held
+        return problemResponse(503, { title: "Service unavailable", status: 503, detail: "The appointment service is unavailable." })
+      },
+    })
+    renderBoard(readingBoard)
+    const sheet = await openInterim()
+
+    const alert = (await within(sheet).findByText("Couldn’t load the full record")).closest<HTMLElement>('[role="alert"]')!
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    expectAvailable(tryAgain)
+    const reads = () => requestsTo(api.requests, `/appointments/${appointments.interim.id}`).length
+    const before = reads()
+    held = new Promise<void>((resolve) => (answer = resolve))
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await waitFor(() => expect(reads()).toBe(before + 1))
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    expect(reads()).toBe(before + 1)
+  })
+
   it("cancels an appointment with a reason, then refreshes the board and the next free slot without it", async () => {
     let cancelled = false
     const api = mockBoardApi({
@@ -663,6 +696,72 @@ describe("dispatch board: loading and failures", () => {
 
     expect(await lane("Bay 1 - Standard")).toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("keeps the failure and keyboard focus on Try again while the schedule is read again, and after it fails again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    let detail = "The schedule service is unavailable."
+    const api = mockBoardApi({
+      schedule: async () => {
+        await held
+        return problemResponse(503, { title: "Service unavailable", status: 503, detail })
+      },
+    })
+    renderBoard(readingBoard)
+
+    const alert = await screen.findByRole("alert")
+    const explanation = within(alert).getByText("The schedule service is unavailable.")
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    expectAvailable(tryAgain)
+
+    const before = requestsTo(api.requests, "/schedule").length
+    held = new Promise<void>((resolve) => (answer = resolve))
+    detail = "The schedule service is still unavailable."
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await waitFor(() => expect(requestsTo(api.requests, "/schedule")).toHaveLength(before + 1))
+    // While it reads again the failure stays, not the loading frame: the keyboard user stays on Try again, which cannot
+    // act meanwhile, and the day's figures stay unavailable rather than loading.
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    expect(explanation).toBeInTheDocument()
+    expect(screen.queryByText("Loading the schedule…")).not.toBeInTheDocument()
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0)
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    // The new failure's words are new content in the alert, so a screen reader reads them out.
+    expect(explanation).not.toBeInTheDocument()
+    expect(within(alert).getByText("The schedule service is still unavailable.")).toBeInTheDocument()
+    // The press while it read sent nothing.
+    expect(requestsTo(api.requests, "/schedule")).toHaveLength(before + 1)
+  })
+
+  it("does not show a day's failure while the next day loads", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    mockBoardApi({
+      schedule: async (dealershipId, date) => {
+        if (date === "2026-10-13") return problemResponse(503, { title: "Service unavailable", status: 503, detail: "Tuesday failed." })
+        await held
+        return defaultSchedule(dealershipId, date)
+      },
+    })
+    renderBoard(readingBoard)
+    await screen.findByRole("alert")
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }))
+
+    expect(await screen.findByText("Loading the schedule…")).toBeInTheDocument()
+    expect(screen.queryByText("Tuesday failed.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    answer()
+    expect(await lane("Bay 1 - Standard")).toBeInTheDocument()
   })
 
   it("keeps the board when a background refresh fails", async () => {

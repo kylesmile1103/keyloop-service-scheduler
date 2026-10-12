@@ -39,6 +39,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { useQueryFailure } from "@/hooks/use-query-failure"
 import {
   describeFailure,
   fieldErrors,
@@ -173,7 +174,10 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
     mode: "onTouched",
   })
   const [serviceTypeId, date, startUtc] = useWatch({ control: form.control, name: ["serviceTypeId", "date", "startUtc"] })
-  const serviceTypes = useQuery(getServiceTypesOptions({ path: { dealershipId } }))
+  const serviceTypesOptions = getServiceTypesOptions({ path: { dealershipId } })
+  const serviceTypes = useQuery(serviceTypesOptions)
+  // Kept while Try again loads them again, so the alert and its focused button stay in the dialog until the answer.
+  const serviceTypesFailure = useQueryFailure(serviceTypes, serviceTypesOptions.queryKey)
   const service = serviceTypes.data?.find((candidate) => candidate.id === serviceTypeId)
 
   const generated = bookAppointmentMutation()
@@ -314,7 +318,8 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
             today={today}
             serviceTypes={serviceTypes.data}
             serviceTypesLoading={serviceTypes.isPending}
-            serviceTypesError={serviceTypes.isError ? serviceTypes.error : null}
+            serviceTypesError={serviceTypesFailure}
+            serviceTypesRetrying={serviceTypes.isFetching}
             onRetryServiceTypes={() => void serviceTypes.refetch()}
             service={service}
             date={date}
@@ -436,6 +441,8 @@ interface StepOneProps {
   serviceTypes: ServiceTypeResponse[] | undefined
   serviceTypesLoading: boolean
   serviceTypesError: unknown
+  /** True while Try again loads the services again. */
+  serviceTypesRetrying: boolean
   onRetryServiceTypes: () => void
   service: ServiceTypeResponse | undefined
   date: string
@@ -458,6 +465,7 @@ function StepOne({
   serviceTypes,
   serviceTypesLoading,
   serviceTypesError,
+  serviceTypesRetrying,
   onRetryServiceTypes,
   service,
   date,
@@ -482,7 +490,12 @@ function StepOne({
             <Field data-invalid={fieldState.invalid || undefined} className="gap-1.5">
               <FieldLabel htmlFor={ids.service}>Service</FieldLabel>
               {serviceTypesError ? (
-                <ProblemAlert title="Couldn’t load the services" error={serviceTypesError} onRetry={onRetryServiceTypes} />
+                <ProblemAlert
+                  title="Couldn’t load the services"
+                  error={serviceTypesError}
+                  onRetry={onRetryServiceTypes}
+                  retrying={serviceTypesRetrying}
+                />
               ) : serviceTypesLoading ? (
                 <Skeleton className="h-10 w-full rounded-lg" />
               ) : (

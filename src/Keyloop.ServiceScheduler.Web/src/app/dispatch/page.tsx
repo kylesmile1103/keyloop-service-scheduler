@@ -12,7 +12,8 @@ import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { describeFailure } from "@/lib/problem-details"
+import { useQueryFailure } from "@/hooks/use-query-failure"
+import { describeFailure, failureKey } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { AppointmentSheet } from "./components/appointment-sheet"
@@ -35,16 +36,19 @@ import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule
 const AUTO_REFRESH_MS = 5000
 
 export default function DispatchPage() {
-  const dealerships = useQuery(getDealershipsOptions())
+  const dealershipsOptions = getDealershipsOptions()
+  const dealerships = useQuery(dealershipsOptions)
+  // Kept while Try again reads the list again, so the failure and its focused button stay until the answer.
+  const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const isMobile = useIsMobile()
 
-  // A failed background refresh keeps the list it already has; only a list that never arrived is an error.
+  // A failed background refresh keeps the list it already has; only a list that never arrived is a failure.
   const status: DealershipListStatus = dealerships.data
     ? dealerships.data.length > 0
       ? "ready"
       : "empty"
-    : dealerships.isError
+    : dealershipsFailure !== null
       ? "failed"
       : "loading"
 
@@ -83,9 +87,9 @@ export default function DispatchPage() {
                   <p>There are no dealerships to schedule. Once one is set up, it appears here.</p>
                 </IllustratedState>
               </Card>
-            ) : !dealerships.data && dealerships.isError ? (
+            ) : !dealerships.data && dealershipsFailure !== null ? (
               <Card className="py-0">
-                <FailedState title="Couldn’t load dealerships" error={dealerships.error} onRetry={retry} retrying={dealerships.isFetching} />
+                <FailedState title="Couldn’t load dealerships" error={dealershipsFailure} onRetry={retry} retrying={dealerships.isFetching} />
               </Card>
             ) : (
               <>
@@ -102,7 +106,11 @@ export default function DispatchPage() {
   )
 }
 
-/** A whole view that failed to load (DESIGN_SYSTEM 12.1): the error-connection state with the API's words and trace id. */
+/**
+ * A whole view that failed to load (DESIGN_SYSTEM 12.1): the error-connection state with the API's words and trace id. It
+ * stays while Try again reads again; the button disables itself meanwhile but keeps focus, ready for another try if that
+ * one fails too.
+ */
 function FailedState({ title, error, onRetry, retrying }: { title: string; error: unknown; onRetry: () => void; retrying: boolean }) {
   const { summary, traceId } = describeFailure(error)
   return (
@@ -112,14 +120,16 @@ function FailedState({ title, error, onRetry, retrying }: { title: string; error
       level={2}
       title={title}
       action={
-        <Button type="button" onClick={onRetry} disabled={retrying}>
+        <Button type="button" onClick={onRetry} disabled={retrying} focusableWhenDisabled>
           <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
           Try again
         </Button>
       }
       className="px-4"
     >
-      <p className="wrap-break-word">{summary}</p>
+      <p key={failureKey(error)} className="wrap-break-word">
+        {summary}
+      </p>
       {traceId && <TraceIdRow traceId={traceId} className="max-w-full" />}
     </IllustratedState>
   )
@@ -157,11 +167,10 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const board = useRef<HTMLDivElement>(null)
 
   const refetchInterval = autoRefresh ? AUTO_REFRESH_MS : false
-  const schedule = useQuery({
-    ...getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } }),
-    refetchInterval,
-    refetchOnWindowFocus: true,
-  })
+  const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } })
+  const schedule = useQuery({ ...scheduleOptions, refetchInterval, refetchOnWindowFocus: true })
+  // A day that never loaded stays failed while it is read again (Try again, a refresh), for the board and the figures alike.
+  const scheduleFailure = useQueryFailure(schedule, scheduleOptions.queryKey)
 
   const allLanes = useMemo(() => (schedule.data ? buildLanes(schedule.data, mode) : []), [schedule.data, mode])
   const lanes = allLanes.filter((lane) => !hidden.has(lane.id))
@@ -213,6 +222,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       today={today}
       mode={laneMode}
       schedule={schedule}
+      failure={scheduleFailure}
       lanes={lanes}
       laneCount={allLanes.length}
       onShowAllLanes={() => setHidden(new Set())}
@@ -251,7 +261,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           today={today}
           timeZone={timeZone}
           schedule={schedule.data}
-          failed={!schedule.data && schedule.isError}
+          failed={!schedule.data && scheduleFailure !== null}
           now={now}
           refetchInterval={refetchInterval}
         />

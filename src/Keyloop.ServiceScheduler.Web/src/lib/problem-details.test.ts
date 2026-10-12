@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { describeFailure, fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
+import { describeFailure, failureKey, fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 
 const rateLimited = {
   type: "https://api.keyloop.example/problems/rate-limited",
@@ -65,6 +65,22 @@ describe("describeFailure", () => {
 
   it("never shows nothing", () => {
     expect(describeFailure({})).toEqual({ summary: "Something went wrong, and the server sent no explanation." })
+  })
+})
+
+describe("failureKey", () => {
+  it("is the same for the same failure and new for another one in the same words", () => {
+    const first = { ...rateLimited }
+    const second = { ...rateLimited }
+
+    expect(failureKey(first)).toBe(failureKey(first))
+    expect(failureKey(second)).not.toBe(failureKey(first))
+    expect(failureKey(new TypeError("Failed to fetch"))).not.toBe(failureKey(new TypeError("Failed to fetch")))
+  })
+
+  it("keys a failure that is not an object by its value", () => {
+    expect(failureKey("Bad Gateway")).toBe(failureKey("Bad Gateway"))
+    expect(failureKey(undefined)).not.toBe(failureKey(null))
   })
 })
 

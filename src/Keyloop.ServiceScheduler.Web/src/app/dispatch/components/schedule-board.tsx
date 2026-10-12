@@ -8,7 +8,7 @@ import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { describeFailure } from "@/lib/problem-details"
+import { describeFailure, failureKey } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { formatDay, weekdayOf } from "../lib/calendar-date"
@@ -28,6 +28,8 @@ interface ScheduleBoardProps {
   today: string
   mode: LaneMode
   schedule: UseQueryResult<WorkshopScheduleResponse, GetWorkshopScheduleError>
+  /** The schedule's failure, kept while the day is read again (`useQueryFailure`), so Try again stays; `null` otherwise. */
+  failure: GetWorkshopScheduleError | null
   /** The lanes of this view that the lane filter leaves showing. */
   lanes: readonly Lane[]
   /** How many lanes the view has before filtering. */
@@ -75,6 +77,7 @@ export function ScheduleBoard({
   today,
   mode,
   schedule,
+  failure,
   lanes,
   laneCount,
   onShowAllLanes,
@@ -97,22 +100,25 @@ export function ScheduleBoard({
   const dayName = (day: string) => formatDay(day, "long").replace(/ \d{4}$/, "")
 
   let body: ReactNode
-  if (!data && schedule.isError) {
-    const { summary, traceId } = describeFailure(schedule.error)
+  if (!data && failure !== null) {
+    const { summary, traceId } = describeFailure(failure)
     body = (
       <IllustratedState
         role="alert"
         illustration="error-connection"
         title="Couldn’t load the schedule"
         action={
-          <Button type="button" onClick={() => void schedule.refetch()} disabled={schedule.isFetching}>
+          // It stays while the day is read again, disabled but focused, ready for another try if that one fails too.
+          <Button type="button" onClick={() => void schedule.refetch()} disabled={schedule.isFetching} focusableWhenDisabled>
             <RotateCw aria-hidden="true" className={cn(schedule.isFetching && "animate-spin")} />
             Try again
           </Button>
         }
         className="px-4"
       >
-        <p className="wrap-break-word">{summary}</p>
+        <p key={failureKey(failure)} className="wrap-break-word">
+          {summary}
+        </p>
         {traceId && <TraceIdRow traceId={traceId} className="max-w-full" />}
       </IllustratedState>
     )

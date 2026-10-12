@@ -302,6 +302,48 @@ describe("dispatch board: dealership", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
+  it("keeps the failure and keyboard focus on Try again while the list is read again, and after it fails again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({
+      dealerships: async () => {
+        await held
+        return problemResponse(503, { title: "Service unavailable", status: 503, detail: "The dealership service is unavailable." })
+      },
+    })
+    renderBoard()
+
+    const alert = await screen.findByRole("alert")
+    const explanation = within(alert).getByText("The dealership service is unavailable.")
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    expectAvailable(tryAgain)
+
+    const before = api.requests.length
+    held = new Promise<void>((resolve) => (answer = resolve))
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await waitFor(() => expect(api.requests).toHaveLength(before + 1))
+    // While it reads again the failure stays, not the loading frame: the keyboard user stays on Try again, which cannot
+    // act meanwhile, and the select still says why it is empty.
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    expect(explanation).toBeInTheDocument()
+    expect(screen.queryByText("Loading dealerships…")).not.toBeInTheDocument()
+    expect(await dealershipSelect()).toHaveTextContent("Dealerships unavailable")
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    // The same words again, but as new content in the alert, so a screen reader reads the second failure out too.
+    expect(explanation).not.toBeInTheDocument()
+    expect(within(alert).getByText("The dealership service is unavailable.")).toBeInTheDocument()
+    // The press while it read sent nothing.
+    expect(api.requests).toHaveLength(before + 1)
+  })
+
   it("names the status when a failure carries no explanation", async () => {
     mockBoardApi({ dealerships: () => new Response("", { status: 500, statusText: "Internal Server Error" }) })
     renderBoard()

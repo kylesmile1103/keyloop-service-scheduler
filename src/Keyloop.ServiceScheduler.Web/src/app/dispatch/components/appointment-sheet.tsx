@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { useQueryFailure } from "@/hooks/use-query-failure"
 import { fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
@@ -114,7 +115,10 @@ interface SheetBodyProps {
 function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, onDone }: SheetBodyProps) {
   const queryClient = useQueryClient()
   const path = { appointmentId: appointment.id }
-  const details = useQuery({ ...getAppointmentOptions({ path }), enabled: open })
+  const detailsOptions = getAppointmentOptions({ path })
+  const details = useQuery({ ...detailsOptions, enabled: open })
+  // Kept while Try again reads the record again, so the alert and its focused button stay until the answer.
+  const detailsFailure = useQueryFailure(details, detailsOptions.queryKey)
   const record: AppointmentResponse | undefined = details.data
   const status = record?.status ?? appointment.status
   const { icon: StatusIcon, classes } = statusMeta[status]
@@ -209,10 +213,10 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
         </dl>
-        {details.isError && (
+        {detailsFailure !== null && (
           <ProblemAlert
             title="Couldn’t load the full record"
-            error={details.error}
+            error={detailsFailure}
             onRetry={() => void details.refetch()}
             retrying={details.isFetching}
             className="mt-4"

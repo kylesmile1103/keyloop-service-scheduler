@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { CopyButton } from "@/components/copy-button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { describeFailure } from "@/lib/problem-details"
+import { describeFailure, failureKey } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 export type ProblemTone = "error" | "warning" | "info"
@@ -75,7 +75,10 @@ export function ProblemAlert({
       <Icon aria-hidden="true" />
       <AlertTitle className={cn("font-semibold wrap-break-word", titleClass)}>{title}</AlertTitle>
       <AlertDescription className={cn("flex flex-col gap-2", detail)}>
-        <span className="wrap-break-word">{summary}</span>
+        {/* Keyed by the failure, so a retry that fails again in the same words is still read out (`failureKey`). */}
+        <span key={failureKey(error)} className="wrap-break-word">
+          {summary}
+        </span>
         {traceId && <TraceIdRow traceId={traceId} />}
         {children}
         {(onRetry || actions) && (

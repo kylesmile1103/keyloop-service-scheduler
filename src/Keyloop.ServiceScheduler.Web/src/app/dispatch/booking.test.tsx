@@ -475,6 +475,75 @@ describe("booking an appointment", () => {
     expectAvailable(book)
   })
 
+  it("keeps the failure and keyboard focus on Try again while the free times are looked up again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({
+      availability: async () => {
+        await held
+        return problemResponse(503, { title: "Service unavailable", status: 503, detail: "The availability service is unavailable." })
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+
+    const alert = (await within(scope).findByText("Couldn’t look up free times")).closest<HTMLElement>('[role="alert"]')!
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    const reads = () => requestsTo(api.requests, "/availability").length
+    const before = reads()
+    held = new Promise<void>((resolve) => (answer = resolve))
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await waitFor(() => expect(reads()).toBe(before + 1))
+    // The free times' failure stays while they are looked up again, so focus stays in the dialog, on Try again.
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    expect(within(scope).queryByText("Looking for free start times…")).not.toBeInTheDocument()
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    expect(reads()).toBe(before + 1)
+  })
+
+  it("keeps the failure and keyboard focus on Try again while the services are loaded again", async () => {
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({
+      serviceTypes: async () => {
+        await held
+        return problemResponse(503, { title: "Service unavailable", status: 503, detail: "The catalogue service is unavailable." })
+      },
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+
+    const alert = (await within(scope).findByText("Couldn’t load the services")).closest<HTMLElement>('[role="alert"]')!
+    const tryAgain = within(alert).getByRole("button", { name: "Try again" })
+    expectAvailable(tryAgain)
+    const reads = () => requestsTo(api.requests, "/service-types").length
+    const before = reads()
+    held = new Promise<void>((resolve) => (answer = resolve))
+    tryAgain.focus()
+    fireEvent.click(tryAgain)
+
+    await waitFor(() => expect(reads()).toBe(before + 1))
+    expect(tryAgain).toBeInTheDocument()
+    expectUnavailableButFocusable(tryAgain)
+    expect(tryAgain).toHaveFocus()
+    fireEvent.click(tryAgain)
+
+    answer()
+    await waitFor(() => expectAvailable(tryAgain))
+    expect(tryAgain).toHaveFocus()
+    expect(reads()).toBe(before + 1)
+  })
+
   it("starts the next booking with a new idempotency key", async () => {
     const api = mockBoardApi()
     renderBoard(readingBoard)

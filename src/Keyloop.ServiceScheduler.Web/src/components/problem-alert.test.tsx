@@ -29,6 +29,24 @@ describe("problem alert", () => {
     expectAvailable(retry)
   })
 
+  it("reads a second failure out as new content, even in the same words, and keeps focus on Try again", () => {
+    const onRetry = vi.fn()
+    const unreachable = "The server could not be reached. Check the connection, then try again."
+    const { rerender } = render(<ProblemAlert title="Couldn’t load the services" error={failure} onRetry={onRetry} />)
+    const retry = screen.getByRole("button", { name: "Try again" })
+    const explanation = screen.getByText(unreachable)
+    retry.focus()
+
+    rerender(<ProblemAlert title="Couldn’t load the services" error={failure} onRetry={onRetry} retrying />)
+    expect(explanation).toBeInTheDocument()
+
+    // A screen reader reads out what an alert gains, not text that stays: the second failure's words are a new node.
+    rerender(<ProblemAlert title="Couldn’t load the services" error={new TypeError("Failed to fetch")} onRetry={onRetry} />)
+    expect(explanation).not.toBeInTheDocument()
+    expect(screen.getByText(unreachable)).toBeInTheDocument()
+    expect(retry).toHaveFocus()
+  })
+
   it("keeps Try again focusable while a rate limit's wait runs", () => {
     render(<ProblemAlert title="Couldn’t book the appointment" error={failure} onRetry={() => {}} retryDisabled />)
 

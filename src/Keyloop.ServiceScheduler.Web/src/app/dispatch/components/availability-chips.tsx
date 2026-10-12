@@ -10,6 +10,7 @@ import { IllustratedState } from "@/components/illustrated-state"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useQueryFailure } from "@/hooks/use-query-failure"
 import { fieldErrors, parseProblem } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
@@ -67,14 +68,30 @@ export function AvailabilityChips({
   nextDate,
   onDateChange,
 }: AvailabilityChipsProps) {
-  const availability = useQuery({
-    ...getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: serviceType?.id ?? "", date } }),
-    enabled: Boolean(serviceType),
-  })
+  const availabilityOptions = getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: serviceType?.id ?? "", date } })
+  const availability = useQuery({ ...availabilityOptions, enabled: Boolean(serviceType) })
+  // Kept while Try again looks again, so the alert and its focused button stay in the dialog until the answer.
+  const failure = useQueryFailure(availability, availabilityOptions.queryKey)
 
   if (!serviceType) return <Hint>Choose a service to see its free start times.</Hint>
 
-  if (availability.isPending) {
+  if (failure !== null) {
+    const problem = parseProblem(failure)
+    const dateError = problem && fieldErrors(problem, { date: "Date" }).date
+    // A date the API will not plan (before yesterday or past the booking horizon) is the user's to change, not a failure.
+    return dateError ? (
+      <Hint>{dateError}</Hint>
+    ) : (
+      <ProblemAlert
+        title="Couldn’t look up free times"
+        error={failure}
+        onRetry={() => void availability.refetch()}
+        retrying={availability.isFetching}
+      />
+    )
+  }
+
+  if (availability.data === undefined) {
     return (
       <div aria-busy="true" className="flex flex-col gap-2">
         <p role="status" className="sr-only">
@@ -87,22 +104,6 @@ export function AvailabilityChips({
           ))}
         </div>
       </div>
-    )
-  }
-
-  if (availability.isError) {
-    const problem = parseProblem(availability.error)
-    const dateError = problem && fieldErrors(problem, { date: "Date" }).date
-    // A date the API will not plan (before yesterday or past the booking horizon) is the user's to change, not a failure.
-    return dateError ? (
-      <Hint>{dateError}</Hint>
-    ) : (
-      <ProblemAlert
-        title="Couldn’t look up free times"
-        error={availability.error}
-        onRetry={() => void availability.refetch()}
-        retrying={availability.isFetching}
-      />
     )
   }
 

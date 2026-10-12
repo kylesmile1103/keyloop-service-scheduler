@@ -81,6 +81,21 @@ export function describeFailure(error: unknown): FailureDescription {
   return { summary: "Something went wrong, and the server sent no explanation." }
 }
 
+const failureKeys = new WeakMap<object, number>()
+let lastFailureKey = 0
+
+/**
+ * A React key for a failure's explanation: the same for the same error object, new for every other one. A screen reader
+ * reads out what an alert gains, not text that stays, so an explanation keyed with it is read out again when a retry
+ * fails in the same words as before, while the alert and its focused Try again stay.
+ */
+export function failureKey(error: unknown): string {
+  if (typeof error !== "object" || error === null) return `value:${String(error)}`
+  let key = failureKeys.get(error)
+  if (key === undefined) failureKeys.set(error, (key = ++lastFailureKey))
+  return `failure:${key}`
+}
+
 const catalogue = "https://api.keyloop.example/problems/"
 
 /**
