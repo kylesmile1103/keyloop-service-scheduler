@@ -1,5 +1,5 @@
-import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy";
-import { requiredSecret } from "./secrets";
+import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.ts";
+import { requiredSecret } from "./secrets.ts";
 
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
   "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY">;
@@ -9,17 +9,33 @@ function validatedCap(value: string, max: number, name: string): string {
   return value;
 }
 
-export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
-  const db = await requiredSecret(env.DB_URL, "keyloop_prod_db_url");
-  const addresses = configList(env.EMAIL_ALLOWED_ADDRESSES);
-  const domains = configList(env.EMAIL_ALLOWED_DOMAINS);
+// Shared with settings.ts, so `cf build` refuses the same values a container start would.
+export function emailCaps(perRecipient: string, perDay: string): { perRecipient: string; perDay: string } {
+  return {
+    perRecipient: validatedCap(perRecipient, 1000, "per-recipient email cap"),
+    perDay: validatedCap(perDay, 10000, "daily email cap"),
+  };
+}
+
+export function recipientAllowlist(addressList: string, domainList: string, notificationsEnabled: boolean):
+  { addresses: string[]; domains: string[] } {
+  const addresses = configList(addressList);
+  const domains = configList(domainList);
   if (addresses.some(value => !isMailbox(value) || isReservedDomain(value.split("@")[1]!)) ||
       domains.some(value => !isMailbox(`reviewer@${value}`) || isReservedDomain(value))) {
     throw new Error("Configure a valid non-reserved notification allowlist");
   }
-  if (env.NOTIFICATIONS_ENABLED === "true" && addresses.length + domains.length === 0) {
+  if (notificationsEnabled && addresses.length + domains.length === 0) {
     throw new Error("Notifications require an approved recipient allowlist");
   }
+  return { addresses, domains };
+}
+
+export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
+  const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS,
+    env.NOTIFICATIONS_ENABLED === "true");
+  const caps = emailCaps(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, env.EMAIL_MAX_PER_DAY);
+  const db = await requiredSecret(env.DB_URL, "keyloop_prod_db_url");
   const result: Record<string, string> = {
     ASPNETCORE_ENVIRONMENT: "Production",
     ASPNETCORE_HTTP_PORTS: "8080",
@@ -37,8 +53,8 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     Notifications__FromDisplayName: env.NOTIFY_FROM_NAME,
     Notifications__Relay__BaseUrl: "http://email.internal",
     Notifications__Recipients__Mode: "AllowList",
-    Notifications__Recipients__MaxPerRecipientPerDay: validatedCap(env.EMAIL_MAX_PER_RECIPIENT_PER_DAY, 1000, "per-recipient email cap"),
-    Notifications__Recipients__MaxPerDay: validatedCap(env.EMAIL_MAX_PER_DAY, 10000, "daily email cap"),
+    Notifications__Recipients__MaxPerRecipientPerDay: caps.perRecipient,
+    Notifications__Recipients__MaxPerDay: caps.perDay,
     Logging__Console__FormatterName: "json",
   };
   addresses.forEach((value, index) => { result[`Notifications__Recipients__AllowedAddresses__${index}`] = value; });

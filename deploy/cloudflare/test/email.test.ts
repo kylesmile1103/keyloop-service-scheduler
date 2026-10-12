@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleEmailRelay, MAX_EMAIL_BYTES } from "../src/email/relay";
+import { handleEmailRelay } from "../src/email/relay";
 import { fakeEnv } from "./helpers";
 import fixture from "./fixtures/email-relay-request.json" with { type: "json" };
 
@@ -10,6 +10,7 @@ const relayRequest = (message: unknown = fixture) => new Request("http://email.i
 describe("Keyloop email relay contract", () => {
   it("accepts the shared fixture, pins sender and sends only the approved headers", async () => {
     const { env, mocks } = fakeEnv();
+    const warn = vi.spyOn(console, "warn");
     const response = await handleEmailRelay(relayRequest(), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ messageId: "provider-id" });
@@ -20,6 +21,7 @@ describe("Keyloop email relay contract", () => {
     });
     expect(mocks.EMAIL_API_TOKEN.get).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
   it.each(["E_RATE_LIMIT_EXCEEDED", "E_DAILY_LIMIT_EXCEEDED", "E_INTERNAL_SERVER_ERROR", "E_DELIVERY_FAILED", "E_NEW_PROVIDER_ERROR"])("retries %s without exposing provider text", async code => {
     const { env, mocks } = fakeEnv();
@@ -70,6 +72,33 @@ describe("Keyloop email relay contract", () => {
     expect((await handleEmailRelay(relayRequest(), env)).status).toBe(200);
     expect((await handleEmailRelay(relayRequest({ ...fixture, to: "reviewer@child.keyloop.kylesmile.me" }), env)).status).toBe(422);
   });
+  it("matches a recipient address case-insensitively", async () => {
+    const { env, mocks } = fakeEnv();
+    expect((await handleEmailRelay(relayRequest({ ...fixture, to: "REVIEWER@KEYLOOP.KYLESMILE.ME" }), env)).status).toBe(200);
+    env.EMAIL_ALLOWED_ADDRESSES = "";
+    env.EMAIL_ALLOWED_DOMAINS = "keyloop.kylesmile.me";
+    expect((await handleEmailRelay(relayRequest({ ...fixture, to: "Reviewer@Keyloop.Kylesmile.Me" }), env)).status).toBe(200);
+    expect(mocks.EMAIL.send).toHaveBeenCalledTimes(2);
+  });
+  it("refuses an unknown transport without sending", async () => {
+    const { env, mocks } = fakeEnv();
+    // The build refuses this value; the relay still fails closed if a stale or hand-edited binding carries it.
+    env.EMAIL_TRANSPORT = "smtp" as Env["EMAIL_TRANSPORT"];
+    expect(await (await handleEmailRelay(relayRequest(), env)).json()).toEqual({ code: "E_RELAY_CONFIG", retryable: true });
+    expect(mocks.EMAIL.send).not.toHaveBeenCalled();
+    expect(mocks.EMAIL_API_TOKEN.get).not.toHaveBeenCalled();
+  });
+  it("treats a binding send without a message id as accepted, never as retryable", async () => {
+    const { env, mocks } = fakeEnv();
+    mocks.EMAIL.send.mockResolvedValue({} as { messageId: string });
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const response = await handleEmailRelay(relayRequest(), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ messageId: null });
+    expect(JSON.parse(String(log.mock.calls[0]![0]))).toEqual({
+      event: "EmailAcceptedUnconfirmed", transport: "binding", notificationId: fixture.notificationId,
+    });
+  });
   it("defaults an empty allowlist to refusal", async () => {
     const { env, mocks } = fakeEnv();
     env.EMAIL_ALLOWED_ADDRESSES = "";
@@ -88,11 +117,20 @@ describe("Keyloop email relay contract", () => {
     expect(await result.json()).toMatchObject({ retryable: false });
     expect(mocks.EMAIL.send).not.toHaveBeenCalled();
   });
-  it("rejects invalid JSON and oversized chunked input", async () => {
-    for (const body of ["{broken", "x".repeat(MAX_EMAIL_BYTES + 1)]) {
-      const result = await handleEmailRelay(new Request("http://email.internal/v1/send", { method: "POST", headers: { "content-type": "application/json" }, body }), fakeEnv().env);
-      expect(result.status).toBe(400);
-    }
+  it("rejects invalid JSON", async () => {
+    const result = await handleEmailRelay(new Request("http://email.internal/v1/send", { method: "POST", headers: { "content-type": "application/json" }, body: "{broken" }), fakeEnv().env);
+    expect(await result.json()).toEqual({ code: "E_RELAY_MALFORMED", retryable: false });
+  });
+  it("accepts exactly 128 KiB and refuses one byte more", async () => {
+    // A valid message padded to an exact byte length, so only the cap can refuse it.
+    const sized = (bytes: number) => {
+      const base = new TextEncoder().encode(JSON.stringify(fixture)).byteLength;
+      return JSON.stringify({ ...fixture, html: fixture.html + "x".repeat(bytes - base) });
+    };
+    const send = (body: string) => handleEmailRelay(new Request("http://email.internal/v1/send", { method: "POST", headers: { "content-type": "application/json" }, body }), fakeEnv().env);
+    expect(new TextEncoder().encode(sized(131_072)).byteLength).toBe(131_072);
+    expect((await send(sized(131_072))).status).toBe(200);
+    expect(await (await send(sized(131_073))).json()).toEqual({ code: "E_RELAY_BODY_TOO_LARGE", retryable: false });
   });
   it("checks the private relay host, method and path", async () => {
     const { env, mocks } = fakeEnv();
@@ -122,8 +160,10 @@ describe("explicit REST fallback", () => {
     const { env, mocks } = restEnv();
     const outbound = vi.fn().mockResolvedValue(Response.json({ success: true, result: { [field]: [fixture.to], message_id: "rest-id" } }));
     vi.stubGlobal("fetch", outbound);
+    const warn = vi.spyOn(console, "warn");
     const response = await handleEmailRelay(relayRequest(), env);
     expect(await response.json()).toEqual({ messageId: "rest-id" });
+    expect(warn).not.toHaveBeenCalled();
     const [url, init] = outbound.mock.calls[0]!;
     expect(url).toBe(`https://api.cloudflare.com/client/v4/accounts/${env.EMAIL_ACCOUNT_ID}/email/sending/send`);
     expect(init.headers.authorization).toBe("Bearer local-test-email-value");
@@ -155,10 +195,28 @@ describe("explicit REST fallback", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ success: true, result: { [field]: [fixture.to], delivered: [fixture.to] } })));
     expect((await handleEmailRelay(relayRequest(), restEnv().env)).status).toBe(422);
   });
-  it("refuses malformed acceptance data and redirects without retrying the binding", async () => {
+  it.each([
+    ["no recipient echo", Response.json({ success: true, result: { delivered: [], queued: [], message_id: "rest-id" } }), "rest-id"],
+    ["an empty result", Response.json({ success: true, result: {} }), null],
+    ["no result", Response.json({ success: true }), null],
+    ["a non-JSON body", new Response("accepted", { status: 200 }), null],
+    ["a body over 64 KiB", new Response("x".repeat(64 * 1024 + 1), { status: 200 }), null],
+  ])("never makes a 2xx acceptance with %s retryable", async (_case, upstream, messageId) => {
     const { env, mocks } = restEnv();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ success: true, result: {} })));
-    expect((await handleEmailRelay(relayRequest(), env)).status).toBe(503);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(upstream));
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const response = await handleEmailRelay(relayRequest(), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ messageId });
+    const logged = log.mock.calls.flat().join();
+    expect(JSON.parse(logged)).toEqual({ event: "EmailAcceptedUnconfirmed", transport: "rest", notificationId: fixture.notificationId });
+    expect(logged).not.toContain(fixture.to);
+    expect(mocks.EMAIL.send).not.toHaveBeenCalled();
+  });
+  it("retries when the provider says it did not send, and on redirects, without switching transport", async () => {
+    const { env, mocks } = restEnv();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ success: false, errors: [{ code: 10002 }] })));
+    expect(await (await handleEmailRelay(relayRequest(), env)).json()).toEqual({ code: "E_REST_10002", retryable: true });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 307 })));
     expect((await handleEmailRelay(relayRequest(), env)).status).toBe(503);
     expect(mocks.EMAIL.send).not.toHaveBeenCalled();

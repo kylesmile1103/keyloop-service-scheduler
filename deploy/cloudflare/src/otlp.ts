@@ -1,8 +1,21 @@
-import { BodyLimitError, jsonError, mediaType, readLimitedBody } from "./http";
-import { requiredSecret } from "./secrets";
+import { BodyLimitError, jsonError, mediaType, readLimitedBody } from "./http.ts";
+import { requiredSecret } from "./secrets.ts";
 
 export const MAX_OTLP_BYTES = 256 * 1024;
 type OtlpEnv = Pick<Env, "OTLP_RELAY_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_OTLP_BASIC_BROWSER" | "OTLP_RELAY_LIMITER">;
+
+/** The traces URL when the value is exactly a Grafana Cloud OTLP gateway base URL, otherwise null. Shared with settings.ts. */
+export function grafanaTracesUrl(value: string): string | null {
+  let endpoint: URL;
+  try {
+    endpoint = new URL(value);
+  } catch {
+    return null;
+  }
+  const valid = endpoint.protocol === "https:" && /^otlp-gateway-[a-z0-9-]+\.grafana\.net$/.test(endpoint.hostname) &&
+    endpoint.pathname === "/otlp" && !endpoint.port && !endpoint.username && !endpoint.password && !endpoint.search && !endpoint.hash;
+  return valid ? `${endpoint.origin}/otlp/v1/traces` : null;
+}
 
 export async function relayBrowserTraces(request: Request, env: OtlpEnv): Promise<Response> {
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
@@ -22,14 +35,11 @@ export async function relayBrowserTraces(request: Request, env: OtlpEnv): Promis
     if (env.OTLP_RELAY_ENABLED !== "true") return jsonError("E_OTLP_DISABLED", 503);
     const body = await readLimitedBody(request, MAX_OTLP_BYTES);
     if (body.byteLength === 0) return jsonError("E_BODY_SIZE", 413);
-    const endpoint = new URL(env.GRAFANA_OTLP_ENDPOINT);
-    if (endpoint.protocol !== "https:" || !/^otlp-gateway-[a-z0-9-]+\.grafana\.net$/.test(endpoint.hostname) ||
-        endpoint.pathname !== "/otlp" || endpoint.port || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-      return jsonError("E_OTLP_CONFIG", 503);
-    }
+    const tracesUrl = grafanaTracesUrl(env.GRAFANA_OTLP_ENDPOINT);
+    if (!tracesUrl) return jsonError("E_OTLP_CONFIG", 503);
     const basic = await requiredSecret(env.GRAFANA_OTLP_BASIC_BROWSER, "grafana-otlp-basic-browser");
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(basic)) return jsonError("E_OTLP_CONFIG", 503);
-    const upstream = await fetch(`${endpoint.href}/v1/traces`, {
+    const upstream = await fetch(tracesUrl, {
       method: "POST",
       headers: { "content-type": type, authorization: `Basic ${basic}` },
       body,

@@ -1,5 +1,5 @@
-import { jsonError } from "./http";
-import { relayBrowserTraces } from "./otlp";
+import { jsonError } from "./http.ts";
+import { relayBrowserTraces } from "./otlp.ts";
 
 export const API_INSTANCE_NAME = "api";
 

@@ -39,8 +39,9 @@ if (action === "build") {
   await copyFile(new URL("../public/_headers", import.meta.url), new URL("../build/validation-assets/_headers", import.meta.url));
   taskEnv.KEYLOOP_VALIDATE_ASSETS = "true";
 }
+const cf = new URL("../node_modules/.bin/cf", import.meta.url).pathname;
 const args = action === "types" ? ["workers", "types"] : ["build"];
-const result = spawnSync(new URL("../node_modules/.bin/cf", import.meta.url).pathname, args, {
+const result = spawnSync(cf, args, {
   cwd: new URL("../", import.meta.url), env: taskEnv, stdio: "inherit",
 });
 if (result.error) throw result.error;
@@ -69,4 +70,11 @@ if (action === "build" && result.status === 0) {
     assert.equal(worker.env.GRAFANA_OTLP_BASIC_BROWSER.secretName, "grafana-otlp-basic-browser");
   }
   console.log(`Local build metadata verified (${integrations ? "REST email and OTLP" : "integrations disabled"})`);
+  // cloudflare.config.ts must refuse an invalid setting at build time (src/settings.ts), not at the first send.
+  const refused = spawnSync(cf, ["build"], {
+    cwd: new URL("../", import.meta.url), env: { ...taskEnv, KEYLOOP_EMAIL_TRANSPORT: "REST" }, encoding: "utf8",
+  });
+  assert.notEqual(refused.status, 0);
+  assert.match(`${refused.stdout}${refused.stderr}`, /Set KEYLOOP_EMAIL_TRANSPORT to binding or rest/);
+  console.log("Invalid edge settings fail the build");
 }

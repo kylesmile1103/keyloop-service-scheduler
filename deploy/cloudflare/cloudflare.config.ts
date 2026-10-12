@@ -1,18 +1,13 @@
 import { bindings, defineConfig, defineContainer, exports } from "cf/config";
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
+import { edgeSettings } from "./src/settings.ts";
 
-function requiredIdentifier(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Set ${name} before evaluating the edge configuration`);
-  return value;
-}
-
-const storeId = requiredIdentifier("KEYLOOP_SECRETS_STORE_ID");
-const emailTransport = process.env.KEYLOOP_EMAIL_TRANSPORT ?? "binding";
-const otlpEnabled = process.env.KEYLOOP_OTLP_RELAY_ENABLED === "true";
+// Throws on an invalid setting, so `cf build` fails rather than the first cold start, send or trace export.
+const settings = edgeSettings(process.env);
+const storeId = settings.secretsStoreId;
 const api = defineContainer({
   name: "keyloop-scheduler-api",
-  image: { reference: requiredIdentifier("KEYLOOP_API_IMAGE") },
+  image: { reference: settings.apiImage },
   schedulingPolicy: "default",
   instanceType: "basic",
   maxInstances: 1,
@@ -46,24 +41,24 @@ export default defineConfig({
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["notifications@keyloop.kylesmile.me"] }),
       // Disabled integrations must not require provisioning unused credentials.
-      ...(emailTransport === "rest" ? {
+      ...(settings.emailTransport === "rest" ? {
         EMAIL_API_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_email_api_token" }),
       } : {}),
-      ...(otlpEnabled ? {
+      ...(settings.otlpRelayEnabled === "true" ? {
         GRAFANA_OTLP_BASIC_BROWSER: bindings.secretsStoreSecret({ storeId, secretName: "grafana-otlp-basic-browser" }),
       } : {}),
       NOTIFY_FROM: bindings.text("notifications@keyloop.kylesmile.me"),
       NOTIFY_FROM_NAME: bindings.text("Keyloop Service Scheduler (demo)"),
-      NOTIFICATIONS_ENABLED: bindings.text(process.env.KEYLOOP_NOTIFICATIONS_ENABLED ?? "false"),
-      EMAIL_SENDING_ENABLED: bindings.text(process.env.KEYLOOP_EMAIL_SENDING_ENABLED ?? "false"),
-      EMAIL_TRANSPORT: bindings.text(emailTransport),
-      EMAIL_ACCOUNT_ID: bindings.text(process.env.KEYLOOP_EMAIL_ACCOUNT_ID ?? ""),
-      EMAIL_ALLOWED_ADDRESSES: bindings.text(process.env.KEYLOOP_EMAIL_ALLOWED_ADDRESSES ?? ""),
-      EMAIL_ALLOWED_DOMAINS: bindings.text(process.env.KEYLOOP_EMAIL_ALLOWED_DOMAINS ?? ""),
-      EMAIL_MAX_PER_RECIPIENT_PER_DAY: bindings.text(process.env.KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY ?? "10"),
-      EMAIL_MAX_PER_DAY: bindings.text(process.env.KEYLOOP_EMAIL_MAX_PER_DAY ?? "100"),
-      OTLP_RELAY_ENABLED: bindings.text(process.env.KEYLOOP_OTLP_RELAY_ENABLED ?? "false"),
-      GRAFANA_OTLP_ENDPOINT: bindings.text(process.env.KEYLOOP_GRAFANA_OTLP_ENDPOINT ?? ""),
+      NOTIFICATIONS_ENABLED: bindings.text(settings.notificationsEnabled),
+      EMAIL_SENDING_ENABLED: bindings.text(settings.emailSendingEnabled),
+      EMAIL_TRANSPORT: bindings.text(settings.emailTransport),
+      EMAIL_ACCOUNT_ID: bindings.text(settings.emailAccountId),
+      EMAIL_ALLOWED_ADDRESSES: bindings.text(settings.emailAllowedAddresses),
+      EMAIL_ALLOWED_DOMAINS: bindings.text(settings.emailAllowedDomains),
+      EMAIL_MAX_PER_RECIPIENT_PER_DAY: bindings.text(settings.emailMaxPerRecipientPerDay),
+      EMAIL_MAX_PER_DAY: bindings.text(settings.emailMaxPerDay),
+      OTLP_RELAY_ENABLED: bindings.text(settings.otlpRelayEnabled),
+      GRAFANA_OTLP_ENDPOINT: bindings.text(settings.grafanaOtlpEndpoint),
       OTLP_RELAY_LIMITER: bindings.rateLimit({ namespace: "2001", simple: { limit: 120, period: 60 } }),
     },
   },

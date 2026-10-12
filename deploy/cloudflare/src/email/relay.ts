@@ -1,6 +1,6 @@
-import { BodyLimitError, isRecord, jsonError, mediaType, readLimitedBody } from "../http";
-import { requiredSecret } from "../secrets";
-import { isMailbox, recipientRefusal, SENDER } from "./policy";
+import { BodyLimitError, isRecord, jsonError, mediaType, readLimitedBody } from "../http.ts";
+import { requiredSecret } from "../secrets.ts";
+import { isMailbox, recipientRefusal, SENDER } from "./policy.ts";
 
 export const MAX_EMAIL_BYTES = 128 * 1024;
 type EmailEnv = Pick<Env, "EMAIL" | "NOTIFY_FROM" | "NOTIFY_FROM_NAME" | "EMAIL_SENDING_ENABLED" |
@@ -45,8 +45,14 @@ function isRelayMessage(value: unknown): value is RelayMessage {
     (value.replyTo === undefined || value.replyTo === null);
 }
 
-function accepted(messageId: string | null): Response {
-  return Response.json({ messageId }, { headers: { "cache-control": "no-store" } });
+// Once the provider has taken a message, a retryable answer would make the dispatcher send it again, and neither
+// transport has an idempotency key (research-email 8). An acceptance the relay cannot fully confirm is still a 200,
+// logged by notification ID only.
+function accepted(messageId: unknown, message: RelayMessage, transport: "binding" | "rest", confirmed: boolean): Response {
+  if (!confirmed) console.warn(JSON.stringify({ event: "EmailAcceptedUnconfirmed", transport, notificationId: message.notificationId }));
+  return Response.json({ messageId: typeof messageId === "string" && messageId ? messageId : null }, {
+    headers: { "cache-control": "no-store" },
+  });
 }
 
 // REST is selected explicitly. Never resend through another transport after an ambiguous send.
@@ -85,14 +91,14 @@ async function sendRest(message: RelayMessage, env: EmailEnv, headers: Record<st
   const code = typeof errorCode === "number" && knownCodes.has(errorCode)
     ? `E_REST_${errorCode}` : `E_REST_HTTP_${upstream.status}`;
   if (errorCode === 10003 || [400, 401, 403, 404, 413, 422].includes(upstream.status)) return jsonError(code, 422, false);
-  if (!upstream.ok || !isRecord(payload) || payload.success !== true || !isRecord(payload.result)) return jsonError(code, 503);
-  const result = payload.result;
+  // Retry only what the provider did not accept: a non-2xx status or an explicit success=false.
+  if (!upstream.ok || (isRecord(payload) && payload.success === false)) return jsonError(code, 503);
+  const result = isRecord(payload) && isRecord(payload.result) ? payload.result : {};
   const matches = (value: unknown) => Array.isArray(value) && value.some(address =>
     typeof address === "string" && address.toLowerCase() === message.to.toLowerCase());
   if (matches(result.permanent_bounces)) return jsonError("E_RECIPIENT_BOUNCED", 422, false);
   if (matches(result.suppressed_recipients)) return jsonError("E_RECIPIENT_SUPPRESSED", 422, false);
-  if (!matches(result.delivered) && !matches(result.queued)) return jsonError("E_PROVIDER_UNKNOWN", 503);
-  return accepted(typeof result.message_id === "string" ? result.message_id : null);
+  return accepted(result.message_id, message, "rest", matches(result.delivered) || matches(result.queued));
 }
 
 export async function handleEmailRelay(request: Request, env: EmailEnv): Promise<Response> {
@@ -125,7 +131,7 @@ export async function handleEmailRelay(request: Request, env: EmailEnv): Promise
       html: value.html,
       headers,
     });
-    return result.messageId ? accepted(result.messageId) : jsonError("E_PROVIDER_UNKNOWN", 503);
+    return accepted(result?.messageId, value, "binding", Boolean(result?.messageId));
   } catch (error) {
     return bindingFailure(error);
   }

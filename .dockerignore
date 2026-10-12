@@ -24,6 +24,11 @@ deploy/cloudflare/build
 **/*.pem
 **/*.key
 **/secrets.json
+# Package-manager and tool credential files (registry tokens, netrc passwords).
+**/.npmrc
+**/.yarnrc.yml
+**/.pypirc
+**/.netrc
 **/*.user
 **/*.suo
 **/*.log

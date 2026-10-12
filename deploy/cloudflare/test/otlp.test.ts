@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { MAX_OTLP_BYTES, relayBrowserTraces } from "../src/otlp";
+import { relayBrowserTraces } from "../src/otlp";
 import { edgeRequest, fakeEnv } from "./helpers";
 
 const traces = (headers: Record<string, string> = {}, body: string | Uint8Array = "protobuf") =>
@@ -47,17 +47,18 @@ describe("browser OTLP relay", () => {
     expect(mocks.GRAFANA_OTLP_BASIC_BROWSER.get).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
-  it.each(["", new Uint8Array(MAX_OTLP_BYTES + 1)])("refuses an empty or oversized stream", async body => {
+  // Literal sizes: the 256 KiB cap is part of the contract with the frontend exporter.
+  it.each(["", new Uint8Array(262_145)])("refuses an empty or oversized stream", async body => {
     expect((await relayBrowserTraces(traces({}, body), fakeEnv().env)).status).toBe(413);
     expect(fetch).not.toHaveBeenCalled();
   });
   it("checks actual bytes despite an understated Content-Length", async () => {
-    expect((await relayBrowserTraces(traces({ "content-length": "1" }, new Uint8Array(MAX_OTLP_BYTES + 1)), fakeEnv().env)).status).toBe(413);
+    expect((await relayBrowserTraces(traces({ "content-length": "1" }, new Uint8Array(262_145)), fakeEnv().env)).status).toBe(413);
   });
   it("accepts the exact size boundary and forwards every byte", async () => {
     const outbound = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", outbound);
-    const body = new Uint8Array(MAX_OTLP_BYTES).fill(42);
+    const body = new Uint8Array(262_144).fill(42);
     expect((await relayBrowserTraces(traces({}, body), fakeEnv().env)).status).toBe(204);
     expect(outbound.mock.calls[0]![1].body).toEqual(body);
   });

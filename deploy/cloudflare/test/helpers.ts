@@ -16,15 +16,16 @@ export function fakeEnv() {
     OTLP_RELAY_LIMITER: { limit: vi.fn().mockResolvedValue({ success: true }) },
     NOTIFY_FROM: "notifications@keyloop.kylesmile.me" as const,
     NOTIFY_FROM_NAME: "Keyloop Service Scheduler (demo)" as const,
-    NOTIFICATIONS_ENABLED: "true",
-    EMAIL_SENDING_ENABLED: "true",
-    EMAIL_TRANSPORT: "binding",
+    // cloudflare.config.ts validates these settings, so the generated Env narrows them to their allowed values.
+    NOTIFICATIONS_ENABLED: "true" as Env["NOTIFICATIONS_ENABLED"],
+    EMAIL_SENDING_ENABLED: "true" as Env["EMAIL_SENDING_ENABLED"],
+    EMAIL_TRANSPORT: "binding" as Env["EMAIL_TRANSPORT"],
     EMAIL_ACCOUNT_ID: "11111111111111111111111111111111",
     EMAIL_ALLOWED_ADDRESSES: "reviewer@keyloop.kylesmile.me",
     EMAIL_ALLOWED_DOMAINS: "",
     EMAIL_MAX_PER_RECIPIENT_PER_DAY: "10",
     EMAIL_MAX_PER_DAY: "100",
-    OTLP_RELAY_ENABLED: "true",
+    OTLP_RELAY_ENABLED: "true" as Env["OTLP_RELAY_ENABLED"],
     GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
   };
   return { env: env satisfies Env, mocks: env };
