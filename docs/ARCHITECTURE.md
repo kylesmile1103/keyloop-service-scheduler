@@ -283,6 +283,8 @@ Defence in depth: every invariant has a *primary* enforcement point and, where t
 | VIN format | `Vin` value object | DB `CHECK (vin ~ '^[A-HJ-NPR-Z0-9]{17}$')` |
 | Every appointment has a history entry for creation | Domain event → interceptor writes row in same transaction | Integration test "no orphaned/missing history" |
 
+**Vehicle-aware domain (ADR-029).** `VehicleProfile` holds powertrain, normalized manufacturer and class with per-attribute provenance and private declaration accountability. `JobRequirements` holds the resolved sets, minimum HV level, policy version and ordered fired rules. The pure resolver applies typed monotone rules; Unknown is HV. Technicians hold level 0..4, inclusive local-date expiry, confirmation and brand specialisms (data only). Migrated unconfirmed levels count. The aggregate reasserts resolved qualification and stores the profile and allocation snapshot in its creation history; notification snapshots contain neither declaration text nor actor identity.
+
 ### 5.5 Appointment lifecycle
 
 ```mermaid
@@ -375,6 +377,8 @@ When a booking at start `t` is feasible, several bays/technicians may qualify. T
 4. **Determinism**: final tie-break by name, then id.
 
 This is a greedy heuristic, not an optimiser; it is cheap, explainable to a workshop controller ("why did it pick Bay 3?"), and unit-tested. A global re-optimisation (bin-packing the day) is a separate capability and out of scope.
+
+With `Scheduling:VehicleAwareRequirements` enabled, hard filters use `Satisfies(requirements, localDate)`. The allocator counts valid HV level above the minimum as surplus alongside task competences. The first comparison separating the technician winner from its runner-up becomes `decidedBy`: preferred resource, surplus competences, lowest load, name, then id. One remaining free qualified candidate reports `OnlyQualifiedResource`. Bay comparison is recorded separately. Excluded preferred resources receive bounded reason codes for missing capabilities/certifications/HV, expiry, inactivity, wrong dealership or busy time. Brand preference and continuity are deferred.
 
 ### 6.4 Time, time zones, and daylight saving
 
@@ -1001,6 +1005,10 @@ erDiagram
 Indexes that matter: `appointments (dealership_id, start_utc)` for day queries; the two GiST exclusion indexes double as overlap-search indexes (`bay_id = ? AND time_range && ?`); GIN on the capability/certification arrays for `@>` containment; `appointment_history (appointment_id, occurred_at_utc)`; `idempotency_keys (expires_at_utc)` for purging.
 
 ---
+
+ADR-029 adds `technicians.hv_level` (smallint, checked 0..4), `hv_level_valid_until` (date, inclusive), `hv_level_confirmed`, and `brand_specialisms` (text array with GIN). Migration faithfully maps `HighVoltageElectrical` to level 3 unconfirmed. Startup seeding fills missing policy reference data but never modifies existing technicians; demo reseeding only rebuilds appointments. Fresh seeds are confirmed through 2028-12-31, with no level 4 technician.
+
+`requirement_rules` stores dealership, policy version, order/code, a typed condition, powertrain/service-code sets and typed additive effects. Latest version is read before the booking transaction; no configured policy means the conservative default v1. Appointments store powertrain, normalized manufacturer, class, provenance JSON, live-diagnosis flag and allocation-decision JSON, using `PersistenceJsonContext`. Old appointments backfill Unknown with unknown provenance and no decision. Exclusion constraints and generated ranges are unchanged.
 
 ### 8.9 Notifications
 

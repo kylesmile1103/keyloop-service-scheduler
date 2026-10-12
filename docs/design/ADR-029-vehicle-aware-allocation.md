@@ -319,3 +319,9 @@ Each phase ships independently, behind a flag, with its own ADR amendment if a d
 - DVLA Vehicle Enquiry Service API: [v1.2.0 reference](https://developer-portal.driver-vehicle-licensing.api.gov.uk/apis/vehicle-enquiry-service/v1.2.0-vehicle-enquiry-service.html), [service description](https://developer-portal.driver-vehicle-licensing.api.gov.uk/apis/vehicle-enquiry-service/vehicle-enquiry-service-description.html).
 - VIN structure and the World Manufacturer Identifier: ISO 3779 and ISO 3780.
 - In this repository: ARCHITECTURE §6 (availability), §7 (concurrency), §8.10 (intake triage), ADR-003, ADR-006, ADR-016, ADR-026, ADR-027.
+
+## Task 31a amendment (2026-10-12)
+
+Phases 0 and 1 ship behind `Scheduling:VehicleAwareRequirements`, default false in every environment. Fresh seed data now gives Reading Amelia, Chloe and Daniel level 2, Ben and Eva level 3, and Farid level 1, all confirmed until 2028-12-31. The Reading brake/HV gap in the original narrative is therefore historical: ordinary Unknown and ICE bookings remain possible for every seeded Reading service. Live HV diagnosis at level 4 remains an honest training gap. Existing technicians are never rewritten by startup seeding or demo reseeding. Migration translates `HighVoltageElectrical` to level 3 unconfirmed; existing demo installations need a deliberate competence review before enabling the flag.
+
+The typed default policy includes heavy van service at level 2 for HV/Unknown vehicles, extending the routine-maintenance row. The legacy HV boolean becomes a level 3 floor on component services even for an ICE declaration. Requirements only add constraints. Policy ordering is by order, code and id; one version is resolved at a time. An unconfigured dealership uses the same closed default version 1 as the seeded policy.

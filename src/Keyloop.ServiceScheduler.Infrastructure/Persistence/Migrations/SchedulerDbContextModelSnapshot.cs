@@ -143,6 +143,13 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string[]>("BrandSpecialisms")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("brand_specialisms")
+                        .HasDefaultValueSql("'{}'::text[]");
+
                     b.Property<string[]>("Certifications")
                         .IsRequired()
                         .HasColumnType("text[]")
@@ -158,6 +165,22 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("employee_number");
 
+                    b.Property<short>("HvLevel")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0)
+                        .HasColumnName("hv_level");
+
+                    b.Property<bool>("HvLevelConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("hv_level_confirmed");
+
+                    b.Property<DateOnly?>("HvLevelValidUntil")
+                        .HasColumnType("date")
+                        .HasColumnName("hv_level_valid_until");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -171,6 +194,11 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_technicians");
 
+                    b.HasIndex("BrandSpecialisms")
+                        .HasDatabaseName("ix_technicians_brand_specialisms");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("BrandSpecialisms"), "gin");
+
                     b.HasIndex("Certifications")
                         .HasDatabaseName("ix_technicians_certifications");
 
@@ -180,7 +208,10 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_technicians_dealership_id_employee_number");
 
-                    b.ToTable("technicians", (string)null);
+                    b.ToTable("technicians", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_technicians_hv_level", "hv_level BETWEEN 0 AND 4");
+                        });
                 });
 
             modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Scheduling.Appointment", b =>
@@ -188,6 +219,10 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AllocationDecision")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("allocation_decision");
 
                     b.Property<Guid>("BayId")
                         .HasColumnType("uuid")
@@ -205,6 +240,10 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("DealershipId")
                         .HasColumnType("uuid")
                         .HasColumnName("dealership_id");
+
+                    b.Property<bool>("NeedsLiveDiagnosis")
+                        .HasColumnType("boolean")
+                        .HasColumnName("needs_live_diagnosis");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
@@ -306,6 +345,34 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                                 .HasColumnName("vehicle_vin");
                         });
 
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "VehicleProfile", "Keyloop.ServiceScheduler.Domain.Scheduling.Appointment.VehicleProfile#VehicleProfile", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("Manufacturer")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("vehicle_manufacturer");
+
+                            b1.Property<string>("Powertrain")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("vehicle_powertrain");
+
+                            b1.Property<string>("Provenance")
+                                .IsRequired()
+                                .HasColumnType("jsonb")
+                                .HasColumnName("vehicle_profile_provenance");
+
+                            b1.Property<string>("VehicleClass")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("vehicle_class");
+                        });
+
                     b.HasKey("Id")
                         .HasName("pk_appointments");
 
@@ -326,6 +393,80 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_appointments_end_after_start", "end_utc > start_utc");
 
                             t.HasCheckConstraint("ck_appointments_vin_format", "vehicle_vin ~ '^[A-HJ-NPR-Z0-9]{17}$'");
+                        });
+                });
+
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Scheduling.RequirementRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string[]>("BayCapabilities")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("bay_capabilities");
+
+                    b.Property<string[]>("Certifications")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("certifications");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("condition");
+
+                    b.Property<Guid>("DealershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dealership_id");
+
+                    b.Property<int>("MinimumHvLevel")
+                        .HasColumnType("integer")
+                        .HasColumnName("minimum_hv_level");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.Property<int>("PolicyVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("policy_version");
+
+                    b.Property<string[]>("Powertrains")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("powertrains");
+
+                    b.PrimitiveCollection<string[]>("ServiceCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("service_codes");
+
+                    b.Property<string>("VehicleClass")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("vehicle_class");
+
+                    b.HasKey("Id")
+                        .HasName("pk_requirement_rules");
+
+                    b.HasIndex("DealershipId", "PolicyVersion", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_requirement_rules_dealership_id_policy_version_code");
+
+                    b.ToTable("requirement_rules", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_requirement_rules_hv_level", "minimum_hv_level BETWEEN 0 AND 4");
+
+                            t.HasCheckConstraint("ck_requirement_rules_policy_version", "policy_version > 0");
                         });
                 });
 
@@ -595,6 +736,16 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_appointments_technicians_technician_id");
+                });
+
+            modelBuilder.Entity("Keyloop.ServiceScheduler.Domain.Scheduling.RequirementRule", b =>
+                {
+                    b.HasOne("Keyloop.ServiceScheduler.Domain.Dealerships.Dealership", null)
+                        .WithMany()
+                        .HasForeignKey("DealershipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_requirement_rules_dealerships_dealership_id");
                 });
 
             modelBuilder.Entity("Keyloop.ServiceScheduler.Infrastructure.Notifications.NotificationOutboxEntry", b =>

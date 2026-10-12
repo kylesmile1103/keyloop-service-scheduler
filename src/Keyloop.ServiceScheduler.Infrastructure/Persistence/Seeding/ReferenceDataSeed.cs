@@ -2,6 +2,7 @@ using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using static Keyloop.ServiceScheduler.Domain.Resources.BayCapability;
 using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
@@ -24,7 +25,7 @@ public static class ReferenceDataSeed
 
     public static Guid TechnicianId(string employeeNumber) => DeterministicGuid.Create($"technician:{employeeNumber}");
 
-    /// <summary>Adds the catalogue when the database has no dealership yet; otherwise does nothing.</summary>
+    /// <summary>Adds a fresh catalogue and policy, or fills missing policies at existing dealerships without changing their technicians.</summary>
     /// <returns>The number of rows added (0 when already seeded).</returns>
     public static async Task<int> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, CancellationToken ct)
     {
@@ -32,7 +33,14 @@ public static class ReferenceDataSeed
         ArgumentNullException.ThrowIfNull(clock);
         if (await db.Dealerships.AnyAsync(ct))
         {
-            return 0;
+            // Upgrade policy reference data only. Existing competence decisions, including migrated unconfirmed levels, are preserved.
+            var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(ct);
+            var configured = await db.RequirementRules.Select(r => r.DealershipId).Distinct().ToListAsync(ct);
+            foreach (var site in sites.Except(configured))
+            {
+                db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site));
+            }
+            return await db.SaveChangesAsync(ct);
         }
 
         var now = clock.GetUtcNow().UtcDateTime;
@@ -75,8 +83,10 @@ public static class ReferenceDataSeed
         db.ServiceBays.AddRange(bays);
         db.Technicians.AddRange(technicians);
         db.ServiceTypes.AddRange(serviceTypes);
+        db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(reading.Id));
+        db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(munich.Id));
         await db.SaveChangesAsync(ct);
-        return 2 + bays.Length + technicians.Length + serviceTypes.Length;
+        return 2 + bays.Length + technicians.Length + serviceTypes.Length + 12;
     }
 
     internal static ServiceType[] CreateServiceTypes() =>
@@ -99,7 +109,10 @@ public static class ReferenceDataSeed
         ServiceBay.Create(BayId(slug, number), dealership.Id, name, capabilities);
 
     private static Technician Tech(Dealership dealership, string name, string employeeNumber, params Certification[] certifications) =>
-        Technician.Create(TechnicianId(employeeNumber), dealership.Id, name, employeeNumber, certifications);
+        Technician.Create(TechnicianId(employeeNumber), dealership.Id, name, employeeNumber, certifications,
+            hvLevel: employeeNumber switch { "T-1002" or "T-1005" or "M-2002" => 3, "T-1006" => 1, _ => 2 },
+            hvLevelValidUntil: new DateOnly(2028, 12, 31), hvLevelConfirmed: true,
+            brandSpecialisms: dealership.Id == ReadingDealershipId ? ["VOLKSWAGEN"] : ["BMW"]);
 
     private static ServiceType Service(string code, string name, int minutes, BayCapability[] capabilities, Certification[] certifications) =>
         ServiceType.Create(ServiceTypeId(code), code, name, ServiceDuration.Create(minutes), capabilities, certifications);
