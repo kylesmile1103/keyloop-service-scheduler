@@ -71,6 +71,7 @@ public sealed record TechnicianResponse(Guid Id, string Name, string EmployeeNum
 /// <param name="Technician">The technician reserved for it, one of the schedule's <c>technicians</c>.</param>
 /// <param name="Vin">The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example <c>***********123456</c>.</param>
 /// <param name="Registration">The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as <c>*******</c>, whatever the plate, so no character or length is revealed.</param>
+/// <param name="CompetenceWarning">Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role.</param>
 /// <param name="CustomerName">The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example <c>ALS</c> for Alice Louise Smith.</param>
 public sealed record ScheduledAppointmentResponse(
     Guid Id,
@@ -83,4 +84,5 @@ public sealed record ScheduledAppointmentResponse(
     ResourceSummary Technician,
     string Vin,
     string Registration,
-    string CustomerName);
+    string CustomerName,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Appointments.Shared.CompetenceWarningResponse? CompetenceWarning = null);

@@ -20,6 +20,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 /// <param name="Notes">Free-text notes from booking, trimmed; null when none were given.</param>
 /// <param name="CancellationReason">Why the appointment was cancelled; null unless <c>status</c> is <c>Cancelled</c>.</param>
 /// <param name="CreatedAtUtc">When it was booked, UTC.</param>
+/// <param name="CompetenceWarning">Read-time review against recorded requirements on the local appointment date. Omitted with the flag off. No appointment is rewritten.</param>
 /// <param name="Allocation">Vehicle-aware decision, policy version and fired rules. Absent on legacy bookings.</param>
 /// <param name="UpdatedAtUtc">When its status last changed, UTC (the booking time until then).</param>
 public sealed record AppointmentResponse(
@@ -39,7 +40,8 @@ public sealed record AppointmentResponse(
     string? CancellationReason,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AllocationDecision? Allocation = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AllocationDecision? Allocation = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CompetenceWarningResponse? CompetenceWarning = null);
 
 /// <summary>The customer's contact details as booked.</summary>
 /// <param name="Name">Full name, trimmed.</param>

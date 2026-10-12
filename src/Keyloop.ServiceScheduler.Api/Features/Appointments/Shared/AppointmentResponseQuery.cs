@@ -14,7 +14,7 @@ public static class AppointmentResponseQuery
     /// joined to its dealership's time zone (for <c>startLocal</c>/<c>endLocal</c>), its service type, bay and technician, which the
     /// aggregate references by id only. The foreign keys make the inner joins total. Untracked, outside any transaction.
     /// </summary>
-    public static async Task<AppointmentResponse?> FindAsync(SchedulerDbContext db, Guid appointmentId, CancellationToken ct)
+    public static async Task<AppointmentResponse?> FindAsync(SchedulerDbContext db, Guid appointmentId, CancellationToken ct, bool competence = false)
     {
         ArgumentNullException.ThrowIfNull(db);
         var row = await (
@@ -27,8 +27,12 @@ public static class AppointmentResponseQuery
                 select new { Appointment = appointment, dealership.TimeZoneId, ServiceType = serviceType, Bay = bay, Technician = technician })
             .FirstOrDefaultAsync(ct);
 
-        return row is null
-            ? null
-            : AppointmentResponseMapper.Map(row.Appointment, TimeZoneInfo.FindSystemTimeZoneById(row.TimeZoneId), row.ServiceType, row.Bay, row.Technician);
+        if (row is null) { return null; }
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(row.TimeZoneId);
+        var response = AppointmentResponseMapper.Map(row.Appointment, zone, row.ServiceType, row.Bay, row.Technician);
+        return competence ? response with
+        {
+            CompetenceWarning = await AppointmentCompetenceReader.ReadAsync(db, row.Appointment, zone, row.ServiceType, row.Bay, row.Technician, ct),
+        } : response;
     }
 }

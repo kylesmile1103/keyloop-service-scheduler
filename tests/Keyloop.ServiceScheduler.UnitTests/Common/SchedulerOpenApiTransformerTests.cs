@@ -63,7 +63,7 @@ public sealed class SchedulerOpenApiTransformerTests : IDisposable
             schema.Required.ShouldBe(["traceId"]);
         }
 
-        problem.Properties!.Keys.ShouldBe(["type", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields"]);
+        problem.Properties!.Keys.ShouldBe(["type", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields", "currentETag", "current"]);
         appointment.Properties.ShouldBeNull();
         appointment.Required.ShouldBeNull();
     }

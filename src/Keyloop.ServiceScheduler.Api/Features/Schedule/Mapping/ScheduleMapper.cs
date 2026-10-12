@@ -66,6 +66,7 @@ public static partial class ScheduleMapper
 
     [MapProperty(nameof(@AppointmentRow.Slot.StartUtc), nameof(ScheduledAppointmentResponse.StartUtc))]
     [MapProperty(nameof(@AppointmentRow.Slot.EndUtc), nameof(ScheduledAppointmentResponse.EndUtc))]
+    [MapperIgnoreTarget(nameof(ScheduledAppointmentResponse.CompetenceWarning))]
     private static partial ScheduledAppointmentResponse MapAppointment(
         AppointmentRow appointment, ServiceTypeSummary serviceType, ResourceSummary technician, string startLocal, string endLocal);
 

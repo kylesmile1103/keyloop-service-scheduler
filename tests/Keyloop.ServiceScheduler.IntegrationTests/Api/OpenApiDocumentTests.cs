@@ -45,7 +45,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         var tags = root.GetProperty("tags").EnumerateArray().ToList();
-        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule", "Features"]);
+        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule", "Features", "Admin"]);
         tags.ShouldAllBe(tag => !string.IsNullOrWhiteSpace(tag.GetProperty("description").GetString()));
 
         // Scalar then targets the current origin, and the build-time document cannot differ by host.
@@ -252,7 +252,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("AppointmentResponse",
                      [
                          "id", "dealershipId", "serviceType", "bay", "technician", "startUtc", "endUtc", "startLocal", "endLocal", "status", "customer",
-                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc", "allocation",
+                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc", "allocation", "competenceWarning",
                      ]),
                      ("ServiceTypeSummary", ["id", "code", "name", "durationMinutes"]),
                      ("ResourceSummary", ["id", "name"]),
@@ -392,7 +392,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive", "hvLevel", "hvLevelValidUntil", "hvLevelConfirmed", "brandSpecialisms"]),
                      ("ScheduledAppointmentResponse",
                      [
-                         "id", "startUtc", "endUtc", "startLocal", "endLocal", "status", "serviceType", "technician", "vin", "registration", "customerName",
+                         "id", "startUtc", "endUtc", "startLocal", "endLocal", "status", "serviceType", "technician", "vin", "registration", "customerName", "competenceWarning",
                      ]),
                  })
         {

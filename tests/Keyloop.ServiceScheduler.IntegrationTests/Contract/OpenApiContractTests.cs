@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures", "ListAdminTechnicians", "CreateTechnician", "GetAdminTechnician", "EditTechnician", "ConfirmTechnicianHvLevel", "ListAdminBays", "CreateBay", "GetAdminBay", "EditBay", "GetRequirementPolicy", "EditRequirementPolicy", "GetAdminHistory"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -33,6 +33,17 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     /// </summary>
     private static readonly JsonTypeInfo[] ResponseTypes =
     [
+        SchedulerJsonContext.Default.AdminTechnicianResponse,
+        SchedulerJsonContext.Default.AdminBayResponse,
+        SchedulerJsonContext.Default.AdminPolicyResponse,
+        SchedulerJsonContext.Default.RequirementRuleInput,
+        SchedulerJsonContext.Default.PolicyEditResponse,
+        SchedulerJsonContext.Default.PolicyBookabilityChange,
+        SchedulerJsonContext.Default.AdminHistoryResponse,
+        SchedulerJsonContext.Default.AdminHistoryItem,
+        SchedulerJsonContext.Default.CompetenceWarningResponse,
+        SchedulerJsonContext.Default.TechnicianWriteRequest,
+        SchedulerJsonContext.Default.BayWriteRequest,
         SchedulerJsonContext.Default.CurrentUserResponse,
         SchedulerJsonContext.Default.FeatureSwitchesResponse,
         SchedulerJsonContext.Default.DealershipResponse,
@@ -125,7 +136,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         foreach (var (_, operation) in Operations(document))
         {
             var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest"
-                or "UploadBookingTriageImage" or "ResolveVehicleProfile";
+                or "UploadBookingTriageImage" or "ResolveVehicleProfile"
+                or "ListAdminTechnicians" or "CreateTechnician" or "GetAdminTechnician" or "EditTechnician" or "ConfirmTechnicianHvLevel" or "ListAdminBays" or "CreateBay" or "GetAdminBay" or "EditBay" or "GetRequirementPolicy" or "EditRequirementPolicy" or "GetAdminHistory";
             var security = operation["security"].ShouldNotBeNull().AsArray();
             security.Any(item => item!.AsObject().Count == 0).ShouldBe(!protectedRoute);
             security.Any(item => item!["CloudflareAccess"] != null).ShouldBeTrue();
@@ -209,6 +221,75 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "403"),
                 ("GET /api/v1/appointments/{appointmentId}", "401"),
                 ("GET /api/v1/appointments/{appointmentId}", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "413"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "401"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "403"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "404"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "400"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "413"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "412"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "428"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "413"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "412"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "428"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "413"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays/{bayId}", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays/{bayId}", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays/{bayId}", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays/{bayId}", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "401"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "403"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "404"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "400"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "413"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "412"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "428"),
+                ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "401"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "403"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "404"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "429"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "400"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "413"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "412"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "428"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "401"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "403"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "404"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "429"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "400"),
                 ("GET /api/v1/me", "429"),
                 ("GET /api/v1/features", "429"),
                 ("POST /api/v1/vehicle-profiles/resolve", "400"),
@@ -275,8 +356,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         string[] rfc9457 = ["type", "title", "status", "detail", "instance"];
         foreach (var (schema, members) in new (string, string[])[]
                  {
-                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields"]),
-                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields"]),
+                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields", "currentETag", "current"]),
+                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes", "rejectedFields", "currentETag", "current"]),
                  })
         {
             var problem = schemas[schema].ShouldNotBeNull(schema);
@@ -307,6 +388,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("TriageBookingRequest", "The booking intake: the customer's issue and optional preferred date, as untrusted text."),
             ("UploadBookingTriageImage", "A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels."),
             ("ResolveVehicleProfile", "Transient vehicle identifiers for offline manufacturer decoding. No registry lookup is performed."),
+            ("CreateTechnician", "Complete technician state. Existing appointments are preserved."),
+            ("EditTechnician", "Complete technician state. Existing appointments are preserved."),
+            ("CreateBay", "Complete bay state. Existing appointments are preserved."),
+            ("EditBay", "Complete bay state. Existing appointments are preserved."),
+            ("EditRequirementPolicy", "Typed replacement policy, dry-run flag and local preview date."),
         ]);
     }
 
@@ -336,6 +422,19 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/me", "200", "CurrentUserResponse"),
                 ("POST /api/v1/vehicle-profiles/resolve", "200", "VehicleProfile"),
                 ("GET /api/v1/features", "200", "FeatureSwitchesResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians", "200", "AdminTechnicianResponse[]"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians", "201", "AdminTechnicianResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "200", "AdminTechnicianResponse"),
+                ("PUT /api/v1/dealerships/{dealershipId}/technicians/{technicianId}", "200", "AdminTechnicianResponse"),
+                ("POST /api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level", "200", "AdminTechnicianResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays", "200", "AdminBayResponse[]"),
+                ("POST /api/v1/dealerships/{dealershipId}/bays", "201", "AdminBayResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/bays/{bayId}", "200", "AdminBayResponse"),
+                ("PUT /api/v1/dealerships/{dealershipId}/bays/{bayId}", "200", "AdminBayResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "200", "AdminPolicyResponse"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "200", "PolicyEditResponse"),
+                ("GET /api/v1/dealerships/{dealershipId}/admin-history", "200", "AdminHistoryResponse"),
+
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))
@@ -390,7 +489,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private static bool MayBeOmitted(string type, string property) => (type, property) is
-        ("AppointmentResponse", "allocation") or ("VehicleResponse", "profile") or
+        ("AppointmentResponse", "allocation" or "competenceWarning") or ("ScheduledAppointmentResponse", "competenceWarning") or ("VehicleResponse", "profile") or
         ("TechnicianResponse", "hvLevel" or "hvLevelValidUntil" or "hvLevelConfirmed" or "brandSpecialisms");
 
     [Fact]

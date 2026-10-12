@@ -49,3 +49,36 @@ public sealed class ExactEnumNameConverter<TEnum> : JsonConverter<TEnum> where T
         writer.WriteStringValue(Enum.IsDefined(value) ? value.ToString() : throw new JsonException("Only a defined member can be written."));
     }
 }
+
+/// <summary>Request arrays follow the same closed string-enum format as individual enum inputs; numbers and comma lists are unreadable.</summary>
+public sealed class ExactEnumNameArrayConverter<TEnum> : JsonConverter<TEnum[]> where TEnum : struct, Enum
+{
+    public override TEnum[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray) { throw new JsonException("Expected an array of enum names."); }
+        var values = new List<TEnum>();
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray) { return values.ToArray(); }
+            if (reader.TokenType != JsonTokenType.String || !ExactEnumName.TryParse<TEnum>(reader.GetString(), out var value))
+            {
+                throw new JsonException("Expected one defined enum name as a JSON string.");
+            }
+            values.Add(value);
+        }
+        throw new JsonException("Expected the end of the enum array.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, TEnum[] value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+        writer.WriteStartArray();
+        foreach (var item in value)
+        {
+            if (!Enum.IsDefined(item)) { throw new JsonException("Only a defined member can be written."); }
+            writer.WriteStringValue(item.ToString());
+        }
+        writer.WriteEndArray();
+    }
+}

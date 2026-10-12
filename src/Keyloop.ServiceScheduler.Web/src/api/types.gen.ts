@@ -4,6 +4,72 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+/**
+ * Full Admin bay representation. Version is PostgreSQL xmin, also returned as a strong ETag.
+ */
+export type AdminBayResponse = {
+    id: string;
+    dealershipId: string;
+    name: string;
+    capabilities: Array<BayCapability>;
+    isActive: boolean;
+    version: number;
+};
+
+/**
+ * Bounded before/after reference snapshots; no visitor text. Resource history survives deactivation.
+ */
+export type AdminHistoryItem = {
+    id: string;
+    resourceKind: string;
+    resourceId: string;
+    action: string;
+    actor: string;
+    atUtc: string;
+    /**
+     * Previous bounded reference state, null on creation. Shape follows resourceKind.
+     */
+    before: null | TechnicianWriteRequest | BayWriteRequest | AdminPolicyResponse;
+    /**
+     * Committed bounded reference state. Shape follows resourceKind.
+     */
+    after: TechnicianWriteRequest | BayWriteRequest | AdminPolicyResponse;
+};
+
+/**
+ * Newest first, stable ordering by timestamp and id; use nextOffset until null.
+ */
+export type AdminHistoryResponse = {
+    items: Array<AdminHistoryItem>;
+    nextOffset: null | number;
+};
+
+/**
+ * Immutable policy state. ETag is quoted policy-{version}; old versions are retained.
+ */
+export type AdminPolicyResponse = {
+    dealershipId: string;
+    version: number;
+    rules: Array<RequirementRuleInput>;
+};
+
+/**
+ * Full Admin resource representation. Version is PostgreSQL xmin, also returned as a strong ETag.
+ */
+export type AdminTechnicianResponse = {
+    id: string;
+    dealershipId: string;
+    name: string;
+    employeeNumber: string;
+    certifications: Array<Certification>;
+    isActive: boolean;
+    hvLevel: number;
+    hvLevelValidUntil: null | string;
+    hvLevelConfirmed: boolean;
+    brandSpecialisms: Array<string>;
+    version: number;
+};
+
 export type AllocationCriterion = 'OnlyQualifiedResource' | 'PreferredResource' | 'SurplusCompetences' | 'LowestLoad' | 'Name' | 'Id';
 
 /**
@@ -167,6 +233,7 @@ export type AppointmentResponse = {
      */
     updatedAtUtc: string;
     allocation?: null | AllocationDecision;
+    competenceWarning?: null | CompetenceWarningResponse;
 };
 
 export type AppointmentStatus = 'Confirmed' | 'CheckedIn' | 'InProgress' | 'Completed' | 'Cancelled' | 'NoShow';
@@ -263,6 +330,24 @@ export type BayScheduleResponse = {
 };
 
 /**
+ * Complete service-bay state; taking a bay out of service preserves its appointments and history.
+ */
+export type BayWriteRequest = {
+    /**
+     * Display name, 1..100 trimmed characters.
+     */
+    name: string;
+    /**
+     * Equipment capabilities; empty is permitted.
+     */
+    capabilities: Array<'StandardLift' | 'HeavyDutyLift' | 'EvHighVoltage' | 'WheelAlignment' | 'Diagnostics' | 'MotTesting' | 'AirConditioning'>;
+    /**
+     * Whether this bay accepts new bookings.
+     */
+    isActive: boolean;
+};
+
+/**
  * The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The
  * examples form a valid booking at the seeded Keyloop Motors Reading dealership.
  */
@@ -353,6 +438,20 @@ export type CancelAppointmentRequest = {
 };
 
 export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle' | 'DamageAssessment';
+
+/**
+ * Read-time review signal against the booking's hard requirements. Never reassigns or rewrites an appointment.
+ */
+export type CompetenceWarningResponse = {
+    /**
+     * True: staff should review this appointment; clean appointments omit this response.
+     */
+    requiresReview: boolean;
+    /**
+     * Bounded qualification-lapse codes, in stable order; never resource names or visitor text.
+     */
+    reasonCodes: Array<string>;
+};
 
 /**
  * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
@@ -509,7 +608,17 @@ export type HttpValidationProblemDetails = {
      * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
      */
     rejectedFields?: Array<string>;
+    /**
+     * On 412 precondition-failed, the current strong ETag, including quotes. Also sent as the ETag header.
+     */
+    currentETag?: string;
+    /**
+     * On 412 precondition-failed, the current Admin resource or policy representation.
+     */
+    current?: AdminTechnicianResponse | AdminBayResponse | AdminPolicyResponse;
 };
+
+export type JsonElement = unknown;
 
 /**
  * The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times.
@@ -531,6 +640,47 @@ export type OperatingWindowResponse = {
      * Closing time as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, after daylight-saving resolution.
      */
     closesAtLocal: string;
+};
+
+/**
+ * Changed roster bookability by service, powertrain, vehicle class and live-diagnosis mode, on the preview date. Busy time is excluded.
+ */
+export type PolicyBookabilityChange = {
+    serviceTypeId: string;
+    serviceCode: string;
+    powertrain: Powertrain;
+    vehicleClass: VehicleClass;
+    needsLiveDiagnosis: boolean;
+    wasBookable: boolean;
+    isBookable: boolean;
+};
+
+/**
+ * A preview or committed policy. An empty changes array means roster bookability did not change.
+ */
+export type PolicyEditResponse = {
+    saved: boolean;
+    policy: AdminPolicyResponse;
+    previewDate: string;
+    changes: Array<PolicyBookabilityChange>;
+};
+
+/**
+ * Replace a dealership's whole policy. DryRun previews without saving; a subsequent save rechecks If-Match.
+ */
+export type PolicyWriteRequest = {
+    /**
+     * At most 32 typed rules; empty intentionally removes every dealership rule.
+     */
+    rules: Array<RequirementRuleInput>;
+    /**
+     * True computes the consequence preview and writes nothing.
+     */
+    dryRun: boolean;
+    /**
+     * Required local date for qualification expiry in the preview.
+     */
+    previewDate: string;
 };
 
 /**
@@ -572,6 +722,14 @@ export type ProblemDetails = {
      * vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.
      */
     rejectedFields?: Array<string>;
+    /**
+     * On 412 precondition-failed, the current strong ETag, including quotes. Also sent as the ETag header.
+     */
+    currentETag?: string;
+    /**
+     * On 412 precondition-failed, the current Admin resource or policy representation.
+     */
+    current?: AdminTechnicianResponse | AdminBayResponse | AdminPolicyResponse;
 };
 
 /**
@@ -604,6 +762,47 @@ export type ProfileProvenance = {
  * Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases.
  */
 export type ProfileSource = 'Unknown' | 'Declared' | 'VinDecoded' | 'RegistryLookup' | 'SuggestedConfirmed';
+
+export type RequirementCondition = 'ServicePowertrain' | 'VehicleClass' | 'LiveDiagnosis';
+
+/**
+ * One closed typed rule; order and code define deterministic evaluation. No expressions or brand rules.
+ */
+export type RequirementRuleInput = {
+    /**
+     * Unique stable slug, at most 64 characters.
+     */
+    code: string;
+    /**
+     * Nonnegative ordering number; code breaks ties.
+     */
+    order: number;
+    /**
+     * ServicePowertrain, VehicleClass or LiveDiagnosis.
+     */
+    condition: RequirementCondition;
+    /**
+     * Nonempty only for ServicePowertrain. Unknown inherits every concrete HV rule.
+     */
+    powertrains: Array<'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown'>;
+    /**
+     * Existing global service codes, nonempty only for ServicePowertrain.
+     */
+    serviceCodes: Array<string>;
+    vehicleClass: null | VehicleClass;
+    /**
+     * Monotone minimum 0..4.
+     */
+    minimumHvLevel: number;
+    /**
+     * Additional equipment constraints.
+     */
+    bayCapabilities: Array<'StandardLift' | 'HeavyDutyLift' | 'EvHighVoltage' | 'WheelAlignment' | 'Diagnostics' | 'MotTesting' | 'AirConditioning'>;
+    /**
+     * Additional task qualifications.
+     */
+    certifications: Array<'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle' | 'DamageAssessment'>;
+};
 
 /**
  * VIN and registration are body-only, transient inputs. Offline WMI decoding needs no registration.
@@ -682,6 +881,7 @@ export type ScheduledAppointmentResponse = {
      * The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith.
      */
     customerName: string;
+    competenceWarning?: null | CompetenceWarningResponse;
 };
 
 /**
@@ -781,6 +981,44 @@ export type TechnicianResponse = {
      * Normalized OEM codes; data only in Phase 1.
      */
     brandSpecialisms?: null | Array<string>;
+};
+
+/**
+ * Complete technician state. Names and employee numbers are bounded reference fields, never notes.
+ */
+export type TechnicianWriteRequest = {
+    /**
+     * Display name, 1..120 trimmed characters.
+     */
+    name: string;
+    /**
+     * Unique within this dealership, 1..32 trimmed characters.
+     */
+    employeeNumber: string;
+    /**
+     * Task qualifications. Empty is permitted.
+     */
+    certifications: Array<'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle' | 'DamageAssessment'>;
+    /**
+     * False deactivates without changing existing appointments.
+     */
+    isActive: boolean;
+    /**
+     * HV level, zero to four; unconfirmed levels still count.
+     */
+    hvLevel: number;
+    /**
+     * Inclusive dealership-local expiry; null means unlimited.
+     */
+    hvLevelValidUntil: null | string;
+    /**
+     * A person's confirmation of the recorded level.
+     */
+    hvLevelConfirmed: boolean;
+    /**
+     * At most 16 normalized OEM codes of at most 32 characters, data only.
+     */
+    brandSpecialisms: Array<string>;
 };
 
 /**
@@ -1720,3 +1958,668 @@ export type GetFeaturesResponses = {
 };
 
 export type GetFeaturesResponse = GetFeaturesResponses[keyof GetFeaturesResponses];
+
+export type ListAdminTechniciansData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/technicians';
+};
+
+export type ListAdminTechniciansErrors = {
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type ListAdminTechniciansError = ListAdminTechniciansErrors[keyof ListAdminTechniciansErrors];
+
+export type ListAdminTechniciansResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: Array<AdminTechnicianResponse>;
+};
+
+export type ListAdminTechniciansResponse = ListAdminTechniciansResponses[keyof ListAdminTechniciansResponses];
+
+export type CreateTechnicianData = {
+    /**
+     * Complete technician state. Existing appointments are preserved.
+     */
+    body: TechnicianWriteRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/technicians';
+};
+
+export type CreateTechnicianErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type CreateTechnicianError = CreateTechnicianErrors[keyof CreateTechnicianErrors];
+
+export type CreateTechnicianResponses = {
+    /**
+     * Created resource; Location points at its Admin read.
+     */
+    201: AdminTechnicianResponse;
+};
+
+export type CreateTechnicianResponse = CreateTechnicianResponses[keyof CreateTechnicianResponses];
+
+export type GetAdminTechnicianData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+        technicianId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}';
+};
+
+export type GetAdminTechnicianErrors = {
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type GetAdminTechnicianError = GetAdminTechnicianErrors[keyof GetAdminTechnicianErrors];
+
+export type GetAdminTechnicianResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: AdminTechnicianResponse;
+};
+
+export type GetAdminTechnicianResponse = GetAdminTechnicianResponses[keyof GetAdminTechnicianResponses];
+
+export type EditTechnicianData = {
+    /**
+     * Complete technician state. Existing appointments are preserved.
+     */
+    body: TechnicianWriteRequest;
+    headers?: {
+        /**
+         * Exactly one strong ETag from the resource read, including quotes.
+         */
+        'If-Match'?: string;
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+        technicianId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}';
+};
+
+export type EditTechnicianErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Stale version, precondition-failed with current and currentETag.
+     */
+    412: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * If-Match required, precondition-required.
+     */
+    428: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type EditTechnicianError = EditTechnicianErrors[keyof EditTechnicianErrors];
+
+export type EditTechnicianResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: AdminTechnicianResponse;
+};
+
+export type EditTechnicianResponse = EditTechnicianResponses[keyof EditTechnicianResponses];
+
+export type ConfirmTechnicianHvLevelData = {
+    body?: never;
+    headers?: {
+        /**
+         * Exactly one strong ETag from the resource read, including quotes.
+         */
+        'If-Match'?: string;
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+        technicianId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level';
+};
+
+export type ConfirmTechnicianHvLevelErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Stale version, precondition-failed with current and currentETag.
+     */
+    412: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * If-Match required, precondition-required.
+     */
+    428: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type ConfirmTechnicianHvLevelError = ConfirmTechnicianHvLevelErrors[keyof ConfirmTechnicianHvLevelErrors];
+
+export type ConfirmTechnicianHvLevelResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: AdminTechnicianResponse;
+};
+
+export type ConfirmTechnicianHvLevelResponse = ConfirmTechnicianHvLevelResponses[keyof ConfirmTechnicianHvLevelResponses];
+
+export type ListAdminBaysData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/bays';
+};
+
+export type ListAdminBaysErrors = {
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type ListAdminBaysError = ListAdminBaysErrors[keyof ListAdminBaysErrors];
+
+export type ListAdminBaysResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: Array<AdminBayResponse>;
+};
+
+export type ListAdminBaysResponse = ListAdminBaysResponses[keyof ListAdminBaysResponses];
+
+export type CreateBayData = {
+    /**
+     * Complete bay state. Existing appointments are preserved.
+     */
+    body: BayWriteRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/bays';
+};
+
+export type CreateBayErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type CreateBayError = CreateBayErrors[keyof CreateBayErrors];
+
+export type CreateBayResponses = {
+    /**
+     * Created resource; Location points at its Admin read.
+     */
+    201: AdminBayResponse;
+};
+
+export type CreateBayResponse = CreateBayResponses[keyof CreateBayResponses];
+
+export type GetAdminBayData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+        bayId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/bays/{bayId}';
+};
+
+export type GetAdminBayErrors = {
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type GetAdminBayError = GetAdminBayErrors[keyof GetAdminBayErrors];
+
+export type GetAdminBayResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: AdminBayResponse;
+};
+
+export type GetAdminBayResponse = GetAdminBayResponses[keyof GetAdminBayResponses];
+
+export type EditBayData = {
+    /**
+     * Complete bay state. Existing appointments are preserved.
+     */
+    body: BayWriteRequest;
+    headers?: {
+        /**
+         * Exactly one strong ETag from the resource read, including quotes.
+         */
+        'If-Match'?: string;
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+        bayId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/bays/{bayId}';
+};
+
+export type EditBayErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Stale version, precondition-failed with current and currentETag.
+     */
+    412: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * If-Match required, precondition-required.
+     */
+    428: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type EditBayError = EditBayErrors[keyof EditBayErrors];
+
+export type EditBayResponses = {
+    /**
+     * Current Admin representation.
+     */
+    200: AdminBayResponse;
+};
+
+export type EditBayResponse = EditBayResponses[keyof EditBayResponses];
+
+export type GetRequirementPolicyData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/requirement-policy';
+};
+
+export type GetRequirementPolicyErrors = {
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type GetRequirementPolicyError = GetRequirementPolicyErrors[keyof GetRequirementPolicyErrors];
+
+export type GetRequirementPolicyResponses = {
+    /**
+     * Current policy and ordered typed rules.
+     */
+    200: AdminPolicyResponse;
+};
+
+export type GetRequirementPolicyResponse = GetRequirementPolicyResponses[keyof GetRequirementPolicyResponses];
+
+export type EditRequirementPolicyData = {
+    /**
+     * Typed replacement policy, dry-run flag and local preview date.
+     */
+    body: PolicyWriteRequest;
+    headers?: {
+        /**
+         * Exactly one quoted policy version ETag from GetRequirementPolicy.
+         */
+        'If-Match'?: string;
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/requirement-policy';
+};
+
+export type EditRequirementPolicyErrors = {
+    /**
+     * Invalid fields, validation-error with errors keyed by JSON path.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Stale version, precondition-failed with current and currentETag.
+     */
+    412: ProblemDetails;
+    /**
+     * Body exceeds the 64 KiB limit.
+     */
+    413: ProblemDetails;
+    /**
+     * If-Match required, precondition-required.
+     */
+    428: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type EditRequirementPolicyError = EditRequirementPolicyErrors[keyof EditRequirementPolicyErrors];
+
+export type EditRequirementPolicyResponses = {
+    /**
+     * Preview with saved false, or published version with saved true; changes describe roster bookability.
+     */
+    200: PolicyEditResponse;
+};
+
+export type EditRequirementPolicyResponse = EditRequirementPolicyResponses[keyof EditRequirementPolicyResponses];
+
+export type GetAdminHistoryData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        dealershipId: string;
+    };
+    query?: {
+        resourceKind?: string;
+        resourceId?: string;
+        offset?: number;
+        limit?: number;
+    };
+    url: '/api/v1/dealerships/{dealershipId}/admin-history';
+};
+
+export type GetAdminHistoryErrors = {
+    /**
+     * Invalid filters or pagination, validation-error.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Sign-in required, unauthenticated.
+     */
+    401: ProblemDetails;
+    /**
+     * Admin role required, forbidden.
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership or resource, not-found.
+     */
+    404: ProblemDetails;
+    /**
+     * Rate limited; retry after Retry-After seconds.
+     */
+    429: ProblemDetails;
+};
+
+export type GetAdminHistoryError = GetAdminHistoryErrors[keyof GetAdminHistoryErrors];
+
+export type GetAdminHistoryResponses = {
+    /**
+     * Newest changes, bounded snapshots and the next offset if there are more.
+     */
+    200: AdminHistoryResponse;
+};
+
+export type GetAdminHistoryResponse = GetAdminHistoryResponses[keyof GetAdminHistoryResponses];

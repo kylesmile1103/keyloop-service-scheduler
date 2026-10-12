@@ -206,7 +206,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         var served = JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
         var reference = JsonNode.Parse(await withoutRoute.GetStringAsync("/openapi/v1.json", Ct))!;
 
-        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.Contains("admin", StringComparison.Ordinal));
+        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.StartsWith("/api/v1/admin/", StringComparison.Ordinal));
         JsonNode.DeepEquals(served, reference).ShouldBeTrue("the reseed route changed the OpenAPI document");
     }
 

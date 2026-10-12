@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Options;
@@ -47,7 +48,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         var day = await reader.ReadAsync(dealership, window, activeOnly: false, ct);
         var scheduled = day.Appointments.Where(a => a.Status != AppointmentStatus.Cancelled).ToList();
         var zone = dealership.TimeZone;
-        var serviceTypes = await ServiceTypeSummariesAsync(scheduled, ct);
+        var serviceTypes = await ServiceTypesAsync(scheduled, ct);
         var technicianSummaries = day.Technicians.ToDictionary(t => t.Id, ScheduleMapper.ToSummary);
 
         // Rows arrive ordered by start, so each bay's list is too. The reader lists every resource of the dealership and an
@@ -55,7 +56,17 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         var appointmentsByBay = day.Bays.ToDictionary(b => b.Id, _ => new List<ScheduledAppointmentResponse>());
         foreach (var appointment in scheduled)
         {
-            var response = ScheduleMapper.ToResponse(appointment, serviceTypes[appointment.ServiceTypeId], technicianSummaries[appointment.TechnicianId], zone);
+            var response = ScheduleMapper.ToResponse(appointment, ScheduleMapper.ToSummary(serviceTypes[appointment.ServiceTypeId]), technicianSummaries[appointment.TechnicianId], zone);
+            if (competence)
+            {
+                var service = serviceTypes[appointment.ServiceTypeId];
+                var requirements = await AppointmentCompetenceReader.RequirementsAsync(db, dealership.Id, service,
+                    appointment.RecordedRequirements, appointment.Allocation, appointment.Profile ?? VehicleProfile.Unknown, appointment.NeedsLiveDiagnosis, ct);
+                var warning = AppointmentCompetenceReader.Evaluate(requirements,
+                    day.Bays.Single(b => b.Id == appointment.BayId), day.Technicians.Single(t => t.Id == appointment.TechnicianId),
+                    LocalTimeConverter.ToLocalDate(appointment.Slot.StartUtc, zone));
+                response = response with { CompetenceWarning = warning.RequiresReview ? warning : null };
+            }
             var visible = PersonalData.ForCaller(caller, appointment.CustomerName, Vin.Create(appointment.Vin), appointment.Registration);
             appointmentsByBay[appointment.BayId].Add(response with { CustomerName = visible.CustomerName, Vin = visible.Vin, Registration = visible.Registration });
         }
@@ -69,7 +80,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
     }
 
     /// <summary>The services the appointments reference (the catalogue is global; only those referenced are read).</summary>
-    private async Task<Dictionary<Guid, ServiceTypeSummary>> ServiceTypeSummariesAsync(
+    private async Task<Dictionary<Guid, Domain.Catalog.ServiceType>> ServiceTypesAsync(
         List<DayScheduleReader.AppointmentRow> appointments, CancellationToken ct)
     {
         if (appointments.Count == 0)
@@ -79,7 +90,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
 
         var ids = appointments.Select(a => a.ServiceTypeId).Distinct().ToList();
         var serviceTypes = await db.ServiceTypes.AsNoTracking().Where(s => ids.Contains(s.Id)).ToListAsync(ct);
-        return serviceTypes.ToDictionary(s => s.Id, ScheduleMapper.ToSummary);
+        return serviceTypes.ToDictionary(s => s.Id);
     }
 
     private WorkshopScheduleResponse Response(

@@ -1,3 +1,7 @@
+using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
+using Keyloop.ServiceScheduler.Api.Features.Admin.History;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Shared;
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
@@ -118,6 +122,12 @@ builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
 builder.Services.AddHealthChecks().AddCheck<SchedulerReadinessCheck>("scheduler_schema", tags: ["ready"]);
 
 // Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12).
+builder.Services.AddScoped<AdminResourcesHandler>();
+builder.Services.AddScoped<AdminPolicyHandler>();
+builder.Services.AddScoped<AdminHistoryHandler>();
+builder.Services.AddScoped<IValidator<TechnicianWriteRequest>, TechnicianWriteValidator>();
+builder.Services.AddScoped<IValidator<BayWriteRequest>, BayWriteValidator>();
+builder.Services.AddScoped<IValidator<PolicyWriteRequest>, PolicyWriteValidator>();
 builder.Services.AddScoped<GetDealershipsHandler>();
 builder.Services.AddScoped<GetFeaturesHandler>();
 builder.Services.AddScoped<GetServiceTypesHandler>();
@@ -218,6 +228,7 @@ if (security.ForwardedHeaders.Enabled)
 }
 
 app.UseMiddleware<RequestCorrelationMiddleware>();
+app.UseMiddleware<AdminPreconditionHeadersMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
