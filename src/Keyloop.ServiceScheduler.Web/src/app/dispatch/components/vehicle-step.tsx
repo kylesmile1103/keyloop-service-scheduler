@@ -1,5 +1,5 @@
 import { CircleAlert, Info, LoaderCircle, LockKeyhole, RotateCw, ScanBarcode, TriangleAlert, Zap } from "lucide-react"
-import { type ReactNode, type Ref, useId } from "react"
+import { type Ref, useId } from "react"
 import { Controller, type UseFormReturn, useWatch } from "react-hook-form"
 
 import type { Powertrain, ServiceTypeResponse, VehicleClass, VehicleProfile } from "@/api/types.gen"
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { featureLabel } from "@/lib/features"
 import { describeFailure, type ProblemDetails } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 import {
@@ -604,26 +605,49 @@ interface QualificationGapProps {
   problem: ProblemDetails
   alertRef: Ref<HTMLDivElement>
   dealershipName: string
-  /** Badges for what no bay or technician has (the generic 422 shows the same). */
-  missing: ReactNode
   busy: boolean
   onChangeVehicle: () => void
 }
 
+/** The title for what the refusal names missing: bays, technicians, both, or neither. */
+function gapTitle(bays: boolean, technicians: boolean): string {
+  if (bays && technicians) return "No bay here is equipped, and no technician certified, for this job"
+  if (bays) return "No bay here is equipped for this job"
+  if (technicians) return "No technician here is certified for this job"
+  return "No bay and technician here meet this job’s needs"
+}
+
+/** One side of what the refusal names missing, as outline badges after its label. */
+function MissingResources({ label, names }: { label: string; names: readonly string[] }) {
+  if (names.length === 0) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span>{label}</span>
+      {names.map((name) => (
+        <Badge key={name} variant="outline" className="bg-background">
+          {featureLabel(name)}
+        </Badge>
+      ))}
+    </span>
+  )
+}
+
 /**
- * `422 no-qualified-resources` with the vehicle-aware members: the minimum HV level and the rules that set it, in plain
- * words. A competence gap is the workshop's (training or equipment), not a fault in the booking, so it reads as information:
- * what the job needs, why, and what to do next. The live-diagnosis gap at Reading (no level 4 technician) is the case.
+ * `422 no-qualified-resources` with the vehicle-aware members, saying exactly what the API established and no more
+ * (`BookAppointmentHandler`). `missingCapabilities` lists what no active bay has and `missingCertifications` what no active
+ * technician holds. A list is empty when its side qualifies, but also when each of its needs is held somewhere yet by no one
+ * bay or technician, and the technicians' list is empty when only their HV level falls short. `minimumHvLevel` is what the
+ * job needs, never a shortfall. So a side is named only when its list is not empty, and nothing is said of the other; with
+ * both empty, the alert says every need is held here but not all together, by a bay or by a technician, without choosing.
+ * It reads as information, in neutral words: what the job needs, why (the rules), what is missing, and what to do next.
  */
-export function QualificationGap({ problem, alertRef, dealershipName, missing, busy, onChangeVehicle }: QualificationGapProps) {
+export function QualificationGap({ problem, alertRef, dealershipName, busy, onChangeVehicle }: QualificationGapProps) {
   const level = hvLevelOf(typeof problem.minimumHvLevel === "number" ? problem.minimumHvLevel : null)
   const rules = listOf(problem.firedRules)
   const live = rules.includes(LIVE_DIAGNOSIS_RULE)
-  const title = live
-    ? "No technician here is trained for live HV work yet"
-    : level !== null && level > 0
-      ? `No technician here can take this job at HV level ${level} yet`
-      : "No bay and technician here meet this job’s needs"
+  const missing = { capabilities: listOf(problem.missingCapabilities), certifications: listOf(problem.missingCertifications) }
+  const named = missing.capabilities.length > 0 || missing.certifications.length > 0
+  const title = gapTitle(missing.capabilities.length > 0, missing.certifications.length > 0)
   return (
     <Alert
       ref={alertRef}
@@ -651,14 +675,17 @@ export function QualificationGap({ problem, alertRef, dealershipName, missing, b
             </ul>
           </span>
         )}
-        {missing}
-        <span>
-          {`No active technician at ${dealershipName} has all of that on the day. That is a gap in the workshop’s training or equipment, not a fault in this booking.`}
-        </span>
+        <MissingResources label="No active bay here has:" names={missing.capabilities} />
+        <MissingResources label="No active technician here holds:" names={missing.certifications} />
+        {!named && (
+          <span className="text-pretty">
+            {`Each capability and certification it needs is held at ${dealershipName}, but no single active bay has every capability, or no single active technician has every certification${level !== null && level > 0 ? ` and HV level ${level} or above, valid on the day` : ""}.`}
+          </span>
+        )}
         <span className="text-pretty">
           {live
             ? "If the work can be done with the system switched off, turn off live HV diagnosis and choose a start again."
-            : "Check the vehicle details, or book it where a qualified technician works."}
+            : "Check the vehicle details, which decide what this job needs, or book it at another dealership."}
         </span>
         {problem.traceId && <TraceIdRow traceId={problem.traceId} />}
         <span className="flex flex-wrap items-center gap-2 pt-1">

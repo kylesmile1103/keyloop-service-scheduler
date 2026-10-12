@@ -9,7 +9,7 @@ import { readingTuesday, technicians } from "@/test/schedules"
 
 /**
  * Vehicle-aware requirements as the API answers them (ADR-029, task-31-report.md "Facts for Task 31b"): the environment's
- * switch, the VIN look-up, allocation decisions, the training-gap and conflict problems, and the competence the schedule
+ * switch, the VIN look-up, allocation decisions, the no-qualified-resources and conflict problems, and the competence the schedule
  * carries for a role with the switch on (the fresh seed's levels).
  */
 
@@ -102,19 +102,78 @@ export const readingTuesdayWithCompetence: WorkshopScheduleResponse = {
 
 const problems = "https://api.keyloop.example/problems/"
 
-/** The live-diagnosis training gap at Reading: no technician holds level 4 (task-31-report.md). */
-export const liveDiagnosisGap = {
+/** Reading's EV Battery Health Check: an EV bay and a high-voltage-certified technician (the seeded catalogue). */
+export const evBatteryService: ServiceTypeResponse = {
+  id: "0d3f160b-2ac4-809a-9309-5966c4ad428c",
+  code: "EV-BATTERY-CHECK",
+  name: "EV Battery Health Check",
+  durationMinutes: 60,
+  requiredBayCapabilities: ["EvHighVoltage"],
+  requiredCertifications: ["HighVoltageElectrical"],
+  bookable: true,
+}
+
+/**
+ * A vehicle-aware `422 no-qualified-resources` as `BookAppointmentHandler` builds it. `missingCapabilities` lists what no
+ * active bay has, and is empty when a bay qualifies or every capability is on some bay; `missingCertifications` likewise for
+ * technicians. Neither says on its own that a technician's HV level fell short: `minimumHvLevel` is what the job needs.
+ */
+const noQualifiedResources = (members: {
+  missingCapabilities: string[]
+  missingCertifications: string[]
+  minimumHvLevel: number
+  firedRules: string[]
+  traceId: string
+}) => ({
   type: `${problems}no-qualified-resources`,
   title: "No qualified resources",
   status: 422,
   detail: "This dealership has no active bay with every capability, or no active technician with every certification, that the service requires.",
+  requiredBrand: null,
+  ...members,
+})
+
+/**
+ * Live diagnosis at Reading, where no technician holds level 4 (task-31-report.md): both lists empty, so the answer names
+ * no missing resource, only the level 4 the job needs.
+ */
+export const liveDiagnosisGap = noQualifiedResources({
   traceId: "00-7a1c2b3d4e5f60718293a4b5c6d7e8f9-1a2b3c4d5e6f7a8b-01",
   minimumHvLevel: 4,
-  requiredBrand: null,
   firedRules: ["hv-routine", "hv-live-diagnosis"],
   missingCapabilities: [],
   missingCertifications: [],
-}
+})
+
+/**
+ * The EV bay out of use (the checker's live probe, review round 0): no active bay has EV high voltage, while two technicians
+ * held a valid level 3. Only the equipment is named missing.
+ */
+export const equipmentGap = noQualifiedResources({
+  traceId: "00-13015a34ed8f1339a903ecb4a0b0128e-1591550a151c83e7-01",
+  minimumHvLevel: 3,
+  firedRules: ["legacy-hv-component", "hv-components"],
+  missingCapabilities: ["EvHighVoltage"],
+  missingCertifications: [],
+})
+
+/** No active technician holds the high-voltage certification, while the EV bay is in use. */
+export const certificationGap = noQualifiedResources({
+  traceId: "00-2b3c4d5e6f708192a3b4c5d6e7f80912-3c4d5e6f7a8b9c0d-01",
+  minimumHvLevel: 3,
+  firedRules: ["legacy-hv-component", "hv-components"],
+  missingCapabilities: [],
+  missingCertifications: ["HighVoltageElectrical"],
+})
+
+/** Neither the EV bay nor a high-voltage-certified technician. */
+export const equipmentAndCertificationGap = noQualifiedResources({
+  traceId: "00-3c4d5e6f708192a3b4c5d6e7f8091a2b-4d5e6f7a8b9c0d1e-01",
+  minimumHvLevel: 3,
+  firedRules: ["legacy-hv-component", "hv-components"],
+  missingCapabilities: ["EvHighVoltage"],
+  missingCertifications: ["HighVoltageElectrical"],
+})
 
 export const profileConflict = {
   type: `${problems}vehicle-profile-conflict`,

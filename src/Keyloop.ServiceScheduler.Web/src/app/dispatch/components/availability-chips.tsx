@@ -253,7 +253,7 @@ function AvailabilityView({
           <>
             <p className="text-pretty">{`It needs ${vehicleGap.join(", and ")}.`}</p>
             <p className="text-pretty">
-              That is a gap in the workshop’s training or equipment, not a fault in this booking. Change the vehicle details above if
+              That is a gap in what the workshop has, not a fault in this booking. Change the vehicle details above if
               they are not right.
             </p>
           </>

@@ -1483,7 +1483,7 @@ interface BookingProblemProps {
   busy: boolean
   /** The start being booked meanwhile (`startUtc`), so a suggested start that was picked says it is booking. */
   booking?: string
-  /** The vehicle step's answers to its refusals (ADR-029): a conflict's choice, a competence gap, switched-off inputs. */
+  /** The vehicle step's answers to its refusals (ADR-029): a conflict's choice, no qualified bay or technician, switched-off inputs. */
   vehicle: {
     /** The manufacturer code the advisor declared, if any. */
     declared: string
@@ -1511,8 +1511,8 @@ function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPi
   const slug = problem ? problemSlug(problem) : ""
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
 
-  // Vehicle-aware refusals (ADR-029): a declaration the VIN contradicts, inputs this server does not take now, and a
-  // competence gap, each in the advisor's terms.
+  // Vehicle-aware refusals (ADR-029): a declaration the VIN contradicts, inputs this server does not take now, and no
+  // qualified bay or technician for the vehicle, each in the advisor's terms.
   if (slug === "vehicle-profile-conflict" && problem) {
     return (
       <ProfileConflictProblem
@@ -1537,12 +1537,6 @@ function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPi
         dealershipName={vehicle.dealershipName}
         busy={busy}
         onChangeVehicle={vehicle.onChangeVehicle}
-        missing={
-          <>
-            <MissingList label="No bay here has:" names={(problem.missingCapabilities as string[] | undefined) ?? []} />
-            <MissingList label="No technician here is certified for:" names={(problem.missingCertifications as string[] | undefined) ?? []} />
-          </>
-        }
       />
     )
   }

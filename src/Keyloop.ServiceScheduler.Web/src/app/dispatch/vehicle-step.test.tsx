@@ -14,8 +14,12 @@ import { brakesServiceType } from "@/test/triage"
 import {
   allocation,
   assessmentService,
+  certificationGap,
   decodedVolkswagen,
   diagnosticsService,
+  equipmentAndCertificationGap,
+  equipmentGap,
+  evBatteryService,
   liveDiagnosisGap,
   profileConflict,
   readingTuesdayWithCompetence,
@@ -394,8 +398,56 @@ describe("a declared manufacturer the VIN contradicts", () => {
   })
 })
 
-describe("a competence gap", () => {
-  it("names the HV level and the rules in plain words, as the workshop's gap rather than an error (live diagnosis at Reading)", async () => {
+describe("a refusal for want of a qualified bay or technician (422 no-qualified-resources)", () => {
+  /** Books EV Battery Health Check and answers the given refusal; resolves to the alert. */
+  async function refusedWith(problem: object) {
+    vehicleApi({ serviceTypes: () => [interimServiceType, evBatteryService], book: () => problemResponse(422, problem) })
+    renderBoard(board)
+    const scope = await openDialog()
+    await chooseService(scope, /^EV Battery Health Check/)
+    await pickStart(scope)
+    await next(scope)
+    fillCustomer(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    return within(scope).findByRole("alert")
+  }
+
+  const titleOf = (alert: HTMLElement) => alert.querySelector("[data-slot=alert-title]")?.textContent
+
+  it("names only the equipment when no bay has it, and says nothing of technicians (the EV bay out of use)", async () => {
+    const alert = await refusedWith(equipmentGap)
+
+    expect(alert).toHaveAttribute("data-tone", "info")
+    expect(titleOf(alert)).toBe("No bay here is equipped for this job")
+    expect(within(alert).getByText("No active bay here has:").parentElement).toHaveTextContent("No active bay here has:EV high voltage")
+    // The level is what the job needs, from the API's minimumHvLevel, not a shortfall the API named.
+    expect(alert).toHaveTextContent("This job needsHV 3Component repair")
+    expect(alert).toHaveTextContent("the service works on high-voltage components, whatever the powertrain")
+    expect(alert).toHaveTextContent("Check the vehicle details, which decide what this job needs, or book it at another dealership.")
+    // Ben and Eva held a valid level 3 when the checker saw this: no word may put it on the technicians.
+    expect(alert).not.toHaveTextContent(/technician|training|trained|certif/i)
+  })
+
+  it("names only the certification when no technician holds it", async () => {
+    const alert = await refusedWith(certificationGap)
+
+    expect(titleOf(alert)).toBe("No technician here is certified for this job")
+    expect(within(alert).getByText("No active technician here holds:").parentElement).toHaveTextContent(
+      "No active technician here holds:High-voltage electrical"
+    )
+    expect(alert).toHaveTextContent("This job needsHV 3Component repair")
+    expect(alert).not.toHaveTextContent(/No active bay|equipped|equipment/i)
+  })
+
+  it("names both when the API names both", async () => {
+    const alert = await refusedWith(equipmentAndCertificationGap)
+
+    expect(titleOf(alert)).toBe("No bay here is equipped, and no technician certified, for this job")
+    expect(within(alert).getByText("No active bay here has:").parentElement).toHaveTextContent("EV high voltage")
+    expect(within(alert).getByText("No active technician here holds:").parentElement).toHaveTextContent("High-voltage electrical")
+  })
+
+  it("names no side when the API names none: the level and the rules, in neutral words (live diagnosis at Reading)", async () => {
     const api = vehicleApi({ book: () => problemResponse(422, liveDiagnosisGap) })
     renderBoard(board)
     const scope = await openDialog()
@@ -408,13 +460,15 @@ describe("a competence gap", () => {
 
     const alert = await within(scope).findByRole("alert")
     expect(alert).toHaveAttribute("data-tone", "info")
-    expect(alert).toHaveTextContent("No technician here is trained for live HV work yet")
+    expect(titleOf(alert)).toBe("No bay and technician here meet this job’s needs")
     expect(alert).toHaveTextContent("This job needsHV 4Live working")
     expect(alert).toHaveTextContent("routine work happens alongside high-voltage cabling")
     expect(alert).toHaveTextContent("live working on the high-voltage system needs level 4 and an EV bay")
+    // What the API established, and no more: every need is held somewhere here, but not all together.
     expect(alert).toHaveTextContent(
-      "No active technician at Keyloop Motors Reading has all of that on the day. That is a gap in the workshop’s training or equipment, not a fault in this booking."
+      "Each capability and certification it needs is held at Keyloop Motors Reading, but no single active bay has every capability, or no single active technician has every certification and HV level 4 or above, valid on the day."
     )
+    expect(alert).not.toHaveTextContent(/training|trained|No active bay here has|No active technician here holds/i)
     expect(alert).toHaveTextContent("turn off live HV diagnosis and choose a start again")
     expect(alert).not.toHaveTextContent(/error|failed/i)
     expect((await bodyOf(bookings(api.requests)[0])).needsLiveDiagnosis).toBe(true)
@@ -422,7 +476,9 @@ describe("a competence gap", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Change the vehicle details" }))
     await waitFor(() => expect(within(scope).getByRole("group", { name: "Vehicle" })).toHaveFocus())
   })
+})
 
+describe("no qualified bay and technician for the day's starts", () => {
   it("says what the vehicle adds when no bay and technician qualify for the day's starts", async () => {
     vehicleApi({ availability: () => ({ ...interimAvailability, slots: [], unavailableReason: "no-qualified-resources" }) })
     renderBoard(board)
@@ -434,7 +490,9 @@ describe("a competence gap", () => {
     expect(
       within(scope).getByText("It needs an HV level 4 technician and an EV bay, for live working on the high-voltage system.")
     ).toBeInTheDocument()
-    expect(within(scope).getByText(/That is a gap in the workshop’s training or equipment, not a fault in this booking\./)).toBeInTheDocument()
+    expect(within(scope).getByText(/That is a gap in what the workshop has, not a fault in this booking\./)).toBeInTheDocument()
+    // The availability answer names no missing resource, so neither may the area: not training, not equipment.
+    expect(within(scope).queryByText(/training or equipment/)).not.toBeInTheDocument()
   })
 })
 
