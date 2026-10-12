@@ -101,8 +101,10 @@ public sealed class TriageResponseMapperTests
 
     [Theory]
     [InlineData("NONE", 1, false)]
-    [InlineData("GLASS", 0.69999, false)]
-    [InlineData("GLASS", 0.7, true)]
+    // Default 0.60: on Clef's measured scale the two correct concrete dates scored 0.63 and 0.73.
+    [InlineData("GLASS", 0.59999, false)]
+    [InlineData("GLASS", 0.6, true)]
+    [InlineData("GLASS", 0.63, true)]
     [InlineData("ACCIDENT_OR_BODY_DAMAGE", 0.8, true)]
     [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.8, true)]
     [InlineData("AIR_CONDITIONING", 0.8, true)]

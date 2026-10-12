@@ -378,9 +378,9 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.9, true)]
     [InlineData("AIR_CONDITIONING", 0.9, true)]
     [InlineData("TYRES_OR_WHEELS", 0.9, true)]
-    [InlineData("GLASS", 0.7, true)]
+    [InlineData("GLASS", 0.6, true)]
     [InlineData("OTHER", 0.9, true)]
-    [InlineData("GLASS", 0.69999, false)]
+    [InlineData("GLASS", 0.59999, false)]
     [InlineData("NONE", 1, false)]
     public async Task Exposes_only_confident_closed_categories_and_discards_all_model_prose(string category, double confidence, bool present)
     {

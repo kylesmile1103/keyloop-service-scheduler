@@ -19,8 +19,11 @@ public sealed class TriageOptions
     [Range(0.0, 1.0)]
     public double RelativeCandidateFloor { get; set; } = 0.5;
     [Range(0.0, 1.0)]
-    // Provisional: flag a further issue only with stronger evidence than a service suggestion. Calibrate on the extended golden set.
-    public double UncoveredIssueThreshold { get; set; } = 0.7;
+    // Provisional until the approved extended golden set. Clef's confidences sit low: on 2026-10-12 correct clear services scored 0.38
+    // to 0.88 (only 10 of 22 at 0.70 or above) and both correct concrete dates 0.63 and 0.73. On that scale 0.70 would hide about half
+    // the correct notices, the silent omission the stakeholder reported; 0.60 is the date question's calibrated value for the same kind
+    // of explicitly mentioned closed choice, and a notice never preselects or books anything. The report sweeps 0.30 to 1.00.
+    public double UncoveredIssueThreshold { get; set; } = 0.6;
 }
 
 [OptionsValidator]
