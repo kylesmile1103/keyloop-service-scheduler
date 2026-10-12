@@ -1,6 +1,6 @@
 # First deployment runbook: core profile
 
-This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email and the browser OTLP relay stay off. The database is Neon Free PostgreSQL 17 in London. [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
+This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last on afterwards. The database is Neon Free PostgreSQL 17 in London. [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
 
 Every step marked **REQUIRES USER CONFIRMATION** changes the Cloudflare or Neon account. Run it only after the stakeholder has confirmed that step. Everything else is local. This file names no account, identifier, email address or secret: `<...>` marks a value you supply, and the role lists stay outside the repository.
 
@@ -175,7 +175,7 @@ The role lists are typed privately, so they reach neither history nor the reposi
 
 ```sh
 export KEYLOOP_NOTIFICATIONS_ENABLED=false KEYLOOP_EMAIL_SENDING_ENABLED=false
-export KEYLOOP_OTLP_RELAY_ENABLED=false KEYLOOP_TRIAGE_ENABLED=false KEYLOOP_EMAIL_TRANSPORT=binding
+export KEYLOOP_OTLP_RELAY_ENABLED=false KEYLOOP_TRIAGE_ENABLED=false KEYLOOP_API_OTLP_ENABLED=false KEYLOOP_EMAIL_TRANSPORT=binding
 export KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=false
 read -r KEYLOOP_ACCESS_ADMIN            # comma-separated emails or @domain entries
 read -r KEYLOOP_ACCESS_SERVICE_ADVISOR
@@ -189,7 +189,7 @@ jq '{name, domains, workersDev, previewUrls, triggers, env: (.env | del(.AUTH_AD
 jq '{name, instanceType, maxInstances, constraints, image, schedulingPolicy}' .cloudflare/output/v0/containers/keyloop-scheduler-api/container.config.json
 ```
 
-Check before going on: domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers; `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE` is your pushed image reference; `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours; there is no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `AI_TOKEN` or `TRIAGE_IMAGES` binding; `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED`, `TRIAGE_ENABLED` and `VEHICLE_AWARE_REQUIREMENTS` are `false`; the container is `basic`, one instance, `WEUR`, with your pushed image. `.cloudflare/` is ignored; it holds the role lists in plain text, so do not share it.
+Check before going on: domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers; `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE` is your pushed image reference; `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours; there is no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `API_OTLP_TOKEN`, `AI_TOKEN` or `TRIAGE_IMAGES` binding; `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED`, `API_OTLP_ENABLED`, `TRIAGE_ENABLED` and `VEHICLE_AWARE_REQUIREMENTS` are `false`; the container is `basic`, one instance, `WEUR`, with your pushed image. `.cloudflare/` is ignored; it holds the role lists in plain text, so do not share it.
 
 ## 7. Deploy
 
@@ -257,9 +257,59 @@ A running container keeps the environment it was started with; neither a Worker 
 4. In the Worker logs (dashboard), confirm one `ApiContainerRestart` event with reason `configuration-changed` (or `unrecorded`, the first time this behaviour is deployed onto a running container). No event means no running container had to be replaced: either it was already running with this configuration, or it was not running (it sleeps after 30 idle minutes), and this request cold-started it with the new settings. Either way, step 5 confirms that the change took effect.
 5. Check the change itself: for triage, signed in as a ServiceAdvisor, describing an issue in the booking dialog returns suggestions instead of the `503 triage-unavailable` fallback to manual selection. For vehicle-aware booking, `curl -sS "$H/api/v1/features"` gives `{"vehicleAwareRequirements":true}`, and, signed in as a ServiceAdvisor, the booking dialog has the vehicle step (with a web build that includes Task 31b).
 
+## Enable API telemetry
+
+This turns on the API's OTLP export (traces, metrics and logs) to the stakeholder's Grafana Cloud stack on a running core deployment. The committed dashboards select `job="keyloop-scheduler/api"` and the environment `Production`, which is what this export produces; the variables the container receives and why are in [README](README.md#optional-api-telemetry). Build both the API image and the edge from a commit that contains this change: the Worker code that passes the OTLP settings and the API's quieter Production log levels ship in them. Step 0 still applies; `H=https://keyloop.kylesmile.me`.
+
+1. **REQUIRES USER CONFIRMATION (stakeholder, Grafana Cloud):**
+   - Read the stack's OTLP endpoint and instance ID from the stack's **OpenTelemetry** tile (**Configure**) in the Grafana Cloud portal. The endpoint has the form `https://otlp-gateway-<region>.grafana.net/otlp`; the instance ID is a number. Both are identifiers, not secrets.
+   - Create a Cloud access policy whose realm is this stack only, with the scopes `metrics:write`, `logs:write` and `traces:write` and no others, and add one token to it (for example `keyloop-scheduler-api`, with the expiry you choose). Grafana shows the token once. It never goes into chat, a ticket, a file or a command line.
+2. **REQUIRES USER CONFIRMATION (stakeholder, Cloudflare):** add the token to the Secrets Store `keyloop` as `keyloop_prod_api_otlp_token` with the scope **Workers**. Either in the dashboard (Secrets Store, `keyloop`, create secret, paste the token as the value), or from the repository root with the value typed into a hidden prompt. `printf` is a shell builtin, so the token reaches neither the history nor the process list, and Wrangler reads it from standard input when it is not a terminal:
+
+```sh
+export KEYLOOP_SECRETS_STORE_ID=<id of the keyloop store>   # cf secrets-store stores list
+read -rs KL_API_OTLP_TOKEN                                  # paste the Grafana token, then Enter; nothing is echoed
+printf '%s' "$KL_API_OTLP_TOKEN" | (cd deploy/cloudflare && npx wrangler secrets-store secret create "$KEYLOOP_SECRETS_STORE_ID" \
+  --name keyloop_prod_api_otlp_token --scopes workers --remote)
+unset KL_API_OTLP_TOKEN
+```
+
+Expected: `Creating secret... (Name: keyloop_prod_api_otlp_token, Value: REDACTED, Scopes: workers, ...)`. Never use Wrangler's `--value` or `cf secrets-store secrets create --body`.
+
+3. Build the API image from that commit and run the local checks of [step 4](#4-local-builds-and-checks). **REQUIRES USER CONFIRMATION:** push it as in [step 5](#5-push-the-api-image) and `export KEYLOOP_API_IMAGE=<the pushed reference>`. The new image carries `appsettings.Production.json`, which keeps one log record per SQL command and per outgoing HTTP request (the exporter's own included) out of the console and Loki.
+4. Build the edge as in [step 6](#6-build-the-edge-with-the-real-identifiers), with the live deployment's settings plus the three telemetry settings:
+
+```sh
+export KEYLOOP_API_OTLP_ENABLED=true
+export KEYLOOP_GRAFANA_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp   # from the OpenTelemetry tile, no trailing slash
+export KEYLOOP_GRAFANA_INSTANCE_ID=<instance id>                                     # digits only
+```
+
+`KEYLOOP_OTLP_RELAY_ENABLED` stays `false`; the browser relay is a separate decision with its own `traces:write` credential. A malformed endpoint or instance ID fails `npm run build` (`cf build`) with the setting's name. In the `jq` output expect `API_OTLP_TOKEN` as `secret:keyloop_prod_api_otlp_token`, `API_OTLP_ENABLED` `true`, and your `GRAFANA_OTLP_ENDPOINT` and `GRAFANA_INSTANCE_ID`; everything else as in step 6.
+
+5. **REQUIRES USER CONFIRMATION:** deploy as in [step 7](#7-deploy), with `--message "api telemetry $KL_SHA"`. The dry run should show the new Worker version, the three new bindings and the new image, nothing else. Then send one API request, `curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' "$H/api/v1/dealerships"`, which must answer `200`: the image rollout alone would restart the container with its previous start options, so this request has the Durable Object stop it and start it with the telemetry settings ([Later configuration changes](#later-configuration-changes), steps 3 and 4; one `ApiContainerRestart` event). A `503` with `E_API_UNAVAILABLE` means the container did not start, or the old one did not stop (send another request, which tries again): a missing or malformed `keyloop_prod_api_otlp_token` (whitespace or a non-ASCII character) refuses the start with a message that names only the secret, in the Worker log.
+6. **REQUIRES USER CONFIRMATION:** deploy the Grafana folder and the four dashboards with the export, so its data lands on the reviewed panels. They are unchanged by this work; if they are already pushed and untouched since, the dry run reports no change. Use the stakeholder's authenticated `gcx` context ([observability README](../../observability/grafana/README.md#later-stakeholder-commands)):
+
+```sh
+gcx resources push --context default -p observability/grafana/folders -p observability/grafana/dashboards --dry-run
+gcx resources push --context default -p observability/grafana/folders -p observability/grafana/dashboards --on-error abort
+```
+
+7. Verify, read-only, in Grafana Explore after two or three minutes of traffic (metrics are exported every 60 seconds):
+   - Metrics: `count by (job, service_namespace, service_name) (http_server_request_duration_seconds_count{job="keyloop-scheduler/api"})` shows that job, and `count by (deployment_environment_name) (target_info{job="keyloop-scheduler/api"})` shows `Production`.
+   - Logs: `{service_namespace="keyloop-scheduler", service_name="api"}` has the startup event `1102` and no `Executed DbCommand` records.
+   - Traces: `{ resource.service.namespace = "keyloop-scheduler" && resource.service.name = "api" }` finds the request's server span.
+   - The API health and Booking engine dashboards, Environment `Production`, fill as requests arrive.
+
+   If nothing arrives, the container log will not say why: the .NET SDK reports export failures only through its own diagnostics event source. Check the token's realm (this stack) and scopes, the instance ID, and that the endpoint is the stack's own region.
+
+While telemetry is on, the backlog gauges query the database once per metric export, so Neon stays awake as long as the container runs (up to its 30 idle minutes) instead of suspending after Neon's idle timeout; watch the Free plan's compute hours.
+
+To disable, export `KEYLOOP_API_OTLP_ENABLED=false`, rebuild (step 6) and deploy (step 7): the binding disappears, and the first API request restarts the container without any OTEL variable. To rotate, add a new token to the same policy, replace the secret's value (dashboard, or `npx wrangler secrets-store secret update "$KEYLOOP_SECRETS_STORE_ID" --secret-id <id> --remote` with the same `read -rs` and `printf` pattern), redeploy and send one API request so the container restarts with it ([Rollback](#rollback), the secret item), then delete the old token in Grafana. Deleting the token in Grafana stops ingestion at once.
+
 ## Rollback
 
 - API image: push the previous tag if it is no longer in the registry, set `KEYLOOP_API_IMAGE` to it, rebuild (step 6) and deploy (step 7). The image reference is part of the fingerprint, so the first API request afterwards stops the container and starts the previous image with the current configuration, whatever start options the platform's rollout kept; confirm the `ApiContainerRestart` event as in [Later configuration changes](#later-configuration-changes).
 - A setting: restore the previous value, rebuild and deploy, as in [Later configuration changes](#later-configuration-changes).
-- A bad database secret (or AI token): replace `keyloop_prod_db_url` (or `keyloop_prod_ai_token`) in Secrets Store, then **REQUIRES USER CONFIRMATION:** deploy again, `cf deploy --prebuilt --provision=false --message "rotate secret"` with the existing build output (rebuild as in step 6 if it is gone). A running container keeps its start-time value and the Worker reads Secrets Store only when it checks, so the rotation takes effect at the first API request after this deploy, which restarts the container (confirm the `ApiContainerRestart` event). Without a deploy, it takes effect only at the container's next start, for example after it sleeps.
+- A bad database secret (or AI or API telemetry token): replace `keyloop_prod_db_url` (or `keyloop_prod_ai_token`, `keyloop_prod_api_otlp_token`) in Secrets Store, then **REQUIRES USER CONFIRMATION:** deploy again, `cf deploy --prebuilt --provision=false --message "rotate secret"` with the existing build output (rebuild as in step 6 if it is gone). A running container keeps its start-time value and the Worker reads Secrets Store only when it checks, so the rotation takes effect at the first API request after this deploy, which restarts the container (confirm the `ApiContainerRestart` event). Without a deploy, it takes effect only at the container's next start, for example after it sleeps.
 - Neon restores within its six-hour Free history window. Access application and policy changes are reversible in the dashboard.

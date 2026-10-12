@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import { bookingSchema, stepOneFields, toBookingRequest, type BookingForm } from "./booking-schema"
+import {
+  bookingSchema,
+  stepOneFields,
+  stepOneFieldsFor,
+  toBookingRequest,
+  type BookingForm,
+  undeclaredProfile,
+  vehicleAwareBookingSchema,
+} from "./booking-schema"
 
 /** A valid booking at Reading: Interim Service at 10:15 on Tuesday 13 October. */
 const valid = {
@@ -91,6 +99,97 @@ describe("toBookingRequest", () => {
       preferredBayId: "29c9f970-e13d-879e-a949-a553839cf25e",
       preferredTechnicianId: "bd559b63-ceea-83dd-9a48-f2bc7a515dcd",
       notes: "Customer waiting in the lounge.",
+    })
+  })
+})
+
+// Task 31b: the vehicle step's declaration, as the API validates it, and what is sent of it.
+describe("the vehicle step's declaration", () => {
+  const declared = (profile: Partial<ReturnType<typeof undeclaredProfile>>) => ({
+    ...valid,
+    vehicle: { ...valid.vehicle, profile: { ...undeclaredProfile(), ...profile } },
+  })
+  const vehicleIssues = (input: unknown) => {
+    const result = vehicleAwareBookingSchema.safeParse(input)
+    return result.success ? {} : Object.fromEntries(result.error.issues.map((issue) => [issue.path.join("."), issue.message]))
+  }
+
+  it("needs a reason for a concrete powertrain, counted after trimming, and none for Unknown", () => {
+    expect(vehicleIssues(declared({ powertrain: "Ice", declarationReason: "   " }))).toEqual({
+      "vehicle.profile.declarationReason": "Say why you're declaring the powertrain",
+    })
+    expect(vehicleIssues(declared({ powertrain: "BatteryElectric", declarationReason: "x".repeat(501) }))).toEqual({
+      "vehicle.profile.declarationReason": "The reason can be at most 500 characters",
+    })
+    expect(vehicleIssues(declared({ powertrain: "Ice", declarationReason: ` ${"x".repeat(500)} ` }))).toEqual({})
+    expect(vehicleIssues(declared({ powertrain: "Unknown", vehicleClass: "Heavy" }))).toEqual({})
+  })
+
+  it("takes a declared manufacturer only as an OEM code, ignoring case", () => {
+    expect(vehicleIssues(declared({ manufacturer: "Land Rover" }))).toEqual({
+      "vehicle.profile.manufacturer": "Use the maker's code: letters, digits and hyphens, at most 32 (for example BMW or MERCEDES-BENZ)",
+    })
+    expect(vehicleIssues(declared({ manufacturer: " mercedes-benz " }))).toEqual({})
+  })
+
+  it("applies none of it with vehicle-aware requirements off, where nothing of it is sent", () => {
+    expect(bookingSchema.safeParse(declared({ powertrain: "Ice", declarationReason: "" })).success).toBe(true)
+  })
+
+  it("checks the vehicle on step 1, with the start it decides", () => {
+    expect(stepOneFieldsFor(false)).toEqual(stepOneFields)
+    expect(stepOneFieldsFor(true)).toEqual([
+      "serviceTypeId",
+      "date",
+      "startUtc",
+      "vehicle.profile.powertrain",
+      "vehicle.profile.vehicleClass",
+      "vehicle.profile.declarationReason",
+      "needsLiveDiagnosis",
+    ])
+  })
+
+  it("sends nothing of the vehicle step while vehicle-aware requirements are off: today's body", () => {
+    const form = bookingSchema.parse({ ...declared({ powertrain: "Ice", declarationReason: "Diesel" }), needsLiveDiagnosis: true })
+    expect(toBookingRequest(form)).toEqual({
+      serviceTypeId: valid.serviceTypeId,
+      startUtc: valid.startUtc,
+      customer: valid.customer,
+      vehicle: { vin: "JTDKN3DU0A0123460", registration: "RF20 BCJ", make: "Toyota", model: "Prius" },
+    })
+  })
+
+  it("leaves the profile out when nothing was declared, so the API plans for an Unknown vehicle", () => {
+    const form = vehicleAwareBookingSchema.parse({ ...declared({}), needsLiveDiagnosis: false })
+    expect(toBookingRequest(form, { vehicleAware: true })).toEqual(toBookingRequest(form))
+  })
+
+  it("sends the declaration with its trimmed reason, the upper-case code and the live flag, never a provenance", () => {
+    const form = vehicleAwareBookingSchema.parse({
+      ...declared({ powertrain: "BatteryElectric", vehicleClass: "Car", manufacturer: " vw-group ", declarationReason: "  Customer says EV  " }),
+      needsLiveDiagnosis: true,
+    })
+    const body = toBookingRequest(form, { vehicleAware: true })
+    expect(body.vehicle.profile).toEqual({
+      powertrain: "BatteryElectric",
+      vehicleClass: "Car",
+      manufacturer: "VW-GROUP",
+      declarationReason: "Customer says EV",
+    })
+    expect(body.needsLiveDiagnosis).toBe(true)
+    expect(JSON.stringify(body)).not.toContain("provenance")
+  })
+
+  it("keeps a reason typed for a powertrain set back to Unknown out of the request, and sends UseDecoded only with a declared manufacturer", () => {
+    const unknown = vehicleAwareBookingSchema.parse(declared({ powertrain: "Unknown", vehicleClass: "Heavy", declarationReason: "Typed, then undone" }))
+    expect(toBookingRequest(unknown, { vehicleAware: true, useDecoded: true }).vehicle.profile).toEqual({ powertrain: "Unknown", vehicleClass: "Heavy" })
+
+    const conflicting = vehicleAwareBookingSchema.parse(declared({ manufacturer: "BMW" }))
+    expect(toBookingRequest(conflicting, { vehicleAware: true, useDecoded: true }).vehicle.profile).toEqual({
+      powertrain: "Unknown",
+      vehicleClass: "Unknown",
+      manufacturer: "BMW",
+      conflictChoice: "UseDecoded",
     })
   })
 })

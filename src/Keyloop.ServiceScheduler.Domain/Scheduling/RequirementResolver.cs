@@ -13,12 +13,12 @@ public static class RequirementResolver
     /// </summary>
     public const string LegacyHvComponentRule = "legacy-hv-component";
 
-    public static JobRequirements Resolve(ServiceType service, VehicleProfile profile, IReadOnlyList<RequirementRule> rules, bool needsLiveDiagnosis = false)
+    public static JobRequirements Resolve(ServiceType service, VehicleProfile profile, IReadOnlyList<RequirementRule> rules, bool needsLiveDiagnosis = false, int? policyVersion = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(rules);
-        var versions = rules.Select(r => r.PolicyVersion).Distinct().ToArray();
+        var versions = rules.Select(r => r.PolicyVersion).Concat(policyVersion is { } version ? new[] { version } : []).Distinct().ToArray();
         if (versions.Length != 1 || versions[0] < 1)
         {
             throw new ArgumentException("Resolve exactly one positive policy version.", nameof(rules));

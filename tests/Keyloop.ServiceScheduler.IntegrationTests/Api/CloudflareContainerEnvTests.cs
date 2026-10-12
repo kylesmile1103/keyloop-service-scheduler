@@ -14,7 +14,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -26,14 +28,16 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 /// pins to the Worker's own output for the core profile (notifications, email, triage and the OTLP relay off). Each side's tests
 /// passed while the pair did not start (the Worker selected the reserved Cloudflare email provider), so this boots the API with
 /// exactly that fixture. The database is migrated first, as the operator's migration bundle does; the API itself must not migrate.
-/// Only locally signed tokens and stubbed JWKS are used.
+/// The OTLP-enabled profile (<c>container-env-otlp.json</c>) is the core one plus API telemetry export to Grafana Cloud; it is booted
+/// against a loopback receiver in place of the gateway. Only locally signed tokens, stubbed JWKS and a fake telemetry token are used.
 /// </summary>
 public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposable
 {
     private const string FixtureFile = "cloudflare-container-env-core.json";
+    private const string OtlpFixtureFile = "cloudflare-container-env-otlp.json";
     private const string PublicHost = "http://keyloop.kylesmile.me";
     private readonly RSA _rsa = RSA.Create(2048);
-    private readonly IReadOnlyDictionary<string, string> _workerEnv = ReadWorkerEnv();
+    private readonly IReadOnlyDictionary<string, string> _workerEnv = ReadWorkerEnv(FixtureFile);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -60,6 +64,10 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         var auth = services.GetRequiredService<IOptions<AuthOptions>>().Value;
         (auth.Mode, auth.TeamDomain).ShouldBe((AuthMode.CloudflareAccess, _workerEnv["Auth__TeamDomain"]));
         auth.Audience.ShouldBe([_workerEnv["Auth__Audience__0"]]);
+
+        // API telemetry is off in the core profile: no OTEL variable, so ServiceDefaults registers no OTLP exporter.
+        _workerEnv.Keys.ShouldNotContain(key => key.StartsWith("OTEL_", StringComparison.Ordinal));
+        services.GetRequiredService<IConfiguration>()["OTEL_EXPORTER_OTLP_ENDPOINT"].ShouldBeNullOrWhiteSpace();
 
         // Startup seeding ran as the runtime would on a fresh deployment: the catalogue and the demo week, in Production.
         using (var dealerships = await SendAsync(client, HttpMethod.Get, "/api/v1/dealerships"))
@@ -116,7 +124,93 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         another.StatusCode.ShouldBe(HttpStatusCode.Unauthorized, "another client keeps its own budget");
     }
 
-    private async Task<WebApplicationFactory<Program>> WorkerHostAsync(string databaseName)
+    [Fact]
+    public async Task Worker_otlp_env_exports_every_signal_as_the_dashboards_job_without_printing_the_credential()
+    {
+        var otlpEnv = ReadWorkerEnv(OtlpFixtureFile);
+        // Telemetry adds only the OTEL variables to the core profile.
+        otlpEnv.Where(entry => !entry.Key.StartsWith("OTEL_", StringComparison.Ordinal)).OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .ShouldBe(_workerEnv.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+        const string HeaderPrefix = "Authorization=Basic%20";
+        var header = otlpEnv["OTEL_EXPORTER_OTLP_HEADERS"];
+        header.ShouldStartWith(HeaderPrefix);
+        var credential = header[HeaderPrefix.Length..];
+        var instanceAndToken = Encoding.ASCII.GetString(Convert.FromBase64String(credential)).Split(':', 2);
+        instanceAndToken[0].ShouldBe("123456");
+        var token = instanceAndToken[1];
+        // The fixture's fake credential holds every base64 character the OTEL header format could mangle.
+        credential.ShouldContain('+');
+        credential.ShouldContain('/');
+        credential.ShouldEndWith("==");
+
+        await using var receiver = await OtlpReceiver.StartAsync(Ct);
+        var logs = new CapturingLoggerProvider();
+        await using (var host = await WorkerHostAsync("cloudflare_env_otlp", otlpEnv, logs, new Dictionary<string, string>
+        {
+            // The only test change to the Worker's environment: a loopback receiver stands in for the gateway, so nothing leaves the
+            // machine. The intervals are shortened (SDK defaults: metrics 60 s, traces 5 s, logs 1 s) so every signal arrives in time.
+            ["OTEL_EXPORTER_OTLP_ENDPOINT"] = receiver.Endpoint,
+            ["OTEL_METRIC_EXPORT_INTERVAL"] = "500",
+            ["OTEL_BSP_SCHEDULE_DELAY"] = "200",
+            ["OTEL_BLRP_SCHEDULE_DELAY"] = "200",
+        }))
+        {
+            using var client = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri(PublicHost), AllowAutoRedirect = false });
+            client.DefaultRequestHeaders.Clear();
+            using (var dealerships = await SendAsync(client, HttpMethod.Get, "/api/v1/dealerships"))
+            {
+                dealerships.StatusCode.ShouldBe(HttpStatusCode.OK);
+            }
+
+            (await RolesAsync(client, "admin@fixture.test")).ShouldBe(["Admin"]);
+            await receiver.WaitForPathsAsync(["/otlp/v1/traces", "/otlp/v1/metrics", "/otlp/v1/logs"], TimeSpan.FromSeconds(30), Ct);
+        }
+
+        var exports = receiver.Exports;
+        exports.ShouldNotBeEmpty();
+        foreach (var export in exports)
+        {
+            export.Path.ShouldBeOneOf("/otlp/v1/traces", "/otlp/v1/metrics", "/otlp/v1/logs");
+            export.ContentType.ShouldBe("application/x-protobuf", "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf");
+            export.Authorization.ShouldBe($"Basic {credential}", "the percent-encoded header decodes to the Basic credential intact");
+            var resource = export.ResourceAttributes();
+            // Grafana's OTLP translation builds job from service.namespace/service.name: the dashboards select job="keyloop-scheduler/api"
+            // and default the environment variable to deployment_environment_name="Production".
+            $"{resource["service.namespace"]}/{resource["service.name"]}".ShouldBe("keyloop-scheduler/api", export.Path);
+            resource["deployment.environment.name"].ShouldBe("Production", export.Path);
+            ContainsAscii(export.Body, token).ShouldBeFalse($"{export.Path} exported the token");
+            ContainsAscii(export.Body, credential).ShouldBeFalse($"{export.Path} exported the credential");
+        }
+
+        // Nothing the API logs (to the JSON console and to Loki alike) carries the token, the credential or the header.
+        var entries = logs.Entries;
+        entries.ShouldContain(entry => entry.EventId.Id == 1102, "the capture sees the API's own Information events");
+        foreach (var entry in entries)
+        {
+            var text = string.Join('\n', [entry.Message, entry.Exception?.ToString(),
+                .. entry.State.Select(property => $"{property.Key}={property.Value}"),
+                .. entry.Scopes.Select(property => $"{property.Key}={property.Value}")]);
+            foreach (var secret in new[] { token, credential, header })
+            {
+                text.ShouldNotContain(secret, Case.Sensitive, $"{entry.Category} {entry.EventId}");
+            }
+        }
+
+        // Production log volume (appsettings.Production.json): no record per SQL command, and none per outgoing HTTP request (the
+        // client handlers' four lines and Polly's execution attempt), including the exporter's own requests. Their warnings and
+        // errors still pass.
+        entries.ShouldNotContain(entry => entry.Level < LogLevel.Warning && ChattyCategories.Any(prefix => entry.Category.StartsWith(prefix, StringComparison.Ordinal)),
+            string.Join(", ", entries.Where(entry => entry.Level < LogLevel.Warning).Select(entry => entry.Category).Distinct()));
+    }
+
+    private static readonly string[] ChattyCategories = ["Microsoft.EntityFrameworkCore.Database.Command", "System.Net.Http.HttpClient.", "Polly"];
+
+    private static bool ContainsAscii(byte[] haystack, string needle) => haystack.AsSpan().IndexOf(Encoding.ASCII.GetBytes(needle)) >= 0;
+
+    private Task<WebApplicationFactory<Program>> WorkerHostAsync(string databaseName) => WorkerHostAsync(databaseName, _workerEnv, null, null);
+
+    private async Task<WebApplicationFactory<Program>> WorkerHostAsync(string databaseName, IReadOnlyDictionary<string, string> workerEnv,
+        CapturingLoggerProvider? logs, IReadOnlyDictionary<string, string>? overrides)
     {
         var connectionString = await pg.CreateEmptyDatabaseAsync(databaseName, Ct);
         await using (var operatorContext = new SchedulerDbContext(
@@ -126,12 +220,13 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         }
 
         var jwks = Jwks();
-        var team = _workerEnv["Auth__TeamDomain"];
-        var factory = new SchedulerApiFactory(connectionString, TestData.Clock());
+        var team = workerEnv["Auth__TeamDomain"];
+        var factory = new SchedulerApiFactory(connectionString, TestData.Clock(), logs);
         return factory.WithWebHostBuilder(builder =>
         {
-            builder.UseEnvironment(_workerEnv["ASPNETCORE_ENVIRONMENT"]);
-            foreach (var (key, value) in _workerEnv.Where(entry => !entry.Key.StartsWith("ASPNETCORE_", StringComparison.Ordinal)))
+            builder.UseEnvironment(workerEnv["ASPNETCORE_ENVIRONMENT"]);
+            foreach (var (key, value) in workerEnv.Where(entry => !entry.Key.StartsWith("ASPNETCORE_", StringComparison.Ordinal))
+                .Concat(overrides ?? new Dictionary<string, string>()))
             {
                 builder.UseSetting(key.Replace("__", ":", StringComparison.Ordinal), value);
             }
@@ -152,9 +247,9 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         });
     }
 
-    private static IReadOnlyDictionary<string, string> ReadWorkerEnv()
+    private static IReadOnlyDictionary<string, string> ReadWorkerEnv(string fixtureFile)
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureFile)));
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureFile)));
         return document.RootElement.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.GetString()!, StringComparer.Ordinal);
     }
 

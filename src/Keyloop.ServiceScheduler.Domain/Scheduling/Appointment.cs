@@ -87,6 +87,8 @@ public sealed class Appointment : AggregateRoot
 
     public AllocationDecision? AllocationDecision { get; private set; }
 
+    public RecordedRequirements? RecordedRequirements { get; private set; }
+
     public bool NeedsLiveDiagnosis { get; private set; }
 
     public AppointmentStatus Status { get; private set; }
@@ -169,6 +171,9 @@ public sealed class Appointment : AggregateRoot
         appointment.VehicleProfile = profile ?? VehicleProfile.Unknown;
         appointment.AllocationDecision = allocation;
         appointment.NeedsLiveDiagnosis = needsLiveDiagnosis;
+        appointment.RecordedRequirements = requirements is null
+            ? new(serviceType.RequiredBayCapabilities.Order().ToArray(), serviceType.RequiredCertifications.Order().ToArray(), 0)
+            : new(requirements.BayCapabilities.Order().ToArray(), requirements.Certifications.Order().ToArray(), requirements.MinimumHvLevel);
         appointment.Raise(new AppointmentBooked(
             id, dealership.Id, serviceType.Id, bay.Id, technician.Id, slot.StartUtc, slot.EndUtc, vehicle.Vin.Masked, nowUtc, profile, allocation));
         return appointment;

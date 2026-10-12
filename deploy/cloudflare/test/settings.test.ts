@@ -8,6 +8,12 @@ const identifiers = {
   KEYLOOP_API_IMAGE: "registry.cloudflare.com/00000000000000000000000000000000/keyloop-scheduler-api:test",
 };
 
+const apiOtlp = {
+  KEYLOOP_API_OTLP_ENABLED: "true",
+  KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
+  KEYLOOP_GRAFANA_INSTANCE_ID: "123456",
+};
+
 describe("edge settings evaluated by cloudflare.config.ts", () => {
   it("defaults every integration off with the binding transport and the documented caps", () => {
     expect(edgeSettings({ ...identifiers, KEYLOOP_EMAIL_TRANSPORT: "", KEYLOOP_EMAIL_MAX_PER_DAY: "" })).toEqual({
@@ -16,10 +22,24 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
       authAdmin: "", authServiceAdvisor: "", authViewer: "",
       notificationsEnabled: "false", emailSendingEnabled: "false", emailTransport: "binding", emailAccountId: "",
       emailAllowedAddresses: "", emailAllowedDomains: "", emailMaxPerRecipientPerDay: "10", emailMaxPerDay: "100",
-      otlpRelayEnabled: "false", grafanaOtlpEndpoint: "",
+      otlpRelayEnabled: "false", grafanaOtlpEndpoint: "", apiOtlpEnabled: "false", grafanaInstanceId: "",
       triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler", triageBucket: "keyloop-scheduler-triage",
       vehicleAwareRequirements: "false",
     });
+  });
+  it("accepts API telemetry with the gateway endpoint and the stack's numeric instance ID", () => {
+    expect(edgeSettings({
+      ...identifiers, KEYLOOP_API_OTLP_ENABLED: "true", KEYLOOP_GRAFANA_INSTANCE_ID: "123456",
+      KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp",
+    })).toMatchObject({
+      apiOtlpEnabled: "true", grafanaInstanceId: "123456", otlpRelayEnabled: "false",
+      grafanaOtlpEndpoint: "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp",
+    });
+  });
+  it("leaves API telemetry off when only its identifiers are configured", () => {
+    expect(edgeSettings({
+      ...identifiers, KEYLOOP_GRAFANA_INSTANCE_ID: "123456", KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
+    })).toMatchObject({ apiOtlpEnabled: "false", grafanaInstanceId: "123456" });
   });
   it("switches vehicle-aware requirements on only when asked", () => {
     expect(edgeSettings({ ...identifiers, KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "true" })).toMatchObject({ vehicleAwareRequirements: "true" });
@@ -52,6 +72,19 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
     [{ KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY: "0" }, "valid per-recipient email cap"],
     [{ KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "TRUE" }, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false"],
     [{ KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "yes" }, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false"],
+    [{ KEYLOOP_API_OTLP_ENABLED: "yes" }, "KEYLOOP_API_OTLP_ENABLED to true or false"],
+    [{ ...apiOtlp, KEYLOOP_API_OTLP_ENABLED: "TRUE" }, "KEYLOOP_API_OTLP_ENABLED to true or false"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp/" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp/v1/traces" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "http://otlp-gateway-local.grafana.net/otlp" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://collector.example.com/otlp" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_INSTANCE_ID: "" }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_INSTANCE_ID: "stack-123456" }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_INSTANCE_ID: "123 456" }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_INSTANCE_ID: "123456:token" }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    [{ ...apiOtlp, KEYLOOP_GRAFANA_INSTANCE_ID: "1".repeat(21) }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
+    [{ KEYLOOP_GRAFANA_INSTANCE_ID: "-1" }, "KEYLOOP_GRAFANA_INSTANCE_ID"],
   ])("fails the build for %o", (overrides, message) => {
     expect(() => edgeSettings({ ...identifiers, ...overrides })).toThrow(message);
   });

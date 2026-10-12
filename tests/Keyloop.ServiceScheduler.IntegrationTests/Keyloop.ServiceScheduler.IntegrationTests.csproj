@@ -24,6 +24,8 @@
     <!-- The Worker's container environment for the core profile, pinned by deploy/cloudflare/test/container.test.ts and booted by
          CloudflareContainerEnvTests, so the edge and the API are tested against the same contract. -->
     <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-core.json" Link="Fixtures\cloudflare-container-env-core.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The same profile with API telemetry export on, pinned by the same edge test and booted against a loopback OTLP receiver. -->
+    <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-otlp.json" Link="Fixtures\cloudflare-container-env-otlp.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>
 </Project>

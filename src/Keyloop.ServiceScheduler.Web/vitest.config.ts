@@ -11,6 +11,9 @@ export default defineConfig((env) =>
         setupFiles: ["./src/test-setup.ts"],
         // Tests import `describe`/`it`/`expect` from "vitest" explicitly; the setup file registers RTL's cleanup.
         globals: false,
+        // Above the 3 s a single findBy or waitFor may take (src/test-setup.ts), so a slow wait is not cut off by the test's
+        // own limit when several follow each other on a loaded machine. A test that hangs still fails.
+        testTimeout: 15_000,
         restoreMocks: true,
         unstubGlobals: true,
         unstubEnvs: true,

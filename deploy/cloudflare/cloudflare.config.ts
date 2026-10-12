@@ -65,6 +65,10 @@ export default defineConfig({
       ...(settings.otlpRelayEnabled === "true" ? {
         GRAFANA_OTLP_BASIC_BROWSER: bindings.secretsStoreSecret({ storeId, secretName: "grafana-otlp-basic-browser" }),
       } : {}),
+      // Read by the Durable Object at container start only; it never reaches a Worker response or the browser.
+      ...(settings.apiOtlpEnabled === "true" ? {
+        API_OTLP_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_api_otlp_token" }),
+      } : {}),
       NOTIFY_FROM: bindings.text("notifications@keyloop.kylesmile.me"),
       NOTIFY_FROM_NAME: bindings.text("Keyloop Service Scheduler (demo)"),
       NOTIFICATIONS_ENABLED: bindings.text(settings.notificationsEnabled),
@@ -77,6 +81,8 @@ export default defineConfig({
       EMAIL_MAX_PER_DAY: bindings.text(settings.emailMaxPerDay),
       OTLP_RELAY_ENABLED: bindings.text(settings.otlpRelayEnabled),
       GRAFANA_OTLP_ENDPOINT: bindings.text(settings.grafanaOtlpEndpoint),
+      API_OTLP_ENABLED: bindings.text(settings.apiOtlpEnabled),
+      GRAFANA_INSTANCE_ID: bindings.text(settings.grafanaInstanceId),
       OTLP_RELAY_LIMITER: bindings.rateLimit({ namespace: "2001", simple: { limit: 120, period: 60 } }),
     },
   },

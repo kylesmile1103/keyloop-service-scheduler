@@ -45,6 +45,8 @@ describe("calendar dates (yyyy-MM-dd, the API's local date)", () => {
   it("writes a day for people", () => {
     expect(formatDay("2026-10-13", "short")).toBe("Tue 13 Oct")
     expect(formatDay("2026-10-13", "long")).toBe("Tuesday 13 October 2026")
+    // A date that may be years away (a competence's expiry) keeps its year and drops the weekday.
+    expect(formatDay("2028-12-31", "dated")).toBe("31 Dec 2028")
   })
 
   it("converts to and from the date picker's local-midnight Date without shifting the day", () => {

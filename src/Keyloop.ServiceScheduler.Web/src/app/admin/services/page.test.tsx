@@ -33,13 +33,16 @@ describe("services list", () => {
 
     const list = await table()
     expect(headers(list)).toEqual(["Service", "Code", "Duration", "Needs", "Bookable here", "Booked today"])
-    expect(columnTexts(list, "Service")).toEqual(readingCatalogue.map((service) => service.name))
-    expect(columnTexts(list, "Code")[0]).toBe("AIRCON-REGAS")
-    expect(columnTexts(list, "Duration")).toEqual(["60 min", "90 min", "60 min", "60 min", "90 min", "45 min", "120 min", "180 min", "60 min", "45 min"])
+    // Eleven services, ten a page: MOT Test, last by name, is on the next.
+    expect(columnTexts(list, "Service")).toEqual(readingCatalogue.slice(0, 10).map((service) => service.name))
+    expect(columnTexts(list, "Code")[0]).toBe("ACCIDENT-DAMAGE-ASSESSMENT")
+    expect(columnTexts(list, "Duration")).toEqual(["60 min", "60 min", "90 min", "60 min", "60 min", "90 min", "45 min", "120 min", "180 min", "60 min"])
     expect(columnTexts(list, "Bookable here")).toEqual(Array(10).fill("Yes"))
-    expect(columnTexts(list, "Booked today")).toEqual(["0", "1", "0", "1", "0", "1", "1", "0", "1", "1"])
+    expect(columnTexts(list, "Booked today")).toEqual(["0", "0", "1", "0", "1", "0", "1", "1", "0", "1"])
+    // Accident Damage Assessment (Task 32a) needs a damage-assessment-certified technician; its certification is named.
+    expect(within(bodyRows(list)[0]).getByText("Needs: Damage assessment, Standard lift.")).toBeInTheDocument()
     // EV Charging Fault Diagnosis needs an EV bay and a technician with both certifications.
-    expect(within(bodyRows(list)[4]).getByText("Needs: EV high voltage, High-voltage electrical, Diagnostics.")).toBeInTheDocument()
+    expect(within(bodyRows(list)[5]).getByText("Needs: EV high voltage, High-voltage electrical, Diagnostics.")).toBeInTheDocument()
     expect(requestsTo(requests, "/service-types")).toHaveLength(1)
     expect(document.title).toBe("Services – Keyloop Service Scheduler")
   })
@@ -66,13 +69,18 @@ describe("services list", () => {
 
     const list = await table()
     const row = (name: string) => bodyRows(list)[columnTexts(list, "Service").indexOf(name)]
-    expect(figureValue("Bookable here")).toBe("5 of 10")
+    expect(figureValue("Bookable here")).toBe("6 of 11")
     expect(figure("Bookable here")).toHaveTextContent("5 need what this dealership lacks")
-    expect(within(row("MOT Test")).getByText("Missing: MOT testing, MOT tester.")).toBeInTheDocument()
+    // Hans Richter assesses accident damage here (Task 32a).
+    expect(within(row("Accident Damage Assessment")).getByText("Yes")).toBeInTheDocument()
     expect(within(row("Diagnostic Fault Finding")).getByText("Missing: Diagnostics.")).toBeInTheDocument()
     // Each need exists here, but on different technicians.
     expect(row("EV Charging Fault Diagnosis")).toHaveTextContent("Not all on one technician")
     expect(within(row("Interim Service")).getByText("Yes")).toBeInTheDocument()
+    // MOT Test, last by name, is on the second page of ten.
+    fireEvent.click(screen.getByRole("button", { name: "Go to next page" }))
+    await waitFor(() => expect(columnTexts(list, "Service")).toEqual(["MOT Test"]))
+    expect(within(row("MOT Test")).getByText("Missing: MOT testing, MOT tester.")).toBeInTheDocument()
   })
 
   it("sums the catalogue in four figures", async () => {
@@ -80,8 +88,8 @@ describe("services list", () => {
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
     await table()
-    expect(figureValue("Services")).toBe("10")
-    expect(figureValue("Bookable here")).toBe("10 of 10")
+    expect(figureValue("Services")).toBe("11")
+    expect(figureValue("Bookable here")).toBe("11 of 11")
     expect(figure("Bookable here")).toHaveTextContent("Every service can be booked")
     expect(figureValue("Booked today")).toBe("6")
     expect(figure("Booked today")).toHaveTextContent("Across 6 services")
@@ -115,9 +123,10 @@ describe("services list", () => {
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
     const list = await table()
+    // Eleven services, ten a page.
     expect(bodyRows(list)).toHaveLength(10)
     expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
-    expect(figureValue("Services")).toBe("10")
+    expect(figureValue("Services")).toBe("11")
     expect(figureValue("Booked today")).toBe("–No figure")
     expect(within(figure("Booked today")).getByText("No figure")).toBeInTheDocument()
     expect(figure("Booked today")).toHaveTextContent("Closed today")
@@ -149,12 +158,12 @@ describe("services list", () => {
 
     const cards = await screen.findByRole("list", { name: "Services" })
     const items = within(cards).getAllByRole("listitem")
-    // Ten services, ten a page.
+    // Eleven services, ten a page: MOT Test, last by name, is on the next.
     expect(items).toHaveLength(10)
-    const mot = items.find((item) => within(item).queryByRole("heading", { level: 3, name: "MOT Test" }))!
-    expect(mot).toHaveTextContent("MOT-TEST")
-    expect(mot).toHaveTextContent("45 min")
-    expect(mot).toHaveTextContent("Not bookable here")
-    expect(within(mot).getByText("Missing: MOT testing, MOT tester.")).toBeInTheDocument()
+    const alignment = items.find((item) => within(item).queryByRole("heading", { level: 3, name: "Four-Wheel Alignment" }))!
+    expect(alignment).toHaveTextContent("WHEEL-ALIGNMENT")
+    expect(alignment).toHaveTextContent("45 min")
+    expect(alignment).toHaveTextContent("Not bookable here")
+    expect(within(alignment).getByText("Missing: Wheel alignment.")).toBeInTheDocument()
   })
 })

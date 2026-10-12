@@ -49,13 +49,14 @@ ALERTS = {
                                   panel=("keyloop-api-health", 11)),
 }
 # Panels whose counter windows must count a series' first export, with their window: the must-be-zero stats
-# over the dashboard range, and the readiness rule's evidence panel per step (its failures and the Durable
-# Object's start pings are rare series that are often born holding their only event). Every alert query that
-# uses increase() is must-be-zero as well.
+# over the dashboard range, and per step the readiness rule's evidence panel and the Admin edits panel (health
+# failures, the Durable Object's start pings and the edits of one resource and action are rare series that are
+# often born holding their only event). Every alert query that uses increase() is must-be-zero as well.
 BORN_AWARE_PANELS = {("keyloop-booking-engine", 1): "$__range", ("keyloop-booking-engine", 2): "$__range",
                      ("keyloop-booking-engine", 6): "$__range", ("keyloop-booking-engine", 18): "$__range",
                      ("keyloop-notifications", 1): "$__range",
-                     ("keyloop-api-health", 11): "$__rate_interval"}
+                     ("keyloop-api-health", 11): "$__rate_interval",
+                     ("keyloop-booking-engine", 19): "$__rate_interval"}
 # Promoted OTLP resource labels on every Mimir series. target_info keeps only job and instance of the
 # identifying attributes (service.name/namespace/instance.id), unless the stack keeps them explicitly.
 RESOURCE_LABELS = {"job", "instance", "service_name", "service_namespace", "service_version",

@@ -59,7 +59,7 @@ describe("the resources data provider", () => {
 
     const services = await dataProvider.getList<ServiceRecord>({ resource: "services", meta: { ...meta, dealershipId: munich.id } })
 
-    expect(services.total).toBe(10)
+    expect(services.total).toBe(11)
     expect(services.data.find((record) => record.code === "MOT-TEST")).toMatchObject({
       bookable: false,
       bookedToday: 0,

@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +26,7 @@ public static class ApiTags
     public const string Appointments = "Appointments";
     public const string Schedule = "Schedule";
     public const string Features = "Features";
+    public const string Admin = "Admin";
 }
 
 /// <summary>
@@ -46,7 +49,7 @@ internal static class SchedulerOpenApi
 
         Public reads are anonymous. Customer names, VINs and registrations are masked unless the caller has an API role. Writes
         require Admin or ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me`
-        discovers the caller.
+        discovers the caller. Resource and policy edits, their reads and audit history require Admin.
 
         - **401** - sign-in required (`unauthenticated`, with `loginUrl`).
         - **403** - the caller has no permitted role (`forbidden`).
@@ -55,6 +58,8 @@ internal static class SchedulerOpenApi
           `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).
         - **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,
           `concurrency-conflict`).
+        - **412** - Admin edit used a stale ETag (`precondition-failed`, with `current` and `currentETag`).
+        - **428** - Admin edit requires `If-Match` (`precondition-required`).
         - **429** - rate limited (`rate-limited`, with `Retry-After`).
 
         The full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).
@@ -69,6 +74,7 @@ internal static class SchedulerOpenApi
         ("Identity", "The current caller, API roles and hosted Access navigation URLs."),
         (ApiTags.Schedule, "The dispatch board: a dealership's bays, technicians and appointments for one day."),
         (ApiTags.Features, "Environment-wide switches for client rendering, identical for every caller."),
+        (ApiTags.Admin, "Admin-only resource editing, typed policy previews and change history."),
     ];
 
     private const string TraceIdProperty = "traceId";
@@ -85,6 +91,7 @@ internal static class SchedulerOpenApi
             .AddSchemaTransformer(TransformParameterSchema)
             .AddSchemaTransformer(TypeStringEnums)
             .AddSchemaTransformer(DescribeExactEnumNames)
+            .AddSchemaTransformer(Features.Admin.Shared.AdminOpenApiExamples.DescribeAsync)
             .AddSchemaTransformer(DocumentProblemTraceId)
             .AddOperationTransformer(DocumentAccessSecurity)
             .AddOperationTransformer(AddResponseHeaders)
@@ -196,6 +203,18 @@ internal static class SchedulerOpenApi
     /// </summary>
     internal static Task DescribeExactEnumNames(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
+        if (context.JsonPropertyInfo is { AttributeProvider: { } arrayMember, PropertyType.IsArray: true } arrayProperty
+            && arrayMember.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false).OfType<JsonConverterAttribute>()
+                .Any(a => a.ConverterType is { IsGenericType: true } converter && converter.GetGenericTypeDefinition() == typeof(ExactEnumNameArrayConverter<>)))
+        {
+            schema.Type = JsonSchemaType.Array;
+            schema.Items = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String,
+                Enum = Enum.GetNames(arrayProperty.PropertyType.GetElementType()!).Select(name => (JsonNode)JsonValue.Create(name)).ToList(),
+            };
+        }
+
         // The attribute, not the converter instance: a nullable property's converter is the framework's wrapper around ours.
         if (context.JsonPropertyInfo is { AttributeProvider: { } member } property
             && member.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false).OfType<JsonConverterAttribute>()
@@ -256,6 +275,14 @@ internal static class SchedulerOpenApi
                 Type = JsonSchemaType.Array, Items = new OpenApiSchema { Type = JsonSchemaType.String },
                 Description = "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour.",
             };
+            schema.Properties["currentETag"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String, Description = "On 412 precondition-failed, the current strong ETag, including quotes. Also sent as the ETag header.",
+            };
+            schema.Properties["current"] = new OpenApiSchema
+            {
+                Description = "On 412 precondition-failed, the current Admin resource or policy representation.",
+            };
             schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
             schema.Required.Add(TraceIdProperty);
         }
@@ -301,6 +328,8 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
+    private static List<JsonNode> Strings(IEnumerable<string> values) => [.. values.Select(value => (JsonNode)JsonValue.Create(value))];
+
     internal static Task TransformDocument(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
     {
         document.Info = new OpenApiInfo
@@ -324,6 +353,59 @@ internal static class SchedulerOpenApi
                 Description = "Hostname-scoped Access application JWT from /auth/login (Cookie Path Attribute disabled). Validated by the API on public paths. Browser sends it automatically; header takes precedence.",
             },
         };
+
+        // Add cross-schema unions after all endpoint schemas exist. A schema transform runs before later endpoints are generated.
+        foreach (var name in new[] { "ProblemDetails", "HttpValidationProblemDetails" })
+        {
+            if (document.Components.Schemas is { } problemSchemas && problemSchemas.TryGetValue(name, out var problemSchema) && problemSchema is OpenApiSchema problem)
+            {
+                problem.Properties!["current"] = new OpenApiSchema
+                {
+                    Description = "On 412 precondition-failed, the current Admin resource or policy representation.",
+                    OneOf = [new OpenApiSchemaReference("AdminTechnicianResponse", document),
+                        new OpenApiSchemaReference("AdminBayResponse", document), new OpenApiSchemaReference("AdminPolicyResponse", document)],
+                };
+            }
+        }
+        if (document.Components.Schemas is { } auditSchemas && auditSchemas.TryGetValue("AdminHistoryItem", out var auditSchema) && auditSchema is OpenApiSchema history)
+        {
+            history.Properties!["before"] = new OpenApiSchema
+            {
+                Description = "Previous bounded reference state, null on creation. Shape follows resourceKind.",
+                OneOf = [new OpenApiSchema { Type = JsonSchemaType.Null },
+                    new OpenApiSchemaReference("TechnicianWriteRequest", document), new OpenApiSchemaReference("BayWriteRequest", document),
+                    new OpenApiSchemaReference("AdminPolicyResponse", document)],
+            };
+            history.Properties["after"] = new OpenApiSchema
+            {
+                Description = "Committed bounded reference state. Shape follows resourceKind.",
+                AnyOf = [new OpenApiSchemaReference("TechnicianWriteRequest", document), new OpenApiSchemaReference("BayWriteRequest", document),
+                    new OpenApiSchemaReference("AdminPolicyResponse", document)],
+            };
+        }
+        // Closed vocabularies the API writes as plain strings, enumerated from their single source, so a rename or a new value changes the
+        // contract and the generated client (OpenApiContractTests pins each enum against that source).
+        if (document.Components.Schemas is { } schemas)
+        {
+            if (schemas.TryGetValue("CompetenceWarningResponse", out var warning) && warning is OpenApiSchema { Properties: { } warningProperties }
+                && warningProperties.TryGetValue("reasonCodes", out var reasonCodes) && reasonCodes is OpenApiSchema { Items: OpenApiSchema reasons })
+            {
+                reasons.Enum = Strings(CompetenceReasonCodes.All);
+            }
+            if (schemas.TryGetValue("AdminHistoryItem", out var item) && item is OpenApiSchema { Properties: { } itemProperties })
+            {
+                if (itemProperties.TryGetValue("resourceKind", out var kind) && kind is OpenApiSchema kindSchema) { kindSchema.Enum = Strings(AdminVocabulary.ResourceKinds); }
+                if (itemProperties.TryGetValue("action", out var action) && action is OpenApiSchema actionSchema) { actionSchema.Enum = Strings(AdminVocabulary.Actions); }
+            }
+            // AdminHistoryItem's before/after unions above replaced the only use of JsonElement; drop the empty, unreferenced component.
+            schemas.Remove("JsonElement");
+        }
+        if (document.Paths?.Values.SelectMany(path => path.Operations?.Values ?? Enumerable.Empty<OpenApiOperation>())
+                .SingleOrDefault(operation => operation.OperationId == "GetAdminHistory") is { Parameters: { } historyParameters }
+            && historyParameters.SingleOrDefault(parameter => parameter.Name == "resourceKind")?.Schema is OpenApiSchema kindFilter)
+        {
+            kindFilter.Enum = Strings(AdminVocabulary.ResourceKinds);
+        }
 
         // The order is explicit (a sorted set ranked by the fixed list), not a hash set's enumeration order, so the build-time document
         // is byte-stable. A tag outside the list (a review miss) is kept after the fixed ones, by name, rather than silently dropped.
