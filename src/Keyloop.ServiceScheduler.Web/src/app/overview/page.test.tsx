@@ -176,6 +176,20 @@ describe("bookings per day", () => {
     expect(sunday).toHaveTextContent("Sun 18 OctClosed")
     expect(within(sunday).getByRole("link", { name: "Sun 18 Oct" })).toHaveAttribute("href", `/dispatch?dealership=${reading.id}&date=2026-10-18`)
   })
+
+  it("makes each day's link in the table a 44 px row-high touch target on a coarse pointer and below md", async () => {
+    mockBoardApi()
+    renderBoard(overview)
+
+    const region = await screen.findByRole("region", { name: "Bookings per day" })
+    fireEvent.click(within(region).getByRole("tab", { name: "Table" }))
+    const link = within(await within(region).findByRole("table")).getByRole("link", { name: "Fri 16 Oct" })
+
+    // jsdom has no layout: the sizes are measured in a browser (Task 28b review round 1); here the classes that give them.
+    for (const size of ["pointer-coarse:min-h-11", "max-md:min-h-11"]) expect(link).toHaveClass(size)
+    // The cell gives up its vertical padding there, so the link fills the 44 px row instead of growing it.
+    for (const padding of ["pointer-coarse:py-0", "max-md:py-0"]) expect(link.closest("td")).toHaveClass(padding)
+  })
 })
 
 describe("the service mix", () => {

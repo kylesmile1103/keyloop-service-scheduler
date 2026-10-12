@@ -270,10 +270,11 @@ function DayTable({ days, dealershipId, today }: { days: readonly DayCount[]; de
         <TableBody>
           {days.map((day) => (
             <TableRow key={day.date} data-today={day.when === "today" || undefined} className="data-today:bg-muted/50">
-              <TableCell>
+              {/* On touch and below md the link is a 44 px target filling the row's height (the cell drops its padding). */}
+              <TableCell className="max-md:py-0 pointer-coarse:py-0">
                 <Link
                   to={boardOf(day.date)}
-                  className="rounded-sm text-signal underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="rounded-sm text-signal underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:inline-flex max-md:min-h-11 max-md:items-center pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
                 >
                   {formatDay(day.date, "short")}
                 </Link>
