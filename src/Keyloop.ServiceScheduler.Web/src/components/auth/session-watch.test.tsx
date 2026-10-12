@@ -7,7 +7,7 @@ import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
-import { renderBoard } from "@/test/render-board"
+import { phoneViewport, renderBoard } from "@/test/render-board"
 import { readingTuesday } from "@/test/schedules"
 
 // The server's word on identity, answered in one place (Task 27b): 401 and 403 from any read or write, and the cache
@@ -248,6 +248,26 @@ describe("a change of identity", () => {
     await waitFor(() => expect(screen.getAllByText("*******").length).toBeGreaterThan(0))
     expect(recordReads()).toBe(readsBefore)
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
+  })
+
+  it("keeps focus in the page's content when the sheet closes on a phone while the board reads its day again", async () => {
+    phoneViewport()
+    let me: CurrentUserResponse = admin
+    mockBoardApi({ me: () => me, schedule: () => scheduleFor(me) })
+    renderBoard(board)
+    // The agenda's card names the customer too.
+    fireEvent.click(await screen.findByRole("button", { name: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed" }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
+
+    me = anonymous
+    refocus()
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    // In the page's content (the board, or the content around it while the board reads its day again), not on the body or
+    // the skip link at the top of the page.
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body))
+    expect(document.getElementById("content")?.contains(document.activeElement)).toBe(true)
   })
 
   it("does not read an open booking's record again when the window regains focus, before /me has answered", async () => {

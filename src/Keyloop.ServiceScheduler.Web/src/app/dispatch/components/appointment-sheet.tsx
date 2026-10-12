@@ -94,8 +94,14 @@ export function AppointmentSheet({
         side={side}
         initialFocus={() => (initialFocus === "reason" ? reasonRef.current : null) ?? titleRef.current ?? true}
         // A dialog opened over the sheet keeps focus when the sheet closes beneath it (the session dialog, after a refusal
-        // that also closed the sheet because the identity changed).
-        finalFocus={() => (focusInOtherDialog(popupRef.current) ? false : (returnFocus() ?? true))}
+        // that also closed the sheet because the identity changed). Otherwise focus goes back where the sheet came from, or,
+        // when that is gone (the view reading its data again after the identity changed), to the page's content rather
+        // than wherever the browser would fall back to.
+        finalFocus={() => {
+          if (focusInOtherDialog(popupRef.current)) return false
+          const target = returnFocus()
+          return target?.isConnected ? target : (document.getElementById("content") ?? true)
+        }}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
           side === "right" && "w-full"
