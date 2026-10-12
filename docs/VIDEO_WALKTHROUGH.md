@@ -178,7 +178,7 @@ cut to completion; do not substitute an invented test count or duration.
 ### 8:00–9:30 - AI collaboration narrative
 
 Open [SYSTEM_DESIGN.md §16](SYSTEM_DESIGN.md#16-genai-co-design-record), the
-[implementation plan](superpowers/plans/2026-10-11-keyloop-service-scheduler.md),
+local implementation plan (the author's working notes, not in the repository),
 and the README's **AI Collaboration Narrative**. Show the real history:
 
 ```bash

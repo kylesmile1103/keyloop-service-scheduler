@@ -170,7 +170,7 @@ A second cancel returns `409 invalid-state-transition` with `currentStatus` and 
 
 ## Project layout
 
-The integrated layout follows ADR-025 and the dated update to the [implementation plan](docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md):
+The integrated layout follows ADR-025:
 
 ```text
 src/
@@ -265,7 +265,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 
 ## Runtime reflection budget
 
-The source-generation policy is [ADR-016 / §9.1](docs/SYSTEM_DESIGN.md#91-runtime-reflection-budget-and-nativeaot-readiness) and [Addendum A §A8](docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md#a8-measuring-what-remains-task-18). Run:
+The source-generation policy is [ADR-016 / §9.1](docs/SYSTEM_DESIGN.md#91-runtime-reflection-budget-and-nativeaot-readiness). Run:
 
 ```bash
 scripts/aot-readiness.sh
@@ -326,7 +326,7 @@ It is intentionally deferred. A compiled model must be regenerated whenever the 
 
 Claude **Fable 5.1** designed the architecture and written plan, following the stakeholder's design-first instruction. Claude **Opus 5.5** implemented and reviewed through subagent-driven development: task briefs, implementer reports, independent reviews, fix rounds and scoped re-reviews. The early runner/primitive work also used Sonnet-labelled agents in the ledger; git trailers attribute those earlier commits to Fable, so a trailer is not proof of the precise model behind every subagent. When the stakeholder requested parallel work, the controller created separate backend, concurrency and frontend lanes, with one implementer per worktree.
 
-The prompts' durable specification is the [task plan](docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md), its [reflection](docs/superpowers/plans/2026-10-11-addendum-reflection-aot.md), [OpenAPI/UI](docs/superpowers/plans/2026-10-11-addendum-openapi-ui.md) and [Aspire](docs/superpowers/plans/2026-10-11-addendum-aspire.md) addenda, and [HANDOFF.md](docs/HANDOFF.md), especially stakeholder intent and its raw narrative material. The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
+The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [SYSTEM_DESIGN.md §18](docs/SYSTEM_DESIGN.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
 
 At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`37e31c0`, `e7e7b69`, `eb0d46f`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`0ce37bf` through `33b3c65`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes await integration in the ledger snapshot used for this draft.
 
@@ -342,7 +342,7 @@ Builds use warnings as errors; reflection-based JSON is disabled in both API and
 
 ### Defects the process found
 
-The first rows reproduce the substance of HANDOFF §9; later rows extend it with the task reports, ledger and commit history. Outcomes describe recorded branch work, not a claim that every fix is already integrated.
+The first rows reproduce the substance of the hand-off notes' defect log; later rows extend it with the task reports, ledger and commit history. Outcomes describe recorded branch work, not a claim that every fix is already integrated.
 
 | Where | Defect and discovery | Recorded outcome |
 |---|---|---|

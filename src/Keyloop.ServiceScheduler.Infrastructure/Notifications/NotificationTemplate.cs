@@ -59,7 +59,7 @@ internal static class NotificationTemplate
     /// </summary>
     internal static string FormatLocal(DateTime utc, TimeZoneInfo zone, string zoneId)
     {
-        // A DateTimeOffset, not a DateTime: "zzz" on a DateTime formats the machine's offset, not the zone's (HANDOFF §8).
+        // A DateTimeOffset, not a DateTime: "zzz" on a DateTime formats the machine's offset, not the zone's.
         var local = TimeZoneInfo.ConvertTime(new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)), zone);
         return string.Create(CultureInfo.InvariantCulture, $"{local:dddd d MMMM yyyy, HH:mm} (UTC{local:zzz}, {zoneId})");
     }

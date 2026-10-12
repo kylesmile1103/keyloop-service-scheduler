@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Resuming this project in a fresh session? Read `docs/HANDOFF.md` first** - current state, process, remaining tasks with binding carry-overs, rulings and gotchas.
+> **Resuming this project in a fresh session on the author's machine? Read the local `docs/HANDOFF.md` first** (git-ignored work-in-progress notes: current state, process, remaining tasks with binding carry-overs, rulings and gotchas).
 
 ## What this repository is
 
-The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). Two documents are the source of truth and must stay consistent with the code:
+The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). `docs/SYSTEM_DESIGN.md` is the source of truth and must stay consistent with the code; the author's local planning notes add task detail:
 
 - `docs/SYSTEM_DESIGN.md` - domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
-- `docs/superpowers/plans/2026-10-11-keyloop-service-scheduler.md` - the task-by-task implementation plan with exact type names and test lists.
+- `docs/superpowers/plans/` (local, git-ignored) - the task-by-task implementation plan and its addenda (A reflection/AOT, B OpenAPI/UI, C Aspire), cited in code comments as "Addendum X"; the committed equivalents are the ADRs.
 
 ## Commands
 
