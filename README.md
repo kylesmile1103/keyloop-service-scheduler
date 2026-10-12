@@ -432,7 +432,7 @@ The [video walkthrough guide](docs/VIDEO_WALKTHROUGH.md) gives the planned archi
 
 ## Licence and attribution
 
-The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template, Vite variant**, and MIT shadcn/ui primitives. Keep their copyright and permission notices; the upstreams are listed below. The frontend branch contains `src/Keyloop.ServiceScheduler.Web/THIRD-PARTY-NOTICES.md`, which lists copied source and its modifications. No repository-wide application licence is inferred from the template's licence.
+The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template (Vite variant)** by ShadcnStore and the MIT **shadcn/ui** primitives it vendors: the project layout and configuration, the application shell, `components/ui/*`, the Tailwind v4 theme tokens, and several template apps adapted to the generated API client with their sample data removed (dashboard cards for the KPI strip and stress tallies, the calendar's date picker, lane filter, agenda and event form, the users app's form dialog and stat cards, and the tasks app's data table for the Appointments list). Each adopted file names its template source in a header comment. Their copyright and permission notice, which must accompany copies of that code, is reproduced at the end of this section. No repository-wide application licence is inferred from the template's licence.
 
 Reference material, kept outside this repository (one level up, never committed):
 
@@ -442,6 +442,36 @@ Reference material, kept outside this repository (one level up, never committed)
 | carcareco | https://github.com/rene98c/carcareco | see upstream | Domain inspiration only (vehicle/work-order shape); no code copied |
 | MiroTalk WEB (booking module) | https://github.com/miroslavpejic85/mirotalkwebrtc | AGPL-3.0 | Design inspiration only (availability model, DST handling, re-check-then-insert); **no code copied** |
 
-The initial frontend uses Inter under **SIL Open Font License 1.1**. The approved design-system adoption selects **Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono**, also OFL fonts, with package-provided licence notices. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The private `design/images/README.md` records prompts, refinements, alt text and provenance; no image-model version is asserted.
+The typefaces are **Plus Jakarta Sans** (Copyright 2020 The Plus Jakarta Sans Project Authors), **IBM Plex Sans** (Copyright 2019 IBM Corp.) and **IBM Plex Mono** (Copyright 2017 IBM Corp.), all under the **SIL Open Font License 1.1**, served from the `@fontsource` packages whose `LICENSE` files carry the full licence text. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The private `design/images/README.md` records prompts, refinements, alt text and provenance; no image-model version is asserted.
 
-**`TODO(attribution)`:** after theme/assets integration, commit the shipped illustration provenance and OFL notices, reconcile `THIRD-PARTY-NOTICES.md` with the actual font packages and copied components, and add working links here. Record the author's application licence decision separately; do not label the entire repository MIT without an application licence file.
+**`TODO(attribution)`:** commit the shipped illustration provenance and add working links here. Record the author's application licence decision separately; do not label the entire repository MIT without an application licence file.
+
+<details>
+<summary>MIT licence of the shadcn dashboard template and shadcn/ui</summary>
+
+```
+MIT License
+
+Copyright (c) 2025 ShadcnStore
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>

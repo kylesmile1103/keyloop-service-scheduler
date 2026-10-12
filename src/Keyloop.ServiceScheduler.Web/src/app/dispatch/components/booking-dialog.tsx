@@ -1,5 +1,5 @@
 /*
- * Adopted from the shadcn dashboard template (MIT; THIRD-PARTY-NOTICES.md): the dialog, date field and select layout of
+ * Adopted from the shadcn dashboard template (MIT; notice in the README): the dialog, date field and select layout of
  * `vite-version/src/app/calendar/components/event-form.tsx`, and the react-hook-form + zod + `Field` pattern of
  * `vite-version/src/app/users/components/user-form-dialog.tsx`. Adapted to the generated API client, the two-step stepper,
  * slot chips instead of free time inputs, the full-screen sheet on phones and the design system (DESIGN_SYSTEM 11.14).

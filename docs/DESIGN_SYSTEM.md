@@ -901,7 +901,7 @@ Paths are relative to `src/Keyloop.ServiceScheduler.Web` unless they start with 
    build: { assetsInlineLimit: (file: string) => (/\.woff2?$/.test(file) ? false : undefined) },
    ```
    `false` never inlines a font; `undefined` keeps Vite's 4 KB rule for everything else. Without it, Vite inlines the Plus Jakarta Sans cyrillic-ext subset as a `data:` URI, which the production CSP (`font-src 'self'`) blocks.
-5. In `THIRD-PARTY-NOTICES.md`, replace the whole `## Inter typeface` section with these three sections (header step J):
+5. In the attribution notices (since 2026-10-12 the README's licence section), replace the whole `## Inter typeface` section with these three sections (header step J):
    ```markdown
    ## Plus Jakarta Sans typeface
 
@@ -996,7 +996,7 @@ These are the only edits the theme needs in existing components; they keep the c
 
 - [ ] The two `rg` checks in 17.2 print nothing.
 - [ ] `pnpm test` passes, including the theme token test; `grep -c "data:font" dist/assets/*.css` prints 0.
-- [ ] `THIRD-PARTY-NOTICES.md` lists Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono, and no longer lists Inter.
+- [ ] The attribution notices (the README's licence section) list Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono, and no longer list Inter.
 - [ ] Light and dark screenshots at 375, 390, 768, 1024 and 1440 px: no horizontal page scroll, no clipped text, targets 44 px on touch.
 - [ ] Keyboard pass: every control reachable, focus always visible and signal blue (including **Cancel appointment** and links), `Esc` closes overlays.
 - [ ] Every status shows icon + label; every outcome shows icon + word; every problem shows its trace id; every empty or error view has one clear action.
@@ -1028,7 +1028,7 @@ Document:
 - **Problems (11.16)**: 404, 429 (with `Retry-After`) and any other 4xx added.
 - **Colour checks (17.2)**: both commands scan `.ts` too and catch `white`/`black` and `var(--kl-*)`/`var(--domain-*)`; tested against fixtures (a `.ts` status map with `bg-blue-500 text-white` and `#ff0000` is now caught) and against the current source (only the two scrims, which the recipes fix).
 - **Template adoption (11.19)**: rules for `section-cards`, `calendars`, the date picker, the calendar list view, the booking form, the optional chart, and the 404 and error-boundary routes (added to 12.1).
-- **Fonts (17.1)**: Vite `assetsInlineLimit` step. The verifier's suggested `(file) => !/\.woff2?$/.test(file)` returns `true` for every other file, which would inline every image, the 82–151 KB illustrations included; the step uses `false`/`undefined` instead. `THIRD-PARTY-NOTICES.md` replacement text written out.
+- **Fonts (17.1)**: Vite `assetsInlineLimit` step. The verifier's suggested `(file) => !/\.woff2?$/.test(file)` returns `true` for every other file, which would inline every image, the 82–151 KB illustrations included; the step uses `false`/`undefined` instead. The font attribution replacement text is written out.
 - **Buttons (11.2, 17.3)**: every size, `xs` and `icon-xs` included, grows to 44 px on touch; the `sm` size's `text-[0.8rem]` and radius clamps removed.
 - **Brand fidelity**: the lane toggle is Service Hub's signal-blue segmented control (11.5); the carbon app bar is considered and declined (11.1); the fusion-purple link correction is explained (3.4); the deliberate departures from Addendum B §B4 hues (4.3) and from keyloop.com's type scale and circle-arrow icon (5.2) are stated.
 - **Header band (12.3)**: re-measured over every pixel the header covers at widths from 320 px: light band navy 8.52:1, muted 3.59:1, ring 2.42:1; dark band `#f1f1f3` 7.05:1, ring 3.04:1. v1's 8.6:1, 7.1:1 and 2.5:1 were slightly high. The brand verifier's 6.98:1 and this revision's 7.05:1 for the same pixel differ only by WebP decoder (sips against ffmpeg); the doc now states the floor every decoder clears (6.9:1) and labels the second decimal as noise. The images README's 7.88:1 is for white `#ffffff`, not the theme's `#f1f1f3`. The offset-ring rule now also gives the focused button a background fill, because a ring offset only shields the ring's outer side.
