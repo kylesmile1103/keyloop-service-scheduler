@@ -18,10 +18,11 @@ public sealed class VehicleAwareRequirementTests
     {
         // The heavy-vehicle rule (order 50, level 0) fires after hv-routine (order 20, level 2): the minimum is the maximum, not the last.
         { Powertrain.BatteryElectric, VehicleClass.Heavy, "BRAKES-PADS-DISCS", false, 2, "StandardLift,HeavyDutyLift", "Brakes,HeavyVehicle", "hv-routine,heavy-vehicle" },
-        // The legacy HighVoltageElectrical certification is a level 3 floor on component work, even for a declared ICE vehicle.
-        { Powertrain.Ice, VehicleClass.Car, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "" },
-        { Powertrain.Unknown, VehicleClass.Unknown, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "hv-components" },
-        { Powertrain.BatteryElectric, VehicleClass.Car, "EV-CHARGING-FAULT", false, 3, "EvHighVoltage", "Diagnostics", "hv-components" },
+        // The legacy HighVoltageElectrical certification is a level 3 floor on component work, even for a declared ICE vehicle, and is
+        // named first in the explanation so that a level 3 minimum on an ICE vehicle is never unexplained.
+        { Powertrain.Ice, VehicleClass.Car, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "legacy-hv-component" },
+        { Powertrain.Unknown, VehicleClass.Unknown, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "legacy-hv-component,hv-components" },
+        { Powertrain.BatteryElectric, VehicleClass.Car, "EV-CHARGING-FAULT", false, 3, "EvHighVoltage", "Diagnostics", "legacy-hv-component,hv-components" },
         { Powertrain.Unknown, VehicleClass.Heavy, "INTERIM-SERVICE", false, 2, "StandardLift,HeavyDutyLift", "GeneralService,HeavyVehicle", "hv-routine,heavy-vehicle" },
         { Powertrain.Ice, VehicleClass.Heavy, "MOT-TEST", false, 0, "MotTesting,HeavyDutyLift", "MotTester,HeavyVehicle", "heavy-vehicle" },
         { Powertrain.Ice, VehicleClass.Heavy, "HEAVY-VAN-SERVICE", false, 0, "HeavyDutyLift", "HeavyVehicle", "heavy-vehicle" },
@@ -35,7 +36,7 @@ public sealed class VehicleAwareRequirementTests
         // Live HV work is explicit: level 4 and an EV bay whatever the declared powertrain, added after every other rule.
         { Powertrain.Ice, VehicleClass.Car, "INTERIM-SERVICE", true, 4, "StandardLift,EvHighVoltage", "GeneralService", "hv-live-diagnosis" },
         { Powertrain.FuelCell, VehicleClass.Car, "DIAG-FAULT-FINDING", true, 4, "Diagnostics,EvHighVoltage", "Diagnostics", "hv-routine,hv-live-diagnosis" },
-        { Powertrain.FullHybrid, VehicleClass.Heavy, "EV-CHARGING-FAULT", true, 4, "EvHighVoltage,HeavyDutyLift", "Diagnostics,HeavyVehicle", "hv-components,heavy-vehicle,hv-live-diagnosis" },
+        { Powertrain.FullHybrid, VehicleClass.Heavy, "EV-CHARGING-FAULT", true, 4, "EvHighVoltage,HeavyDutyLift", "Diagnostics,HeavyVehicle", "legacy-hv-component,hv-components,heavy-vehicle,hv-live-diagnosis" },
     };
 
     [Theory]
@@ -63,7 +64,7 @@ public sealed class VehicleAwareRequirementTests
         var reversed = RequirementRule.DefaultPolicy(Site).Reverse().ToArray();
 
         RequirementResolver.Resolve(service, profile, reversed, needsLiveDiagnosis: true).FiredRules
-            .ShouldBe(["hv-components", "heavy-vehicle", "hv-live-diagnosis"]);
+            .ShouldBe(["legacy-hv-component", "hv-components", "heavy-vehicle", "hv-live-diagnosis"]);
     }
 
     [Theory]

@@ -5,6 +5,14 @@ namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 /// <summary>Pure, deterministic and monotone resolution of one version of a dealership policy.</summary>
 public static class RequirementResolver
 {
+    /// <summary>
+    /// The explanation code of the legacy level-3 floor: a service that requires the <c>HighVoltageElectrical</c> certification is HV
+    /// component work for any vehicle, including a declared ICE one, so it needs level 3 before any policy rule applies. Named first in
+    /// <see cref="JobRequirements.FiredRules"/> (and counted on <c>scheduler.requirements.rule_fired</c>) so a level 3 minimum is never
+    /// unexplained. It is not a policy row: the service catalogue, not the dealership policy, carries it.
+    /// </summary>
+    public const string LegacyHvComponentRule = "legacy-hv-component";
+
     public static JobRequirements Resolve(ServiceType service, VehicleProfile profile, IReadOnlyList<RequirementRule> rules, bool needsLiveDiagnosis = false)
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -19,8 +27,9 @@ public static class RequirementResolver
         // The legacy boolean denotes HV component work. Phase 1 replaces that boolean with the level, including for an ICE vehicle
         // explicitly booked for an EV component service; the service itself still requires level 3.
         var certifications = service.RequiredCertifications.Where(c => c != Resources.Certification.HighVoltageElectrical).ToHashSet();
-        var minimum = service.RequiredCertifications.Contains(Resources.Certification.HighVoltageElectrical) ? 3 : 0;
-        var fired = new List<string>();
+        var legacyComponentWork = service.RequiredCertifications.Contains(Resources.Certification.HighVoltageElectrical);
+        var minimum = legacyComponentWork ? 3 : 0;
+        var fired = legacyComponentWork ? new List<string> { LegacyHvComponentRule } : [];
         foreach (var rule in rules.OrderBy(r => r.Order).ThenBy(r => r.Code, StringComparer.Ordinal).ThenBy(r => r.Id))
         {
             if (rule.MinimumHvLevel is < 0 or > 4)

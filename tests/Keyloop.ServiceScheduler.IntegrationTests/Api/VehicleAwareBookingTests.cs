@@ -80,7 +80,9 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         body.RootElement.GetProperty("minimumHvLevel").GetInt32().ShouldBe(4);
         body.RootElement.GetProperty("requiredBrand").ValueKind.ShouldBe(JsonValueKind.Null);
-        body.RootElement.GetProperty("firedRules").EnumerateArray().Select(r => r.GetString()).ShouldContain("hv-live-diagnosis");
+        // The legacy component floor is named as well, so the dispatcher can see why level 3 would apply even to a declared ICE vehicle.
+        body.RootElement.GetProperty("firedRules").EnumerateArray().Select(r => r.GetString()).ShouldBe(
+            declareIce ? ["legacy-hv-component", "hv-live-diagnosis"] : ["legacy-hv-component", "hv-components", "hv-live-diagnosis"]);
     }
 
     [Fact]

@@ -44,7 +44,8 @@ probes = [
     ("resolver-heavy-condition", RESOLVER, "RequirementCondition.VehicleClass => profile.VehicleClass == rule.VehicleClass,",
         "RequirementCondition.VehicleClass => false,"),
     ("resolver-live-condition", RESOLVER, "RequirementCondition.LiveDiagnosis => needsLiveDiagnosis,", "RequirementCondition.LiveDiagnosis => false,"),
-    ("resolver-legacy-floor", RESOLVER, "HighVoltageElectrical) ? 3 : 0;", "HighVoltageElectrical) ? 0 : 0;"),
+    ("resolver-legacy-floor", RESOLVER, "var minimum = legacyComponentWork ? 3 : 0;", "var minimum = legacyComponentWork ? 0 : 0;"),
+    ("resolver-legacy-explanation", RESOLVER, "legacyComponentWork ? new List<string> { LegacyHvComponentRule } : []", "new List<string>()"),
     ("resolver-order", RESOLVER, "rules.OrderBy(r => r.Order)", "rules.OrderByDescending(r => r.Order)"),
     ("resolver-unknown-inherits", RESOLVER, "|| (powertrain == Powertrain.Unknown && rule.Powertrains.Any(p => p != Powertrain.Ice))", ""),
     # Qualification predicates.
