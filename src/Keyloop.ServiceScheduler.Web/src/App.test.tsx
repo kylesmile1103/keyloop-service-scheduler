@@ -114,13 +114,14 @@ describe("app shell", () => {
     expect(reference).toHaveAccessibleName(/opens in a new tab/)
   })
 
-  it("says plainly that the app does not show the signed-in account yet", async () => {
+  it("shows who is signed in, and their role, in the sidebar's user row", async () => {
     renderAt("/dispatch")
     await pageHeading("Dispatch board")
 
-    expect(screen.getByText("Your account")).toBeInTheDocument()
-    expect(screen.getByText("Not shown in the app yet")).toBeInTheDocument()
-    expect(screen.queryByText(/anonymous mode/i)).not.toBeInTheDocument()
+    // The default mock is a Service advisor (src/test/identities.ts).
+    expect(await screen.findByText("Sam Advisor")).toBeInTheDocument()
+    expect(screen.getByText("Service advisor")).toBeInTheDocument()
+    expect(screen.queryByText(/Not shown in the app yet/)).not.toBeInTheDocument()
   })
 
   it("offers a skip link to the page content", async () => {
