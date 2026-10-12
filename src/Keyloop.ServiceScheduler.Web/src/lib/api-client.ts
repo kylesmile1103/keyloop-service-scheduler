@@ -27,7 +27,7 @@ export function keepStatusOfBareErrors(error: unknown, response: Response | unde
   return new UnexpectedResponseError(response.status, response.statusText, body)
 }
 
-/** Registers the interceptors on a client once; repeated calls (module reloads during development) change nothing. */
+/** Registers each current interceptor function once. HMR can create new function identities on the same client. */
 export function configureApiClient(target: Client): Client {
   if (!target.interceptors.request.exists(stampRequestId)) target.interceptors.request.use(stampRequestId)
   if (!target.interceptors.error.exists(keepStatusOfBareErrors)) target.interceptors.error.use(keepStatusOfBareErrors)

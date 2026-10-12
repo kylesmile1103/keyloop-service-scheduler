@@ -55,7 +55,7 @@ Only approved recipients can be sent mail. Reserved example/test/invalid/localho
 
 ## Deployment runbook, REQUIRES USER CONFIRMATION
 
-The source runbook is the SDD **Cloudflare architecture proposal**, `.superpowers/sdd/2026-10-11-keyloop-service-scheduler/cloudflare/cloudflare-architecture-proposal.md`, sections 4.8-4.10, with its binding Feasibility review corrections. No deployment, account mutation or real send is part of local verification.
+The committed source of truth is [ARCHITECTURE's Cloudflare deployment view](../../docs/ARCHITECTURE.md#101-cloudflare-deployment-profile) and [ADR-022..024](../../docs/ARCHITECTURE.md#18-architecture-decision-records); the steps below carry its deployment gates. No deployment, account mutation or real send is part of local verification.
 
 1. **REQUIRES USER CONFIRMATION:** create the Neon Free PG17 London project, pin compute to 0.25 CU without autoscaling, apply the owner-role migration bundle, grant the runtime DML role, and populate Secrets Store securely.
 2. **REQUIRES USER CONFIRMATION:** prepare the sending subdomain, its six child DNS records and DMARC `p=reject`, disable Email preview, and enforce HTTPS on this hostname. The subdomain preview operation is a POST expected to be non-mutating; include it in the same confirmation as onboarding (F12).

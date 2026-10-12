@@ -2,6 +2,8 @@
 
 These scripts use the committed [OpenAPI contract](../../../contracts/openapi/v1.json) and public `/api/v1` routes. They complement the [30-way PostgreSQL concurrency proof](../../Keyloop.ServiceScheduler.IntegrationTests/Concurrency/ConcurrentBookingTests.cs). The k6 proof checks HTTP outcomes and active appointments through the API; database constraints, audit rows, deadlocks and constraint-backstop counters remain integration-test assertions.
 
+Bookings deliberately use `@example.invalid`, a reserved domain staged as `Suppressed` by the notification recipient policy. Load therefore never sends email. These scenarios exercise the atomic suppressed-outbox write, but leave Pending claims, rendering, provider sends, retries and delivery latency to notification integration tests.
+
 Requires k6 2.1.0, .NET 10 and Docker for the local API, plus jq for `selftest.sh`. Run commands from the repository root. No remote JavaScript modules or extensions are downloaded. `run.sh` disables anonymous usage reporting, inherited metric outputs, tracing and the web dashboard. It reads the included config instead of personal k6 configuration. Local JSON and HTML reports are the default outputs.
 
 ## Isolated local stack

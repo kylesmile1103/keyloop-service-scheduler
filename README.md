@@ -4,7 +4,7 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Jev through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. When it is on, the dispatch board's booking dialog offers it in its first step: describe the issue, get suggested services, and use one to fill in the service and day.
 
-**Draft status, `TODO(final-gate)`:** the backend and frontend are integrated, including the Aspire web resource and a local Demo Compose rehearsal. The final clean-clone gate, coverage, screenshots, public deployment and CI run results remain pending.
+**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** complete Task 17b Chrome QA, the final whole-branch review, the clean-clone verification with coverage and screenshots, and record a hosted CI run. Public deployment is a separate stakeholder gate.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ Open **Mailpit inbox** on the `mailpit` resource for local email capture. Aspire
 
 For an isolated manual check, supply a temporary PostgreSQL password and `--AppHost:UsePersistentResources=false` after `--`; stop the AppHost afterwards. This avoids the developer's database volume and generated password default.
 
-**`TODO(final-gate)`:** record the integrated startup result and add approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports. No screenshot is embedded until that evidence exists.
+**`TODO(final-gate)`:** add Task 17b's approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports, and record the final clean-clone startup. No screenshot is embedded until that evidence exists.
 
 ## Optional booking intake triage
 
@@ -59,8 +59,8 @@ All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` categor
 The .NET tests use xunit.v3 on **Microsoft.Testing.Platform**. Pass project paths with `--project`; use MTP's `--coverage` option when collecting coverage.
 
 ```bash
-mkdir -p /tmp/kl15c
-export TMPDIR=/tmp/kl15c
+mkdir -p /tmp/keyloop-tests
+export TMPDIR=/tmp/keyloop-tests
 dotnet restore
 dotnet build -c Release -warnaserror --no-restore
 
@@ -91,7 +91,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests -c Release --no-b
   --coverage --coverage-output-format cobertura --results-directory TestResults/unit
 ```
 
-On macOS, an MTP named-pipe path can exceed the Unix socket limit when the checkout or temporary path is long. If the runner reports that error, select a shorter writable pipe directory, for example `TESTINGPLATFORM_PIPE_DIRECTORY=/tmp` for the test command. The groundwork's native-runner result did not establish MTP coverage; the integrated coverage run remains a final-gate requirement.
+Use a short `TMPDIR` because Microsoft.Testing.Platform's pipe path must stay under 104 bytes on macOS. The clean-clone coverage run remains a final-gate requirement.
 
 Frontend checks run in the web project:
 
@@ -110,11 +110,11 @@ The concurrency test's acceptance criterion is **five rounds of thirty simultane
 
 Aspire smoke tests live in a separate project because the Aspire testing host needs reflection-based JSON while the API integration process deliberately disables it. CI runs `AspireTests` after installing the web dependencies. The fixture waits for both API and web health under one five-minute startup deadline, then checks `/api/v1/dealerships` through web for JSON and the exact seeded names. Cleanup stops within 30 seconds and always disposes; tests use a supplied password, session containers and no persistent mounts, with triage disabled.
 
-The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks and a separate Aspire job. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
+The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
 
 ## Try it with curl
 
-Routes and body fields follow the [OpenAPI contract](contracts/openapi/v1.json). The cancellation route is present in Task 11's committed contract (`432ea96`); this tooling branch still contains the earlier contract. **`TODO(final-gate)`:** integrate the newer contract and rehearse this sequence against the running API, preserving its real status codes and problem payloads.
+Routes and body fields follow the integrated [OpenAPI contract](contracts/openapi/v1.json), including cancellation and triage. **`TODO(final-gate)`:** rehearse this sequence against an isolated stack, preserving its real status codes and problem payloads.
 
 Set `API_BASE` to the API's plain-HTTP endpoint from the dashboard, without a trailing slash. Set `DATE` to a future open local date in Reading, in `yyyy-MM-dd` form and within the booking horizon. Using discovered ids and an offered UTC start avoids stale, hard-coded appointment dates.
 
@@ -202,7 +202,7 @@ scripts/                     Contract export and AOT measurement
 
 Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard both the project files and the compiled assembly references.
 
-AppHost, Web and AspireTests are integration targets for this draft, as described above. Generated client files are regenerated from OpenAPI; hand-written runtime configuration stays separate from them.
+AppHost, Web and AspireTests are integrated, as described above. Generated client files are regenerated from OpenAPI; hand-written runtime configuration stays separate from them.
 
 ## Design summary
 
@@ -293,11 +293,11 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected API failures remain Error. EF's failed-commit `TransactionError` also stays Error.
 5. **Browser correlation:** inspect `ui.book_appointment` and `ui.stress_test`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
 
-`/alive` is the process probe. Task 18a makes `/health` require connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
+`/alive` is the process probe. `/health` requires connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
 
 ### Grafana Cloud
 
-**`TODO(grafana-cloud)`:** the post-deployment observability task plans Grafana Cloud OTLP export from the .NET container, credentials supplied through the platform secret store, dashboards as code managed with `gcx`, and alerts for booking faults and notification-outbox age. Browser telemetry needs a secret-free path, with Faro or a Worker relay to be decided. No dashboard URL, exporter configuration or alert deployment is claimed yet.
+**`TODO(grafana-cloud)`:** configure the .NET container's OTLP export with platform-managed credentials, verify metric translation against deployed data, publish the committed dashboards and runbooks, and prepare alerts for an approved contact point. The optional secret-free browser Worker relay and [dashboards as code](observability/grafana/README.md) are implemented and validated locally; enabling export and publishing Grafana resources remain pending.
 
 ## Runtime reflection budget
 
@@ -312,7 +312,7 @@ The script forces a Release analyzer rebuild, preserves its build exit status an
 | Concern | Implementation | Residual work |
 |---|---|---|
 | Request dispatch, JSON | Request Delegate Generator and Api `SchedulerJsonContext`; Infrastructure `PersistenceJsonContext` for audit/outbox JSON; reflection-based JSON disabled | Register every new wire/extension type; a missing registration fails instead of falling back |
-| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks replace converter-based annotation in Task 18a |
+| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks have replaced converter-based annotation (`33b3c65`) |
 | Endpoint/handler/validator discovery | Explicit registry and DI registrations | No assembly scanning |
 | Microsoft DI | Explicit registrations, framework container | Constructor discovery at startup, accepted in the budget |
 | FluentValidation | Explicit validators | Expression compilation remains; reconsider only if the brief's requirement is lifted |
@@ -323,11 +323,11 @@ The groundwork report at base `9f5a168` measured the following **historical base
 
 | Origin | Historical diagnostic count, TODO(final-gate) | Call sites and removal path |
 |---|---|---|
-| Application-owned | 1 IL2026 | `SchedulingOptions`: `RangeAttribute(Type, string, string)` on TimeSpan. Task 18a commit `33b3c65` replaces it with typed inclusive-bound checks through the generated validator; integrate and remeasure |
+| Application-owned | 1 IL2026 | `SchedulingOptions`: `RangeAttribute(Type, string, string)` on TimeSpan. Task 18a commit `33b3c65` replaces it with typed inclusive-bound checks through the generated validator; remeasure the integrated build |
 | EF Core | 5: 1 IL2026 and 4 IL3050 | `SchedulerDbContext` constructor plus `DatabaseInitializer.GetPendingMigrationsAsync`, `GetMigrations`, `MigrateAsync`. Compiled-model/query evaluation and deployment-time migrations are the removal path, without a promise that compiled models alone remove the warnings |
 | FluentValidation / other | 0 emitted | Absence from this analyzer output does not establish reflection-free dependencies or whole-program trim safety |
 
-Task 18a's separate report records removal of the owned TimeSpan warning and an additional EF migration-readiness call site. **`TODO(final-gate)`:** rerun this script after all branches integrate and replace the baseline with the final warning catalogue, counts and artifact reference.
+The owned TimeSpan warning is removed; the integrated readiness check adds an EF migration-readiness call site. **`TODO(final-gate)`:** rerun this script on the final clean clone and replace the historical baseline with its warning catalogue, counts and artifact reference.
 
 The DbContext, design-time factory and all existing migrations live in Infrastructure. Migration commands use Api as the startup project:
 
@@ -354,7 +354,7 @@ It is intentionally deferred. A compiled model must be regenerated whenever the 
 
 ## Deployment
 
-**`TODO(deployment)`:** the stakeholder intends to host the application at `keyloop.kylesmile.me` on Cloudflare after local completion, with static frontend hosting, Worker routing, a .NET container and PostgreSQL preserving the scheduling constraints and advisory locks. The recorded research ruling retains PostgreSQL rather than substituting D1, and uses Containers for the .NET API rather than assuming it executes directly in a Worker. Email delivery and Secrets Store integration precede rollout; the exact hosting, DNS and release configuration awaits the deployment tasks. No live URL or deployment command is asserted here.
+**`TODO(deployment)`:** provision the approved Neon PostgreSQL, Secrets Store inputs, DNS and Cloudflare resources, publish an API image, and rehearse sleep/wake, forwarding trust and controlled email delivery with the stakeholder. The [edge implementation and deployment runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define Worker/static assets, the .NET Container, PostgreSQL and the credential boundary. The hostname `keyloop.kylesmile.me` is the intended target, with rollout still pending.
 
 ## AI Collaboration Narrative
 
@@ -364,17 +364,17 @@ Claude **Fable 5.1** designed the architecture and written plan, following the s
 
 The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [ARCHITECTURE.md §18](docs/ARCHITECTURE.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
 
-At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`37e31c0`, `e7e7b69`, `eb0d46f`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`0ce37bf` through `33b3c65`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes await integration in the ledger snapshot used for this draft.
+At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`37e31c0`, `e7e7b69`, `eb0d46f`), an adversarial review of the backend at `0ca96b1`, and the resulting Task 18a fixes (`0ce37bf` through `33b3c65`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes are integrated; the scope-disposal assertion is now covered in `RequestCorrelationTests`.
 
-Codex also produced original UI illustrations with OpenAI's image-generation tool and was delegated an Aspire audit against `dotnet/aspire-samples`, with recommendations assigned to Tasks 14c and 15c. **`TODO(aspire-audit)`:** record the completed audit, implemented recommendations and review outcome; the available ledger establishes its dispatch, not completion. The image tool did not expose its model identifier, so the coding model's name is not an image-model attribution.
+Codex also produced original UI illustrations with OpenAI's image-generation tool and audited Aspire against `dotnet/aspire-samples`. The audit recommendations assigned to Task 14c are integrated in `a85d501` and `bc462ec` (Demo initialization, CLI bundle and validated proxy/network trust). Task 15c is integrated in `a574af9` and `ec455c3` (web publication with discovered upstream and port 8080, exact seeded JSON through Vite and CI web installation). The image tool did not expose its model identifier, so the coding model's name is not an image-model attribution.
 
-Claude in Chrome researched Keyloop's public design language and product UI, including the Ownership/aftersales palette. A separate design workflow authored theme tokens and component recipes, then used contrast, build/render and brand/completeness checks to revise them. The approved theme selects Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono, changes inaccessible colour combinations, and uses a plain-text brand reference. Task 16 started before design sign-off, so Task 17 owns the adoption pass. This is a take-home demo inspired by Keyloop, with no claim of being an official product.
+Claude in Chrome researched Keyloop's public design language and product UI, including the Ownership/aftersales palette. A separate design workflow authored theme tokens and component recipes, then used contrast, build/render and brand/completeness checks to revise them. The approved theme selects Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono, changes inaccessible colour combinations, and uses a plain-text brand reference. The design adoption is integrated into the board and appointments list. This is a take-home demo inspired by Keyloop, with no claim of being an official product.
 
 ### Verification practices
 
 Task reports record **RED before GREEN**, including behavioural failures for existing defects. Mutation probes remove guards, registrations, constraints or middleware to ask whether a test can actually fail. Characterization tests that were already green are identified as such rather than given an invented RED phase. Examples include exclusion-constraint removal, idempotency-order mutations, a lost-commit fault injector, independent availability-oracle checks and the HSTS removal probe.
 
-Builds use warnings as errors; reflection-based JSON is disabled in both API and integration tests; mapping and contract drift checks catch generated-code omissions. Reviewers independently retraced the availability example and DST values, used scratch probes for faults, and requested fixes instead of weakening assertions. Mermaid diagrams were validated as part of the architecture work. Chrome checks exercised the real AppHost/dashboard, reseeding, cancellation, responsive layouts, themes and focus behavior. Task 17b's final visual QA and the clean-clone final gate remain **`TODO(final-gate)`**, as does the planned Fable whole-branch review. These practices provide evidence without claiming every planned gate has already run.
+Builds use warnings as errors; reflection-based JSON is disabled in both API and integration tests; mapping and contract drift checks catch generated-code omissions. Reviewers independently retraced the availability example and DST values, used scratch probes for faults, and requested fixes instead of weakening assertions. Mermaid diagrams were validated as part of the architecture work. The automated suites exercise booking, reseeding, cancellation, themes, focus and responsive component states; Aspire smoke checks the API and Vite proxy. They do not establish Chrome layout, console or network cleanliness. Task 17b's Chrome visual QA and the clean-clone final gate remain **`TODO(final-gate)`**, as does the planned Fable whole-branch review. These practices provide evidence without claiming every planned gate has already run.
 
 ### Defects the process found
 
@@ -407,7 +407,7 @@ The first rows reproduce the substance of the hand-off notes' defect log; later 
 | Frontend 15a/15b | Theme did not follow system changes, a lazy-import test was vacuous, and client generation could delete hand-written runtime config | Theme behavior tests, import-side-effect probe and `output.clean=false` (`19fdf75`, `773103a`) |
 | Frontend 15b | A shared request-id setting reused one UUID for the session, and automatic dealership selection could cancel a pending sidebar navigation | Per-request interceptor and navigation-aware selection, with behavioural regressions (`773103a`) |
 
-Task 18a was approved by Claude with the Important findings addressed. **`TODO(final-gate)`:** integrate its commits, resolve its minor scope-test claim, verify the UI's stable booking key, and reconcile any later review findings before finalizing this table.
+Task 18a's fixes are integrated, the scope-disposal assertion now observes one request flow, and the booking UI's stable idempotency key is covered by its tests. **`TODO(final-gate)`:** reconcile the final whole-branch review findings before finalizing this table.
 
 ### Rejections and trade-offs
 
@@ -442,9 +442,9 @@ Reference material, kept outside this repository (one level up, never committed)
 | carcareco | https://github.com/rene98c/carcareco | see upstream | Domain inspiration only (vehicle/work-order shape); no code copied |
 | MiroTalk WEB (booking module) | https://github.com/miroslavpejic85/mirotalkwebrtc | AGPL-3.0 | Design inspiration only (availability model, DST handling, re-check-then-insert); **no code copied** |
 
-The typefaces are **Plus Jakarta Sans** (Copyright 2020 The Plus Jakarta Sans Project Authors), **IBM Plex Sans** (Copyright 2019 IBM Corp.) and **IBM Plex Mono** (Copyright 2017 IBM Corp.), all under the **SIL Open Font License 1.1**, served from the `@fontsource` packages whose `LICENSE` files carry the full licence text. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The private `design/images/README.md` records prompts, refinements, alt text and provenance; no image-model version is asserted.
+The typefaces are **Plus Jakarta Sans** (Copyright 2020 The Plus Jakarta Sans Project Authors), **IBM Plex Sans** (Copyright 2019 IBM Corp.) and **IBM Plex Mono** (Copyright 2017 IBM Corp.), all under the **SIL Open Font License 1.1**, served from the `@fontsource` packages whose `LICENSE` files carry the full licence text. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The eight shipped WebP files are in [the illustration assets](src/Keyloop.ServiceScheduler.Web/src/assets/illustrations); [UI_DESIGN §12](docs/UI_DESIGN.md#12-illustrations-empty-and-error-states) documents their use and alt text. No image-model version is asserted.
 
-**`TODO(attribution)`:** commit the shipped illustration provenance and add working links here. Record the author's application licence decision separately; do not label the entire repository MIT without an application licence file.
+The author's application licence decision remains separate; there is no repository-wide MIT application licence file.
 
 <details>
 <summary>MIT licence of the shadcn dashboard template and shadcn/ui</summary>
