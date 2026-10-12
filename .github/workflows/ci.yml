@@ -151,11 +151,13 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build -c Release -warnaserror --no-restore
+      # The Aspire tests have their own project (SYSTEM_DESIGN §14.3): Aspire.Hosting needs the reflection-based
+      # JSON that the integration test process disables. The model tests also run `docker compose config`.
       - name: Test PostgreSQL, API and web through Aspire
         run: |
           mkdir -p TestResults/aspire
-          dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests \
-            -c Release --no-build --no-restore --filter "Category=Aspire" \
+          dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests \
+            -c Release --no-build --no-restore \
             --results-directory "$GITHUB_WORKSPACE/TestResults/aspire" \
             2>&1 | tee TestResults/aspire/smoke.log
       - name: Upload smoke test results
