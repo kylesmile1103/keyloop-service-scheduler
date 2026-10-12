@@ -49,6 +49,9 @@ public class AssemblyDependencyTests
     [Fact]
     public void Infrastructure_project_references_only_Domain_and_no_framework()
     {
+        References(InfrastructureProject, "PackageReference", "FrameworkReference")
+            .Where(reference => reference.Split(' ', 2)[1].StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal))
+            .ShouldBeEmpty("Infrastructure must not declare ASP.NET Core packages or frameworks (ADR-025).");
         References(InfrastructureProject, "ProjectReference", "FrameworkReference")
             .ShouldBe(["ProjectReference ..\\Keyloop.ServiceScheduler.Domain\\Keyloop.ServiceScheduler.Domain.csproj"],
                 "Infrastructure references Domain only and no shared framework such as ASP.NET Core (ADR-025).");

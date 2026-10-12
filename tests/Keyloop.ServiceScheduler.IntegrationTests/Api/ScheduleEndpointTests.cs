@@ -145,6 +145,13 @@ public sealed class ScheduleEndpointTests(PostgresFixture pg) : IAsyncLifetime
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var sunday = new DateOnly(2026, 10, 18);
+        await _factory.WithDbAsync(async db =>
+        {
+            var bay = await db.ServiceBays.SingleAsync(b => b.Id == workshop.Bay2.Id, Ct);
+            bay.Deactivate();
+            db.Add(Technician.Create(Guid.NewGuid(), workshop.Dealership.Id, "Dana Whitfield", "T-1004", [Certification.GeneralService], isActive: false));
+            await db.SaveChangesAsync(Ct);
+        });
 
         var (schedule, json) = await GetScheduleAsync(workshop.Dealership.Id, sunday);
 
@@ -154,7 +161,8 @@ public sealed class ScheduleEndpointTests(PostgresFixture pg) : IAsyncLifetime
 
         // The board keeps its lanes on a closed day: every bay, with no appointments, and every technician.
         schedule.Bays.Select(b => (b.Name, b.Appointments.Count)).ShouldBe([("Bay 1", 0), ("Bay 2", 0)]);
-        schedule.Technicians.Select(t => t.Name).ShouldBe(["Amelia Clarke", "Ben Okafor"]);
+        schedule.Bays.Select(b => (b.Name, b.IsActive)).ShouldBe([("Bay 1", true), ("Bay 2", false)]);
+        schedule.Technicians.Select(t => (t.Name, t.IsActive)).ShouldBe([("Amelia Clarke", true), ("Ben Okafor", true), ("Dana Whitfield", false)]);
         using var body = JsonDocument.Parse(json);
         body.RootElement.GetProperty("date").GetString().ShouldBe("2026-10-18");
         body.RootElement.GetProperty("operatingWindow").ValueKind.ShouldBe(JsonValueKind.Null);
