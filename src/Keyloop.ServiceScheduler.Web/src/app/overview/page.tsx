@@ -126,6 +126,8 @@ function Toolbar({ phone, start, end }: { phone: boolean; start: ReactNode; end?
 interface Selection {
   appointment: AppointmentListItemResponse
   open: boolean
+  /** Who it was selected as (`CurrentUser.identity`): the row is that caller's view of the booking. */
+  identity: string
 }
 
 interface DealershipOverviewProps {
@@ -147,6 +149,11 @@ function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipO
   const { search } = useLocation()
   const opener = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
+  const { identity } = useCurrentUser()
+  // A row selected as another caller (or before `/me` failed) is that caller's view: the sheet closes in the same render,
+  // so the full name, VIN and plate never paint for the next one (ARCHITECTURE §15).
+  if (selection && selection.identity !== identity) setSelection(null)
+  const selected = selection?.identity === identity ? selection : null
   const book = useBookAction({ dealership, today, fullScreen: phone })
 
   const rangeOptions = rangeReadOptions(dealership.id, from, to)
@@ -217,22 +224,22 @@ function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipO
             today={today}
             timeZone={timeZone}
             calendar={onDealership("/calendar")}
-            selectedId={selection?.open ? selection.appointment.id : null}
+            selectedId={selected?.open ? selected.appointment.id : null}
             onSelect={(appointment, row) => {
               opener.current = row
-              setSelection({ appointment, open: true })
+              setSelection({ appointment, open: true, identity })
             }}
           />
         </>
       )}
 
       <AppointmentSheet
-        appointment={selection?.appointment ?? null}
-        open={selection?.open ?? false}
+        appointment={selected?.appointment ?? null}
+        open={selected?.open ?? false}
         onOpenChange={(open) => setSelection((previous) => (previous ? { ...previous, open } : previous))}
         side={phone ? "bottom" : "right"}
         dealershipId={dealership.id}
-        date={selection ? localDateOf(selection.appointment) : today}
+        date={selected ? localDateOf(selected.appointment) : today}
         timeZone={timeZone}
         returnFocus={() => (opener.current?.isConnected ? opener.current : null)}
         onCancelled={() => {
