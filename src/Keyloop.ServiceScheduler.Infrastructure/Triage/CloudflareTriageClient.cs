@@ -38,7 +38,16 @@ public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConne
                 using var response = await http.SendAsync(request, deadline.Token);
                 if (response.IsSuccessStatusCode)
                 {
-                    var envelope = await response.Content.ReadFromJsonAsync(TriageJsonContext.Default.JevEnvelope, deadline.Token);
+                    JevEnvelope? envelope;
+                    try
+                    {
+                        envelope = await response.Content.ReadFromJsonAsync(TriageJsonContext.Default.JevEnvelope, deadline.Token);
+                    }
+                    // The JSON reader wraps an unsupported Content-Type charset's ArgumentException.
+                    catch (InvalidOperationException ex) when (ex.InnerException is ArgumentException && response.Content.Headers.ContentType?.CharSet is not null)
+                    {
+                        throw new TriageUnavailableException("invalid-answer");
+                    }
                     return JevAnswerValidator.Validate(envelope, input);
                 }
                 var retry = RetryDelay(response.Headers.RetryAfter);
@@ -57,8 +66,7 @@ public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConne
             logger.TriageUnavailable("timeout");
             throw new TriageUnavailableException("timeout");
         }
-        // ReadFromJsonAsync reports an unsupported Content-Type charset as InvalidOperationException, not JsonException.
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or NotSupportedException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or NotSupportedException)
         {
             var reason = ex is HttpRequestException or IOException ? "transport" : "invalid-answer";
             logger.TriageUnavailable(reason);
@@ -78,6 +86,7 @@ public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConne
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "authentication",
         HttpStatusCode.TooManyRequests => "rate-limited",
+        HttpStatusCode.PaymentRequired => "billing",
         _ => (int)status >= 500 ? "upstream" : "upstream-rejected",
     };
 }

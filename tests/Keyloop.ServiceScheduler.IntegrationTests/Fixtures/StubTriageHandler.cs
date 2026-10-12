@@ -21,6 +21,7 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     internal int? RetryAfter { get; set; }
     internal bool Hang { get; set; }
     internal bool ThrowWithDescription { get; set; }
+    internal bool ThrowLocalBug { get; set; }
     internal bool FailFirst { get; set; }
     internal string ContentType { get; set; } = "application/json";
 
@@ -42,6 +43,11 @@ internal sealed class StubTriageHandler : HttpMessageHandler
         if (ThrowWithDescription)
         {
             throw new HttpRequestException(Body["input"]!["state"]!["customer_description"]!.GetValue<string>());
+        }
+
+        if (ThrowLocalBug)
+        {
+            throw new InvalidOperationException("Simulated local adapter defect.");
         }
 
         var payload = new JsonObject

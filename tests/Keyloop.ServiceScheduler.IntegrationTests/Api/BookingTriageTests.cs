@@ -143,6 +143,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Headers["cf-aig-gateway-id"].ShouldBe("keyloop-scheduler");
         stub.Headers["cf-aig-collect-log"].ShouldBe("false");
         stub.Headers["cf-aig-skip-cache"].ShouldBe("true");
+        stub.Headers["cf-aig-max-attempts"].ShouldBe("1");
         stub.Body!.AsObject().Select(p => p.Key).ShouldBe(["model", "input"]);
         var input = stub.Body["input"]!.AsObject();
         input.Select(p => p.Key).ShouldBe(["state", "questions"]);
@@ -159,6 +160,45 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
             (await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Appointments,
                 TestContext.Current.CancellationToken)).ShouldBe(0);
         });
+    }
+
+    [Fact]
+    public async Task Oversized_upstream_body_is_503_with_one_unavailable_log()
+    {
+        using var stub = new StubTriageHandler { RawBody = new string('x', 64 * 1024 + 1) };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "brakes squeal");
+        await UnavailableAsync(response);
+        stub.Calls.ShouldBe(1);
+        _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Local_adapter_defect_reaches_the_global_500_path()
+    {
+        using var stub = new StubTriageHandler { ThrowLocalBug = true };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "brakes squeal");
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        _logs.Entries.Where(e => e.EventId.Id == 1200).ShouldHaveSingleItem();
+        _logs.Entries.ShouldNotContain(e => e.EventId.Id == 1400);
+    }
+
+    [Fact]
+    public async Task Unified_billing_refusal_is_recorded_as_billing_without_retry()
+    {
+        using var metrics = new MetricsCollector();
+        using var stub = new StubTriageHandler { Status = 402 };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "brakes squeal");
+        await UnavailableAsync(response);
+        stub.Calls.ShouldBe(1);
+        var log = _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
+        log.State.ShouldContain(p => p.Key == "Reason" && Equals(p.Value, "billing"));
+        metrics.Of("scheduler.triage.requests", MetricsCollector.Tag("reason", "billing")).ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -190,6 +230,8 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     private WebApplicationFactory<Program> Enabled(StubTriageHandler stub, TimeSpan? timeout = null, int? permits = null) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
+            services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace)
+                .AddFilter<CapturingLoggerProvider>(null, LogLevel.Trace));
             services.PostConfigure<TriageConnectionOptions>(o =>
             {
                 o.Enabled = true;
@@ -226,6 +268,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
 
     private void AssertNoDescriptionInLogs(string description)
     {
+        _logs.Entries.ShouldContain(e => e.Level == LogLevel.Trace, "privacy assertions must observe Trace logs");
         foreach (var entry in _logs.Entries)
         {
             entry.Message.ShouldNotContain(description);
