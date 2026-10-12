@@ -39,6 +39,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { useCountdown } from "@/hooks/use-countdown"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import {
@@ -52,12 +53,14 @@ import {
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
 
+import { bookingTriageStatusQuery, useBookingTriage } from "../hooks/use-booking-triage"
 import { localTime } from "../lib/appointment-text"
 import { bookingSchema, type BookingForm, type BookingFormInput, stepOneFields, toBookingRequest } from "../lib/booking-schema"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "../lib/calendar-date"
 import { featureLabel } from "../lib/features"
 import { nextOpenDate, openingHoursOn } from "../lib/opening-hours"
 import { AvailabilityChips, SuggestedSlotChips } from "./availability-chips"
+import { BookingTriageIntake } from "./booking-triage"
 import { CapabilityBadges } from "./capability-badges"
 
 export interface BookingDialogProps {
@@ -81,13 +84,16 @@ export interface BookingDialogProps {
 }
 
 /**
- * Book appointment: step 1 picks the service, the day and a free start (slot chips from `GET /availability`); step 2 takes
+ * Book appointment: step 1 picks the service, the day and a free start (slot chips from `GET /availability`), optionally
+ * from services suggested for the issue's description when booking intake triage is on (`BookingTriageIntake`); step 2 takes
  * the customer and the vehicle, with an optional preferred bay and technician. A dialog on wide screens, a full-screen
  * sheet on phones. Every attempt of one booking carries the same `Idempotency-Key`, so trying again after a lost answer
  * can never book twice; a conflict offers the API's suggested starts, a refused rule says why, and field errors land on
  * their fields.
  */
 export function BookingDialog({ open, onOpenChange, fullScreen, ...flow }: BookingDialogProps) {
+  // Whether to offer suggestions, read while the dialog is still closed (see `bookingTriageStatusQuery`).
+  useQuery(bookingTriageStatusQuery())
   if (fullScreen) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -176,12 +182,23 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
     defaultValues: blank(initialDate),
     mode: "onTouched",
   })
-  const [serviceTypeId, date, startUtc] = useWatch({ control: form.control, name: ["serviceTypeId", "date", "startUtc"] })
+  const [serviceTypeId, date, startUtc, notes = ""] = useWatch({
+    control: form.control,
+    name: ["serviceTypeId", "date", "startUtc", "notes"],
+  })
   const serviceTypesOptions = getServiceTypesOptions({ path: { dealershipId } })
   const serviceTypes = useQuery(serviceTypesOptions)
   // Kept while Try again loads them again, so the alert and its focused button stay in the dialog until the answer.
   const serviceTypesFailure = useQueryFailure(serviceTypes, serviceTypesOptions.queryKey)
   const service = serviceTypes.data?.find((candidate) => candidate.id === serviceTypeId)
+
+  // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
+  const triage = useBookingTriage(dealershipId)
+  // What the dialog last copied into Notes from the description: notes that still read exactly that are the copy, not the
+  // person's own words, so they can follow the description (or go when the box is unticked); anything else is never touched.
+  const [copiedNotes, setCopiedNotes] = useState("")
+  // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
+  const [startFocusRequest, setStartFocusRequest] = useState(0)
 
   const generated = bookAppointmentMutation()
   const book = useMutation({
@@ -267,7 +284,30 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   }
 
   async function next() {
-    if (await form.trigger(stepOneFields, { shouldFocus: true })) goTo(2)
+    if (!(await form.trigger(stepOneFields, { shouldFocus: true }))) return
+    copyDescriptionIntoNotes()
+    goTo(2)
+  }
+
+  /** "Use this" on a suggestion: its service and, when the workshop opens then, the day asked for; a start comes next. */
+  function applySuggestion(suggestedServiceTypeId: string, suggestedDate: string | null) {
+    form.setValue("serviceTypeId", suggestedServiceTypeId, { shouldValidate: true })
+    if (suggestedDate) form.setValue("date", suggestedDate, { shouldValidate: true })
+    // A start belongs to one service's availability on one day.
+    form.setValue("startUtc", "")
+    setStartFocusRequest((request) => request + 1)
+  }
+
+  /**
+   * Step 2's notes from the description, when the box is ticked: written into empty notes, kept up to date while they are
+   * still the copy, taken out again when the box is unticked, and never written over the person's own notes.
+   */
+  function copyDescriptionIntoNotes() {
+    const wanted = triage.enabled && triage.copyToNotes ? triage.description.trim() : ""
+    const current = form.getValues("notes") ?? ""
+    if (current !== "" && current !== copiedNotes) return
+    if (current !== wanted) form.setValue("notes", wanted)
+    setCopiedNotes(wanted)
   }
 
   function back() {
@@ -305,6 +345,8 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   function bookAnother() {
     form.reset(blank(date))
     book.reset()
+    triage.reset()
+    setCopiedNotes("")
     setBooked(null)
     goTo(1)
   }
@@ -341,6 +383,20 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
             service={service}
             date={date}
             startUtc={startUtc}
+            startFocusRequest={startFocusRequest}
+            intake={
+              triage.enabled ? (
+                <BookingTriageIntake
+                  triage={triage}
+                  dealership={dealership}
+                  today={today}
+                  serviceTypes={serviceTypes.data}
+                  current={{ serviceTypeId, date }}
+                  notesHaveOwnText={notes !== "" && notes !== copiedNotes}
+                  onUse={applySuggestion}
+                />
+              ) : null
+            }
           />
         ) : (
           <StepTwo
@@ -351,6 +407,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
             schedule={schedule}
             startUtc={startUtc}
             timeZone={timeZone}
+            notesCopied={copiedNotes !== "" && notes === copiedNotes}
             onChangeTime={back}
             problem={
               failure && !fieldErrorsOnly(failure) ? (
@@ -466,6 +523,10 @@ interface StepOneProps {
   service: ServiceTypeResponse | undefined
   date: string
   startUtc: string
+  /** Raised to move focus into the free starts once they are on screen (a suggestion was just used). */
+  startFocusRequest: number
+  /** Booking intake triage above the service, when suggestions are on. */
+  intake: ReactNode
 }
 
 /** The calendar's day names, with "closed" after a day the dealership does not open (struck through and disabled). */
@@ -489,6 +550,8 @@ function StepOne({
   service,
   date,
   startUtc,
+  startFocusRequest,
+  intake,
 }: StepOneProps) {
   const ids = { service: useId(), date: useId(), start: useId(), startError: useId() }
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -501,6 +564,7 @@ function StepOne({
       <h3 id={`${ids.service}-heading`} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
         Service and time
       </h3>
+      {intake}
       <FieldGroup className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Controller
           control={form.control}
@@ -651,6 +715,7 @@ function StepOne({
                 form.setValue("date", next)
                 form.setValue("startUtc", "")
               }}
+              focusRequest={startFocusRequest}
             />
             <FormError id={ids.startError} message={startError} />
           </div>
@@ -668,13 +733,15 @@ interface StepTwoProps {
   schedule: WorkshopScheduleResponse | undefined
   startUtc: string
   timeZone: string
+  /** The notes are the issue description, copied from step 1 (the box there was ticked). */
+  notesCopied: boolean
   onChangeTime: () => void
   problem: ReactNode
 }
 
 const ANY = "any"
 
-function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, timeZone, onChangeTime, problem }: StepTwoProps) {
+function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, timeZone, notesCopied, onChangeTime, problem }: StepTwoProps) {
   const headingId = useId()
   // Only resources that could take this job: active, with every capability or certification the service needs.
   const bays = (schedule?.bays ?? []).filter(
@@ -766,9 +833,16 @@ function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, ti
                 rows={2}
                 maxLength={1000}
                 aria-invalid={fieldState.invalid || undefined}
+                aria-describedby={notesCopied ? `${headingId}-notes-copied` : undefined}
                 placeholder="For example: customer waiting in the lounge"
                 className="min-h-20"
               />
+              {notesCopied && (
+                // The description may hold personal details: say plainly that, as notes, it is kept.
+                <p id={`${headingId}-notes-copied`} className="text-xs text-muted-foreground">
+                  Copied from the description of the issue. Notes are saved with the booking.
+                </p>
+              )}
               <FormError message={fieldState.error?.message} />
             </Field>
           )}
@@ -1097,15 +1171,4 @@ function BookedState({
       <p className="tabular-nums">{`${formatDay(day, "long").replace(/ \d{4}$/, "")}, ${localTime(appointment.startLocal)} to ${localTime(appointment.endLocal)} (${timeZone})`}</p>
     </IllustratedState>
   )
-}
-
-/** A whole-second countdown (a rate limit's wait): `start(seconds)` sets it, and it ticks down to 0. */
-function useCountdown(): [number, (seconds: number) => void] {
-  const [remaining, setRemaining] = useState(0)
-  useEffect(() => {
-    if (remaining <= 0) return
-    const timer = setTimeout(() => setRemaining((left) => left - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [remaining])
-  return [remaining, setRemaining]
 }

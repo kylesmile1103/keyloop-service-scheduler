@@ -2,9 +2,12 @@ import type {
   AppointmentResponse,
   AvailabilityResponse,
   BookAppointmentRequest,
+  BookingTriageStatusResponse,
   DealershipResponse,
   ScheduledAppointmentResponse,
   ServiceTypeResponse,
+  TriageBookingRequest,
+  TriageBookingResponse,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
 import { shiftDate } from "@/app/dispatch/lib/calendar-date"
@@ -20,6 +23,7 @@ import {
   readingTuesday,
   technicians,
 } from "@/test/schedules"
+import { triageDisabled, triageUnavailable } from "@/test/triage"
 
 type Answer<T> = T | Response | Promise<T | Response>
 
@@ -35,6 +39,10 @@ export interface BoardApiOptions {
   cancel?: (appointmentId: string, body: { reason?: unknown }) => Answer<AppointmentResponse>
   /** POST a booking. By default: 201, in Bay 1 with Amelia Clarke (see `bookedFrom`). */
   book?: (dealershipId: string, body: BookAppointmentRequest, request: Request) => Answer<AppointmentResponse>
+  /** GET the booking intake triage status. By default: suggestions off, as the API ships. */
+  triageStatus?: () => Answer<BookingTriageStatusResponse>
+  /** POST an intake description for suggestions. By default: 503 `triage-unavailable`, as the API answers when they are off. */
+  triage?: (dealershipId: string, body: TriageBookingRequest) => Answer<TriageBookingResponse>
 }
 
 /** British Summer Time, as the fixtures' October dates are: a UTC instant as `yyyy-MM-ddTHH:mm+01:00`. */
@@ -180,7 +188,8 @@ async function answer<T>(value: Answer<T>, status = 200): Promise<Response> {
 
 /**
  * Stubs `fetch` with the dispatch board's API, routed by path: dealerships, schedule, service types, availability, booking,
- * one appointment and its cancellation. Each route can be replaced; requests are recorded as with `mockApi`.
+ * one appointment and its cancellation, and booking intake triage (its status and its suggestions). Each route can be
+ * replaced; requests are recorded as with `mockApi`.
  */
 export function mockBoardApi(options: BoardApiOptions = {}) {
   return mockApi(async (request) => {
@@ -189,6 +198,11 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
     let match: RegExpExecArray | null
 
     if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
+    if (path === "/api/v1/booking-triage") return answer(options.triageStatus?.() ?? triageDisabled)
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage$/.exec(path)) && request.method === "POST") {
+      const body = (await request.clone().json()) as TriageBookingRequest
+      return answer(options.triage ? options.triage(match[1], body) : problemResponse(503, triageUnavailable))
+    }
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/schedule$/.exec(path))) {
       const date = url.searchParams.get("date") ?? ""
       return answer(options.schedule?.(match[1], date) ?? defaultSchedule(match[1], date))
