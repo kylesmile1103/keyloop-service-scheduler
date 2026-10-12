@@ -8,6 +8,10 @@ TestResults/
 *.binlog
 # Aspire / local secrets
 *.pfx
+*.pem
+*.key
+secrets.json
+.npmrc
 appsettings.*.local.json
 .aspire/
 # Node
