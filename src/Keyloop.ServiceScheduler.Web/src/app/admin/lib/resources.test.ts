@@ -152,7 +152,7 @@ describe("serviceRecords", () => {
 
 describe("figures", () => {
   it("sums the technicians: the roster, those working today, booked time and their share of the opening hours", () => {
-    expect(technicianFigures(technicianRecords(readingTuesday))).toEqual({
+    expect(technicianFigures(technicianRecords(readingTuesday), readingTuesday)).toEqual({
       total: 6,
       active: 6,
       working: 5,
@@ -161,11 +161,11 @@ describe("figures", () => {
       capacityMinutes: 3600,
     })
     // Eva, inactive, had nothing today: she leaves the active roster and its capacity.
-    expect(technicianFigures(technicianRecords(withInactive(readingTuesday)))).toMatchObject({ total: 6, active: 5, capacityMinutes: 3000 })
+    expect(technicianFigures(technicianRecords(withInactive(readingTuesday)), readingTuesday)).toMatchObject({ total: 6, active: 5, capacityMinutes: 3000 })
   })
 
   it("sums the bays as the board's bay utilisation does: active bays only", () => {
-    expect(bayFigures(bayRecords(readingTuesday))).toEqual({
+    expect(bayFigures(bayRecords(readingTuesday), readingTuesday)).toEqual({
       total: 6,
       inService: 6,
       inUse: 4,
@@ -173,19 +173,55 @@ describe("figures", () => {
       bookedMinutes: 420,
       capacityMinutes: 3600,
     })
-    expect(bayFigures(bayRecords(withInactive(readingTuesday)))).toEqual({
+    // Bay 6's appointment stays on the out-of-service bay's row, outside the booked time and its count.
+    expect(bayFigures(bayRecords(withInactive(readingTuesday)), readingTuesday)).toEqual({
       total: 6,
       inService: 5,
       inUse: 3,
-      appointments: 6,
+      appointments: 5,
       bookedMinutes: 375,
       capacityMinutes: 3000,
     })
   })
 
   it("has no capacity on a closed day", () => {
-    expect(bayFigures(bayRecords(readingSunday)).capacityMinutes).toBeNull()
-    expect(technicianFigures(technicianRecords(readingSunday)).capacityMinutes).toBeNull()
+    expect(bayFigures(bayRecords(readingSunday), readingSunday).capacityMinutes).toBeNull()
+    expect(technicianFigures(technicianRecords(readingSunday), readingSunday).capacityMinutes).toBeNull()
+    // Closed is the day's, whatever the lists hold.
+    expect(bayFigures([], readingSunday).capacityMinutes).toBeNull()
+    expect(technicianFigures([], readingSunday).capacityMinutes).toBeNull()
+  })
+
+  it("takes the opening hours from the day, not the rows: an empty list on an open day is open, with nothing booked", () => {
+    const empty = { ...readingTuesday, technicians: [], bays: [] }
+
+    expect(technicianFigures(technicianRecords(empty), empty)).toEqual({
+      total: 0,
+      active: 0,
+      working: 0,
+      appointments: 0,
+      bookedMinutes: 0,
+      capacityMinutes: 0,
+    })
+    expect(bayFigures(bayRecords(empty), empty)).toEqual({ total: 0, inService: 0, inUse: 0, appointments: 0, bookedMinutes: 0, capacityMinutes: 0 })
+  })
+
+  it("has no capacity but stays open when every technician or bay is out of service", () => {
+    const allOut = {
+      ...readingTuesday,
+      bays: readingTuesday.bays.map((entry) => ({ ...entry, isActive: false })),
+      technicians: readingTuesday.technicians.map((entry) => ({ ...entry, isActive: false })),
+    }
+
+    expect(technicianFigures(technicianRecords(allOut), allOut)).toEqual({
+      total: 6,
+      active: 0,
+      working: 0,
+      appointments: 0,
+      bookedMinutes: 0,
+      capacityMinutes: 0,
+    })
+    expect(bayFigures(bayRecords(allOut), allOut)).toEqual({ total: 6, inService: 0, inUse: 0, appointments: 0, bookedMinutes: 0, capacityMinutes: 0 })
   })
 
   it("sums the catalogue: bookable here, booked today and the range of durations", () => {

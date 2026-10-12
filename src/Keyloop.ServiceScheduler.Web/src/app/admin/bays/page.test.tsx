@@ -6,7 +6,7 @@ import { mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { bodyRows, columnTexts, figure, headers, openFilter } from "@/test/resource-list"
-import { appointments, bays, readingTuesday, withStatus } from "@/test/schedules"
+import { appointments, bays, readingSunday, readingTuesday, withStatus } from "@/test/schedules"
 
 // The Bays page (Task 29): the dealership's service bays as a read-only list on Refine core, with today's load.
 
@@ -92,6 +92,35 @@ describe("bays list", () => {
     fireEvent.click(within(list).getByRole("button", { name: "Load today" }))
     fireEvent.click(within(list).getByRole("button", { name: "Load today" }))
     await waitFor(() => expect(columnTexts(list, "Bay")[0]).toBe("Bay 1 - Standard"))
+  })
+
+  it("keeps the bays on a closed day and says that none is in use", async () => {
+    vi.setSystemTime(new Date("2026-10-18T09:00:00Z"))
+    mockBoardApi({ schedule: () => readingSunday })
+    renderBoard(page)
+
+    const list = await table()
+    expect(bodyRows(list)).toHaveLength(6)
+    expect(columnTexts(list, "Load today")).toEqual(Array(6).fill("Closed"))
+    expect(figure("Bays")).toHaveTextContent("All in service")
+    expect(figure("In use today")).toHaveTextContent("Closed today")
+    expect(figure("Booked today")).toHaveTextContent("Closed today")
+    expect(figure("Bay utilisation")).toHaveTextContent("Closed today")
+    expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
+  })
+
+  it("says an open day is open when there are no bays: nothing booked and no bay time, never closed", async () => {
+    mockBoardApi({ schedule: () => ({ ...readingTuesday, technicians: [], bays: [] }) })
+    renderBoard(page)
+
+    expect(await screen.findByRole("heading", { name: "No bays yet" })).toBeInTheDocument()
+    expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
+    expect(figure("Bays")).toHaveTextContent("0None set up yet")
+    expect(figure("In use today")).toHaveTextContent("0 of 0No bays in service")
+    expect(figure("Booked today")).toHaveTextContent("0 minAcross 0 appointments")
+    expect(figure("Bay utilisation")).toHaveTextContent("No bays in service")
+    expect(within(figure("Bay utilisation")).getByText("No figure")).toBeInTheDocument()
+    expect(screen.queryByText(/closed/i)).not.toBeInTheDocument()
   })
 
   it("lists the bays as cards on a phone", async () => {

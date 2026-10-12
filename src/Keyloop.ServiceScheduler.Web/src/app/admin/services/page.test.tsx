@@ -88,6 +88,17 @@ describe("services list", () => {
     expect(figure("Durations")).toHaveTextContent("45–180 min")
   })
 
+  it("says an empty catalogue is empty, not that every service can be booked", async () => {
+    mockBoardApi({ serviceTypes: () => [] })
+    renderBoard(`/resources/services?dealership=${reading.id}`)
+
+    expect(await screen.findByRole("heading", { name: "No services yet" })).toBeInTheDocument()
+    expect(figure("Services")).toHaveTextContent("0In the catalogue")
+    expect(figure("Bookable here")).toHaveTextContent("0 of 0No services yet")
+    expect(figure("Booked today")).toHaveTextContent("Nothing booked")
+    expect(screen.queryByText("Every service can be booked")).not.toBeInTheDocument()
+  })
+
   it("finds a service by name or code, and filters by what it needs and whether it is bookable", async () => {
     mockBoardApi(catalogues)
     renderBoard(`/resources/services?dealership=${munich.id}`)

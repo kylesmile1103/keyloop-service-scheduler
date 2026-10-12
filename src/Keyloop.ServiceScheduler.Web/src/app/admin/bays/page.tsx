@@ -71,7 +71,7 @@ function BayList({ dealership, today, phone }: ResourceScope) {
 
   return (
     <>
-      <BayFigures rows={read.rows} failed={read.failure !== null} />
+      <BayFigures rows={read.rows} day={read.day} failed={read.failure !== null} />
       <ResourceList
         dealership={dealership}
         today={today}

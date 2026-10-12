@@ -140,6 +140,36 @@ describe("technicians list", () => {
     expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
   })
 
+  it("says an open day is open when the roster is empty: nothing booked and no technician time, never closed", async () => {
+    mockBoardApi({ schedule: () => ({ ...readingTuesday, technicians: [], bays: [] }) })
+    renderBoard(page)
+
+    expect(await screen.findByRole("heading", { name: "No technicians yet" })).toBeInTheDocument()
+    expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
+    expect(figure("Technicians")).toHaveTextContent("0None yet")
+    expect(figure("Working today")).toHaveTextContent("0 of 0No active technicians")
+    expect(figure("Booked today")).toHaveTextContent("0 minAcross 0 appointments")
+    expect(figure("Technician load")).toHaveTextContent("No active technicians")
+    expect(within(figure("Technician load")).getByText("No figure")).toBeInTheDocument()
+    expect(screen.queryByText(/closed/i)).not.toBeInTheDocument()
+  })
+
+  it("says an open day is open when no technician is active: no active technician time to book or measure", async () => {
+    mockBoardApi({
+      schedule: () => ({ ...readingTuesday, technicians: readingTuesday.technicians.map((entry) => ({ ...entry, isActive: false })) }),
+    })
+    renderBoard(page)
+
+    await table()
+    expect(figure("Technicians")).toHaveTextContent("0 active, 6 inactive")
+    expect(figure("Working today")).toHaveTextContent("0 of 0No active technicians")
+    // The six appointments stay with their (now inactive) technicians in the list, outside the active roster's figures.
+    expect(figure("Booked today")).toHaveTextContent("0 minAcross 0 appointments")
+    expect(columnTexts(await table(), "Appointments today")).toEqual(["1", "1", "2", "1", "0", "1"])
+    expect(figure("Technician load")).toHaveTextContent("No active technicians")
+    expect(screen.queryByText(/closed/i)).not.toBeInTheDocument()
+  })
+
   it("shows the API's words and trace id when the roster cannot be read, and lists it once Try again works", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {})
     let fail = true

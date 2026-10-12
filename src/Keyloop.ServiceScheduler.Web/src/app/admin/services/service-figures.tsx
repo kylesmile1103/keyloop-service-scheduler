@@ -37,7 +37,11 @@ export function ServiceFigures({ rows, failed, closed }: ServiceFiguresProps) {
         value={value(figures && `${figures.bookable} of ${figures.total}`)}
         footer={footer(
           figures &&
-            (figures.bookable === figures.total ? "Every service can be booked" : `${figures.total - figures.bookable} need what this dealership lacks`)
+            (figures.total === 0
+              ? "No services yet"
+              : figures.bookable === figures.total
+                ? "Every service can be booked"
+                : `${figures.total - figures.bookable} need what this dealership lacks`)
         )}
         detail="An active bay and technician qualify"
       />

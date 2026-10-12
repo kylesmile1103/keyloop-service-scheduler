@@ -79,7 +79,7 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
 
   return (
     <>
-      <TechnicianFigures rows={read.rows} failed={read.failure !== null} />
+      <TechnicianFigures rows={read.rows} day={read.day} failed={read.failure !== null} />
       <ResourceList
         dealership={dealership}
         today={today}

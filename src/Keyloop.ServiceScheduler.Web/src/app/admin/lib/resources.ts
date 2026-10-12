@@ -119,8 +119,14 @@ export function splitSentence(shortfall: Shortfall): string | null {
   return null
 }
 
-/** The window minutes of a set of records' day (all records of one list share it); `null` on a closed day or an empty list. */
-const windowOf = (records: ReadonlyArray<{ today: DayLoad }>) => records.find((record) => record.today.windowMinutes !== null)?.today.windowMinutes ?? null
+/**
+ * The day a list's figures are measured on: whether the dealership opens, and for how long, is the day's own (its opening
+ * window), never inferred from the rows, so a dealership with no technicians or bays yet is still open.
+ */
+type FiguresDay = Pick<WorkshopScheduleResponse, "operatingWindow">
+
+/** The day's opening hours in minutes; `null` when the dealership is closed. */
+const openMinutes = ({ operatingWindow }: FiguresDay) => (operatingWindow ? windowMinutes(operatingWindow) : null)
 
 const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0)
 
@@ -129,24 +135,25 @@ export interface TechnicianFigures {
   active: number
   /** Active technicians with at least one appointment today. */
   working: number
+  /** The active technicians' appointments today: those `bookedMinutes` is measured across. */
   appointments: number
   /** Booked minutes of the active technicians. */
   bookedMinutes: number
-  /** Active technicians times the opening hours; `null` on a closed day. */
+  /** Active technicians times the opening hours: `0` when none is active, `null` only on a closed day. */
   capacityMinutes: number | null
 }
 
-/** The Technicians page's figures for today. */
-export function technicianFigures(records: readonly TechnicianRecord[]): TechnicianFigures {
+/** The Technicians page's figures for `day`, the day the records were read for. */
+export function technicianFigures(records: readonly TechnicianRecord[], day: FiguresDay): TechnicianFigures {
   const active = records.filter((record) => record.isActive)
-  const window = windowOf(records)
+  const open = openMinutes(day)
   return {
     total: records.length,
     active: active.length,
     working: active.filter((record) => record.today.appointments > 0).length,
-    appointments: sum(records.map((record) => record.today.appointments)),
+    appointments: sum(active.map((record) => record.today.appointments)),
     bookedMinutes: sum(active.map((record) => record.today.bookedMinutes)),
-    capacityMinutes: window === null ? null : active.length * window,
+    capacityMinutes: open === null ? null : active.length * open,
   }
 }
 
@@ -155,24 +162,25 @@ export interface BayFigures {
   inService: number
   /** Bays in service with at least one appointment today. */
   inUse: number
+  /** The appointments in the bays in service today: those `bookedMinutes` is measured across. */
   appointments: number
   /** Booked minutes of the bays in service: the board's bay utilisation, over `capacityMinutes`. */
   bookedMinutes: number
-  /** Bays in service times the opening hours; `null` on a closed day. */
+  /** Bays in service times the opening hours: `0` when none is in service, `null` only on a closed day. */
   capacityMinutes: number | null
 }
 
-/** The Bays page's figures for today; booked over capacity is the dispatch board's bay utilisation. */
-export function bayFigures(records: readonly BayRecord[]): BayFigures {
+/** The Bays page's figures for `day`, the day the records were read for; booked over capacity is the board's bay utilisation. */
+export function bayFigures(records: readonly BayRecord[], day: FiguresDay): BayFigures {
   const inService = records.filter((record) => record.isActive)
-  const window = windowOf(records)
+  const open = openMinutes(day)
   return {
     total: records.length,
     inService: inService.length,
     inUse: inService.filter((record) => record.today.appointments > 0).length,
-    appointments: sum(records.map((record) => record.today.appointments)),
+    appointments: sum(inService.map((record) => record.today.appointments)),
     bookedMinutes: sum(inService.map((record) => record.today.bookedMinutes)),
-    capacityMinutes: window === null ? null : inService.length * window,
+    capacityMinutes: open === null ? null : inService.length * open,
   }
 }
 
