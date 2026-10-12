@@ -58,6 +58,10 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("notification_idle", "Notifications:IdleInterval", "00:00:00.500", "NotificationOptions", "IdleInterval")]
     [InlineData("notification_send_timeout", "Notifications:SendTimeout", "00:10:00", "NotificationOptions", "SendTimeout")]
     [InlineData("reseed_key", "Demo:ReseedKey", "too-short", "DemoOptions", "ReseedKey")]
+    [InlineData("triage_credentials", "Triage:Enabled", "true", "TriageConnectionOptions", "AccountId")]
+    [InlineData("triage_length", "Triage:MaxDescriptionLength", "501", "TriageOptions", "MaxDescriptionLength")]
+    [InlineData("triage_threshold", "Triage:SuggestThreshold", "1.1", "TriageOptions", "SuggestThreshold")]
+    [InlineData("triage_permits", "Security:RateLimiting:TriagePermitsPerMinute", "0", "SecurityOptions", "TriagePermitsPerMinute")]
     public async Task Invalid_configuration_fails_startup_before_any_database_work(string name, string key, string value, string optionsType, string member)
     {
         // A fresh, empty database: if startup migrated before validating, the history table would exist afterwards.
