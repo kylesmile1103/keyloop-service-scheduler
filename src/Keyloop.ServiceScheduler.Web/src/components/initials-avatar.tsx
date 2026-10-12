@@ -12,10 +12,12 @@ const sizes = {
   sm: "size-6 text-2xs",
   /** Job cards and sheets. */
   md: "size-8 text-xs",
+  /** The signed-in account on Settings > Account. */
+  lg: "size-12 text-base",
 }
 
 /**
- * A technician's initials (first and last name) in Service Hub's round avatar (UI_DESIGN 11.9). Decorative: the name is
+ * A person's initials (first and last name) in Service Hub's round avatar (UI_DESIGN 11.9). Decorative: the name is
  * always written next to it or in the element's accessible name. `ring` separates it from a status tint it overlaps.
  */
 export function InitialsAvatar({

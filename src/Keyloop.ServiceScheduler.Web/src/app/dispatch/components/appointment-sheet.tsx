@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { LoaderCircle } from "lucide-react"
 import { type FormEvent, type ReactNode, type RefObject, useId, useRef, useState } from "react"
 
@@ -11,6 +11,8 @@ import {
 } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
 import vehiclePlaceholder from "@/assets/illustrations/vehicle-placeholder.webp"
+import { SignInPanel } from "@/components/auth/sign-in-prompt"
+import { WriteReason } from "@/components/auth/write-reason"
 import { CopyButton } from "@/components/copy-button"
 import { InitialsAvatar } from "@/components/initials-avatar"
 import { ProblemAlert } from "@/components/problem-alert"
@@ -20,10 +22,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
+import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 import { formatLocalTime } from "@/lib/local-time"
-import { fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
+import { cachedCapabilities } from "@/lib/session"
+import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import { timeRange } from "../lib/appointment-text"
@@ -60,6 +66,11 @@ interface AppointmentSheetProps {
  * An appointment's details, from the board's snapshot at once and the whole record (contact details, vehicle, notes) as
  * soon as `GET /appointments/{id}` answers, with the cancellation form for a confirmed or checked-in appointment. A refused
  * cancellation shows the API's problem and trace id; a conflict re-reads the board, since someone else changed it.
+ *
+ * What the sheet asks for follows the signed-in role (UI_DESIGN 11.20): the record is read for any role; a visitor who is
+ * not signed in sees the board's masked snapshot and a sign-in panel in its place (no request, so no 401); an account
+ * without a role is told why the details stay masked. Cancelling is for an Admin or Service advisor; a Viewer sees the
+ * action unavailable with the reason.
  */
 export function AppointmentSheet({
   appointment,
@@ -75,13 +86,23 @@ export function AppointmentSheet({
 }: AppointmentSheetProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
   const reasonRef = useRef<HTMLTextAreaElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   return (
     <Sheet open={open && appointment !== null} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={popupRef}
         side={side}
         initialFocus={() => (initialFocus === "reason" ? reasonRef.current : null) ?? titleRef.current ?? true}
-        finalFocus={() => returnFocus() ?? true}
+        // A dialog opened over the sheet keeps focus when the sheet closes beneath it (the session dialog, after a refusal
+        // that also closed the sheet because the identity changed). Otherwise focus goes back where the sheet came from, or,
+        // when that is gone (the view reading its data again after the identity changed), to the page's content rather
+        // than wherever the browser would fall back to.
+        finalFocus={() => {
+          if (focusInOtherDialog(popupRef.current)) return false
+          const target = returnFocus()
+          return target?.isConnected ? target : (document.getElementById("content") ?? true)
+        }}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
           side === "right" && "w-full"
@@ -109,6 +130,12 @@ export function AppointmentSheet({
   )
 }
 
+/** Whether focus is in a dialog other than `popup`, which then keeps it. */
+function focusInOtherDialog(popup: HTMLElement | null): boolean {
+  const active = document.activeElement
+  return active instanceof HTMLElement && !popup?.contains(active) && active.closest('[role="dialog"]') !== null
+}
+
 interface SheetBodyProps {
   appointment: BoardAppointment
   open: boolean
@@ -123,9 +150,24 @@ interface SheetBodyProps {
 
 function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, reasonRef, onDone }: SheetBodyProps) {
   const queryClient = useQueryClient()
+  const current = useCurrentUser()
+  const detailsAccess = detailsAccessOf(current)
+  const writeAccess = writeAccessOf(current)
   const path = { appointmentId: appointment.id }
   const detailsOptions = getAppointmentOptions({ path })
-  const details = useQuery({ ...detailsOptions, enabled: open })
+  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes or
+  // fails, the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
+  // rendered for the new state, and a visitor (or nobody known) must never send the read. Not read again when the window
+  // regains focus or the network returns: `/me` is read again at that same moment, so the cache would still name the
+  // caller from before (a sign-out in another tab); the record is read when the sheet opens, and on Try again.
+  const details = useQuery({
+    ...detailsOptions,
+    enabled: () => open && cachedCapabilities(queryClient).canViewDetails,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+  // Skeletons while the record may still come: until `/me` answers, and while a role's read is out.
+  const recordLoading = detailsAccess === "checking" || (detailsAccess === "allowed" && details.isPending)
   // Kept while Try again reads the record again, so the alert and its focused button stay until the answer.
   const detailsFailure = useQueryFailure(details, detailsOptions.queryKey)
   const record: AppointmentResponse | undefined = details.data
@@ -139,6 +181,8 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
     void queryClient.invalidateQueries({
       queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date } as GetAvailabilityData["query"] }),
     })
+    // Every range read of the dealership (the Overview and the Calendar), whatever its dates.
+    void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
   }
 
   return (
@@ -174,7 +218,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
           <Row term="Customer">
             <span className="flex flex-col gap-0.5">
               <span>{appointment.customerName}</span>
-              <Pending loading={details.isPending}>
+              <Pending loading={recordLoading}>
                 {record && (
                   <>
                     <a className={cn(contactLink, "break-all")} href={`mailto:${record.customer.email}`}>
@@ -200,7 +244,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
                 className="pointer-events-none h-auto w-20 shrink-0 select-none sm:w-28"
               />
               <span className="flex min-w-0 flex-col items-start gap-1">
-                <Pending loading={details.isPending}>
+                <Pending loading={recordLoading}>
                   {record && <span className="font-heading font-semibold">{`${record.vehicle.make} ${record.vehicle.model}`}</span>}
                 </Pending>
                 <PlateChip registration={appointment.registration} labelled={false} />
@@ -222,6 +266,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
         </dl>
+        <RecordAccess access={detailsAccess} />
         {detailsFailure !== null && (
           <ProblemAlert
             title="Couldn’t load the full record"
@@ -234,6 +279,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
       </div>
 
       <CancelForm
+        access={writeAccess}
         appointment={appointment}
         status={status}
         timeZone={timeZone}
@@ -250,6 +296,31 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
       />
     </>
   )
+}
+
+/**
+ * In place of the record when this caller may not read it: a visitor who is not signed in gets the sign-in panel (it also
+ * covers cancelling), an account without a role the reason its details stay masked.
+ */
+function RecordAccess({ access }: { access: DetailsAccess }) {
+  const reasonId = useId()
+  if (access === "sign-in") {
+    return (
+      <SignInPanel title="Sign in to see the whole booking" className="mt-4">
+        <p>Contact details, the vehicle and cancelling need a workshop account. Until then, names, VINs and plates are masked.</p>
+      </SignInPanel>
+    )
+  }
+  if (access === "no-role") {
+    return (
+      <WriteReason
+        id={reasonId}
+        className="mt-4"
+        reason="Your account has no workshop role yet, so customer details stay masked. The workshop administrator assigns roles."
+      />
+    )
+  }
+  return null
 }
 
 /** A contact link: underlined, and 44 px tall on a touch screen, where calling or writing is one tap. */
@@ -270,7 +341,11 @@ function Pending({ loading, children }: { loading: boolean; children: ReactNode 
   return loading ? <Skeleton className="h-4 w-40" /> : children
 }
 
+type CancelVariables = Parameters<NonNullable<ReturnType<typeof cancelAppointmentMutation>["mutationFn"]>>[0]
+
 interface CancelFormProps {
+  /** Whether this account may cancel: the form for Admin and Service advisor, the reason for any other role. */
+  access: WriteAccess
   appointment: BoardAppointment
   status: BoardAppointment["status"]
   timeZone: string
@@ -279,14 +354,20 @@ interface CancelFormProps {
   onConflict: () => void
 }
 
-function CancelForm({ appointment, status, timeZone, reasonRef, onCancelled, onConflict }: CancelFormProps) {
+function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancelled, onConflict }: CancelFormProps) {
   const reasonId = useId()
   const errorId = useId()
   const countId = useId()
+  const deniedId = useId()
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
-  const cancel = useMutation({
-    ...cancelAppointmentMutation(),
+  const generated = cancelAppointmentMutation()
+  // Bound to the account the sheet was drawn for and sent only while the cache names it (checked last as the request
+  // leaves, `write.fetch`), and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a reason
+  // typed for one account is never sent as another, and a late answer neither caches the record nor shows a toast for the
+  // next caller.
+  const cancel = useWriteMutation({
+    mutationFn: (variables: CancelVariables, write, context) => generated.mutationFn!({ ...variables, fetch: write.fetch() }, context),
     onSuccess: (cancelled) => {
       toast.add({
         type: "success",
@@ -302,6 +383,7 @@ function CancelForm({ appointment, status, timeZone, reasonRef, onCancelled, onC
   })
 
   const problem = parseProblem(cancel.error)
+  const refusedStatus = failureStatus(cancel.error)
   const serverReasonError = problem && problemSlug(problem) === "validation-error" ? fieldErrors(problem, { reason: "Reason" }).reason : undefined
   const reasonError = missingReason ? "Say why the appointment is cancelled." : serverReasonError
   const conflict = problem?.status === 409
@@ -309,6 +391,9 @@ function CancelForm({ appointment, status, timeZone, reasonRef, onCancelled, onC
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    // The identity in the cache decides, not the last render: `/me` may have changed since, to nobody or to another account.
+    const send = cancel.begin()
+    if (!send) return
     const trimmed = reason.trim()
     if (!trimmed) {
       setMissingReason(true)
@@ -316,19 +401,41 @@ function CancelForm({ appointment, status, timeZone, reasonRef, onCancelled, onC
       return
     }
     setMissingReason(false)
-    cancel.mutate({ path: { appointmentId: appointment.id }, body: { reason: trimmed } })
+    send({ path: { appointmentId: appointment.id }, body: { reason: trimmed } })
   }
+
+  // A visitor who is not signed in has the sign-in panel above, which covers cancelling.
+  if (access.state === "sign-in" && canCancel(status)) return null
 
   return (
     <div className="flex flex-col gap-3 border-t bg-muted/30 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       {showProblem && (
         <ProblemAlert
-          title={problem?.title ?? "Couldn’t cancel the appointment"}
+          title={
+            refusedStatus === 401 || refusedStatus === 403
+              ? authRefusalTitle(refusedStatus, "cancel the appointment")
+              : (problem?.title ?? "Couldn’t cancel the appointment")
+          }
           error={cancel.error}
-          tone={conflict ? "warning" : "error"}
+          tone={conflict || refusedStatus === 401 || refusedStatus === 403 ? "warning" : "error"}
         />
       )}
-      {canCancel(status) ? (
+      {canCancel(status) && access.state !== "allowed" ? (
+        // A role that cannot cancel (or `/me` not answered yet): the action, unavailable, with the reason on screen.
+        <div className="flex flex-col gap-3">
+          {access.state === "denied" && <WriteReason id={deniedId} reason={access.reason} />}
+          <Button
+            type="button"
+            variant="destructive"
+            disabled
+            focusableWhenDisabled
+            aria-describedby={access.state === "denied" ? deniedId : undefined}
+            className="self-stretch sm:self-end max-md:h-11"
+          >
+            Cancel appointment
+          </Button>
+        </div>
+      ) : canCancel(status) ? (
         <form noValidate onSubmit={submit} className="flex flex-col gap-3">
           <Field data-invalid={Boolean(reasonError) || undefined} className="gap-1.5">
             <FieldLabel htmlFor={reasonId}>Reason</FieldLabel>

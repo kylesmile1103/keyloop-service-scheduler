@@ -15,7 +15,7 @@ import { formatDay, weekdayOf } from "@/lib/calendar-date"
 import { featureList } from "@/lib/features"
 import { illustrationAlt, illustrations } from "@/lib/illustrations"
 import { openingHoursOn } from "@/lib/opening-hours"
-import { parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
+import { authRefusalTitle, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
@@ -32,6 +32,11 @@ interface BookingTriageProps {
   notesHaveOwnText: boolean
   /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
   onUse: (serviceTypeId: string, date: string | null) => void
+  /**
+   * The id of the reason this account can no longer ask for suggestions (signed out, or a role that cannot book): Suggest a
+   * service and the photos are then unavailable and name it (UI_DESIGN 11.20). Nothing is uploaded or asked meanwhile.
+   */
+  blockedBy?: string
 }
 
 /**
@@ -41,7 +46,7 @@ interface BookingTriageProps {
  * day is still to come and the workshop is open then, the day asked for; the free starts for them come next. A failure
  * leaves the manual choice below as it is.
  */
-export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse }: BookingTriageProps) {
+export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse, blockedBy }: BookingTriageProps) {
   const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
@@ -61,6 +66,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
   }, [alert, descriptionError])
 
   function suggest() {
+    if (blockedBy) return
     if (!triage.suggest()) descriptionRef.current?.focus()
   }
 
@@ -131,11 +137,11 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
               type="file"
               accept="image/png,image/jpeg,image/webp"
               multiple
-              disabled={pending}
+              disabled={pending || Boolean(blockedBy)}
               aria-invalid={triage.imageError ? true : undefined}
-              aria-describedby={`${ids.photoHelp}${triage.imageError ? ` ${ids.photoError}` : ""}`}
+              aria-describedby={[ids.photoHelp, triage.imageError ? ids.photoError : null, blockedBy].filter(Boolean).join(" ")}
               className={cn(
-                "w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:text-foreground",
+                "w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
                 noPhotos && "col-span-2 sm:col-span-1"
               )}
               onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
@@ -168,9 +174,10 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
           variant="outline"
           onClick={suggest}
           // Focusable while it asks (or waits out a rate limit): it was just pressed, and focus must stay in the dialog.
-          disabled={pending || waiting > 0}
+          disabled={pending || waiting > 0 || Boolean(blockedBy)}
           focusableWhenDisabled
           aria-busy={pending || undefined}
+          aria-describedby={blockedBy}
           className="self-start"
         >
           {pending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <ScanSearch aria-hidden="true" />}
@@ -191,7 +198,17 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
         {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today) : ""}
       </p>
 
-      {alert && <TriageProblem error={alert} waiting={waiting} retrying={pending} onRetry={() => triage.retry()} />}
+      {alert && (
+        <TriageProblem
+          error={alert}
+          waiting={waiting}
+          retrying={pending}
+          blockedBy={blockedBy}
+          onRetry={() => {
+            if (!blockedBy) triage.retry()
+          }}
+        />
+      )}
 
       {answer && (
         <Suggestions
@@ -473,12 +490,22 @@ function isValidation(error: unknown): boolean {
   return problem !== null && problemSlug(problem) === "validation-error"
 }
 
+interface TriageProblemProps {
+  error: unknown
+  waiting: number
+  retrying: boolean
+  /** As Suggest a service's: the id of the reason this account cannot ask any more; Try again is then unavailable and names it. */
+  blockedBy?: string
+  onRetry: () => void
+}
+
 /**
  * Why there are no suggestions, in the shared problem alert (UI_DESIGN 11.16): a rate limit waits (Suggest a service
  * counts down), a refusal says what the API said, and any other failure (`503 triage-unavailable`, the network) offers
- * Try again with the same description. Manual selection below works throughout.
+ * Try again with the same description, unavailable with Suggest a service's reason when the account cannot ask. Manual
+ * selection below works throughout.
  */
-function TriageProblem({ error, waiting, retrying, onRetry }: { error: unknown; waiting: number; retrying: boolean; onRetry: () => void }) {
+function TriageProblem({ error, waiting, retrying, blockedBy, onRetry }: TriageProblemProps) {
   const problem = parseProblem(error)
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
 
@@ -491,8 +518,21 @@ function TriageProblem({ error, waiting, retrying, onRetry }: { error: unknown; 
       />
     )
   }
+  // Signed out or refused for the role: the app's session prompt says what to do (components/auth/session-watch.tsx).
+  if (status === 401 || status === 403) {
+    return <ProblemAlert tone="warning" title={authRefusalTitle(status, "suggest a service")} error={error} />
+  }
   if (status !== undefined && status < 500 && !(problem && problemSlug(problem) === "triage-unavailable")) {
     return <ProblemAlert tone="warning" title={problem?.title ?? `The server answered ${status}`} error={error} />
   }
-  return <ProblemAlert title="Couldn’t suggest a service" error={error} onRetry={onRetry} retrying={retrying} />
+  return (
+    <ProblemAlert
+      title="Couldn’t suggest a service"
+      error={error}
+      onRetry={onRetry}
+      retrying={retrying}
+      retryDisabled={Boolean(blockedBy)}
+      retryDescribedBy={blockedBy}
+    />
+  )
 }

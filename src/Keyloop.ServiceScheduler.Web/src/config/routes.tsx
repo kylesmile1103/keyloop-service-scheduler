@@ -1,7 +1,7 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/config/routes.tsx`,
 // Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import type { ComponentType } from "react"
-import { Navigate, type RouteObject } from "react-router-dom"
+import type { RouteObject } from "react-router-dom"
 
 import { KeepSearch } from "@/components/router/keep-search"
 import { RootErrorBoundary, RootFallback, RootLayout } from "@/components/router/root-layout"
@@ -16,10 +16,13 @@ function page(load: () => Promise<{ default: ComponentType }>) {
 }
 
 export const routes: RouteObject[] = [
-  // Relative target ("dispatch", not "/dispatch") keeps a deployment basename working
-  { path: "/", element: <Navigate to="dispatch" replace /> },
+  // The landing page is the Overview, keeping the search (`/?dealership=…`). A relative target ("overview", not
+  // "/overview") keeps a deployment basename working.
+  { path: "/", element: <KeepSearch to="overview" /> },
   // Workshop
+  { path: "/overview", lazy: page(() => import("@/app/overview/page")) },
   { path: "/dispatch", lazy: page(() => import("@/app/dispatch/page")) },
+  { path: "/calendar", lazy: page(() => import("@/app/calendar/page")) },
   { path: "/appointments", lazy: page(() => import("@/app/appointments/page")) },
   // Resources, the admin area: its layout mounts Refine core, so only this subtree loads it (ADR-030, ADR-031)
   {

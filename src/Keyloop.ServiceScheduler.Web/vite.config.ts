@@ -52,6 +52,18 @@ export function otelDefines(command: "serve" | "build", mode: string, env: Env =
 }
 
 /**
+ * Where the signed-in identity comes from, compiled in as `import.meta.env.VITE_IDENTITY_SOURCE` (src/lib/session.ts). The
+ * development dev server always fronts an API in its Development auth mode (the AppHost's run mode sets it; so does the
+ * API's own Development profile), whose identity is configuration: there is no Access login page and no session to end,
+ * so the app explains how to change the configured identity instead of linking to them. Every build, and every other
+ * mode (tests included), fronts Cloudflare Access.
+ */
+export function identityDefines(command: "serve" | "build", mode: string): Record<string, string> {
+  const source = command === "serve" && mode === "development" ? "configuration" : "access"
+  return { "import.meta.env.VITE_IDENTITY_SOURCE": JSON.stringify(source) }
+}
+
+/**
  * Vite's `build.assetsInlineLimit`: never inline a font. Vite inlines assets under 4 KB as `data:` URIs, and one Plus
  * Jakarta Sans subset is that small, but the production CSP (nginx/security-headers.conf, `font-src 'self'`) blocks a
  * `data:` font. `undefined` keeps Vite's 4 KB rule for everything else (`true` would inline every illustration too).
@@ -75,7 +87,7 @@ export default defineConfig(({ command, mode }) => {
         "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
-    define: otelDefines(command, mode),
+    define: { ...otelDefines(command, mode), ...identityDefines(command, mode) },
     build: { assetsInlineLimit: inlineAsset },
     server: {
       host: true,

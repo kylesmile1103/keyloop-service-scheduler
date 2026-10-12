@@ -7,6 +7,7 @@ import { appRoutes } from "@/config/routes"
 import { ERROR_PAGES, errorPageFor } from "@/lib/error-pages"
 import { createQueryClient } from "@/lib/query-client"
 import { mockBoardApi } from "@/test/board-api"
+import { anonymous, noRole } from "@/test/identities"
 
 // The error pages (Task 29), adopted from the template's errors app: routed, so the app can navigate to them.
 
@@ -50,23 +51,38 @@ describe("error pages", () => {
     ])
   })
 
-  it("asks to sign in on a 401, and says the app does not offer sign-in yet", async () => {
+  it("asks to sign in on a 401, returning to the dispatch board when no page sent the user", async () => {
+    mockBoardApi({ me: () => anonymous })
     const { container } = renderAt(ERROR_PAGES.unauthorized)
 
     expect(await heading("Sign in to continue")).toBeInTheDocument()
-    expect(screen.getByText(/This app does not offer sign-in yet\. Anyone may view the schedule, with customer details masked; booking and cancelling need a workshop account\./)).toBeInTheDocument()
-    expect(screen.queryByText(/every page is open/)).not.toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
-    expect(container.querySelectorAll("img")).toHaveLength(1)
+    expect(screen.getByText("This page needs you to be signed in with a workshop account.")).toBeInTheDocument()
+    expect(screen.getByText(/booking, cancelling and the Resources area need an account/)).toBeInTheDocument()
+    // A plain navigation to the API's Access login (no form, no request), back to the board.
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login?returnTo=%2Fdispatch")
+    expect(screen.queryByRole("link", { name: "Go to the dispatch board" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/does not offer sign-in/)).not.toBeInTheDocument()
+    expect(container.querySelector("main img, #content img")).toHaveAttribute("alt", "Car key fob beside an open padlock inviting sign-in.")
     expect(document.title).toBe("Sign in to continue – Keyloop Service Scheduler")
   })
 
-  it("says that the account has no access on a 403", async () => {
+  it("signs in back to the page that sent the user to the 401 page, with its search", async () => {
+    mockBoardApi({ me: () => anonymous })
+    renderAt(ERROR_PAGES.unauthorized, { from: "/appointments?dealership=x&date=2026-10-14" })
+
+    expect(await screen.findByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/auth/login?returnTo=%2Fappointments%3Fdealership%3Dx%26date%3D2026-10-14"
+    )
+  })
+
+  it("says that the account has no access on a 403, and that the workshop administrator assigns roles", async () => {
+    mockBoardApi({ me: () => noRole })
     renderAt(ERROR_PAGES.forbidden)
 
     expect(await heading("No access to this page")).toBeInTheDocument()
-    expect(screen.getByText("Your role does not include this page. An administrator can give your account access.")).toBeInTheDocument()
+    expect(await screen.findByText(/You are signed in as Robin Visitor, but your account’s role does not include this page\./)).toBeInTheDocument()
+    expect(screen.getByText("Roles (Admin, Service advisor, Viewer) are assigned by the workshop administrator: ask them for access.")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
     expect(document.title).toBe("No access to this page – Keyloop Service Scheduler")
   })

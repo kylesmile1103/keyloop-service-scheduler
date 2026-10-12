@@ -59,6 +59,30 @@ export function parseProblem(error: unknown): ProblemDetails | null {
   return null
 }
 
+/**
+ * The HTTP status behind a failure, whichever shape it took: a problem's `status`, a bare error response's status, or the
+ * `statusCode` of the admin area's Refine `HttpError` (or of the failure it wraps). `undefined` when no response arrived.
+ */
+export function failureStatus(error: unknown): number | undefined {
+  const problem = parseProblem(error)
+  if (typeof problem?.status === "number") return problem.status
+  if (error instanceof UnexpectedResponseError) return error.status
+  if (isRecord(error)) {
+    if (typeof error.statusCode === "number" && error.statusCode > 0) return error.statusCode
+    if ("cause" in error && error.cause !== error) return failureStatus(error.cause)
+  }
+  return undefined
+}
+
+/**
+ * The headline for a refused write in the words of what was being done ("book", "cancel the appointment"): a `401` says
+ * the user is signed out, a `403` that the role does not allow it. The API's titles ("Authentication required",
+ * "Forbidden") are the catalogue's, not the screen's.
+ */
+export function authRefusalTitle(status: 401 | 403, action: string): string {
+  return status === 401 ? `Couldn’t ${action}: you’re signed out` : `Couldn’t ${action}: your role doesn’t allow it`
+}
+
 export interface FailureDescription {
   /** One or two sentences for the person at the screen. */
   summary: string

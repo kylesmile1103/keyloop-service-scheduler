@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { useRef, useState } from "react"
 
 import { getBookingTriageStatusOptions, triageBookingRequestMutation } from "@/api/@tanstack/react-query.gen"
@@ -6,6 +6,7 @@ import { uploadBookingTriageImage } from "@/api/sdk.gen"
 import type { TriageBookingResponse } from "@/api/types.gen"
 import { useCountdown } from "@/hooks/use-countdown"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 import { withSpan } from "@/lib/telemetry"
 
@@ -53,29 +54,37 @@ export function useBookingTriage(dealershipId: string) {
   const maxTotalImageBytes = status.data?.maxTotalImageBytes ?? 8 * 1024 * 1024
 
   const generated = triageBookingRequestMutation()
-  const request = useMutation({
-    mutationKey: generated.mutationKey,
-    mutationFn: (submission: Submission, context) =>
+  // Uploads and the evaluation are writes (`BookingsWrite`), bound to the account the dialog was drawn for: checked last
+  // inside each request's fetch as it leaves (`write.fetch`, wrapping the span's traced fetch) and after every step awaited
+  // (reading a photo, each upload), so nothing is sent for anyone else and a role lost meanwhile sends nothing more; an
+  // answer that arrives after the identity changed is thrown away (`useWriteMutation`), and no upload of the previous
+  // caller's is kept for reuse.
+  const request = useWriteMutation({
+    mutationFn: (submission: Submission, write, context) =>
       withSpan("ui.booking_triage", async ({ fetch }) => {
         const imageIds: string[] = []
         for (const photo of submission.photos) {
           let upload = uploads.current.get(photo)
           if (!upload || upload.expires <= Date.now() + 30_000) {
+            const base64 = await imageBase64(photo)
+            write.guard()
             const response = await uploadBookingTriageImage({
               path: { dealershipId },
-              body: { contentType: photo.type, base64: await imageBase64(photo) },
-              fetch,
+              body: { contentType: photo.type, base64 },
+              fetch: write.fetch(fetch),
               throwOnError: true,
             })
+            write.guard()
             upload = { id: response.data.imageId, expires: Date.parse(response.data.expiresAt) }
             uploads.current.set(photo, upload)
           }
           imageIds.push(upload.id)
         }
+        write.guard()
         return generated.mutationFn!({
           path: { dealershipId },
           body: { description: submission.description, ...(imageIds.length ? { imageIds } : {}) },
-          fetch,
+          fetch: write.fetch(fetch),
         }, context)
       }, { "keyloop.dealership_id": dealershipId }),
     onSuccess: (response, submission) => {
@@ -104,11 +113,15 @@ export function useBookingTriage(dealershipId: string) {
 
   function send(text: string) {
     if (request.isPending || waiting > 0) return
+    // The identity in the cache decides, not the last render: a press can come after `/me` changed and before the view
+    // has drawn it (Try again included), to nobody or to another account.
+    const write = request.begin()
+    if (!write) return
     setDescriptionError(null)
     setImageError(null)
     const submission = { description: text, photos: [...photos], imageVersion, flowVersion: flowVersion.current }
     lastSent.current = submission
-    request.mutate(submission)
+    write(submission)
   }
 
   return {
