@@ -1,0 +1,33 @@
+import type { ComponentType } from "react"
+import { Navigate, type RouteObject } from "react-router-dom"
+
+import { RootErrorBoundary, RootFallback, RootLayout } from "@/components/router/root-layout"
+
+/**
+ * Every page is code-split. With the data router, a route's code is loaded
+ * *before* the navigation commits: the current page stays on screen and the
+ * root layout shows a progress bar until the next page is ready.
+ */
+function page(load: () => Promise<{ default: ComponentType }>) {
+  return async () => ({ Component: (await load()).default })
+}
+
+export const routes: RouteObject[] = [
+  // Relative target ("dispatch", not "/dispatch") keeps a deployment basename working
+  { path: "/", element: <Navigate to="dispatch" replace /> },
+  // Workshop
+  { path: "/dispatch", lazy: page(() => import("@/app/dispatch/page")) },
+  { path: "/appointments", lazy: page(() => import("@/app/appointments/page")) },
+  // Catch-all route for 404
+  { path: "*", lazy: page(() => import("@/app/errors/not-found/page")) },
+]
+
+/** The whole route tree: the root layout (progress bar, error boundary) around the pages. */
+export const appRoutes: RouteObject[] = [
+  {
+    element: <RootLayout />,
+    HydrateFallback: RootFallback,
+    errorElement: <RootErrorBoundary />,
+    children: routes,
+  },
+]

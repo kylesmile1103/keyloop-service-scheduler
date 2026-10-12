@@ -1,0 +1,62 @@
+"use client"
+
+import * as React from "react"
+import { ThemeProviderContext, type Theme } from "@/contexts/theme-context"
+
+type ThemeProviderProps = {
+  children: React.ReactNode
+  defaultTheme?: Theme
+  storageKey?: string
+}
+
+const DARK_QUERY = "(prefers-color-scheme: dark)"
+
+function subscribeToSystemTheme(onChange: () => void) {
+  const query = window.matchMedia(DARK_QUERY)
+  query.addEventListener("change", onChange)
+  return () => query.removeEventListener("change", onChange)
+}
+
+function readTheme(storageKey: string, fallback: Theme): Theme {
+  const stored = localStorage.getItem(storageKey)
+  return stored === "dark" || stored === "light" || stored === "system" ? stored : fallback
+}
+
+export function ThemeProvider({
+  children,
+  defaultTheme = "system",
+  storageKey = "keyloop-scheduler-theme",
+  ...props
+}: ThemeProviderProps) {
+  const [theme, setTheme] = React.useState<Theme>(() => readTheme(storageKey, defaultTheme))
+  const prefersDark = React.useSyncExternalStore(
+    subscribeToSystemTheme,
+    () => window.matchMedia(DARK_QUERY).matches,
+    () => false
+  )
+  const resolvedTheme = theme === "system" ? (prefersDark ? "dark" : "light") : theme
+
+  React.useEffect(() => {
+    const root = window.document.documentElement
+    root.classList.remove("light", "dark")
+    root.classList.add(resolvedTheme)
+  }, [resolvedTheme])
+
+  const value = React.useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      setTheme: (next: Theme) => {
+        localStorage.setItem(storageKey, next)
+        setTheme(next)
+      },
+    }),
+    [theme, resolvedTheme, storageKey]
+  )
+
+  return (
+    <ThemeProviderContext.Provider {...props} value={value}>
+      {children}
+    </ThemeProviderContext.Provider>
+  )
+}

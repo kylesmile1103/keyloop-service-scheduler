@@ -1,0 +1,231 @@
+import type {
+  AppointmentResponse,
+  AvailabilityResponse,
+  BookAppointmentRequest,
+  DealershipResponse,
+  ScheduledAppointmentResponse,
+  ServiceTypeResponse,
+  WorkshopScheduleResponse,
+} from "@/api/types.gen"
+import { shiftDate } from "@/app/dispatch/lib/calendar-date"
+import { munich, reading } from "@/test/dealerships"
+import { jsonResponse, mockApi, problemResponse } from "@/test/mock-api"
+import {
+  bays,
+  interimAvailability,
+  interimDetails,
+  interimServiceType,
+  munichTuesday,
+  readingSunday,
+  readingTuesday,
+  technicians,
+} from "@/test/schedules"
+
+type Answer<T> = T | Response | Promise<T | Response>
+
+export interface BoardApiOptions {
+  dealerships?: () => Answer<DealershipResponse[]>
+  /** The schedule for a dealership and date. By default: Reading's Tuesday (Sunday closed), München's Tuesday. */
+  schedule?: (dealershipId: string, date: string) => Answer<WorkshopScheduleResponse>
+  /** The dealership's catalogue. By default: Interim Service only. */
+  serviceTypes?: (dealershipId: string) => Answer<ServiceTypeResponse[]>
+  /** Free starts for a service on a date. By default: Interim Service's, whatever the service asked for. */
+  availability?: (dealershipId: string, serviceTypeId: string, date: string) => Answer<AvailabilityResponse>
+  appointment?: (appointmentId: string) => Answer<AppointmentResponse>
+  cancel?: (appointmentId: string, body: { reason?: unknown }) => Answer<AppointmentResponse>
+  /** POST a booking. By default: 201, in Bay 1 with Amelia Clarke (see `bookedFrom`). */
+  book?: (dealershipId: string, body: BookAppointmentRequest, request: Request) => Answer<AppointmentResponse>
+}
+
+/** British Summer Time, as the fixtures' October dates are: a UTC instant as `yyyy-MM-ddTHH:mm+01:00`. */
+const bstLocal = (utc: string) => `${new Date(Date.parse(utc) + 3_600_000).toISOString().slice(0, 16)}+01:00`
+
+/** The appointment the API answers a booking with: the request's service, start and people, in the given bay. */
+export function bookedFrom(
+  body: BookAppointmentRequest,
+  {
+    id = "7b0c5a52-6f0e-4d2b-9a43-2c8a4b9f0e11",
+    bay = bays.standard,
+    technician = technicians.amelia,
+    durationMinutes = 60,
+    serviceName = "Interim Service",
+  }: {
+    id?: string
+    bay?: { id: string; name: string }
+    technician?: { id: string; name: string }
+    durationMinutes?: number
+    serviceName?: string
+  } = {}
+): AppointmentResponse {
+  const endUtc = new Date(Date.parse(body.startUtc) + durationMinutes * 60_000).toISOString().replace(".000Z", "Z")
+  return {
+    ...interimDetails,
+    id,
+    serviceType: { id: body.serviceTypeId, code: "INTERIM-SERVICE", name: serviceName, durationMinutes },
+    bay,
+    technician,
+    startUtc: body.startUtc,
+    endUtc,
+    startLocal: bstLocal(body.startUtc),
+    endLocal: bstLocal(endUtc),
+    status: "Confirmed",
+    customer: body.customer,
+    vehicle: body.vehicle,
+    notes: body.notes ?? null,
+  }
+}
+
+/** A booked appointment as the schedule lists it under its bay. */
+export function scheduledFrom(appointment: AppointmentResponse): ScheduledAppointmentResponse {
+  return {
+    id: appointment.id,
+    startUtc: appointment.startUtc,
+    endUtc: appointment.endUtc,
+    startLocal: appointment.startLocal,
+    endLocal: appointment.endLocal,
+    status: appointment.status,
+    serviceType: appointment.serviceType,
+    technician: appointment.technician,
+    vin: appointment.vehicle.vin,
+    registration: appointment.vehicle.registration,
+    customerName: appointment.customer.name,
+  }
+}
+
+/**
+ * A Tuesday fixture moved to another date: its window and appointments keep their local times on the new day. (The
+ * fixtures' October dates are all before the clocks change on the 25th, so whole days keep the same offset.)
+ */
+function movedTo(schedule: WorkshopScheduleResponse, date: string): WorkshopScheduleResponse {
+  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${schedule.date}T00:00:00Z`)) / 86_400_000)
+  if (days === 0) return schedule
+  const utc = (instant: string) => new Date(Date.parse(instant) + days * 86_400_000).toISOString().replace(".000Z", "Z")
+  const local = (value: string) => `${shiftDate(value.slice(0, 10), days)}${value.slice(10)}`
+  return {
+    ...schedule,
+    date,
+    operatingWindow: schedule.operatingWindow && {
+      startUtc: utc(schedule.operatingWindow.startUtc),
+      endUtc: utc(schedule.operatingWindow.endUtc),
+      opensAtLocal: local(schedule.operatingWindow.opensAtLocal),
+      closesAtLocal: local(schedule.operatingWindow.closesAtLocal),
+    },
+    bays: schedule.bays.map((bay) => ({
+      ...bay,
+      appointments: bay.appointments.map((appointment) => ({
+        ...appointment,
+        startUtc: utc(appointment.startUtc),
+        endUtc: utc(appointment.endUtc),
+        startLocal: local(appointment.startLocal),
+        endLocal: local(appointment.endLocal),
+      })),
+    })),
+  }
+}
+
+/** The default schedule: the fixture for the dealership, moved to the date asked (Reading is closed on Sundays). */
+export function defaultSchedule(dealershipId: string, date: string): WorkshopScheduleResponse {
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay()
+  if (dealershipId === munich.id) {
+    // München closes at weekends.
+    const closed = weekday === 0 || weekday === 6
+    return closed ? { ...munichTuesday, date, operatingWindow: null } : movedTo(munichTuesday, date)
+  }
+  return weekday === 0 ? { ...readingSunday, date } : movedTo(readingTuesday, date)
+}
+
+/** The whole record behind a board appointment, as GET /appointments/{id} answers. */
+export function detailsFor(appointment: ScheduledAppointmentResponse, bay: { id: string; name: string }): AppointmentResponse {
+  if (appointment.id === interimDetails.id) return { ...interimDetails, status: appointment.status }
+  return {
+    ...interimDetails,
+    id: appointment.id,
+    serviceType: appointment.serviceType,
+    bay,
+    technician: appointment.technician,
+    startUtc: appointment.startUtc,
+    endUtc: appointment.endUtc,
+    startLocal: appointment.startLocal,
+    endLocal: appointment.endLocal,
+    status: appointment.status,
+    customer: { name: appointment.customerName, email: "customer@example.com", phone: "+44 7700 900100" },
+    vehicle: { vin: appointment.vin, registration: appointment.registration, make: "Ford", model: "Focus" },
+    notes: null,
+  }
+}
+
+function findOnBoard(appointmentId: string) {
+  for (const bay of readingTuesday.bays) {
+    const appointment = bay.appointments.find((candidate) => candidate.id === appointmentId)
+    if (appointment) return detailsFor(appointment, { id: bay.id, name: bay.name })
+  }
+  return null
+}
+
+const notFound = (resource: string, id: string) =>
+  problemResponse(404, {
+    type: "https://api.keyloop.example/problems/not-found",
+    title: "Resource not found",
+    status: 404,
+    detail: `No ${resource} with id '${id}' exists.`,
+    resource,
+    id,
+    traceId: "00-438d4c830068d5c9ac8829d1ed9a62c4-688a07bcce305407-01",
+  })
+
+async function answer<T>(value: Answer<T>, status = 200): Promise<Response> {
+  const resolved = await value
+  return resolved instanceof Response ? resolved : jsonResponse(resolved, { status })
+}
+
+/**
+ * Stubs `fetch` with the dispatch board's API, routed by path: dealerships, schedule, service types, availability, booking,
+ * one appointment and its cancellation. Each route can be replaced; requests are recorded as with `mockApi`.
+ */
+export function mockBoardApi(options: BoardApiOptions = {}) {
+  return mockApi(async (request) => {
+    const url = new URL(request.url)
+    const path = url.pathname
+    let match: RegExpExecArray | null
+
+    if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/schedule$/.exec(path))) {
+      const date = url.searchParams.get("date") ?? ""
+      return answer(options.schedule?.(match[1], date) ?? defaultSchedule(match[1], date))
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/service-types$/.exec(path))) {
+      return answer(options.serviceTypes?.(match[1]) ?? [interimServiceType])
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/availability$/.exec(path))) {
+      const date = url.searchParams.get("date") ?? interimAvailability.date
+      const serviceTypeId = url.searchParams.get("serviceTypeId") ?? ""
+      return answer(options.availability?.(match[1], serviceTypeId, date) ?? { ...interimAvailability, date })
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/appointments$/.exec(path)) && request.method === "POST") {
+      const body = (await request.clone().json()) as BookAppointmentRequest
+      if (options.book) return answer(options.book(match[1], body, request), 201)
+      return jsonResponse(bookedFrom(body), { status: 201 })
+    }
+    if ((match = /^\/api\/v1\/appointments\/([^/]+)\/cancel$/.exec(path)) && request.method === "POST") {
+      // Read a copy, so the recorded request's body stays readable for assertions.
+      const body = (await request.clone().json()) as { reason?: unknown }
+      const id = match[1]
+      if (options.cancel) return answer(options.cancel(id, body))
+      const details = findOnBoard(id)
+      return details
+        ? jsonResponse({ ...details, status: "Cancelled", cancellationReason: body.reason })
+        : notFound("appointment", id)
+    }
+    if ((match = /^\/api\/v1\/appointments\/([^/]+)$/.exec(path))) {
+      const id = match[1]
+      if (options.appointment) return answer(options.appointment(id))
+      return findOnBoard(id) ? jsonResponse(findOnBoard(id)) : notFound("appointment", id)
+    }
+    return new Response("", { status: 404, statusText: "Not Found" })
+  })
+}
+
+/** Requests to one route, by path suffix ("/schedule", "/cancel"). */
+export function requestsTo(requests: readonly Request[], suffix: string): Request[] {
+  return requests.filter((request) => new URL(request.url).pathname.endsWith(suffix))
+}
