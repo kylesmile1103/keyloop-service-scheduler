@@ -362,7 +362,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 
 ### Grafana Cloud
 
-**`TODO(grafana-cloud)`:** configure the .NET container's OTLP export with platform-managed credentials, verify metric translation against deployed data, publish the committed dashboards and runbooks, and prepare alerts for an approved contact point. The optional secret-free browser Worker relay and [dashboards as code](observability/grafana/README.md) are implemented and validated locally; enabling export and publishing Grafana resources remain pending.
+The .NET container's OTLP export to Grafana Cloud is an optional Worker setting, `KEYLOOP_API_OTLP_ENABLED`, with a Secrets Store token read only at container start; its series carry `job="keyloop-scheduler/api"` and `deployment_environment_name="Production"`, which the committed dashboards select ([edge README](deploy/cloudflare/README.md#optional-api-telemetry)). Enabling it on the live deployment, together with pushing the [dashboards as code](observability/grafana/README.md), is ordered in [Enable API telemetry](deploy/cloudflare/DEPLOY-RUNBOOK.md#enable-api-telemetry). **`TODO(grafana-cloud)`:** verify metric translation against deployed data, publish the runbooks, and prepare alerts for an approved contact point. The optional secret-free browser Worker relay is implemented and validated locally and stays off.
 
 ## Runtime reflection budget
 
