@@ -1,5 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query"
-import { ChevronRight, EyeOff, RefreshCw, RotateCw, Warehouse } from "lucide-react"
+import { ChevronRight, EyeOff, RefreshCw, RotateCw, ShieldAlert, Warehouse } from "lucide-react"
 import { type ReactNode, type Ref, useId } from "react"
 
 import type { DealershipResponse, GetWorkshopScheduleError, OperatingWindowResponse, WorkshopScheduleResponse } from "@/api/types.gen"
@@ -34,6 +34,8 @@ interface ScheduleBoardProps {
   lanes: readonly Lane[]
   /** How many lanes the view has before filtering. */
   laneCount: number
+  /** How many of the day's appointments are flagged for review (Task 30b; 0 for a visitor, who sees no warning). */
+  reviewCount?: number
   onShowAllLanes: () => void
   onDateChange: (date: string | null) => void
   /** The phone presentation: an agenda instead of the timeline. */
@@ -66,6 +68,7 @@ export function ScheduleBoard({
   failure,
   lanes,
   laneCount,
+  reviewCount = 0,
   onShowAllLanes,
   onDateChange,
   agenda,
@@ -231,6 +234,15 @@ export function ScheduleBoard({
           {dealership.name}
         </h2>
         <p className="text-sm text-muted-foreground tabular-nums">{daySentence(dealership, date, today, data)}</p>
+        {data && reviewCount > 0 && (
+          // The day's flagged appointments in one line, so a dispatcher knows to look for the marks (UI_DESIGN 11.24).
+          <p className="flex items-start gap-1.5 text-sm text-pretty text-warning">
+            <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            {`${reviewCount === 1 ? "1 appointment needs" : `${reviewCount} appointments need`} review: ${
+              reviewCount === 1 ? "its technician or bay no longer meets what it was" : "their technician or bay no longer meets what they were"
+            } booked with.`}
+          </p>
+        )}
       </div>
       {data && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">

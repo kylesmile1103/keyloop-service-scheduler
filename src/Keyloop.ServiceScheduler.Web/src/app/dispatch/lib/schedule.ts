@@ -7,6 +7,7 @@ import type {
 } from "@/api/types.gen"
 import { bookedMinutes, windowMinutes } from "@/lib/booked-time"
 import { todayIn } from "@/lib/calendar-date"
+import { shownWarning } from "@/lib/competence-warnings"
 
 import { activeStatuses } from "./status"
 
@@ -34,6 +35,25 @@ export interface Lane {
 }
 
 const byStart = (a: BoardAppointment, b: BoardAppointment) => Date.parse(a.startUtc) - Date.parse(b.startUtc)
+
+/**
+ * The lanes as a caller may see them: a competence warning stays only for a signed-in workshop role (`shownWarning`), so a
+ * visitor's board never marks one, even from an answer read before they signed out.
+ */
+export function withVisibleWarnings(lanes: readonly Lane[], canSee: boolean): Lane[] {
+  return lanes.map((lane) => ({
+    ...lane,
+    appointments: lane.appointments.map((appointment) => {
+      const warning = shownWarning(appointment.competenceWarning, canSee)
+      return warning === (appointment.competenceWarning ?? null) ? appointment : { ...appointment, competenceWarning: warning }
+    }),
+  }))
+}
+
+/** How many appointments on the lanes are flagged for review, each counted once (a technician lane repeats no bay's). */
+export function reviewCount(lanes: readonly Lane[]): number {
+  return new Set(lanes.flatMap((lane) => lane.appointments.filter((appointment) => appointment.competenceWarning).map((appointment) => appointment.id))).size
+}
 
 /** Every appointment on the board, each knowing its bay. */
 export function boardAppointments(schedule: WorkshopScheduleResponse): BoardAppointment[] {

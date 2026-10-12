@@ -14,6 +14,7 @@ import {
 import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
 import vehiclePlaceholder from "@/assets/illustrations/vehicle-placeholder.webp"
 import { SignInPanel } from "@/components/auth/sign-in-prompt"
+import { CompetenceWarningNotice } from "@/components/competence-warning"
 import { WriteReason } from "@/components/auth/write-reason"
 import { CopyButton } from "@/components/copy-button"
 import { InitialsAvatar } from "@/components/initials-avatar"
@@ -29,6 +30,7 @@ import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
+import { shownWarning } from "@/lib/competence-warnings"
 import { useVehicleAware } from "@/lib/feature-switches"
 import { formatLocalTime } from "@/lib/local-time"
 import { cachedCapabilities } from "@/lib/session"
@@ -183,6 +185,9 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const service = catalogue.data?.find((candidate) => candidate.id === appointment.serviceType.id)
   const { icon: StatusIcon, classes } = statusMeta[status]
   const day = appointment.startLocal.slice(0, 10)
+  // Needs review (Task 30b): the record's warning once read, else the board's; only for a workshop role. A cancelled,
+  // completed or no-show appointment holds nothing any more, and the API flags none.
+  const warning = shownWarning(record ? record.competenceWarning : appointment.competenceWarning, current.canViewDetails)
   // A preference the allocation did not follow is named from the day's bays and technicians, with that technician's HV
   // level (a role's schedule carries it): the appointment's own day, read only when the record says one was not followed.
   // The board's read of that day has the same key, so the board's sheet finds it there; the Overview and the Calendar read
@@ -223,6 +228,15 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
       </SheetHeader>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        {warning && (
+          <CompetenceWarningNotice
+            warning={warning}
+            technician={appointment.technician.name}
+            bay={appointment.bay.name}
+            day={formatDay(day, "long")}
+            className="mb-4"
+          />
+        )}
         <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
           <Row term="Duration">{`${appointment.serviceType.durationMinutes} min`}</Row>
           <Row term="Bay">{appointment.bay.name}</Row>

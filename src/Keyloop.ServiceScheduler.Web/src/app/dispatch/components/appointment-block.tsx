@@ -1,8 +1,10 @@
 import { Warehouse } from "lucide-react"
 import type { CSSProperties } from "react"
 
+import { ReviewMark } from "@/components/competence-warning"
 import { InitialsAvatar } from "@/components/initials-avatar"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { NEEDS_REVIEW, warningSummary } from "@/lib/competence-warnings"
 import { cn } from "@/lib/utils"
 
 import { appointmentLabel, firstName, timeRange } from "../lib/appointment-text"
@@ -77,6 +79,10 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
           {/* Under 4.5rem the name needs the room; the tooltip, the sheet and the label still give the status in words. */}
           <StatusIcon aria-hidden="true" className="size-3.5 shrink-0 @max-[4.5rem]/block:hidden" />
           <span className="truncate font-semibold">{appointment.serviceType.name}</span>
+          {/* Flagged for review (Task 30b): the word from 7rem, the shield alone below it; the label says it in words. */}
+          {appointment.competenceWarning && (
+            <ReviewMark className="ml-auto @max-[7rem]/block:px-1 @max-[7rem]/block:*:last:hidden" />
+          )}
         </span>
         <span className="flex min-w-0 items-center gap-1.5">
           <PlateChip registration={appointment.registration} className="@max-[5.5rem]/block:hidden" />
@@ -102,6 +108,9 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
         <span>{`${appointment.bay.name}, ${appointment.technician.name}`}</span>
         <span>{appointment.customerName}</span>
         <span className="font-mono tracking-wide">{`${appointment.registration}  ${appointment.vin}`}</span>
+        {appointment.competenceWarning && (
+          <span className="font-semibold">{`${NEEDS_REVIEW}: ${warningSummary(appointment.competenceWarning).toLowerCase()}`}</span>
+        )}
       </TooltipContent>
     </Tooltip>
   )

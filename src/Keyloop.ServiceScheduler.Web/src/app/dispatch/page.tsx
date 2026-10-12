@@ -31,7 +31,7 @@ import { ScheduleBoard } from "./components/schedule-board"
 import { useBoardParams } from "./hooks/use-board-params"
 import { useBookedToast } from "./hooks/use-booked-toast"
 import type { BookedExplanation } from "./lib/allocation"
-import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
+import { type BoardAppointment, buildLanes, type LaneMode, reviewCount, withVisibleWarnings } from "./lib/schedule"
 
 /** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
 const AUTO_REFRESH_MS = 5000
@@ -163,7 +163,12 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   // A day that never loaded stays failed while it is read again (Try again, a refresh), for the board and the figures alike.
   const scheduleFailure = useQueryFailure(schedule, scheduleOptions.queryKey)
 
-  const allLanes = useMemo(() => (schedule.data ? buildLanes(schedule.data, mode) : []), [schedule.data, mode])
+  // A competence warning (Task 30b) only for a signed-in workshop role, whatever the cache still holds.
+  const canSeeWarnings = currentUser.canViewDetails
+  const allLanes = useMemo(
+    () => (schedule.data ? withVisibleWarnings(buildLanes(schedule.data, mode), canSeeWarnings) : []),
+    [schedule.data, mode, canSeeWarnings]
+  )
   const lanes = allLanes.filter((lane) => !hidden.has(lane.id))
   // The selected booking is the previous caller's snapshot (full name, VIN, plate for a role) once the identity changes or
   // cannot be checked: the sheet closes in the same render, so it never paints for the next caller (ARCHITECTURE §15).
@@ -220,6 +225,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       failure={scheduleFailure}
       lanes={lanes}
       laneCount={allLanes.length}
+      reviewCount={reviewCount(allLanes)}
       onShowAllLanes={() => setHidden(new Set())}
       onDateChange={setDate}
       agenda={agenda}

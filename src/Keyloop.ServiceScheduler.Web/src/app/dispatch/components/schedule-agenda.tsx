@@ -3,8 +3,10 @@
 import { ChevronDown } from "lucide-react"
 import { Fragment, useId } from "react"
 
+import { ReviewMark } from "@/components/competence-warning"
 import { InitialsAvatar } from "@/components/initials-avatar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { NEEDS_REVIEW } from "@/lib/competence-warnings"
 import { formatLocalTime } from "@/lib/local-time"
 import { cn } from "@/lib/utils"
 
@@ -148,7 +150,10 @@ function JobCard({ appointment, mode, timeZone, selected, booked, onSelect }: Jo
       )}
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="text-dense font-semibold tabular-nums">{timeRange(appointment, timeZone)}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="text-dense font-semibold tabular-nums">{timeRange(appointment, timeZone)}</span>
+          {appointment.competenceWarning && <ReviewMark label={NEEDS_REVIEW} />}
+        </span>
         {mode === "bays" && <InitialsAvatar name={appointment.technician.name} />}
       </span>
       <span className="truncate text-sm font-semibold">{appointment.customerName}</span>
