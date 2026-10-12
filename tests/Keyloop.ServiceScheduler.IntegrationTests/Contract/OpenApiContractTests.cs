@@ -376,6 +376,20 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     private async Task<JsonNode> ServedAsync() => JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
 
+    [Theory]
+    [InlineData("ListAppointments")]
+    [InlineData("GetWorkshopSchedule")]
+    public async Task Masked_reads_state_the_exact_masks_a_caller_without_a_role_receives(string operationId)
+    {
+        var description = Text(Operations(await ServedAsync()).Single(o => Text(o.Operation["operationId"]) == operationId).Operation["description"]);
+
+        // The same values PersonalData.ForCaller returns: initials, the domain's Vin.Masked and the fixed full registration mask.
+        description.ShouldNotBeNull().ShouldContain("`ALS`", Case.Sensitive, operationId);
+        description.ShouldContain("`***********123456`", Case.Sensitive, operationId);
+        description.ShouldContain("`*******`", Case.Sensitive, operationId);
+        description.ShouldNotContain("VIN's last six", Case.Sensitive, operationId); // the earlier wording implied a bare suffix
+    }
+
     [Fact]
     public async Task Range_read_documents_required_dates_and_optional_repeatable_status_names()
     {
