@@ -162,16 +162,33 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         });
     }
 
+    // Both bodies are the stub's valid answer padded with trailing JSON whitespace, so only the 64 KiB response buffer cap
+    // (Program.cs, MaxResponseContentBufferSize) separates them: without the cap the larger one is an ordinary 200 suggestion.
     [Fact]
-    public async Task Oversized_upstream_body_is_503_with_one_unavailable_log()
+    public async Task Valid_upstream_body_of_exactly_64_KiB_is_accepted()
     {
-        using var stub = new StubTriageHandler { RawBody = new string('x', 64 * 1024 + 1) };
+        using var stub = new StubTriageHandler { PadBodyToBytes = 64 * 1024 };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "brakes squeal");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        body.RootElement.GetProperty("recommendation").GetString().ShouldBe("suggest");
+        stub.Calls.ShouldBe(1);
+        _logs.Entries.ShouldNotContain(e => e.EventId.Id == 1400);
+    }
+
+    [Fact]
+    public async Task Valid_upstream_body_over_64_KiB_is_503_transport_with_one_unavailable_log()
+    {
+        using var stub = new StubTriageHandler { PadBodyToBytes = 64 * 1024 + 1 };
         await using var host = Enabled(stub);
         using var client = host.CreateClient();
         using var response = await PostAsync(client, "brakes squeal");
         await UnavailableAsync(response);
         stub.Calls.ShouldBe(1);
-        _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
+        var log = _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
+        log.State.ShouldContain(p => p.Key == "Reason" && Equals(p.Value, "transport"));
     }
 
     [Fact]

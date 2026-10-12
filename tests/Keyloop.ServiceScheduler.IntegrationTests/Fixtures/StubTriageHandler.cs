@@ -24,6 +24,8 @@ internal sealed class StubTriageHandler : HttpMessageHandler
     internal bool ThrowLocalBug { get; set; }
     internal bool FailFirst { get; set; }
     internal string ContentType { get; set; } = "application/json";
+    /// <summary>Pads the otherwise unchanged JSON body with trailing whitespace (still valid JSON) to exactly this many UTF-8 bytes.</summary>
+    internal int? PadBodyToBytes { get; set; }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -66,6 +68,17 @@ internal sealed class StubTriageHandler : HttpMessageHandler
             "result" => new JsonObject { ["result"] = payload, ["success"] = true },
             _ => payload,
         }).ToJsonString();
+        if (PadBodyToBytes is { } size)
+        {
+            var padding = size - Encoding.UTF8.GetByteCount(json);
+            if (padding < 0)
+            {
+                throw new InvalidOperationException($"The stub body is already {size - padding} bytes, over the requested {size}.");
+            }
+
+            json += new string(' ', padding);
+        }
+
         var response = new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         response.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(ContentType);
         if (RetryAfter is { } seconds)
