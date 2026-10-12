@@ -14,6 +14,7 @@ import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
 import { availabilityOn, interimServiceType } from "@/test/schedules"
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
+import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
 // Review round 3: a write's account is checked at the last moment it can be, inside the fetch the generated client calls
 // for each of the write's requests, once the client's own awaited preparation (its auth parameters, its request
@@ -204,6 +205,8 @@ interface WritePath {
    * caller's).
    */
   later?: true
+  /** Needs vehicle-aware requirements on (the VIN look-up, Task 31b). */
+  vehicleAware?: true
   open: () => Promise<() => void>
   carries: string[]
   answered: () => Promise<unknown>
@@ -265,6 +268,20 @@ const writePaths: WritePath[] = [
     },
     carries: bookingDetails,
     answered: () => screen.findByText("Booked"),
+  },
+  {
+    // Task 31b: the VIN look-up is a BookingsWrite like Book, its VIN in the body only.
+    name: "Look up (the VIN's manufacturer)",
+    path: "/vehicle-profiles/resolve",
+    nth: 1,
+    vehicleAware: true,
+    open: async () => {
+      const dialog = await openBooking()
+      await enterBooking(dialog)
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Look up" }))
+    },
+    carries: [customer.VIN],
+    answered: () => screen.findByText("VOLKSWAGEN"),
   },
   {
     name: "Cancel appointment",
@@ -410,6 +427,7 @@ function boardApi(session: Session, write: WritePath) {
     serviceTypes: () => [interimServiceType, brakesServiceType],
     availability: (_, __, date) => availabilityOn(date),
     triageStatus: () => triageEnabled,
+    features: () => (write.vehicleAware ? vehicleAwareOn : vehicleAwareOff),
     book: (_, body) => {
       books++
       if (books === 1 && write.firstFails === "book-503") return new Response("", { status: 503, statusText: "Service Unavailable" })
@@ -461,6 +479,7 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
     expect(screen.queryAllByText("Booked")).toHaveLength(0)
     expect(screen.queryAllByText("Appointment cancelled")).toHaveLength(0)
     expect(screen.queryByRole("radiogroup", { name: "Suggested services" })).not.toBeInTheDocument()
+    expect(screen.queryAllByText("VOLKSWAGEN")).toHaveLength(0)
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
     for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)

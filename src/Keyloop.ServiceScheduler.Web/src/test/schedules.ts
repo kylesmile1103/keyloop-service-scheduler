@@ -135,7 +135,7 @@ const readingTechnicians: WorkshopScheduleResponse["technicians"] = [
   { ...technicians.ben, employeeNumber: "T-1002", certifications: ["GeneralService", "HighVoltageElectrical", "Diagnostics"], isActive: true },
   { ...technicians.chloe, employeeNumber: "T-1003", certifications: ["GeneralService", "Brakes", "WheelAlignment"], isActive: true },
   { ...technicians.daniel, employeeNumber: "T-1004", certifications: ["GeneralService", "Brakes", "HeavyVehicle"], isActive: true },
-  { ...technicians.eva, employeeNumber: "T-1005", certifications: ["GeneralService", "Diagnostics", "AirConditioning"], isActive: true },
+  { ...technicians.eva, employeeNumber: "T-1005", certifications: ["GeneralService", "Diagnostics", "AirConditioning", "DamageAssessment"], isActive: true },
   { ...technicians.farid, employeeNumber: "T-1006", certifications: ["GeneralService", "Diagnostics", "MotTester"], isActive: true },
 ]
 
@@ -187,7 +187,7 @@ export const munichTuesday: WorkshopScheduleResponse = {
   ],
   technicians: [
     { id: "023917dc-c695-851d-8646-e0fbd59c5b20", name: "Greta Vogel", employeeNumber: "M-2001", certifications: ["GeneralService", "Brakes"], isActive: true },
-    { id: "d6dceec3-2d89-8537-851a-a906dcd1b1fa", name: "Hans Richter", employeeNumber: "M-2002", certifications: ["GeneralService", "HighVoltageElectrical"], isActive: true },
+    { id: "d6dceec3-2d89-8537-851a-a906dcd1b1fa", name: "Hans Richter", employeeNumber: "M-2002", certifications: ["GeneralService", "HighVoltageElectrical", "DamageAssessment"], isActive: true },
     { id: "5fb2a4be-c4d2-8df1-bdd2-0444adfa5367", name: "Ingrid Bauer", employeeNumber: "M-2003", certifications: ["GeneralService", "Diagnostics", "HeavyVehicle"], isActive: true },
   ],
 }

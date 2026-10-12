@@ -17,13 +17,17 @@ import {
   getAvailabilityQueryKey,
   getServiceTypesOptions,
   getWorkshopScheduleQueryKey,
+  resolveVehicleProfileMutation,
 } from "@/api/@tanstack/react-query.gen"
 import type {
   AppointmentResponse,
   BookAppointmentRequest,
   DealershipResponse,
   GetAvailabilityData,
+  Powertrain,
   ServiceTypeResponse,
+  VehicleClass,
+  VehicleProfile,
   WorkshopScheduleResponse,
 } from "@/api/types.gen"
 import { SignInAction } from "@/components/auth/sign-in-action"
@@ -50,6 +54,7 @@ import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
+import { cachedVehicleAware, featureSwitchesQuery, useVehicleAwareSwitch, vehicleAwareRefused } from "@/lib/feature-switches"
 import { featureLabel } from "@/lib/features"
 import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
 import {
@@ -61,14 +66,37 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
+import { cachedIdentityKey } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
+import { type AvailabilityVehicle, knownManufacturer, liveDiagnosisApplies, manufacturerCode } from "@/lib/vehicle-aware"
 
 import { bookingTriageStatusQuery, useBookingTriage } from "../hooks/use-booking-triage"
+import { type BookedExplanation, explainBooking } from "../lib/allocation"
 import { localTime } from "../lib/appointment-text"
-import { bookingSchema, type BookingForm, type BookingFormInput, stepOneFields, toBookingRequest } from "../lib/booking-schema"
+import { choiceHolds, choiceOfRequest, type DecodedChoice, decodedOf, normalVin, sameEntry } from "../lib/decoded-choice"
+import {
+  bookingSchemaFor,
+  type BookingForm,
+  type BookingFormInput,
+  declaresVehicle,
+  stepOneFieldsFor,
+  toBookingRequest,
+  undeclaredProfile,
+} from "../lib/booking-schema"
+import { AllocationExplanationView } from "./allocation-explanation"
 import { AvailabilityChips, SuggestedSlotChips } from "./availability-chips"
 import { BookingTriageIntake } from "./booking-triage"
+import {
+  DeclaredVehicle,
+  type Lookup,
+  ProfileConflictProblem,
+  QualificationGap,
+  VehicleFacts,
+  VehicleInputsDropped,
+  VehicleProfileFields,
+  VinField,
+} from "./vehicle-step"
 
 export interface BookingDialogProps {
   open: boolean
@@ -84,8 +112,12 @@ export interface BookingDialogProps {
   today: string
   /** Phones: a full-screen sheet that ends on a success state instead of closing (UI_DESIGN 11.14). */
   fullScreen: boolean
-  /** A booking was made (the board refreshes and highlights it; on wide screens the dialog has closed). */
-  onBooked: (appointment: AppointmentResponse) => void
+  /**
+   * A booking was made (the board refreshes and highlights it; on wide screens the dialog has closed), with its allocation
+   * explained when vehicle-aware requirements are on and the answer carries one: the sentences, and why a preference was
+   * not followed, named from `schedule`.
+   */
+  onBooked: (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => void
   /** The success state's "View on board" (phones). */
   onViewOnBoard: (appointment: AppointmentResponse) => void
 }
@@ -101,6 +133,9 @@ export interface BookingDialogProps {
 export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: BookingDialogProps) {
   // Whether to offer suggestions, read while the dialog is still closed (see `bookingTriageStatusQuery`).
   useQuery(bookingTriageStatusQuery())
+  // Likewise the vehicle-aware switch, so the vehicle step is in place from the dialog's first frame, not added under the
+  // person's pointer a moment later.
+  useQuery(featureSwitchesQuery())
   const queryClient = useQueryClient()
   const owner = useCurrentUser().writer
   // The phone's success state, kept here so a discard knows a booking had been made.
@@ -170,13 +205,25 @@ interface Discard {
 
 /** The booking request's mutation key, so the dialog can tell whether a Book is still out when it discards a draft. */
 const BOOK_MUTATION_KEY = ["bookAppointment"]
+/** The VIN look-up's (`POST /vehicle-profiles/resolve`). */
+const RESOLVE_MUTATION_KEY = ["resolveVehicleProfile"]
+
+type ResolveVariables = Parameters<NonNullable<ReturnType<typeof resolveVehicleProfileMutation>["mutationFn"]>>[0]
+
+const WHOLE_VIN = /^[A-HJ-NPR-Z0-9]{17}$/
+const MANUFACTURER_CODE = /^[A-Z0-9-]{1,32}$/
+
+/** A value at a dotted path of a nested object (a form's errors). */
+const at = (value: unknown, path: string): unknown =>
+  path.split(".").reduce<unknown>((node, key) => (node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined), value)
 
 const blank = (date: string): BookingFormInput => ({
   serviceTypeId: "",
   date,
   startUtc: "",
   customer: { name: "", email: "", phone: "" },
-  vehicle: { vin: "", registration: "", make: "", model: "" },
+  vehicle: { vin: "", registration: "", make: "", model: "", profile: undeclaredProfile() },
+  needsLiveDiagnosis: false,
   preferredBayId: undefined,
   preferredTechnicianId: undefined,
   notes: "",
@@ -199,6 +246,11 @@ const formLabels = {
   preferredBayId: "Preferred bay",
   preferredTechnicianId: "Preferred technician",
   notes: "Notes",
+  "vehicle.profile.powertrain": "Powertrain",
+  "vehicle.profile.vehicleClass": "Vehicle class",
+  "vehicle.profile.manufacturer": "Manufacturer",
+  "vehicle.profile.declarationReason": "Reason",
+  needsLiveDiagnosis: "Live HV diagnosis",
 } satisfies Partial<Record<FieldPath<BookingFormInput>, string>>
 
 const formPaths = Object.keys(formLabels) as ReadonlyArray<keyof typeof formLabels>
@@ -242,21 +294,40 @@ function BookingFlow({
   const blockedId = useId()
   const noticeRef = useRef<HTMLDivElement>(null)
   const discardedId = useId()
+  // Vehicle-aware requirements (ADR-029), as the environment's switch says: off (or unreadable), the flow is today's and
+  // nothing of the vehicle step is shown or sent.
+  const { on: vehicleAware, unreadable: switchUnreadable } = useVehicleAwareSwitch()
+  const vehicleSectionRef = useRef<HTMLDivElement>(null)
+  const manufacturerRef = useRef<HTMLInputElement | null>(null)
+  const focusVehicle = useRef(false)
 
   const form = useForm<BookingFormInput, unknown, BookingForm>({
-    resolver: zodResolver(bookingSchema),
+    // The vehicle step's rules apply while its declaration can be sent: the switch as the cache holds it when checked.
+    resolver: (values, context, options) => zodResolver(bookingSchemaFor(cachedVehicleAware(queryClient)))(values, context, options),
     defaultValues: blank(initialDate),
     mode: "onTouched",
   })
-  const [serviceTypeId, date, startUtc, notes = ""] = useWatch({
-    control: form.control,
-    name: ["serviceTypeId", "date", "startUtc", "notes"],
-  })
+  const [serviceTypeId, date, startUtc, notes = "", powertrain = "Unknown", vehicleClass = "Unknown", liveAsked = false, vin = "", declaredManufacturer = ""] =
+    useWatch({
+      control: form.control,
+      name: [
+        "serviceTypeId",
+        "date",
+        "startUtc",
+        "notes",
+        "vehicle.profile.powertrain",
+        "vehicle.profile.vehicleClass",
+        "needsLiveDiagnosis",
+        "vehicle.vin",
+        "vehicle.profile.manufacturer",
+      ],
+    }) as [string, string, string, string | undefined, Powertrain | undefined, VehicleClass | undefined, boolean | undefined, string | undefined, string | undefined]
   const serviceTypesOptions = getServiceTypesOptions({ path: { dealershipId } })
   const serviceTypes = useQuery(serviceTypesOptions)
   // Kept while Try again loads them again, so the alert and its focused button stay in the dialog until the answer.
   const serviceTypesFailure = useQueryFailure(serviceTypes, serviceTypesOptions.queryKey)
   const service = serviceTypes.data?.find((candidate) => candidate.id === serviceTypeId)
+  const serviceFor = (id: string) => serviceTypes.data?.find((candidate) => candidate.id === id)
 
   // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
   const triage = useBookingTriage(dealershipId)
@@ -265,6 +336,99 @@ function BookingFlow({
   const [copiedNotes, setCopiedNotes] = useState("")
   // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
+
+  // The VIN look-up (`POST /vehicle-profiles/resolve`, BookingsWrite): a write like Book, bound to the account the dialog was
+  // drawn for and checked as its request leaves (`write.fetch`). The VIN goes in the body only, never in a URL or a query
+  // key. Its answer is kept with the VIN and the identity it was read for, so it never shows for another VIN or caller.
+  const [resolved, setResolved] = useState<{ identity: string; vin: string; profile: VehicleProfile } | null>(null)
+  const [lookupWaiting, startLookupWaiting] = useCountdown()
+  const generatedResolve = resolveVehicleProfileMutation()
+  const resolve = useWriteMutation({
+    mutationKey: RESOLVE_MUTATION_KEY,
+    mutationFn: (variables: ResolveVariables, write, context) => generatedResolve.mutationFn!({ ...variables, fetch: write.fetch() }, context),
+    // Kept for the caller its request left as (the cache's, when the answer is used: `useWriteMutation` throws away an answer
+    // whose caller changed after it left).
+    onSuccess: (profile, variables) => setResolved({ identity: cachedIdentityKey(queryClient), vin: variables.body.vin ?? "", profile }),
+    onError: (error) => {
+      const problem = parseProblem(error)
+      if (problem && problemSlug(problem) === "validation-error") {
+        const message = fieldErrors(problem, { vin: "VIN" }).vin
+        if (message) form.setError("vehicle.vin", { type: "server", message })
+      }
+      if (problem?.status === 429) startLookupWaiting(Math.max(1, Math.ceil(Number(problem.retryAfterSeconds ?? 1))))
+    },
+  })
+  // The look-up's answer for a VIN, when it was read for that VIN and for the caller signed in now.
+  const lookedUpFor = (value: string) => (resolved && resolved.identity === current.identity && resolved.vin === value ? resolved.profile : null)
+  const wholeVin = normalVin(vin)
+  const resolvedHere = lookedUpFor(wholeVin)
+  const resolveForThisVin = resolve.variables?.body.vin === wholeVin
+  const resolveProblem = parseProblem(resolve.error)
+  const lookup: Lookup =
+    resolve.isPending && resolveForThisVin
+      ? { state: "pending" }
+      : resolvedHere
+        ? { state: "done", profile: resolvedHere }
+        : resolve.isError && resolveForThisVin && !(resolveProblem && problemSlug(resolveProblem) === "validation-error")
+          ? { state: "failed", error: resolve.error }
+          : { state: "idle" }
+  const decoded = resolvedHere ? knownManufacturer(resolvedHere.manufacturer) : null
+
+  function lookUp(trigger: "button" | "blur") {
+    if (blocked || lookupWaiting > 0) return
+    const value = form.getValues("vehicle.vin").trim().toUpperCase()
+    if (!WHOLE_VIN.test(value)) {
+      if (trigger === "button") void form.trigger("vehicle.vin", { shouldFocus: true })
+      return
+    }
+    // Leaving the field looks up a VIN once; the button always asks again.
+    if (trigger === "blur" && ((resolve.isPending && resolveForThisVin) || (resolved?.vin === value && resolved.identity === current.identity))) return
+    resolve.mutate({ body: { vin: value } })
+  }
+
+  // A declared manufacturer that disagrees with the VIN: "Use decoded data" holds for the VIN, the declaration and the decoded
+  // attributes it was chosen for, or for the VIN and declaration when no look-up had answered (`DecodedChoice`). A change of
+  // any of them clears it, for good, so the advisor is asked again; the request is checked against it as it is built.
+  const declaredCode = manufacturerCode(declaredManufacturer)
+  const entered: DecodedChoice = { vin: wholeVin, declared: { powertrain, vehicleClass, manufacturer: declaredCode }, decoded: decodedOf(resolvedHere) }
+  const [decision, setDecision] = useState<DecodedChoice | null>(null)
+  const useDecoded = choiceHolds(decision, entered)
+  if (decision !== null && !useDecoded) setDecision(null)
+
+  // What the free starts are counted for: never the VIN, the registration or the reason (ADR-029, §8.7).
+  const liveApplies = liveDiagnosisApplies(service, powertrain)
+  const availabilityVehicle: AvailabilityVehicle | null = vehicleAware
+    ? {
+        powertrain,
+        vehicleClass,
+        manufacturer: decoded ?? (MANUFACTURER_CODE.test(declaredCode) ? declaredCode : undefined),
+        needsLiveDiagnosis: liveAsked && liveApplies,
+      }
+    : null
+
+  // The API refused vehicle-aware inputs (`422 vehicle-aware-requirements-disabled`), or the switch turned off while some
+  // were entered: they are dropped (the step goes back to Unknown) and the dialog says so once. A switch that cannot be read
+  // after it was read on is not known to be off: the inputs are set aside, neither shown nor sent, and come back as they were
+  // once it reads on again (or are dropped if it reads off).
+  const [dropped, setDropped] = useState<"booking" | "availability" | "switch" | "unreadable" | null>(null)
+  const [seenVehicleAware, setSeenVehicleAware] = useState(vehicleAware)
+  if (seenVehicleAware !== vehicleAware) {
+    setSeenVehicleAware(vehicleAware)
+    if (vehicleAware) setDropped(null)
+    else if (dropped === null && declaresVehicle(form.getValues("vehicle.profile"), form.getValues("needsLiveDiagnosis")))
+      setDropped(switchUnreadable ? "unreadable" : "switch")
+  } else if (dropped === "unreadable" && !vehicleAware && !switchUnreadable) setDropped("switch")
+  useEffect(() => {
+    if (!dropped || dropped === "unreadable") return
+    form.setValue("vehicle.profile", undeclaredProfile())
+    form.setValue("needsLiveDiagnosis", false)
+    form.clearErrors(["vehicle.profile", "needsLiveDiagnosis"])
+  }, [dropped, form])
+
+  function vehicleRefused(from: "booking" | "availability") {
+    setDropped(from)
+    void vehicleAwareRefused(queryClient)
+  }
 
   // Who is signed in changed before Book's answer arrived, so the answer was thrown away (`useWriteMutation`).
   const [answerDiscarded, setAnswerDiscarded] = useState(false)
@@ -283,6 +447,12 @@ function BookingFlow({
     onDiscarded: () => setAnswerDiscarded(true),
     onSuccess: (appointment) => {
       idempotencyKey.current = crypto.randomUUID()
+      // The allocation, explained, while the switch is on and the answer carries one (a vehicle-aware booking); a preference
+      // not followed is named from the roster the dialog offered it from.
+      const explanation =
+        cachedVehicleAware(queryClient) && appointment.allocation
+          ? explainBooking(appointment, appointment.allocation, serviceFor(appointment.serviceType.id), schedule)
+          : null
       const day = appointment.startLocal.slice(0, 10)
       void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: day } }) })
       // Every service's availability that day (the KPI strip's next free slot and the chips): a partial key matches them all.
@@ -291,7 +461,7 @@ function BookingFlow({
       })
       // Every range read of the dealership (the Overview's fortnight either side of today, the Calendar's week or month).
       void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
-      onBooked(appointment)
+      onBooked(appointment, explanation)
       if (layout === "sheet") setBooked(appointment)
       else onClose()
     },
@@ -305,9 +475,14 @@ function BookingFlow({
           const message = errors[path]
           if (!message) continue
           form.setError(path, { type: "server", message })
-          if ((stepOneFields as readonly string[]).includes(path)) onStepOne = true
+          if (stepOneFieldsFor(vehicleAware).includes(path)) onStepOne = true
         }
         if (onStepOne) goTo(1)
+        return
+      }
+      // The switch the dialog read was stale: the API takes no vehicle-aware input now.
+      if (slug === "vehicle-aware-requirements-disabled") {
+        vehicleRefused("booking")
         return
       }
       const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
@@ -331,6 +506,14 @@ function BookingFlow({
   // The last refusal, kept while this booking is tried again (Try again, a suggested start, Book): the alert and the
   // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
   const failure = useMutationFailure(book)
+  // The API's conflict is about the VIN and declaration it refused: once either is changed, its "Use decoded data" would
+  // answer for another vehicle, so the alert goes (Book asks the API again, and the look-up asks before Book).
+  const failedProblem = parseProblem(failure)
+  const staleConflict =
+    failedProblem !== null &&
+    problemSlug(failedProblem) === "vehicle-profile-conflict" &&
+    book.variables !== undefined &&
+    !sameEntry(choiceOfRequest(book.variables.body, null), entered)
 
   // A discard took the focused field with it: focus goes to the notice that says why, unless something else holds it (a
   // dialog opened over this one). A layout effect: before the dialog's focus guard puts lost focus on the dialog itself.
@@ -341,9 +524,15 @@ function BookingFlow({
     if (!active || active === document.body || active === popup) noticeRef.current?.focus()
   }, [discard])
 
-  // The new step's heading takes focus, so keyboard and screen-reader users start at its top (UI_DESIGN 11.14).
+  // The new step's heading takes focus, so keyboard and screen-reader users start at its top (UI_DESIGN 11.14); "Change the
+  // vehicle details" from a refusal goes to the vehicle step instead.
   useEffect(() => {
-    if (moved.current) stepHeading.current?.focus()
+    if (!moved.current) return
+    if (focusVehicle.current && vehicleSectionRef.current) {
+      focusVehicle.current = false
+      vehicleSectionRef.current.focus()
+      vehicleSectionRef.current.scrollIntoView?.({ block: "nearest" })
+    } else stepHeading.current?.focus()
   }, [step])
 
   // A refusal comes into view where the user is looking (the step may be scrolled to its last field). When the control that
@@ -353,6 +542,12 @@ function BookingFlow({
   useLayoutEffect(() => {
     if (!failure) return
     problemRef.current?.scrollIntoView?.({ block: "nearest" })
+    // A declaration the VIN contradicts needs the advisor's choice, so its alert takes focus wherever focus was.
+    const failedProblem = parseProblem(failure)
+    if (failedProblem && problemSlug(failedProblem) === "vehicle-profile-conflict" && alertRef.current) {
+      alertRef.current.focus()
+      return
+    }
     if (formRef.current?.contains(document.activeElement)) return
     const refusedField = formPaths.find((path) => form.getFieldState(path).error)
     if (alertRef.current) alertRef.current.focus()
@@ -366,7 +561,7 @@ function BookingFlow({
   }
 
   async function next() {
-    if (!(await form.trigger(stepOneFields, { shouldFocus: true }))) return
+    if (!(await form.trigger(stepOneFieldsFor(vehicleAware) as Array<FieldPath<BookingFormInput>>, { shouldFocus: true }))) return
     copyDescriptionIntoNotes()
     goTo(2)
   }
@@ -397,7 +592,7 @@ function BookingFlow({
     goTo(1)
   }
 
-  function submit(event?: FormEvent) {
+  function submit(event?: FormEvent, choice: { decision?: DecodedChoice } = {}) {
     // Bound, before the form's checks run, to the account this dialog was drawn for, and only while the identity in the
     // cache is that account: `/me` may have changed since the last render (Book, Enter in a field, a suggested start).
     // The send checks again once the checks pass, and sends nothing if the booking was discarded meanwhile (this flow
@@ -410,11 +605,19 @@ function BookingFlow({
     setAnswerDiscarded(false)
     void form.handleSubmit(
       (values) => {
-        const body = toBookingRequest(values)
+        // Built with the switch as the cache holds it now: nothing of the vehicle step goes to a server that would refuse it.
+        // Live HV diagnosis goes only where it applies (the switch is hidden elsewhere, so it is not what the advisor sees).
+        const live = values.needsLiveDiagnosis === true && liveDiagnosisApplies(serviceFor(values.serviceTypeId), values.vehicle.profile?.powertrain ?? "Unknown")
+        const input = { ...values, needsLiveDiagnosis: live }
+        const options = { vehicleAware: cachedVehicleAware(queryClient) }
+        const plain = toBookingRequest(input, options)
+        // "Use decoded data" goes only with the VIN and declaration it was chosen for, checked against what is sent.
+        const chosen = choiceHolds(choice.decision ?? decision, choiceOfRequest(plain, decodedOf(lookedUpFor(plain.vehicle.vin))))
+        const body = chosen ? toBookingRequest(input, { ...options, useDecoded: true }) : plain
         if (send({ path: { dealershipId }, body, headers: { "Idempotency-Key": idempotencyKey.current } })) lastRequest.current = body
       },
       (errors) => {
-        if (stepOneFields.some((field) => errors[field])) goTo(1)
+        if (stepOneFieldsFor(vehicleAware).some((field) => at(errors, field))) goTo(1)
         // react-hook-form focuses the first invalid field; on a phone it can sit under the sticky footer.
         requestAnimationFrame(() => (document.activeElement as HTMLElement | null)?.scrollIntoView?.({ block: "center" }))
       }
@@ -438,9 +641,39 @@ function BookingFlow({
     submit()
   }
 
+  /**
+   * "Use decoded data": the advisor books with what the VIN says. Before Book it answers for what is entered; on the API's
+   * conflict, for the request the API refused, which is sent again with `UseDecoded` under the same key.
+   */
+  function chooseDecoded(fromRefusal: boolean) {
+    const refused = fromRefusal ? book.variables?.body : undefined
+    const chosen = refused ? choiceOfRequest(refused, decodedOf(lookedUpFor(normalVin(refused.vehicle.vin)))) : entered
+    setDecision(chosen)
+    if (refused && !book.isPending) submit(undefined, { decision: chosen })
+  }
+
+  /** "Edit the declaration": back to the manufacturer the advisor declared, the earlier choice undone. */
+  function editDeclaration() {
+    setDecision(null)
+    book.reset()
+    if (step !== 2) goTo(2)
+    requestAnimationFrame(() => manufacturerRef.current?.focus())
+  }
+
+  /** "Change the vehicle details": back to step 1's vehicle step, which takes focus. */
+  function changeVehicle() {
+    book.reset()
+    focusVehicle.current = true
+    goTo(1)
+  }
+
   function bookAnother() {
     form.reset(blank(date))
     book.reset()
+    resolve.reset()
+    setResolved(null)
+    setDecision(null)
+    setDropped(null)
     setAnswerDiscarded(false)
     triage.reset()
     setCopiedNotes("")
@@ -465,7 +698,13 @@ function BookingFlow({
 
       <div className={cn("flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6", booked && "flex flex-col justify-center")}>
         {booked ? (
-          <BookedState appointment={booked} timeZone={timeZone} onViewOnBoard={() => onViewOnBoard(booked)} onBookAnother={bookAnother} />
+          <BookedState
+            appointment={booked}
+            timeZone={timeZone}
+            explained={vehicleAware && booked.allocation ? { service: serviceFor(booked.serviceType.id), roster: schedule } : null}
+            onViewOnBoard={() => onViewOnBoard(booked)}
+            onBookAnother={bookAnother}
+          />
         ) : step === 1 ? (
           <StepOne
             form={form}
@@ -481,6 +720,16 @@ function BookingFlow({
             date={date}
             startUtc={startUtc}
             startFocusRequest={startFocusRequest}
+            vehicle={
+              vehicleAware || dropped === "availability" || dropped === "switch" || dropped === "unreadable"
+                ? {
+                    section: vehicleAware ? <VehicleProfileFields form={form} service={service} sectionRef={vehicleSectionRef} /> : null,
+                    availability: availabilityVehicle,
+                    dropped: dropped === "unreadable" ? "unreadable" : dropped === "availability" || dropped === "switch" ? "off" : null,
+                    onRefused: () => vehicleRefused("availability"),
+                  }
+                : null
+            }
             intake={
               triage.enabled ? (
                 <BookingTriageIntake
@@ -507,14 +756,43 @@ function BookingFlow({
             timeZone={timeZone}
             notesCopied={copiedNotes !== "" && notes === copiedNotes}
             onChangeTime={back}
+            vehicleStep={
+              vehicleAware
+                ? {
+                    summary: { powertrain, vehicleClass, live: liveAsked && liveApplies },
+                    vin: <VinField form={form} lookup={lookup} onLookUp={lookUp} blockedBy={blocked ? blockedId : undefined} waiting={lookupWaiting} />,
+                    facts: (
+                      <VehicleFacts
+                        form={form}
+                        lookup={lookup}
+                        onLookUp={lookUp}
+                        decoded={decoded}
+                        useDecoded={useDecoded}
+                        onUseDecoded={() => chooseDecoded(false)}
+                        onEditDeclaration={editDeclaration}
+                        manufacturerRef={manufacturerRef}
+                      />
+                    ),
+                  }
+                : null
+            }
             problem={
-              failure && !fieldErrorsOnly(failure) ? (
+              failure && !fieldErrorsOnly(failure) && !staleConflict ? (
                 <BookingProblem
                   error={failure}
                   alertRef={alertRef}
                   waiting={waiting}
                   busy={book.isPending}
                   booking={book.isPending ? book.variables?.body.startUtc : undefined}
+                  vehicle={{
+                    declared: declaredCode,
+                    decoded,
+                    dealershipName: dealership.name,
+                    onUseDecoded: () => chooseDecoded(true),
+                    onEditDeclaration: editDeclaration,
+                    onChangeVehicle: changeVehicle,
+                    onBookAgain: () => submit(),
+                  }}
                   onPick={bookAt}
                   onRetry={retry}
                   onChangeTime={() => {
@@ -702,6 +980,18 @@ interface StepOneProps {
   startFocusRequest: number
   /** Booking intake triage above the service, when suggestions are on. */
   intake: ReactNode
+  /**
+   * The vehicle step, with vehicle-aware requirements on (ADR-029): its declaration between the service and the starts,
+   * which are counted for it; and, once the API refused vehicle-aware inputs or the switch turned off, the note saying
+   * they were dropped (`off`), or, while the switch cannot be read, that they are set aside (`unreadable`). `null`
+   * otherwise: today's step 1.
+   */
+  vehicle: {
+    section: ReactNode
+    availability: AvailabilityVehicle | null
+    dropped: "off" | "unreadable" | null
+    onRefused: () => void
+  } | null
 }
 
 /** The calendar's day names, with "closed" after a day the dealership does not open (struck through and disabled). */
@@ -727,6 +1017,7 @@ function StepOne({
   startUtc,
   startFocusRequest,
   intake,
+  vehicle,
 }: StepOneProps) {
   const ids = { service: useId(), date: useId(), start: useId(), startError: useId() }
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -868,6 +1159,9 @@ function StepOne({
         />
       </FieldGroup>
 
+      {vehicle?.dropped && <VehicleInputsDropped unreadable={vehicle.dropped === "unreadable"} />}
+      {vehicle?.section}
+
       <Controller
         control={form.control}
         name="startUtc"
@@ -891,6 +1185,8 @@ function StepOne({
                 form.setValue("startUtc", "")
               }}
               focusRequest={startFocusRequest}
+              vehicle={vehicle?.availability ?? undefined}
+              onVehicleRefused={vehicle?.onRefused}
             />
             <FormError id={ids.startError} message={startError} />
           </div>
@@ -912,11 +1208,32 @@ interface StepTwoProps {
   notesCopied: boolean
   onChangeTime: () => void
   problem: ReactNode
+  /**
+   * With vehicle-aware requirements on: the vehicle as declared on step 1 (in the summary), the VIN with Look up in place of
+   * the plain field, and what the VIN said, under it. `null` otherwise: today's step 2.
+   */
+  vehicleStep: {
+    summary: { powertrain: Powertrain; vehicleClass: VehicleClass; live: boolean }
+    vin: ReactNode
+    facts: ReactNode
+  } | null
 }
 
 const ANY = "any"
 
-function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, timeZone, notesCopied, onChangeTime, problem }: StepTwoProps) {
+function StepTwo({
+  form,
+  headingRef,
+  problemRef,
+  service,
+  schedule,
+  startUtc,
+  timeZone,
+  notesCopied,
+  onChangeTime,
+  problem,
+  vehicleStep,
+}: StepTwoProps) {
   const headingId = useId()
   // Only resources that could take this job: active, with every capability or certification the service needs.
   const bays = (schedule?.bays ?? []).filter(
@@ -932,7 +1249,7 @@ function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, ti
       <h3 id={headingId} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
         Customer and vehicle
       </h3>
-      {service && <Summary service={service} startUtc={startUtc} timeZone={timeZone} onChange={onChangeTime} />}
+      {service && <Summary service={service} startUtc={startUtc} timeZone={timeZone} onChange={onChangeTime} vehicle={vehicleStep?.summary} />}
       {problem && (
         <div ref={problemRef} className="scroll-mt-4">
           {problem}
@@ -951,19 +1268,26 @@ function StepTwo({ form, headingRef, problemRef, service, schedule, startUtc, ti
       <FieldSet className="gap-4">
         <FieldLegend variant="label">Vehicle</FieldLegend>
         <FieldGroup className="grid gap-4 sm:grid-cols-6">
-          <TextField
-            form={form}
-            name="vehicle.vin"
-            label="VIN"
-            autoCapitalize="characters"
-            spellCheck={false}
-            autoComplete="off"
-            maxLength={17}
-            upperCase
-            description="17 characters, no I, O or Q"
-            inputClassName="font-mono tracking-wide uppercase"
-            className="sm:col-span-6"
-          />
+          {vehicleStep ? (
+            <>
+              {vehicleStep.vin}
+              {vehicleStep.facts}
+            </>
+          ) : (
+            <TextField
+              form={form}
+              name="vehicle.vin"
+              label="VIN"
+              autoCapitalize="characters"
+              spellCheck={false}
+              autoComplete="off"
+              maxLength={17}
+              upperCase
+              description="17 characters, no I, O or Q"
+              inputClassName="font-mono tracking-wide uppercase"
+              className="sm:col-span-6"
+            />
+          )}
           <TextField
             form={form}
             name="vehicle.registration"
@@ -1033,11 +1357,14 @@ function Summary({
   startUtc,
   timeZone,
   onChange,
+  vehicle,
 }: {
   service: ServiceTypeResponse
   startUtc: string
   timeZone: string
   onChange: () => void
+  /** The vehicle as declared on step 1, with where each fact came from (vehicle-aware requirements on). */
+  vehicle?: { powertrain: Powertrain; vehicleClass: VehicleClass; live: boolean }
 }) {
   const start = new Date(startUtc)
   const end = new Date(start.getTime() + service.durationMinutes * 60_000)
@@ -1061,6 +1388,14 @@ function Summary({
             max={4}
           />
         </dd>
+        {vehicle && (
+          <>
+            <dt className="sr-only">Vehicle</dt>
+            <dd className="text-sm">
+              <DeclaredVehicle powertrain={vehicle.powertrain} vehicleClass={vehicle.vehicleClass} live={vehicle.live} />
+            </dd>
+          </>
+        )}
       </dl>
       <Button type="button" variant="link" className="h-auto px-0" onClick={onChange}>
         Change
@@ -1173,6 +1508,18 @@ interface BookingProblemProps {
   busy: boolean
   /** The start being booked meanwhile (`startUtc`), so a suggested start that was picked says it is booking. */
   booking?: string
+  /** The vehicle step's answers to its refusals (ADR-029): a conflict's choice, no qualified bay or technician, switched-off inputs. */
+  vehicle: {
+    /** The manufacturer code the advisor declared, if any. */
+    declared: string
+    /** The manufacturer the VIN decoded, if it was looked up and recognised. */
+    decoded: string | null
+    dealershipName: string
+    onUseDecoded: () => void
+    onEditDeclaration: () => void
+    onChangeVehicle: () => void
+    onBookAgain: () => void
+  }
   onPick: (slot: { startUtc: string; startLocal: string }) => void
   onRetry: () => void
   onChangeTime: () => void
@@ -1184,10 +1531,40 @@ interface BookingProblemProps {
  * (with what is missing, or a way back to pick another time), a rate limit with its wait, or a failure with a safe retry.
  * Field errors (`400`) are on their fields; this shows only the ones no field owns.
  */
-function BookingProblem({ error, alertRef, waiting, busy, booking, onPick, onRetry, onChangeTime, onStartOver }: BookingProblemProps) {
+function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPick, onRetry, onChangeTime, onStartOver }: BookingProblemProps) {
   const problem = parseProblem(error)
   const slug = problem ? problemSlug(problem) : ""
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
+
+  // Vehicle-aware refusals (ADR-029): a declaration the VIN contradicts, inputs this server does not take now, and no
+  // qualified bay or technician for the vehicle, each in the advisor's terms.
+  if (slug === "vehicle-profile-conflict" && problem) {
+    return (
+      <ProfileConflictProblem
+        problem={problem}
+        alertRef={alertRef}
+        declared={vehicle.declared}
+        decoded={vehicle.decoded}
+        busy={busy}
+        onUseDecoded={vehicle.onUseDecoded}
+        onEditDeclaration={vehicle.onEditDeclaration}
+      />
+    )
+  }
+  if (slug === "vehicle-aware-requirements-disabled") {
+    return <VehicleInputsDropped alertRef={alertRef} traceId={problem?.traceId} onBookAgain={vehicle.onBookAgain} busy={busy} />
+  }
+  if (slug === "no-qualified-resources" && problem && typeof problem.minimumHvLevel === "number") {
+    return (
+      <QualificationGap
+        problem={problem}
+        alertRef={alertRef}
+        dealershipName={vehicle.dealershipName}
+        busy={busy}
+        onChangeVehicle={vehicle.onChangeVehicle}
+      />
+    )
+  }
 
   if (slug === "validation-error" && problem) {
     const unclaimed = unclaimedErrors(problem)
@@ -1319,11 +1696,14 @@ function MissingList({ label, names }: { label: string; names: readonly string[]
 function BookedState({
   appointment,
   timeZone,
+  explained,
   onViewOnBoard,
   onBookAnother,
 }: {
   appointment: AppointmentResponse
   timeZone: string
+  /** The allocation's explanation, with vehicle-aware requirements on: the service's needs and the roster for names. */
+  explained: { service: ServiceTypeResponse | undefined; roster: WorkshopScheduleResponse | undefined } | null
   onViewOnBoard: () => void
   onBookAnother: () => void
 }) {
@@ -1349,6 +1729,15 @@ function BookedState({
     >
       <p className="font-medium text-foreground">{`${appointment.serviceType.name} · ${appointment.bay.name} · ${appointment.technician.name}`}</p>
       <p className="tabular-nums">{`${formatDay(day, "long").replace(/ \d{4}$/, "")}, ${localTime(appointment.startLocal)} to ${localTime(appointment.endLocal)} (${timeZone})`}</p>
+      {explained && appointment.allocation && (
+        <AllocationExplanationView
+          appointment={appointment}
+          allocation={appointment.allocation}
+          service={explained.service}
+          roster={explained.roster}
+          className="mt-3 text-left"
+        />
+      )}
     </IllustratedState>
   )
 }

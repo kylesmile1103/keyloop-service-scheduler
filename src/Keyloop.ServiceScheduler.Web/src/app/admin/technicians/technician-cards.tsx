@@ -6,15 +6,18 @@ import { countOf } from "@/lib/data-table"
 import { ActiveState } from "../components/resource-cells"
 import { formatMinutes, type TechnicianRecord } from "../lib/resources"
 import { TECHNICIAN_WORDS } from "./columns"
+import { CompetenceBlock } from "./competence"
+import { competenceOf } from "./competence-model"
 
 const APPOINTMENTS = { one: "appointment today", other: "appointments today" }
 
 /**
  * The roster on a phone, one card per technician in the table's order (Service Hub's card, UI_DESIGN 11.13): the avatar,
  * name and employee number, whether they take bookings, their certifications, and today's work with its share of the
- * opening hours. Read-only, so a card is not a button; each name is a heading, for moving through the roster.
+ * opening hours, and, with vehicle-aware requirements on, their HV competence. Read-only, so a card is not a button; each
+ * name is a heading, for moving through the roster.
  */
-export function TechnicianCards({ rows }: { rows: readonly TechnicianRecord[] }) {
+export function TechnicianCards({ rows, today = null }: { rows: readonly TechnicianRecord[]; today?: string | null }) {
   return (
     <ol aria-label="Technicians" className="flex flex-col gap-2">
       {rows.map((row) => (
@@ -28,6 +31,7 @@ export function TechnicianCards({ rows }: { rows: readonly TechnicianRecord[] })
             <ActiveState active={row.isActive} words={TECHNICIAN_WORDS} />
           </div>
           <CapabilityBadges certifications={row.certifications} max={4} className="flex-wrap" />
+          {today && <CompetenceBlock competence={competenceOf(row, today)} />}
           <div className="flex flex-col gap-1.5 border-t pt-2.5">
             <div className="flex items-baseline justify-between gap-3 text-dense tabular-nums">
               <span>{countOf(row.today.appointments, APPOINTMENTS)}</span>

@@ -306,6 +306,33 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         logs.Entries.ShouldNotContain(e => e.EventId.Id == 1103);
     }
 
+    [Fact]
+    public void Uri_connection_string_fails_startup_without_repeating_its_password()
+    {
+        // The form Neon shows by default. Npgsql's own parse error quotes the whole value, which reached the container log as the
+        // unhandled exception until the composition root parsed the connection string itself.
+        const string secret = "uri-secret-sentinel";
+        var logs = new CapturingLoggerProvider();
+        using var factory = _factory.WithWebHostBuilder(builder => builder
+            .UseSetting("ConnectionStrings:schedulerdb", $"postgresql://scheduler_app:{secret}@db.example:5432/schedulerdb?sslmode=require")
+            .ConfigureTestServices(services => services.AddSingleton<ILoggerProvider>(logs)));
+
+        var failure = Should.Throw<Exception>(() => factory.CreateClient());
+
+        failure.ToString().ShouldNotContain(secret);
+        Find<InvalidOperationException>(failure).ShouldNotBeNull(failure.ToString()).Message
+            .ShouldContain("Connection string 'schedulerdb' is not an Npgsql keyword connection string");
+        logs.Entries.Where(e => e.EventId.Id == 1104).ShouldHaveSingleItem().Level.ShouldBe(LogLevel.Critical);
+        foreach (var entry in logs.Entries)
+        {
+            entry.Message.ShouldNotContain(secret);
+            foreach (var property in entry.State)
+            {
+                (property.Value?.ToString() ?? "").ShouldNotContain(secret);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("Security:AllowedOrigins:0")]
     [InlineData("Scheduling:SlotGranularityMinutes")]

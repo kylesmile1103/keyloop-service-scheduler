@@ -4,8 +4,12 @@ import { requiredSecret } from "./secrets.ts";
 export const MAX_OTLP_BYTES = 256 * 1024;
 type OtlpEnv = Pick<Env, "OTLP_RELAY_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_OTLP_BASIC_BROWSER" | "OTLP_RELAY_LIMITER">;
 
-/** The traces URL when the value is exactly a Grafana Cloud OTLP gateway base URL, otherwise null. Shared with settings.ts. */
-export function grafanaTracesUrl(value: string): string | null {
+/**
+ * The normalised base URL when the value is exactly a Grafana Cloud OTLP gateway base URL
+ * (`https://otlp-gateway-<region>.grafana.net/otlp`, no trailing slash), otherwise null. Shared with settings.ts and the
+ * container start, where it becomes the API's OTEL_EXPORTER_OTLP_ENDPOINT (the SDK appends /v1/<signal>).
+ */
+export function grafanaOtlpBaseUrl(value: string): string | null {
   let endpoint: URL;
   try {
     endpoint = new URL(value);
@@ -14,7 +18,13 @@ export function grafanaTracesUrl(value: string): string | null {
   }
   const valid = endpoint.protocol === "https:" && /^otlp-gateway-[a-z0-9-]+\.grafana\.net$/.test(endpoint.hostname) &&
     endpoint.pathname === "/otlp" && !endpoint.port && !endpoint.username && !endpoint.password && !endpoint.search && !endpoint.hash;
-  return valid ? `${endpoint.origin}/otlp/v1/traces` : null;
+  return valid ? `${endpoint.origin}/otlp` : null;
+}
+
+/** The traces URL when the value is exactly a Grafana Cloud OTLP gateway base URL, otherwise null. Shared with settings.ts. */
+export function grafanaTracesUrl(value: string): string | null {
+  const base = grafanaOtlpBaseUrl(value);
+  return base === null ? null : `${base}/v1/traces`;
 }
 
 export async function relayBrowserTraces(request: Request, env: OtlpEnv): Promise<Response> {

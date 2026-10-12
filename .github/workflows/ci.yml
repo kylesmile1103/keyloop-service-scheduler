@@ -206,6 +206,16 @@ jobs:
           persist-credentials: false
       - name: Build API image from repository context
         run: docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:ci .
+      - name: API image exits on a startup failure instead of hanging as PID 1
+        run: |
+          # Production with no trusted forwarding network fails startup validation without a database. Without an init process
+          # as PID 1, the crash's abort() is ignored and dotnet spins until killed (status 124 here).
+          set +e
+          timeout 60 docker run --rm --network none keyloop-scheduler-api:ci
+          status=$?
+          set -e
+          echo "exit status $status"
+          test "$status" -ne 0 && test "$status" -ne 124
       - name: Build web image
         run: docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:ci src/Keyloop.ServiceScheduler.Web
 

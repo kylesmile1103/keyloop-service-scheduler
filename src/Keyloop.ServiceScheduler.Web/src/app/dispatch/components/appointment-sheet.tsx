@@ -7,6 +7,8 @@ import {
   getAppointmentOptions,
   getAppointmentQueryKey,
   getAvailabilityQueryKey,
+  getServiceTypesOptions,
+  getWorkshopScheduleOptions,
   getWorkshopScheduleQueryKey,
 } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
@@ -27,6 +29,7 @@ import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
+import { useVehicleAware } from "@/lib/feature-switches"
 import { formatLocalTime } from "@/lib/local-time"
 import { cachedCapabilities } from "@/lib/session"
 import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
@@ -35,6 +38,7 @@ import { cn } from "@/lib/utils"
 import { timeRange } from "../lib/appointment-text"
 import type { BoardAppointment } from "../lib/schedule"
 import { canCancel, statusMeta } from "../lib/status"
+import { AllocationExplanationView } from "./allocation-explanation"
 import { PlateChip } from "./appointment-block"
 import { StatusBadge } from "./status-badge"
 
@@ -172,8 +176,21 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const detailsFailure = useQueryFailure(details, detailsOptions.queryKey)
   const record: AppointmentResponse | undefined = details.data
   const status = record?.status ?? appointment.status
+  // Why this technician and bay (ADR-029), with vehicle-aware requirements on: from the role-protected record only, so a
+  // visitor never sees it; the service's needs come from the catalogue the board already read (caller-independent).
+  const vehicleAware = useVehicleAware()
+  const catalogue = useQuery({ ...getServiceTypesOptions({ path: { dealershipId } }), enabled: vehicleAware && Boolean(record?.allocation) })
+  const service = catalogue.data?.find((candidate) => candidate.id === appointment.serviceType.id)
   const { icon: StatusIcon, classes } = statusMeta[status]
   const day = appointment.startLocal.slice(0, 10)
+  // A preference the allocation did not follow is named from the day's bays and technicians, with that technician's HV
+  // level (a role's schedule carries it): the appointment's own day, read only when the record says one was not followed.
+  // The board's read of that day has the same key, so the board's sheet finds it there; the Overview and the Calendar read
+  // it once.
+  const roster = useQuery({
+    ...getWorkshopScheduleOptions({ path: { dealershipId }, query: { date: day } }),
+    enabled: vehicleAware && (record?.allocation?.reasons.length ?? 0) > 0,
+  })
 
   const refreshBoard = () => {
     void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date } }) })
@@ -266,6 +283,16 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
         </dl>
+        {vehicleAware && record?.allocation && (
+          <AllocationExplanationView
+            appointment={record}
+            allocation={record.allocation}
+            service={service}
+            roster={roster.data}
+            showProfile
+            className="mt-4"
+          />
+        )}
         <RecordAccess access={detailsAccess} />
         {detailsFailure !== null && (
           <ProblemAlert

@@ -11,7 +11,8 @@ class ReplayableRequest extends Request {
   readonly #bytes: ArrayBuffer | null
 
   constructor(source: Request, bytes: ArrayBuffer | null) {
-    super(source.url, { method: source.method, headers: source.headers, body: bytes, signal: source.signal })
+    // The cache mode too: a read that must skip the browser's HTTP cache says so (`cache: "reload"`).
+    super(source.url, { method: source.method, headers: source.headers, body: bytes, signal: source.signal, cache: source.cache })
     this.#bytes = bytes
   }
 

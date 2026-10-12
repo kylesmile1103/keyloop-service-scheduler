@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
@@ -8,8 +9,18 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 /// </summary>
 public static class DealershipLock
 {
-    /// <summary>A stable 64-bit key: the first eight bytes of the id.</summary>
-    public static long KeyFor(Guid dealershipId) => BitConverter.ToInt64(dealershipId.ToByteArray(), 0);
+    /// <summary>
+    /// A stable 64-bit key from all 128 bits of the id: its two halves XOR-folded. Taking only the first eight bytes would leave
+    /// time-ordered ids (UUIDv7, the codebase's convention for new ids) created in the same millisecond with 12 distinguishing bits,
+    /// so unrelated dealerships could share a key and wait on each other. Changing this derivation breaks a rolling deployment
+    /// (old and new instances would lock different keys for one dealership); change it only with a full stop and start.
+    /// </summary>
+    public static long KeyFor(Guid dealershipId)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        dealershipId.TryWriteBytes(bytes);
+        return BinaryPrimitives.ReadInt64LittleEndian(bytes) ^ BinaryPrimitives.ReadInt64LittleEndian(bytes[8..]);
+    }
 
     /// <summary>Waits for and takes the dealership's lock inside the current transaction.</summary>
     /// <exception cref="InvalidOperationException">No transaction is open, so the lock would be released immediately.</exception>

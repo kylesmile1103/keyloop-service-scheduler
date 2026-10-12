@@ -196,6 +196,12 @@ var app = builder.Build();
 try
 {
     app.Services.GetRequiredService<IStartupValidator>().Validate();
+    if (!BuildTimeOpenApi.IsActive)
+    {
+        // Parsed here, so a malformed value fails with a message that never repeats it (Npgsql's own exception quotes the password).
+        SchedulerConnectionString.Validate(app.Configuration.GetConnectionString(SchedulerConnectionString.Name));
+    }
+
     // IOptions binds lazily: pin the scheduling snapshot now so discovery and enforcement require a restart even before their first request.
     _ = app.Services.GetRequiredService<IOptions<SchedulingOptions>>().Value;
     var triage = app.Services.GetRequiredService<IOptions<TriageConnectionOptions>>().Value;

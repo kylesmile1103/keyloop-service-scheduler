@@ -6,11 +6,12 @@ import { cachedWriter } from "@/lib/session"
  * Cache hygiene when the identity changes (ARCHITECTURE §15). The API answers the schedule, the range read and the
  * Resources area's lists with full names, VINs and plates for a role and masks them for everyone else, and a booking's
  * record goes only to a role; so whatever was read as one caller must not be shown to the next. These reads carry nothing
- * personal and do not depend on the caller, so they stay (an open booking dialog keeps its service list and suggestions
- * section): the identity itself, the dealerships, a dealership's catalogue and the triage status. Every other query, the
- * admin area's included, is cleared: deny by default, so a read added later is cleared too.
+ * personal and do not depend on the caller, so they stay (an open booking dialog keeps its service list, suggestions
+ * section and vehicle step): the identity itself, the dealerships, a dealership's catalogue, the triage status and the
+ * environment's feature switches. Every other query, the admin area's included, is cleared: deny by default, so a read
+ * added later is cleared too (the vehicle-aware availability reads, whose keys carry the vehicle's profile, among them).
  */
-const CALLER_INDEPENDENT = new Set(["getCurrentUser", "getDealerships", "getServiceTypes", "getBookingTriageStatus"])
+const CALLER_INDEPENDENT = new Set(["getCurrentUser", "getDealerships", "getServiceTypes", "getBookingTriageStatus", "getFeatures"])
 
 /** The generated query key's operation id (`[{ _id: "getWorkshopSchedule", ... }]`), if it is one. */
 function operationId(query: Query): string | null {
