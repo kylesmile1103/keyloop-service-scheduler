@@ -2188,6 +2188,13 @@
         ],
         "type": "object",
         "properties": {
+          "description": {
+            "examples": [
+              "Brakes squeal, it's an EV, need it Thursday."
+            ],
+            "type": "string",
+            "description": "The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming."
+          },
           "imageIds": {
             "type": [
               "null",
@@ -2196,14 +2203,8 @@
             "items": {
               "type": "string",
               "format": "uuid"
-            }
-          },
-          "description": {
-            "examples": [
-              "Brakes squeal, it's an EV, need it Thursday."
-            ],
-            "type": "string",
-            "description": "The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming."
+            },
+            "description": "Optional photos: at most four distinct, unexpired UploadBookingTriageImage ids from this dealership, at most 8 MiB decoded in total."
           }
         },
         "description": "A customer's untrusted booking intake description, never stored or logged."
@@ -2300,10 +2301,12 @@
         "type": "object",
         "properties": {
           "contentType": {
-            "type": "string"
+            "type": "string",
+            "description": "image/png, image/jpeg or image/webp. The file's signature and header must match it."
           },
           "base64": {
-            "type": "string"
+            "type": "string",
+            "description": "Standard base64 of the whole file: 1 byte to 4 MiB decoded (at most 5,592,408 characters) and at most 16 megapixels."
           }
         },
         "description": "A PNG, JPEG or WebP image. Original filenames are never sent or stored."
@@ -2319,17 +2322,21 @@
         "properties": {
           "imageId": {
             "type": "string",
+            "description": "Opaque reference for TriageBookingRequest imageIds, valid only for this dealership until expiresAt.",
             "format": "uuid"
           },
           "contentType": {
-            "type": "string"
+            "type": "string",
+            "description": "The validated type: image/png, image/jpeg or image/webp."
           },
           "sizeBytes": {
             "type": "integer",
+            "description": "Decoded bytes stored.",
             "format": "int32"
           },
           "expiresAt": {
             "type": "string",
+            "description": "One hour after upload. Later evaluations treat the reference as missing; storage deletes it within about an hour more.",
             "format": "date-time"
           }
         },

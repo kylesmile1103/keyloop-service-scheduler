@@ -15,9 +15,15 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 
 /// <summary>A PNG, JPEG or WebP image. Original filenames are never sent or stored.</summary>
+/// <param name="ContentType">image/png, image/jpeg or image/webp. The file's signature and header must match it.</param>
+/// <param name="Base64">Standard base64 of the whole file: 1 byte to 4 MiB decoded (at most 5,592,408 characters) and at most 16 megapixels.</param>
 public sealed record UploadBookingTriageImageRequest(string ContentType, string Base64);
 
 /// <summary>A private, dealership-scoped upload reference usable for triage until expiry.</summary>
+/// <param name="ImageId">Opaque reference for TriageBookingRequest imageIds, valid only for this dealership until expiresAt.</param>
+/// <param name="ContentType">The validated type: image/png, image/jpeg or image/webp.</param>
+/// <param name="SizeBytes">Decoded bytes stored.</param>
+/// <param name="ExpiresAt">One hour after upload. Later evaluations treat the reference as missing; storage deletes it within about an hour more.</param>
 public sealed record UploadBookingTriageImageResponse(Guid ImageId, string ContentType, int SizeBytes, DateTimeOffset ExpiresAt);
 
 public sealed class UploadBookingTriageImageValidator : AbstractValidator<UploadBookingTriageImageRequest>

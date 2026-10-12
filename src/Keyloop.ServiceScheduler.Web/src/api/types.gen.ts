@@ -552,11 +552,14 @@ export type TechnicianResponse = {
  * A customer's untrusted booking intake description, never stored or logged.
  */
 export type TriageBookingRequest = {
-    imageIds?: null | Array<string>;
     /**
      * The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming.
      */
     description: string;
+    /**
+     * Optional photos: at most four distinct, unexpired UploadBookingTriageImage ids from this dealership, at most 8 MiB decoded in total.
+     */
+    imageIds?: null | Array<string>;
 };
 
 /**
@@ -603,7 +606,13 @@ export type TriageServiceCandidate = {
  * A PNG, JPEG or WebP image. Original filenames are never sent or stored.
  */
 export type UploadBookingTriageImageRequest = {
+    /**
+     * image/png, image/jpeg or image/webp. The file's signature and header must match it.
+     */
     contentType: string;
+    /**
+     * Standard base64 of the whole file: 1 byte to 4 MiB decoded (at most 5,592,408 characters) and at most 16 megapixels.
+     */
     base64: string;
 };
 
@@ -611,9 +620,21 @@ export type UploadBookingTriageImageRequest = {
  * A private, dealership-scoped upload reference usable for triage until expiry.
  */
 export type UploadBookingTriageImageResponse = {
+    /**
+     * Opaque reference for TriageBookingRequest imageIds, valid only for this dealership until expiresAt.
+     */
     imageId: string;
+    /**
+     * The validated type: image/png, image/jpeg or image/webp.
+     */
     contentType: string;
+    /**
+     * Decoded bytes stored.
+     */
     sizeBytes: number;
+    /**
+     * One hour after upload. Later evaluations treat the reference as missing; storage deletes it within about an hour more.
+     */
     expiresAt: string;
 };
 
