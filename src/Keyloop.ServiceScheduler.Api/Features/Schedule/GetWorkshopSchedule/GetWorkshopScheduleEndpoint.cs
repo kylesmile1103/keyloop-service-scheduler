@@ -33,7 +33,7 @@ public sealed class GetWorkshopScheduleEndpoint : IEndpoint
     /// in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
     /// <c>operatingWindow</c> and no appointments, and keeps its lanes. Local times carry the zone's offset (<c>2026-10-13T10:00+01:00</c>).
     /// Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
-    /// customer initials, the VIN's last six characters and the registration's last three letters or digits.
+    /// customer initials, the VIN's last six characters and a fully masked registration.
     /// Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>

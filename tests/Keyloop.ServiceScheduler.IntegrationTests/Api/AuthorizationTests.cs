@@ -210,8 +210,8 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("Anonymous", "ALS", "***********123456", "****CDE")]
-    [InlineData("Unknown", "ALS", "***********123456", "****CDE")]
+    [InlineData("Anonymous", "ALS", "***********123456", "*******")]
+    [InlineData("Unknown", "ALS", "***********123456", "*******")]
     [InlineData("Viewer", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
     [InlineData("ServiceAdvisor", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
     [InlineData("Admin", "Alice Louise Smith", "WVWZZZ1KZAW123456", "AB12 CDE")]
@@ -246,6 +246,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
                 raw.ShouldNotContain("Alice");
                 raw.ShouldNotContain("WVWZZZ1KZAW");
                 raw.ShouldNotContain("AB12");
+                raw.ShouldNotContain("CDE");
             }
         }
     }

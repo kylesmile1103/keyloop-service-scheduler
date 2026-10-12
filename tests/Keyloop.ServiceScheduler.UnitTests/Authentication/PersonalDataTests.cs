@@ -22,11 +22,11 @@ public sealed class PersonalDataTests
     [Theory]
     [InlineData(null)] // anonymous or an invalid session
     [InlineData("")] // verified, but no configured role
-    public void Callers_without_a_role_receive_initials_the_domain_VIN_mask_and_a_registration_suffix(string? role)
+    public void Callers_without_a_role_receive_initials_the_domain_VIN_mask_and_a_fully_masked_registration(string? role)
     {
         var values = PersonalData.ForCaller(Caller(role), "Alice Louise Smith", SampleVin, "AB12 CDE");
 
-        values.ShouldBe(new PersonalData.Values("ALS", "***********123456", "****CDE"));
+        values.ShouldBe(new PersonalData.Values("ALS", "***********123456", "*******"));
         values.Vin.ShouldBe(SampleVin.Masked, "the anonymous reads use the same VIN mask as logs and events");
     }
 
@@ -57,18 +57,21 @@ public sealed class PersonalDataTests
     }
 
     [Theory]
-    [InlineData("AB12 CDE", "****CDE")]
-    [InlineData("AB12CDE", "****CDE")]
-    [InlineData("A123 BCD", "****BCD")]
-    [InlineData("ABC 123", "****123")]
-    [InlineData("AB-12-CD", "****2CD")]
-    [InlineData("K1 NGS", "*******")] // five letters or digits: a personalised plate is masked completely
-    [InlineData("1 ABC", "*******")]
-    [InlineData("A1", "*******")]
-    public void Registration_mask_keeps_the_last_three_letters_or_digits_of_a_plate_of_six_or_more(string registration, string masked)
+    [InlineData("AB12 CDE")] // current UK format: the last three letters are its most distinctive part
+    [InlineData("AB12CDE")]
+    [InlineData("A123 BCD")]
+    [InlineData("ABC 123")]
+    [InlineData("AB-12-CD")]
+    [InlineData("K1 NGS")]
+    [InlineData("1 ABC")]
+    [InlineData("A1")]
+    public void Callers_without_a_role_see_no_character_of_any_registration(string registration)
     {
-        PersonalData.MaskRegistration(registration).ShouldBe(masked);
-        PersonalData.MaskRegistration(registration).Length.ShouldBe(7, "a fixed width does not reveal the plate's length");
+        var masked = PersonalData.ForCaller(Caller(null), "Alice Smith", SampleVin, registration).Registration;
+
+        masked.ShouldBe("*******", "seven asterisks whatever the plate, so neither a suffix nor the plate's length is revealed");
+        PersonalData.ForCaller(Caller(""), "Alice Smith", SampleVin, registration).Registration.ShouldBe(masked);
+        PersonalData.ForCaller(Caller("Viewer"), "Alice Smith", SampleVin, registration).Registration.ShouldBe(registration);
     }
 
     private static ClaimsPrincipal Caller(string? role)

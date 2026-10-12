@@ -15,7 +15,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 /// <param name="Technician">The allocated technician's id and display name.</param>
 /// <param name="CustomerName">The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example <c>ALS</c> for Alice Louise Smith.</param>
 /// <param name="Vin">The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example <c>***********123456</c>.</param>
-/// <param name="Registration">The vehicle's registration plate, upper case, for callers with an API role; every other caller receives <c>****</c> and its last three letters or digits, for example <c>****CDE</c> for AB12 CDE, or <c>*******</c> for a plate with fewer than six.</param>
+/// <param name="Registration">The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as <c>*******</c>, whatever the plate, so no character or length is revealed.</param>
 public sealed record AppointmentListItemResponse(
     Guid Id,
     AppointmentStatus Status,

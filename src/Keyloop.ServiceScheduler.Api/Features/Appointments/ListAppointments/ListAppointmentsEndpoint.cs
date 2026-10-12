@@ -52,7 +52,7 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
     /// union, for example by supplying both <c>status=Confirmed</c> and <c>status=Completed</c>. Ordered by start UTC, then id for equal starts.
     /// Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
     /// hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
-    /// receives them masked: customer initials, the VIN's last six characters and the registration's last three letters or digits.
+    /// receives them masked: customer initials, the VIN's last six characters and a fully masked registration.
     /// Returns an empty array when there are no matches.
     /// </remarks>
     /// <param name="query">The route and query parameters below, validated before the handler runs.</param>

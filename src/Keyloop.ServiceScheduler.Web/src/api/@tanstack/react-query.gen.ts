@@ -117,7 +117,7 @@ export const listAppointmentsQueryKey = (options: Options<ListAppointmentsData>)
  * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
  * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
  * hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
- * receives them masked: customer initials, the VIN's last six characters and the registration's last three letters or digits.
+ * receives them masked: customer initials, the VIN's last six characters and a fully masked registration.
  * Returns an empty array when there are no matches.
  */
 export const listAppointmentsOptions = (options: Options<ListAppointmentsData>) => queryOptions<ListAppointmentsResponse, ListAppointmentsError, ListAppointmentsResponse, ReturnType<typeof listAppointmentsQueryKey>>({
@@ -211,7 +211,7 @@ export const getWorkshopScheduleQueryKey = (options: Options<GetWorkshopSchedule
  * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
  * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
  * Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
- * customer initials, the VIN's last six characters and the registration's last three letters or digits.
+ * customer initials, the VIN's last six characters and a fully masked registration.
  * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
  */
 export const getWorkshopScheduleOptions = (options: Options<GetWorkshopScheduleData>) => queryOptions<GetWorkshopScheduleResponse, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ReturnType<typeof getWorkshopScheduleQueryKey>>({

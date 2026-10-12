@@ -53,7 +53,7 @@ export type AppointmentListItemResponse = {
      */
     vin: string;
     /**
-     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives `****` and its last three letters or digits, for example `****CDE` for AB12 CDE, or `*******` for a plate with fewer than six.
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as `*******`, whatever the plate, so no character or length is revealed.
      */
     registration: string;
 };
@@ -530,7 +530,7 @@ export type ScheduledAppointmentResponse = {
      */
     vin: string;
     /**
-     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives `****` and its last three letters or digits, for example `****CDE` for AB12 CDE, or `*******` for a plate with fewer than six.
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as `*******`, whatever the plate, so no character or length is revealed.
      */
     registration: string;
     /**

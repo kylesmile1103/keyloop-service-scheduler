@@ -14,17 +14,13 @@ namespace Keyloop.ServiceScheduler.Api.Common.Authentication;
 /// become <c>ALS</c> and <c>AS</c>;</item>
 /// <item>VIN: the domain mask that logs and events use, <see cref="Vin.Masked"/>: <c>WVWZZZ1KZAW123456</c> becomes
 /// <c>***********123456</c>;</item>
-/// <item>registration: <c>****</c> and the plate's last three letters or digits (<c>AB12 CDE</c> becomes <c>****CDE</c>) when it
-/// has at least six; a shorter plate, usually a personalised one, is masked completely as <c>*******</c>. The mask is always
-/// seven characters, so it does not reveal the plate's length.</item>
+/// <item>registration: fully masked as <c>*******</c>, whatever the plate. The last three letters of a current UK plate are its
+/// most distinctive part, so no suffix is kept, and the fixed width does not reveal the plate's length.</item>
 /// </list>
 /// </summary>
 internal static class PersonalData
 {
-    internal const string RegistrationMaskPrefix = "****";
-    internal const string FullyMaskedRegistration = "*******";
-    private const int RegistrationSuffixLength = 3;
-    private const int MinimumPlateForSuffix = 6;
+    internal const string MaskedRegistration = "*******";
 
     /// <summary>The values a caller receives.</summary>
     internal readonly record struct Values(string CustomerName, string Vin, string Registration);
@@ -35,7 +31,7 @@ internal static class PersonalData
         ArgumentNullException.ThrowIfNull(vin);
         return SchedulerRoles.CanReadPersonalData(caller)
             ? new Values(customerName, vin.Value, registration)
-            : new Values(Initials(customerName), vin.Masked, MaskRegistration(registration));
+            : new Values(Initials(customerName), vin.Masked, MaskedRegistration);
     }
 
     /// <summary>One upper-case initial per whitespace-separated part: its first letter, as a whole Unicode scalar value.</summary>
@@ -56,15 +52,5 @@ internal static class PersonalData
         }
 
         return initials.ToString();
-    }
-
-    /// <summary>The fixed-width registration mask described on <see cref="PersonalData"/>.</summary>
-    internal static string MaskRegistration(string registration)
-    {
-        ArgumentNullException.ThrowIfNull(registration);
-        var plate = registration.EnumerateRunes().Where(Rune.IsLetterOrDigit).ToList();
-        return plate.Count < MinimumPlateForSuffix
-            ? FullyMaskedRegistration
-            : RegistrationMaskPrefix + string.Concat(plate.Skip(plate.Count - RegistrationSuffixLength).Select(rune => rune.ToString()));
     }
 }

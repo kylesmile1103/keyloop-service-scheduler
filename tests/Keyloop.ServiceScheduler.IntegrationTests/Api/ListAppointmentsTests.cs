@@ -146,7 +146,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         item.GetProperty("endLocal").GetString().ShouldBe("2026-10-13T10:00+01:00");
         item.GetProperty("customerName").GetString().ShouldBe("ALS");
         item.GetProperty("vin").GetString().ShouldBe("***********123456");
-        item.GetProperty("registration").GetString().ShouldBe("****CDE");
+        item.GetProperty("registration").GetString().ShouldBe("*******");
         item.GetProperty("serviceType").GetRawText().ShouldBe(
             $$"""{"id":"{{workshop.Interim.Id}}","code":"INTERIM-SERVICE","name":"INTERIM-SERVICE","durationMinutes":60}""");
         item.GetProperty("bay").GetRawText().ShouldBe($$"""{"id":"{{workshop.Bay1.Id}}","name":"Bay 1"}""");
@@ -154,6 +154,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         body.RootElement.GetRawText().ShouldNotContain("Alice");
         body.RootElement.GetRawText().ShouldNotContain("WVWZZZ1KZAW");
         body.RootElement.GetRawText().ShouldNotContain("AB12");
+        body.RootElement.GetRawText().ShouldNotContain("CDE");
     }
 
     [Fact]
