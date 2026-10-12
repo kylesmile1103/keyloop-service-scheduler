@@ -21,7 +21,11 @@ control (`date-navigator.tsx`); `calendar/components/calendars.tsx` and `calenda
 and the mobile sheet of `calendar/components/calendar.tsx` as the board's Filters sheet (`filters-sheet.tsx`);
 `calendar/components/event-form.tsx` and `users/components/user-form-dialog.tsx` as the booking dialog
 (`booking-dialog.tsx`); `dashboard/components/section-cards.tsx` again as the stress panel's tally tiles
-(`stress-panel.tsx`). The
+(`stress-panel.tsx`); the tasks app's data table (`tasks/components/data-table.tsx`, `columns.tsx`,
+`data-table-column-header.tsx`, `data-table-faceted-filter.tsx`, `data-table-pagination.tsx`,
+`data-table-row-actions.tsx`, `data-table-toolbar.tsx`, `data-table-view-options.tsx` and `lib/data-table.ts`) as the
+Appointments list (`app/appointments/components/*`, `lib/data-table.ts`), and `users/components/stat-cards.tsx` as its
+day figures (`stat-cards.tsx`). The
 `components/ui/switch.tsx`, `checkbox.tsx` and `collapsible.tsx` primitives are vendored unmodified, and
 `components/ui/table.tsx` with the design system's table header and row heights.
 

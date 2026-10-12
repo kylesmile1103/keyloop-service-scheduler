@@ -225,7 +225,7 @@ Each status has a **tint** (`-bg`, the block and badge fill), a **marker** (`-bo
 | `InProgress` | In progress | amber | `Wrench` | yes |
 | `Completed` | Completed | settled green | `CircleCheck` | yes |
 | `NoShow` | No-show | rose | `UserX` | yes |
-| `Cancelled` | Cancelled | slate | `Ban` | no: cancelled appointments leave the board; they appear in the Appointments list and the details sheet |
+| `Cancelled` | Cancelled | slate | `Ban` | no: cancelled appointments leave the board and the Appointments list (both read the day's schedule, which omits them); they appear in the details sheet |
 
 | Status | Part | Light | Dark |
 |---|---|---|---|
@@ -735,6 +735,13 @@ Every problem shows its `traceId` (copyable) so it can be found in the Aspire da
 - **Stacked bar**: `h-3 rounded-full overflow-hidden flex gap-0.5` (a 2 px surface gap between segments), segments `bg-success`, `bg-warning`, `bg-destructive`, `bg-info`, `bg-muted-foreground` sized by count, with the counts written in the tiles (the bar never carries numbers alone). Its legend repeats icon, word and count.
 - **Latency**: p50, p95 and max as small stat tiles (`text-xl font-semibold tabular-nums` + "ms").
 - **Mobile**: tiles stack, the table becomes stacked rows (pill, slug, duration, trace id with copy), no horizontal overflow.
+- **Appointments table** (the Appointments page, adopted from the template's tasks data table):
+  - Each row's first cell carries the status marker bar (the 3 px `-border` colour of 11.12, drawn as a `before:` bar inside the cell), so the list reads as the board's status map; the first column's text starts 16 px from the card's edge, in line with the card header and toolbar.
+  - Sortable headers are compact ghost buttons (`text-xs font-medium text-muted-foreground`, `ArrowUp` / `ArrowDown` / `ChevronsUpDown` at `size-3.5`); the header cell carries `aria-sort`.
+  - Cells `px-1.5`; the row's actions are a ghost `icon-sm` button (`MoreHorizontal`) opening a menu (*View details*, then the destructive *Cancel appointment*, unavailable once work has started); the whole row is a click target for the details sheet, with the actions button as the keyboard path.
+  - Faceted filters: dashed outline `sm` buttons with `PlusCircle`, the chosen values as secondary badges; the popover is a checkbox list, each choice with its count (`text-xs text-muted-foreground tabular-nums`, read as "Bay 1 - Standard (3 appointments)"), and a ghost *Clear filter*. Status choices lead with the status dot.
+  - Width: columns the card cannot hold are left out by default (Duration below 1536 px, VIN below 1440 px; *View* brings them back). Where it still overflows (below 1024 px) the table scrolls inside its card, and the time column stays put: `sticky left-0` on an opaque fill that repeats the row's tint (`color-mix` of `--muted` over `--card`), with a hairline `inset -1px 0 0 var(--border)` on its right edge.
+  - Below 768 px the table becomes job cards (11.13) in the table's order, each naming both the bay and the technician, and the filters move into a *Filters* bottom sheet (sort, then one fieldset per filter, a sticky footer with *Reset filters* and *Show N appointments*).
 
 ### 11.18 Skeletons
 
@@ -750,6 +757,8 @@ The template-adoption addendum of tasks 16 and 17 copies files from the shadcn d
 | `calendar/components/calendars.tsx` | the lane filter (bays or technicians) | No colour dots and no `text-white`: lanes have no colour, because hue is reserved for status (principle 2, section 13). Each lane row: a `Checkbox` (17.3), the lane name, its capability icons (`Zap`, `Ruler`) and its appointment count in `tabular-nums text-muted-foreground`. Desktop: a toolbar popover or collapsible panel; mobile: inside the Filters sheet. |
 | `calendar/components/date-picker.tsx`, `calendar-sidebar.tsx` | the date control (11.4) and the Book action | Selected day `bg-primary text-primary-foreground`, today `ring-1 ring-signal`, closed days disabled and `line-through`. The sidebar's quick action becomes **Book appointment**: the view's one primary button (the floating accent action on mobile). |
 | `calendar/components/calendar-main.tsx` (list view) | the mobile agenda (11.13) | Regroup by lane; each row becomes the 11.13 job card; drop the template's event colours. |
+| `tasks/components/data-table*.tsx`, `columns.tsx`, `lib/data-table.ts` | the Appointments table (11.17) | TanStack Table 9 as the template has it, without row selection (nothing acts on several rows). The faceted filter's command palette becomes a plain checkbox list with counts (a day has a handful of choices); the toolbar's three selects become faceted filters; the view menu names columns by `meta.label`, not by id; pagination shows only when the rows outnumber the smallest page, and each page button keeps focus when it disables itself. The template's priority colours (`border-gray-500` and so on) and sample data are not kept. |
+| `users/components/stat-cards.tsx` | the Appointments page's four figures (11.11) | The 11.11 card anatomy instead of the template's icon-above-title layout; no trend badges or "from previous" lines (no history to compare with); the completed and no-show cards carry their status's icon tile, the total a thin bar of the day by status in the status markers (section 13). |
 | `calendar/components/event-form.tsx`, `users/components/user-form-dialog.tsx` | the booking dialog (11.14) | Keep the react-hook-form, zod and `Field` structure: labels above, help and errors below (11.4). The stepper (11.14) and the slot chips (11.6) replace the template's free date and time inputs. |
 | `dashboard/components/chart-area-interactive.tsx` (only if adopted) | the latency chart | `chart-1` only, a flat fill or a line instead of the template's gradient fill, axis and tick text `text-muted-foreground`, and the values also written out (section 13). |
 | `errors/not-found` | the router 404 page | The 12.1 layout with `empty-schedule.webp`: headline "Page not found", one line naming the path (`font-mono`), action **Go to the dispatch board** (primary). |
@@ -966,6 +975,7 @@ These are the only edits the theme needs in existing components; they keep the c
 | `components/ui/toast.tsx` | `ToastTitle` `text-sm font-semibold` (was `font-medium`); `ToastIcon`: error `CircleXIcon` in `text-destructive` (replaces `OctagonXIcon`), success `CircleCheckIcon` in `text-success`, warning `TriangleAlertIcon` in `text-warning`, info `InfoIcon` in `text-info`; `ToastAction` default render `<Button variant="accent" size="sm" />` (was `outline`) |
 | `components/ui/sheet.tsx` | overlay `bg-overlay` (was `bg-black/10`); `SheetContent` adds `data-[side=bottom]:rounded-t-2xl data-[side=bottom]:max-h-[85dvh]`; right and left sides `sm:max-w-md` (was `sm:max-w-sm`) |
 | `components/ui/dialog.tsx` | overlay `bg-overlay` (was `bg-black/10`) |
+| `components/ui/dropdown-menu.tsx` | destructive item's focus fill `bg-destructive/10` in both themes, removing `dark:...focus:bg-destructive/20` (unaudited; `destructive/10 on popover` is 5.53:1 light, 5.43:1 dark). Menu items in touch layouts take `pointer-coarse:min-h-11` where they are used |
 | `components/ui/calendar.tsx` | `--cell-radius: var(--radius-md)`; today `ring-1 ring-signal`; day cells 44 px on `pointer-coarse` |
 | `components/ui/switch.tsx` (*new*) | track `data-checked:bg-signal data-unchecked:bg-input`; thumb `bg-background` in both themes (removing any `dark:` thumb overrides); a 44 px label row on touch |
 | `components/ui/checkbox.tsx` (*new*) | boundary `border-input`; checked `data-checked:bg-primary data-checked:text-primary-foreground data-checked:border-primary`; a 44 px label row on touch |
@@ -1026,3 +1036,5 @@ Document:
 - **Smaller**: toast title weight and icons, switch and checkbox recipes, bottom-sheet radius and height in `sheet.tsx`, side-sheet width, stepper `aria-current` and focus on step change, badge icon size, status icon tiles named with `role="img"`.
 
 Left open: the illustrations' visual fit is verified only in isolation (on light and dark canvases); check them in the running board during the Task 17b visual QA.
+
+**v3, Appointments list (Task 17c, 2026-10-12).** The appointments table in 11.17 (status bar, compact sort headers, faceted filters with counts, row actions menu, width-dependent columns, the sticky time column on narrow screens, job cards and a filter sheet on phones); the tasks data table and the users stat cards in the 11.19 adoption table; the dropdown menu's destructive focus fill in 17.3; the Cancelled row of 4.3 corrected (the list reads the schedule, which omits cancelled appointments). No new token: the sticky cell's fill mixes existing ones.

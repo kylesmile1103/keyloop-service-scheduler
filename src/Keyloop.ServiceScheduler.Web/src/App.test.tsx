@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { createMemoryRouter } from "react-router-dom"
 import { beforeAll, beforeEach, describe, expect, it } from "vitest"
 
@@ -66,13 +66,15 @@ describe("app shell", () => {
   it("lists the Workshop pages and marks the current one", async () => {
     renderAt("/dispatch")
     await pageHeading("Dispatch board")
+    await screen.findByRole("heading", { level: 2, name: reading.name })
 
+    // Both pages show one dealership's day, so the links carry the dealership (and the day, when it is not today).
     const workshop = screen.getByRole("navigation", { name: "Workshop" })
     const board = within(workshop).getByRole("link", { name: "Dispatch board" })
     const appointments = within(workshop).getByRole("link", { name: "Appointments" })
-    expect(board).toHaveAttribute("href", "/dispatch")
+    await waitFor(() => expect(board).toHaveAttribute("href", `/dispatch?dealership=${reading.id}`))
     expect(board).toHaveAttribute("aria-current", "page")
-    expect(appointments).toHaveAttribute("href", "/appointments")
+    expect(appointments).toHaveAttribute("href", `/appointments?dealership=${reading.id}`)
     expect(appointments).not.toHaveAttribute("aria-current")
   })
 

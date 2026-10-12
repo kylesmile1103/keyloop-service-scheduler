@@ -49,6 +49,11 @@ interface AppointmentSheetProps {
   returnFocus: () => HTMLElement | null
   /** Called once the appointment is cancelled, before the sheet closes (its block is about to leave the board). */
   onCancelled?: () => void
+  /**
+   * Where focus lands when the sheet opens: its title (the details), or the cancellation's reason field when the sheet was
+   * opened to cancel (the appointments list's Cancel action). An appointment that cannot be cancelled opens on its title.
+   */
+  initialFocus?: "title" | "reason"
 }
 
 /**
@@ -66,14 +71,16 @@ export function AppointmentSheet({
   timeZone,
   returnFocus,
   onCancelled,
+  initialFocus = "title",
 }: AppointmentSheetProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const reasonRef = useRef<HTMLTextAreaElement>(null)
 
   return (
     <Sheet open={open && appointment !== null} onOpenChange={onOpenChange}>
       <SheetContent
         side={side}
-        initialFocus={titleRef}
+        initialFocus={() => (initialFocus === "reason" ? reasonRef.current : null) ?? titleRef.current ?? true}
         finalFocus={() => returnFocus() ?? true}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
@@ -90,6 +97,7 @@ export function AppointmentSheet({
             date={date}
             timeZone={timeZone}
             titleRef={titleRef}
+            reasonRef={reasonRef}
             onDone={() => {
               onCancelled?.()
               onOpenChange(false)
@@ -109,10 +117,11 @@ interface SheetBodyProps {
   date: string
   timeZone: string
   titleRef: RefObject<HTMLHeadingElement | null>
+  reasonRef: RefObject<HTMLTextAreaElement | null>
   onDone: () => void
 }
 
-function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, onDone }: SheetBodyProps) {
+function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, reasonRef, onDone }: SheetBodyProps) {
   const queryClient = useQueryClient()
   const path = { appointmentId: appointment.id }
   const detailsOptions = getAppointmentOptions({ path })
@@ -228,6 +237,7 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
         appointment={appointment}
         status={status}
         timeZone={timeZone}
+        reasonRef={reasonRef}
         onCancelled={(cancelled) => {
           queryClient.setQueryData(getAppointmentQueryKey({ path }), cancelled)
           refreshBoard()
@@ -264,15 +274,15 @@ interface CancelFormProps {
   appointment: BoardAppointment
   status: BoardAppointment["status"]
   timeZone: string
+  reasonRef: RefObject<HTMLTextAreaElement | null>
   onCancelled: (cancelled: AppointmentResponse) => void
   onConflict: () => void
 }
 
-function CancelForm({ appointment, status, timeZone, onCancelled, onConflict }: CancelFormProps) {
+function CancelForm({ appointment, status, timeZone, reasonRef, onCancelled, onConflict }: CancelFormProps) {
   const reasonId = useId()
   const errorId = useId()
   const countId = useId()
-  const reasonRef = useRef<HTMLTextAreaElement>(null)
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
   const cancel = useMutation({

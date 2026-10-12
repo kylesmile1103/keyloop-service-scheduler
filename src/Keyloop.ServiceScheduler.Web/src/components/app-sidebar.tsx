@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { WORKSHOP_PARAMS } from "@/lib/workshop-params"
 
 const data = {
   navGroups: [
@@ -26,11 +27,13 @@ const data = {
           title: "Dispatch board",
           url: "/dispatch",
           icon: CalendarRange,
+          carry: WORKSHOP_PARAMS,
         },
         {
           title: "Appointments",
           url: "/appointments",
           icon: ClipboardList,
+          carry: WORKSHOP_PARAMS,
         },
       ],
     },

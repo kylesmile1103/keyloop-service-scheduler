@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { carrySearch } from "@/lib/workshop-params"
 
 export function NavMain({
   label,
@@ -21,6 +22,11 @@ export function NavMain({
     title: string
     url: string
     icon?: LucideIcon
+    /**
+     * Search parameters the link carries over from the current address (the workshop pages share the dealership and the
+     * day). A link to the page already open keeps its whole address, so it never resets that page's own view.
+     */
+    carry?: readonly string[]
   }[]
 }) {
   const location = useLocation()
@@ -28,6 +34,9 @@ export function NavMain({
 
   const isActive = (url: string) =>
     location.pathname === url || location.pathname.startsWith(`${url}/`)
+
+  const searchFor = (url: string, carry: readonly string[] | undefined) =>
+    location.pathname === url ? location.search : carry ? carrySearch(location.search, carry) : ""
 
   return (
     <SidebarGroup>
@@ -42,7 +51,7 @@ export function NavMain({
                 isActive={isActive(item.url)}
                 render={
                   <Link
-                    to={item.url}
+                    to={{ pathname: item.url, search: searchFor(item.url, item.carry) }}
                     aria-current={isActive(item.url) ? "page" : undefined}
                   />
                 }
