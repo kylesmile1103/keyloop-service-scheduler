@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { describe, expect, it } from "vitest"
 
@@ -10,6 +10,7 @@ import {
   featureSwitchesQuery,
   featureSwitchesQueryKey,
   useVehicleAware,
+  useVehicleAwareSwitch,
   vehicleAwareRefused,
 } from "@/lib/feature-switches"
 import { createQueryClient } from "@/lib/query-client"
@@ -69,6 +70,38 @@ describe("the environment's vehicle-aware switch", () => {
     expect(reads).toHaveLength(2)
     // The second read is not answered from the browser's cache, which may still hold the old answer for up to a minute.
     expect(reads[1].cache).toBe("reload")
+  })
+
+  it("is off when a later read fails after a successful one, in rendering and for a request being built, and on again once read", async () => {
+    // The checker's probe (review round 0): the cache still holds the earlier "on" while the query is in error.
+    let fail = false
+    mockApi(() => (fail ? new Response("", { status: 503 }) : jsonResponse({ vehicleAwareRequirements: true })))
+    const queryClient = noRetry()
+    const { result } = renderHook(() => [useVehicleAware(), useVehicleAwareSwitch()] as const, { wrapper: wrapper(queryClient) })
+    await waitFor(() => expect(result.current[0]).toBe(true))
+    expect(cachedVehicleAware(queryClient)).toBe(true)
+    expect(result.current[1]).toEqual({ on: true, unreadable: false })
+
+    fail = true
+    await act(() => queryClient.refetchQueries({ queryKey: featureSwitchesQueryKey() }))
+    expect(queryClient.getQueryState(featureSwitchesQueryKey())?.status).toBe("error")
+    expect(queryClient.getQueryData(featureSwitchesQueryKey())).toEqual({ vehicleAwareRequirements: true })
+    expect(cachedVehicleAware(queryClient)).toBe(false)
+    await waitFor(() => expect(result.current[0]).toBe(false))
+    expect(result.current[1]).toEqual({ on: false, unreadable: true })
+
+    fail = false
+    await act(() => queryClient.refetchQueries({ queryKey: featureSwitchesQueryKey() }))
+    expect(cachedVehicleAware(queryClient)).toBe(true)
+    await waitFor(() => expect(result.current[0]).toBe(true))
+    expect(result.current[1]).toEqual({ on: true, unreadable: false })
+  })
+
+  it("says it is unreadable only after a failed read, not while the first read is out", async () => {
+    mockApi(() => new Promise<Response>(() => {}))
+    const queryClient = noRetry()
+    const { result } = renderHook(() => useVehicleAwareSwitch(), { wrapper: wrapper(queryClient) })
+    expect(result.current).toEqual({ on: false, unreadable: false })
   })
 
   it("stays off after a refusal when the switch cannot be read again", async () => {

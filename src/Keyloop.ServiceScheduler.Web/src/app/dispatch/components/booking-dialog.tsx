@@ -54,7 +54,7 @@ import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
-import { cachedVehicleAware, featureSwitchesQuery, useVehicleAware, vehicleAwareRefused } from "@/lib/feature-switches"
+import { cachedVehicleAware, featureSwitchesQuery, useVehicleAwareSwitch, vehicleAwareRefused } from "@/lib/feature-switches"
 import { featureLabel } from "@/lib/features"
 import { nextOpenDate, openingHoursOn } from "@/lib/opening-hours"
 import {
@@ -294,9 +294,9 @@ function BookingFlow({
   const blockedId = useId()
   const noticeRef = useRef<HTMLDivElement>(null)
   const discardedId = useId()
-  // Vehicle-aware requirements (ADR-029), as the environment's switch says: off, the flow is today's and nothing of the
-  // vehicle step is shown or sent.
-  const vehicleAware = useVehicleAware()
+  // Vehicle-aware requirements (ADR-029), as the environment's switch says: off (or unreadable), the flow is today's and
+  // nothing of the vehicle step is shown or sent.
+  const { on: vehicleAware, unreadable: switchUnreadable } = useVehicleAwareSwitch()
   const vehicleSectionRef = useRef<HTMLDivElement>(null)
   const manufacturerRef = useRef<HTMLInputElement | null>(null)
   const focusVehicle = useRef(false)
@@ -407,16 +407,19 @@ function BookingFlow({
     : null
 
   // The API refused vehicle-aware inputs (`422 vehicle-aware-requirements-disabled`), or the switch turned off while some
-  // were entered: they are dropped (the step goes back to Unknown) and the dialog says so once.
-  const [dropped, setDropped] = useState<"booking" | "availability" | "switch" | null>(null)
+  // were entered: they are dropped (the step goes back to Unknown) and the dialog says so once. A switch that cannot be read
+  // after it was read on is not known to be off: the inputs are set aside, neither shown nor sent, and come back as they were
+  // once it reads on again (or are dropped if it reads off).
+  const [dropped, setDropped] = useState<"booking" | "availability" | "switch" | "unreadable" | null>(null)
   const [seenVehicleAware, setSeenVehicleAware] = useState(vehicleAware)
   if (seenVehicleAware !== vehicleAware) {
     setSeenVehicleAware(vehicleAware)
     if (vehicleAware) setDropped(null)
-    else if (dropped === null && declaresVehicle(form.getValues("vehicle.profile"), form.getValues("needsLiveDiagnosis"))) setDropped("switch")
-  }
+    else if (dropped === null && declaresVehicle(form.getValues("vehicle.profile"), form.getValues("needsLiveDiagnosis")))
+      setDropped(switchUnreadable ? "unreadable" : "switch")
+  } else if (dropped === "unreadable" && !vehicleAware && !switchUnreadable) setDropped("switch")
   useEffect(() => {
-    if (!dropped) return
+    if (!dropped || dropped === "unreadable") return
     form.setValue("vehicle.profile", undeclaredProfile())
     form.setValue("needsLiveDiagnosis", false)
     form.clearErrors(["vehicle.profile", "needsLiveDiagnosis"])
@@ -718,11 +721,11 @@ function BookingFlow({
             startUtc={startUtc}
             startFocusRequest={startFocusRequest}
             vehicle={
-              vehicleAware || dropped === "availability" || dropped === "switch"
+              vehicleAware || dropped === "availability" || dropped === "switch" || dropped === "unreadable"
                 ? {
                     section: vehicleAware ? <VehicleProfileFields form={form} service={service} sectionRef={vehicleSectionRef} /> : null,
                     availability: availabilityVehicle,
-                    dropped: dropped === "availability" || dropped === "switch",
+                    dropped: dropped === "unreadable" ? "unreadable" : dropped === "availability" || dropped === "switch" ? "off" : null,
                     onRefused: () => vehicleRefused("availability"),
                   }
                 : null
@@ -980,12 +983,13 @@ interface StepOneProps {
   /**
    * The vehicle step, with vehicle-aware requirements on (ADR-029): its declaration between the service and the starts,
    * which are counted for it; and, once the API refused vehicle-aware inputs or the switch turned off, the note saying
-   * they were dropped. `null` otherwise: today's step 1.
+   * they were dropped (`off`), or, while the switch cannot be read, that they are set aside (`unreadable`). `null`
+   * otherwise: today's step 1.
    */
   vehicle: {
     section: ReactNode
     availability: AvailabilityVehicle | null
-    dropped: boolean
+    dropped: "off" | "unreadable" | null
     onRefused: () => void
   } | null
 }
@@ -1155,7 +1159,7 @@ function StepOne({
         />
       </FieldGroup>
 
-      {vehicle?.dropped && <VehicleInputsDropped />}
+      {vehicle?.dropped && <VehicleInputsDropped unreadable={vehicle.dropped === "unreadable"} />}
       {vehicle?.section}
 
       <Controller

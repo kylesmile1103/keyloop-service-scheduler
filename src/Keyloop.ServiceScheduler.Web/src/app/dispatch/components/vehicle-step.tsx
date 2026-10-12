@@ -699,6 +699,8 @@ export function QualificationGap({ problem, alertRef, dealershipName, busy, onCh
 }
 
 interface VehicleInputsDroppedProps {
+  /** The switch could not be read (a later read failed): the inputs are set aside until it can be, not dropped. */
+  unreadable?: boolean
   alertRef?: Ref<HTMLDivElement>
   /** The refused request's trace id, when the refusal came from Book. */
   traceId?: string
@@ -710,9 +712,10 @@ interface VehicleInputsDroppedProps {
 /**
  * `422 vehicle-aware-requirements-disabled` (or the switch turning off while a declaration was entered): this server does
  * not take vehicle-aware inputs now, so they were dropped and the switch is read again. Said once, plainly: the booking
- * now uses the service's standard requirements.
+ * now uses the service's standard requirements. With `unreadable`, the switch could not be read after it was read on, so
+ * it says that, not that the server has it off: the inputs are set aside until it can be read again.
  */
-export function VehicleInputsDropped({ alertRef, traceId, onBookAgain, busy = false }: VehicleInputsDroppedProps) {
+export function VehicleInputsDropped({ unreadable = false, alertRef, traceId, onBookAgain, busy = false }: VehicleInputsDroppedProps) {
   return (
     <Alert
       ref={alertRef}
@@ -721,11 +724,12 @@ export function VehicleInputsDropped({ alertRef, traceId, onBookAgain, busy = fa
       className="border-info/30 bg-info-subtle px-4 py-3 text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50 *:[svg]:text-info"
     >
       <Info aria-hidden="true" />
-      <AlertTitle className="font-semibold text-info">Vehicle details aren’t used here now</AlertTitle>
+      <AlertTitle className="font-semibold text-info">{unreadable ? "Vehicle details set aside for now" : "Vehicle details aren’t used here now"}</AlertTitle>
       <AlertDescription className="flex flex-col gap-2 text-foreground">
         <span className="text-pretty">
-          This server has vehicle-aware requirements turned off, so the powertrain, class and live-diagnosis choice were dropped.
-          The booking now uses the service’s standard requirements.
+          {unreadable
+            ? "Whether vehicle-aware requirements are on here couldn’t be read, so the powertrain, class and live-diagnosis choice aren’t used for now. The booking uses the service’s standard requirements until the setting can be read again."
+            : "This server has vehicle-aware requirements turned off, so the powertrain, class and live-diagnosis choice were dropped. The booking now uses the service’s standard requirements."}
         </span>
         {traceId && <TraceIdRow traceId={traceId} />}
         {onBookAgain && (

@@ -699,6 +699,75 @@ describe("the switch turning off while a declaration is entered (a later read, a
   })
 })
 
+describe("the switch unreadable after it was read on (a later read that failed)", () => {
+  /** Declares a diesel, then the switch's next read fails; `readAgain` answers the read after that on or off. */
+  async function declareIceThenLoseTheSwitch() {
+    let answer: "on" | "off" | "unreadable" = "on"
+    const api = vehicleApi({
+      features: () => (answer === "unreadable" ? new Response("", { status: 503 }) : answer === "on" ? vehicleAwareOn : vehicleAwareOff),
+    })
+    const { queryClient } = renderBoard(board)
+    const scope = await openDialog()
+    await chooseService(scope, /^Interim Service/)
+    await choose(scope, "Powertrain", /^Petrol or diesel/)
+    fireEvent.change(within(scope).getByRole("textbox", { name: "Why you’re declaring it" }), { target: { value: reason } })
+
+    answer = "unreadable"
+    await act(() => queryClient.refetchQueries({ queryKey: featureSwitchesQueryKey() }))
+    const readAgain = async (now: "on" | "off" = "on") => {
+      answer = now
+      await act(() => queryClient.refetchQueries({ queryKey: featureSwitchesQueryKey() }))
+    }
+    return { api, scope, readAgain }
+  }
+
+  it("sets the declaration aside, saying the switch couldn't be read (not that it is off), and brings it back once read on", async () => {
+    const { scope, readAgain } = await declareIceThenLoseTheSwitch()
+
+    const note = await within(scope).findByText("Vehicle details set aside for now")
+    expect(note.closest("[role=alert]")).toHaveTextContent(
+      "Whether vehicle-aware requirements are on here couldn’t be read, so the powertrain, class and live-diagnosis choice aren’t used for now. The booking uses the service’s standard requirements until the setting can be read again."
+    )
+    expect(within(scope).queryByText("Vehicle details aren’t used here now")).not.toBeInTheDocument()
+    expect(within(scope).queryByRole("group", { name: "Vehicle" })).not.toBeInTheDocument()
+
+    await readAgain()
+    expect(await within(scope).findByRole("group", { name: "Vehicle" })).toBeInTheDocument()
+    expect(within(scope).getByRole("combobox", { name: "Powertrain" })).toHaveTextContent("Petrol or diesel")
+    expect(within(scope).getByRole("textbox", { name: "Why you’re declaring it" })).toHaveValue(reason)
+    expect(within(scope).queryByText("Vehicle details set aside for now")).not.toBeInTheDocument()
+  })
+
+  it("drops what was set aside, and says the server has it off, when the switch then reads off", async () => {
+    const { scope, readAgain } = await declareIceThenLoseTheSwitch()
+    await within(scope).findByText("Vehicle details set aside for now")
+
+    await readAgain("off")
+
+    expect(await within(scope).findByText("Vehicle details aren’t used here now")).toBeInTheDocument()
+    expect(within(scope).queryByText("Vehicle details set aside for now")).not.toBeInTheDocument()
+    // Dropped for real: when the switch is on again, the step starts from Unknown.
+    await readAgain("on")
+    expect(await within(scope).findByRole("combobox", { name: "Powertrain" })).toHaveTextContent("Unknown")
+    expect(within(scope).queryByRole("textbox", { name: "Why you’re declaring it" })).not.toBeInTheDocument()
+  })
+
+  it("books without the declaration while the switch cannot be read", async () => {
+    const { api, scope } = await declareIceThenLoseTheSwitch()
+    await within(scope).findByText("Vehicle details set aside for now")
+    await pickStart(scope)
+    await next(scope)
+    fillCustomer(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+
+    const body = await bodyOf(bookings(api.requests)[0])
+    expect(body.vehicle).not.toHaveProperty("profile")
+    expect(body).not.toHaveProperty("needsLiveDiagnosis")
+    expect(availabilityQueries(api.requests).at(-1)).not.toHaveProperty("powertrain")
+  })
+})
+
 describe("the look-up, for an account that cannot book", () => {
   it.each([
     { who: "signed out", me: anonymous, reason: /you’re signed out/ },

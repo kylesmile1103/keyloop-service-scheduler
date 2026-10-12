@@ -25,17 +25,35 @@ export const featureSwitchesQuery = () => ({
 export const featureSwitchesQueryKey = () => getFeaturesQueryKey()
 
 /**
- * Whether vehicle-aware booking inputs, availability filters and allocation explanations are on. `false` until the switch
- * has been read and when it cannot be read: today's flow, which every deployment accepts (with the switch on, an omitted
- * vehicle profile is treated as Unknown, the conservative default).
+ * On only while the last read succeeded and said on. A read that failed after a successful one leaves the earlier answer
+ * in the cache with the query in error: that counts as unreadable, so off, until a read succeeds again.
  */
-export function useVehicleAware(): boolean {
-  return useQuery(featureSwitchesQuery()).data?.vehicleAwareRequirements === true
+function switchedOn(state: { status: "pending" | "error" | "success"; data?: FeatureSwitchesResponse } | undefined): boolean {
+  return state?.status === "success" && state.data?.vehicleAwareRequirements === true
 }
 
-/** The switch as the cache holds it at this moment, for a decision taken outside rendering (a request as it is built). */
+/**
+ * The switch for rendering: `on`, and whether its last read failed (`unreadable`), so a view can say the setting could
+ * not be read rather than that it is off. Off until the switch has been read, and whenever it cannot be read: today's flow,
+ * which every deployment accepts (with the switch on, an omitted vehicle profile is treated as Unknown, the conservative
+ * default).
+ */
+export function useVehicleAwareSwitch(): { on: boolean; unreadable: boolean } {
+  const query = useQuery(featureSwitchesQuery())
+  return { on: switchedOn(query), unreadable: query.status === "error" }
+}
+
+/** Whether vehicle-aware booking inputs, availability filters and allocation explanations are on (`useVehicleAwareSwitch`). */
+export function useVehicleAware(): boolean {
+  return useVehicleAwareSwitch().on
+}
+
+/**
+ * The switch as the cache holds it at this moment, for a decision taken outside rendering (a request as it is built): off
+ * while the query is in error, as in rendering, even though the cache keeps an earlier answer.
+ */
 export function cachedVehicleAware(queryClient: QueryClient): boolean {
-  return queryClient.getQueryData<FeatureSwitchesResponse>(featureSwitchesQueryKey())?.vehicleAwareRequirements === true
+  return switchedOn(queryClient.getQueryState<FeatureSwitchesResponse>(featureSwitchesQueryKey()))
 }
 
 /**
