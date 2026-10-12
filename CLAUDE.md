@@ -2,11 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Resuming this project in a fresh session on the author's machine? Read the local `docs/HANDOFF.md` first** (git-ignored work-in-progress notes: current state, process, remaining tasks with binding carry-overs, rulings and gotchas).
+
 ## What this repository is
 
 The Keyloop Principal Software Engineer technical assessment, Scenario A: a **Unified Service Scheduler** for dealership workshops. The **backend is the evaluated deliverable**; the React app is a dispatch-board harness that exercises the real API. The brief is at `../docs/KeyloopCodingChallange.pdf` (outside the repo). `docs/SYSTEM_DESIGN.md` is the source of truth and must stay consistent with the code:
 
 - `docs/SYSTEM_DESIGN.md` - domain model, availability algorithm, concurrency strategy, API/problem catalogue, environments, security, observability, ADRs. Read §5–§8 before touching backend code.
+- Code comments that cite "Addendum A/B/C §..." refer to the author's planning addenda (A reflection/AOT, B OpenAPI/UI, C Aspire), which are local notes and not in the repository; the ADRs in `docs/SYSTEM_DESIGN.md` §18 are their committed equivalents.
 
 ## Commands
 
