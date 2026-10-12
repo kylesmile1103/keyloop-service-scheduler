@@ -34,6 +34,12 @@ export const routes: RouteObject[] = [
   { path: "/settings", element: <KeepSearch to="appearance" /> },
   { path: "/settings/appearance", lazy: page(() => import("@/app/settings/appearance/page")) },
   { path: "/settings/account", lazy: page(() => import("@/app/settings/account/page")) },
+  // Error pages, routed so the app can send the user to one (lib/error-pages)
+  { path: "/errors/unauthorized", lazy: page(() => import("@/app/errors/unauthorized/page")) },
+  { path: "/errors/forbidden", lazy: page(() => import("@/app/errors/forbidden/page")) },
+  { path: "/errors/not-found", lazy: page(() => import("@/app/errors/not-found/page")) },
+  { path: "/errors/internal-server-error", lazy: page(() => import("@/app/errors/internal-server-error/page")) },
+  { path: "/errors/under-maintenance", lazy: page(() => import("@/app/errors/under-maintenance/page")) },
   // Catch-all route for 404
   { path: "*", lazy: page(() => import("@/app/errors/not-found/page")) },
 ]
