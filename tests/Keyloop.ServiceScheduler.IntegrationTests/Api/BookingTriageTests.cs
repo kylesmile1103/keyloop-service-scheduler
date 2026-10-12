@@ -346,6 +346,16 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         triageSpans[0].GetTagItem("triage.recommendation").ShouldBe("suggest");
         triageSpans[1].GetTagItem("triage.outcome").ShouldBe("unavailable");
         triageSpans[2].GetTagItem("triage.outcome").ShouldBe("rejected");
+        // Only a successful answer carries the bounded category (NONE here); an error or rejection carries none at all.
+        triageSpans[0].GetTagItem("triage.uncovered_category").ShouldBe("NONE");
+        triageSpans[1].GetTagItem("triage.uncovered_category").ShouldBeNull();
+        triageSpans[2].GetTagItem("triage.uncovered_category").ShouldBeNull();
+        foreach (var instrument in new[] { "scheduler.triage.requests", "scheduler.triage.duration" })
+        {
+            metrics.Of(instrument, MetricsCollector.Tag("outcome", "suggest")).ShouldHaveSingleItem().Tag("uncovered_category").ShouldBe("NONE");
+            metrics.Of(instrument, MetricsCollector.Tag("outcome", "unavailable")).ShouldHaveSingleItem().Tags.ShouldNotContain(t => t.Key == "uncovered_category");
+            metrics.Of(instrument, MetricsCollector.Tag("outcome", "rejected")).ShouldHaveSingleItem().Tags.ShouldNotContain(t => t.Key == "uncovered_category");
+        }
         foreach (var span in spans)
         {
             foreach (var tag in span.TagObjects)
