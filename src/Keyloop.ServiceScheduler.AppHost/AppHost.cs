@@ -150,17 +150,17 @@ else
         .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
 }
 
-// The dispatch board (ARCHITECTURE §8.6, ADR-019). Discovery and readiness apply in both modes.
+// The dispatch board (ARCHITECTURE §8.6, ADR-019). Readiness applies in both modes; Vite discovery is run-only.
 var web = builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
     .WithPnpm(installArgs: ["--frozen-lockfile"])
-    .WithReference(api)
     .WaitFor(api)
     .WithHttpHealthCheck("/")
     .WithExternalHttpEndpoints();
 
 if (builder.ExecutionContext.IsRunMode)
 {
-    web.WithOtlpExporter(OtlpProtocol.HttpProtobuf); // dashboard credentials reach the browser only from the dev server
+    web.WithReference(api)
+        .WithOtlpExporter(OtlpProtocol.HttpProtobuf); // dashboard credentials reach the browser only from the dev server
 }
 else
 {

@@ -82,6 +82,8 @@ public sealed class AppHostModelTests
         var webEnvironment = web.GetProperty("environment");
         webEnvironment.GetProperty("API_UPSTREAM").GetString().ShouldBe($"http://api:{api.GetProperty("HTTP_PORTS").GetString()}");
         webEnvironment.GetProperty("PORT").GetString().ShouldBe("8080");
+        webEnvironment.TryGetProperty("API_HTTPS", out _).ShouldBeFalse();
+        webEnvironment.TryGetProperty("API_HTTP", out _).ShouldBeFalse();
         web.GetProperty("ports").EnumerateArray().ShouldHaveSingleItem().GetProperty("target").GetInt32().ShouldBe(8080);
         web.GetProperty("networks").EnumerateObject().Select(n => n.Name).ShouldBe(["aspire"]);
     }
@@ -95,6 +97,8 @@ public sealed class AppHostModelTests
             ["--operation=publish"], timeout.Token);
         var web = builder.Resources.OfType<ContainerResource>().Single(r => r.Name == "web");
         var environment = await EnvironmentAsync(builder, web, timeout.Token);
+        environment.ShouldNotContainKey("API_HTTPS");
+        environment.ShouldNotContainKey("API_HTTP");
         var upstream = environment["API_UPSTREAM"].ShouldBeOfType<EndpointReference>();
         upstream.Resource.Name.ShouldBe("api");
         upstream.EndpointName.ShouldBe("http");
