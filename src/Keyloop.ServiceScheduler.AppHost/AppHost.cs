@@ -61,6 +61,19 @@ var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
     .WithHttpHealthCheck("/health", endpointName: "http") // readiness does not depend on trusting a local development certificate
     .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
 
+// Optional developer-owned secrets. No generated default, no prompt and no credential persistence for triage.
+if (builder.ExecutionContext.IsRunMode &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["Parameters:cloudflare-account-id"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["Parameters:cloudflare-ai-token"]))
+{
+    var account = builder.AddParameter("cloudflare-account-id");
+    var token = builder.AddParameter("cloudflare-ai-token", secret: true);
+    api.WithEnvironment("Triage__Enabled", "true")
+        .WithEnvironment("Triage__AccountId", account)
+        .WithEnvironment("Triage__GatewayId", "keyloop-scheduler")
+        .WithEnvironment("Triage__ApiToken", token);
+}
+
 // The dashboard labels the API's endpoints and links to Scalar. The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE):
 // `https` gives it an https and an http endpoint, `http` only the latter. A URL callback on an endpoint the API lacks is dropped (with a
 // warning), so only the endpoints it has are labelled, and the Scalar link goes on https when there is one, else on http.

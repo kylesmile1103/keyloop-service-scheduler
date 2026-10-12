@@ -57,9 +57,10 @@ public sealed class CloudflareTriageClient(HttpClient http, IOptions<TriageConne
             logger.TriageUnavailable("timeout");
             throw new TriageUnavailableException("timeout");
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
+        // ReadFromJsonAsync reports an unsupported Content-Type charset as InvalidOperationException, not JsonException.
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or NotSupportedException or InvalidOperationException)
         {
-            var reason = ex is HttpRequestException ? "transport" : "invalid-answer";
+            var reason = ex is HttpRequestException or IOException ? "transport" : "invalid-answer";
             logger.TriageUnavailable(reason);
             throw new TriageUnavailableException(reason);
         }

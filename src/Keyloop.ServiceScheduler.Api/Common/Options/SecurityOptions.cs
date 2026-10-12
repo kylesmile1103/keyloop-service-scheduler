@@ -42,6 +42,8 @@ public sealed class SecurityOptions : IValidatableObject
     /// <summary>Sliding-window limits per client IP; <see cref="Enabled"/> is false only in SystemTest.</summary>
     public sealed class RateLimitingOptions
     {
+        [Range(1, 1000)]
+        public int TriagePermitsPerMinute { get; set; } = 10;
         public bool Enabled { get; set; } = true;
 
         /// <summary>The <c>global</c> limiter: every request except health probes.</summary>

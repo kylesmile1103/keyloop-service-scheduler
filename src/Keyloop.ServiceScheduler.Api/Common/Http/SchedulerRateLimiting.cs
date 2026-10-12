@@ -16,11 +16,12 @@ namespace Keyloop.ServiceScheduler.Api.Common.Http;
 /// request except health probes; the stricter <see cref="BookingPolicy"/> write policy is added to the state-changing endpoints
 /// (booking and cancellation) with <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>. A rejection is a 429
 /// <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>. <c>Security:RateLimiting:Enabled=false</c>
-/// (SystemTest) turns both off.
+/// (SystemTest) turns all policies off.
 /// </summary>
 public static class SchedulerRateLimiting
 {
     public const string BookingPolicy = "booking";
+    public const string TriagePolicy = "triage";
 
     private const int SegmentsPerWindow = 6;
 
@@ -42,6 +43,8 @@ public static class SchedulerRateLimiting
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http => GlobalPartition(http, settings));
         options.AddPolicy(BookingPolicy, http => BookingPartition(http, settings));
+        options.AddPolicy(TriagePolicy, http => settings.Enabled
+            ? SlidingWindow(ClientKey(http), settings.TriagePermitsPerMinute) : RateLimitPartition.GetNoLimiter(UnlimitedPartition));
         options.OnRejected = WriteRejectionAsync;
     }
 
@@ -87,6 +90,10 @@ public static class SchedulerRateLimiting
     private static async ValueTask WriteRejectionAsync(OnRejectedContext context, CancellationToken cancellationToken)
     {
         var http = context.HttpContext;
+        if (http.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName == TriagePolicy)
+        {
+            Common.Telemetry.SchedulerTelemetry.TriageRequests.Add(1, new KeyValuePair<string, object?>("outcome", "rejected"));
+        }
         var seconds = (int)Math.Ceiling(RetryAfter(context.Lease).TotalSeconds);
         http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         http.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);

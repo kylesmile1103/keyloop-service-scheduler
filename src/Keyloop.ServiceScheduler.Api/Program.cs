@@ -16,6 +16,10 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Api.Features.Triage;
+using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
+using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
+using Keyloop.ServiceScheduler.Infrastructure.Triage;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
@@ -45,6 +49,19 @@ builder.Services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptions
 builder.Services.AddOptions<DemoOptions>().BindConfiguration(DemoOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<DemoOptions>, DemoOptionsValidator>();
 
+builder.Services.AddOptions<TriageConnectionOptions>().BindConfiguration(TriageConnectionOptions.SectionName).ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<TriageConnectionOptions>, TriageConnectionOptionsValidator>();
+builder.Services.AddOptions<TriageOptions>().BindConfiguration(TriageConnectionOptions.SectionName).ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<TriageOptions>, TriageOptionsValidator>();
+// Pinned Extensions 10 exposes removal as experimental; isolate this opt-out to the interactive client.
+#pragma warning disable EXTEXP0001
+builder.Services.AddHttpClient<CloudflareTriageClient>(client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan; // the adapter owns one short deadline, including retry and response parsing
+    client.MaxResponseContentBufferSize = 64 * 1024;
+}).RemoveAllResilienceHandlers().RemoveAllLoggers(); // framework transport logs can retain an exception containing upstream text
+#pragma warning restore EXTEXP0001
+
 builder.Services.AddOptions<NotificationOptions>().BindConfiguration(NotificationOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>();
 builder.Services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<IOptions<NotificationOptions>>().Value.Provider switch
@@ -69,6 +86,7 @@ builder.Services.AddScoped<DomainEventInterceptor>();
 builder.Services.AddScoped<IDomainEventObserver, TelemetryDomainEventObserver>();
 builder.Services.AddScoped<IDomainEventObserver, NotificationNudgeObserver>();
 builder.Services.AddScoped<DayScheduleReader>();
+builder.Services.AddScoped<ServiceCatalogueReader>();
 
 // The connection string is read when a context is first configured, not here, so WebApplicationFactory overrides apply. During
 // build-time OpenAPI generation there is no database: a placeholder that is never opened stands in (Addendum B §B1).
@@ -99,6 +117,9 @@ builder.Services.AddScoped<IValidator<CancelAppointmentRequest>, CancelAppointme
 builder.Services.AddScoped<GetWorkshopScheduleHandler>();
 builder.Services.AddScoped<IValidator<GetWorkshopScheduleQuery>, GetWorkshopScheduleValidator>();
 builder.Services.AddScoped<ReseedDemoDataHandler>();
+builder.Services.AddScoped<GetBookingTriageStatusHandler>();
+builder.Services.AddScoped<TriageBookingHandler>();
+builder.Services.AddScoped<IValidator<TriageBookingRequest>, TriageBookingValidator>();
 
 // The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);

@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -49,6 +49,10 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.BayScheduleResponse,
         SchedulerJsonContext.Default.ScheduledAppointmentResponse,
         SchedulerJsonContext.Default.TechnicianResponse,
+        SchedulerJsonContext.Default.BookingTriageStatusResponse,
+        SchedulerJsonContext.Default.TriageBookingResponse,
+        SchedulerJsonContext.Default.TriageServiceCandidate,
+        SchedulerJsonContext.Default.TriagePreferredDate,
     ];
 
     private static readonly JsonSerializerOptions Canonical = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -182,6 +186,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "400"),
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "404"),
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "429"),
+                ("GET /api/v1/booking-triage", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "503"),
             ],
             ignoreOrder: true);
 
@@ -235,6 +244,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         [
             ("BookAppointment", "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes."),
             ("CancelAppointment", "The cancellation: why the appointment is cancelled."),
+            ("TriageBookingRequest", "The booking intake: the customer's issue and optional preferred date, as untrusted text."),
         ]);
     }
 
@@ -257,6 +267,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/appointments/{appointmentId}", "200", "AppointmentResponse"),
                 ("POST /api/v1/appointments/{appointmentId}/cancel", "200", "AppointmentResponse"),
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "200", "WorkshopScheduleResponse"),
+                ("GET /api/v1/booking-triage", "200", "BookingTriageStatusResponse"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "200", "TriageBookingResponse"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))

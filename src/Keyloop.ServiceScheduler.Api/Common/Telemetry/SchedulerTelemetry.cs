@@ -13,6 +13,10 @@ public static class SchedulerTelemetry
 
     public static readonly Meter Meter = InfrastructureTelemetry.Meter;
 
+    /// <summary>Tags: outcome, and reason when unavailable. Never customer text.</summary>
+    public static readonly Counter<long> TriageRequests = Meter.CreateCounter<long>("scheduler.triage.requests", "{request}");
+    public static readonly Histogram<double> TriageDuration = Meter.CreateHistogram<double>("scheduler.triage.duration", "s");
+
     /// <summary>Tags: <c>outcome</c>, <c>dealership.id</c>.</summary>
     public static readonly Counter<long> BookingRequests = Meter.CreateCounter<long>("scheduler.booking.requests", "{request}");
 

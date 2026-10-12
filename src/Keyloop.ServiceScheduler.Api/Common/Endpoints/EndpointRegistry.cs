@@ -8,6 +8,8 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
+using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
@@ -29,6 +31,8 @@ public static class EndpointRegistry
         GetAppointmentEndpoint.Map(group);
         CancelAppointmentEndpoint.Map(group);
         GetWorkshopScheduleEndpoint.Map(group);
+        GetBookingTriageStatusEndpoint.Map(group);
+        TriageBookingEndpoint.Map(group);
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

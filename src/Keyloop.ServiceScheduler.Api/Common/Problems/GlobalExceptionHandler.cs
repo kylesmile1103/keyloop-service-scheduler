@@ -1,5 +1,7 @@
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Domain.Common;
+using Keyloop.ServiceScheduler.Infrastructure.Triage;
+using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +39,10 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
 
         problem.Instance = httpContext.Request.Path;
         httpContext.Response.StatusCode = problem.Status!.Value;
+        if (exception is TriageUnavailableException { RetryAfterSeconds: { } seconds })
+        {
+            httpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+        }
 
         // Not written when the client's Accept header excludes JSON. The mapped status still stands: reporting "not handled" would
         // make the middleware rethrow and turn, say, a 422 into a 500.
@@ -46,6 +52,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
 
     private static ProblemDetails Map(Exception exception) => exception switch
     {
+        TriageUnavailableException unavailable => Problem(StatusCodes.Status503ServiceUnavailable, ProblemTypes.TriageUnavailable, unavailable.Message),
         DomainRuleViolationException rule => Problem(
             StatusCodes.Status422UnprocessableEntity, ProblemTypes.ForRule(rule.RuleCode), rule.Message, [.. rule.Extensions]),
         InvalidStateTransitionException transition => Problem(

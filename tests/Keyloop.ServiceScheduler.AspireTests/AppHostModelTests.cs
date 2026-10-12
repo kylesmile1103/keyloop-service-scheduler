@@ -11,6 +11,29 @@ namespace Keyloop.ServiceScheduler.AspireTests;
 [Trait("Category", "Aspire")]
 public sealed class AppHostModelTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Triage_parameters_are_optional_and_only_wired_when_both_are_supplied(bool enabled)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var arguments = enabled
+            ? new[] { "--Parameters:cloudflare-account-id=00000000000000000000000000000000", "--Parameters:cloudflare-ai-token=test-token" }
+            : new[] { "--Parameters:cloudflare-account-id=", "--Parameters:cloudflare-ai-token=" };
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(arguments, timeout.Token);
+        var api = builder.Resources.OfType<ProjectResource>().Single(r => r.Name == "api");
+        var environment = await EnvironmentAsync(builder, api, timeout.Token);
+        environment.ContainsKey("Triage__Enabled").ShouldBe(enabled);
+        environment.ContainsKey("Triage__ApiToken").ShouldBe(enabled);
+        environment.ContainsKey("Triage__AccountId").ShouldBe(enabled);
+        if (enabled)
+        {
+            environment["Triage__Enabled"].ShouldBe("true");
+            builder.Resources.OfType<ParameterResource>().Single(p => p.Name == "cloudflare-ai-token").Secret.ShouldBeTrue();
+        }
+    }
+
     [Fact]
     public async Task Published_api_uses_Demo_and_the_root_Dockerfile_context_with_an_initialized_database()
     {

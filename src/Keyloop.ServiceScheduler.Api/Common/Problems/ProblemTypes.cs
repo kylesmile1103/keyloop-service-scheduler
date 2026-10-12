@@ -24,6 +24,7 @@ public static class ProblemTypes
     public const string NoShowBeforeSlotEnd = Base + "no-show-before-slot-end";
     public const string ConcurrencyConflict = Base + "concurrency-conflict";
     public const string RateLimited = Base + "rate-limited";
+    public const string TriageUnavailable = Base + "triage-unavailable";
     public const string InternalError = Base + "internal-error";
 
     /// <summary>The title for a rule code that is not (yet) in the catalogue; its <c>type</c> is still <see cref="ForRule"/>.</summary>
@@ -45,6 +46,7 @@ public static class ProblemTypes
         [NoShowBeforeSlotEnd] = "No-show before slot end",
         [ConcurrencyConflict] = "Concurrency conflict",
         [RateLimited] = "Too many requests",
+        [TriageUnavailable] = "Service suggestions unavailable",
         [InternalError] = "Internal server error",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 

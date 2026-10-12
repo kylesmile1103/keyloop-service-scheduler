@@ -883,6 +883,228 @@
           }
         }
       }
+    },
+    "/api/v1/booking-triage": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Discover whether booking intake suggestions are enabled",
+        "description": "Use the feature flag and description limit to display the optional intake control.",
+        "operationId": "GetBookingTriageStatus",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag, configured model, provider attribution and description limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingTriageStatusResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this client (rate-limited, with Retry-After).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/booking-triage": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Suggest bookable services and an optional preferred date from an intake description",
+        "description": "A person must confirm a suggestion before asking for availability and booking. No description is stored.",
+        "operationId": "TriageBookingRequest",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "Dealership whose active resources and local dates bound the choices.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "The booking intake: the customer's issue and optional preferred date, as untrusted text.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Model, recommendation, service confidence, up to three candidates and an optional local date.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageBookingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Description is missing, blank or over the limit (validation-error).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dealership has this id (not-found).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many triage requests from this client (rate-limited, with Retry-After).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Suggestions are disabled or the upstream is unavailable or invalid (triage-unavailable); use manual service selection. Retry-After is preserved when supplied upstream.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait when the upstream supplied Retry-After.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1213,6 +1435,35 @@
           }
         },
         "description": "The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The\nexamples form a valid booking at the seeded Keyloop Motors Reading dealership."
+      },
+      "BookingTriageStatusResponse": {
+        "required": [
+          "enabled",
+          "model",
+          "provider",
+          "maxDescriptionLength"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether service suggestions are enabled on this API."
+          },
+          "model": {
+            "type": "string",
+            "description": "Configured model identifier."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider display attribution."
+          },
+          "maxDescriptionLength": {
+            "type": "integer",
+            "description": "Maximum trimmed description length.",
+            "format": "int32"
+          }
+        },
+        "description": "Feature discovery for the booking dialog. Disabled triage leaves manual booking available."
       },
       "CancelAppointmentRequest": {
         "required": [
@@ -1722,6 +1973,106 @@
           }
         },
         "description": "A technician on the dealership's roster: a lane of the board when it is viewed by technician."
+      },
+      "TriageBookingRequest": {
+        "required": [
+          "description"
+        ],
+        "type": "object",
+        "properties": {
+          "description": {
+            "examples": [
+              "Brakes squeal, it's an EV, need it Thursday."
+            ],
+            "type": "string",
+            "description": "The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming."
+          }
+        },
+        "description": "A customer's untrusted booking intake description, never stored or logged."
+      },
+      "TriageBookingResponse": {
+        "required": [
+          "model",
+          "recommendation",
+          "serviceConfidence",
+          "services",
+          "preferredDate"
+        ],
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Configured model identifier."
+          },
+          "recommendation": {
+            "type": "string",
+            "description": "suggest, confirm or no-match. Always require a person's confirmation."
+          },
+          "serviceConfidence": {
+            "type": "number",
+            "description": "Jev's service confidence, distinct from a candidate's probability.",
+            "format": "double"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TriageServiceCandidate"
+            },
+            "description": "At most three bookable candidates above the configured probability floor, most likely first."
+          },
+          "preferredDate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Confidently selected local date, including a closed day, or null.",
+                "$ref": "#/components/schemas/TriagePreferredDate"
+              }
+            ]
+          }
+        },
+        "description": "Service suggestions for human confirmation. This operation never books an appointment."
+      },
+      "TriagePreferredDate": {
+        "required": [
+          "date",
+          "probability",
+          "confidence"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "probability": {
+            "type": "number",
+            "format": "double"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "description": "A concrete date in the dealership's zone. Availability still decides whether it has slots."
+      },
+      "TriageServiceCandidate": {
+        "required": [
+          "serviceType",
+          "probability"
+        ],
+        "type": "object",
+        "properties": {
+          "serviceType": {
+            "$ref": "#/components/schemas/ServiceTypeSummary"
+          },
+          "probability": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "description": "A candidate from the dealership's bookable catalogue."
       },
       "VehicleRequest": {
         "required": [

@@ -9,6 +9,8 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
+using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -84,4 +86,9 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 // Task 14b: the demo reseed command's answer (outside the OpenAPI contract, read by the Aspire dashboard).
 [JsonSerializable(typeof(ReseedDemoDataResponse))]
 // Tasks 13+: every request, response and extension payload type, including top-level collections.
+[JsonSerializable(typeof(BookingTriageStatusResponse))]
+[JsonSerializable(typeof(TriageBookingRequest))]
+[JsonSerializable(typeof(TriageBookingResponse))]
+[JsonSerializable(typeof(TriageServiceCandidate))]
+[JsonSerializable(typeof(TriagePreferredDate))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

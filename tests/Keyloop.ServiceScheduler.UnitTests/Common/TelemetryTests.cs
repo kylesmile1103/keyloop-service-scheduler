@@ -33,6 +33,8 @@ public class TelemetryTests
         SchedulerTelemetry.Source.Name.ShouldBe("Keyloop.ServiceScheduler");
         published.ShouldBe(
             [
+                ("scheduler.triage.requests", "{request}", "Counter`1"),
+                ("scheduler.triage.duration", "s", "Histogram`1"),
                 ("scheduler.booking.requests", "{request}", "Counter`1"),
                 ("scheduler.booking.duration", "ms", "Histogram`1"),
                 ("scheduler.booking.lock_wait", "ms", "Histogram`1"),
