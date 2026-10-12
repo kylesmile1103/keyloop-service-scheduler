@@ -82,7 +82,8 @@ Sign in as Admin (the Development default) or Service advisor, open the dispatch
 | Heavy | Vehicle class *Heavy vehicle* (Interim or Heavy Van Service) | only the heavy-duty lift's starts, and the heavy-vehicle technician |
 | Training gap | EV Charging Fault Diagnosis, *Needs live HV diagnosis* | no start: no Reading technician holds level 4, said as the workshop's gap, with the two-person warning |
 | Conflict | step 2: *Manufacturer code* `BMW`, then VIN `WVWZZZ1KZAW123456` and **Look up** | "The VIN says VOLKSWAGEN, but BMW is declared", with **Use decoded data** (also on the API's 422) |
-| Why not | Unknown Interim Service, *Preferred technician* Farid Haddad | "Farid Haddad holds HV level 1, below the level 2 this job needs." in the booked toast and the details sheet |
+| Why not | Unknown Interim Service, *Preferred technician* Farid Haddad | "Farid Haddad holds HV level 1, below the level 2 this job needs." in the booked toast and the details sheet, from the board, the Overview and the Calendar alike |
+| Accident assessment | Accident Damage Assessment, the vehicle left Unknown (or a hybrid or electric one declared) | no live diagnosis offered; Eva Lindqvist (Reading) or Hans Richter (München) "at HV level 3 or above with Damage assessment", because a collision may have damaged high-voltage cabling or parts |
 
 Resources > Technicians shows each technician's HV level, how long it is valid, whether it was confirmed and the brand specialisms (not used for allocation yet). **Look up** sends the VIN in the request body only to `POST /api/v1/vehicle-profiles/resolve` (Admin or ServiceAdvisor, booking rate limit, offline: no registry is called and nothing is stored); availability is asked with `powertrain`, `vehicleClass`, a manufacturer code and `needsLiveDiagnosis`, never a VIN, registration or reason.
 
