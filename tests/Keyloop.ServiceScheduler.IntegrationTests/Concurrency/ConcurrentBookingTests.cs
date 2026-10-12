@@ -7,6 +7,7 @@ using Keyloop.ServiceScheduler.Api.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
+using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Http;
@@ -21,8 +22,9 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Concurrency;
 /// same slot on a dealership with exactly one qualifying bay and one qualifying technician (<see cref="TestData.ContentionDealershipAsync"/>:
 /// <c>EV-BATTERY-CHECK</c>, 60 minutes) are released at once through the in-memory test server against real PostgreSQL. Exactly one is
 /// booked; the other 29 are answered <c>409</c> with suggestions; nothing fails, deadlocks, trips the exclusion-constraint backstop or
-/// leaves an orphaned audit or idempotency row. The variants show that the lock serialises without refusing legitimate work, that
-/// queued requests record the real time they waited, and that one dealership's queue never delays another's bookings.
+/// leaves an orphaned audit, idempotency or notification outbox row, and the winner's confirmation email is staged exactly once. The
+/// variants show that the lock serialises without refusing legitimate work, that queued requests record the real time they waited, and
+/// that one dealership's queue never delays another's bookings.
 /// </summary>
 /// <remarks>
 /// The assertions are the design's claims, not tolerances: a failure here is a design defect to investigate (the
@@ -168,6 +170,11 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
             history.Select(h => h.AppointmentId).ShouldBe(booked, ignoreOrder: true, "exactly one audit row per booking");
             history.ShouldAllBe(h => h.EventType == "Booked");
             (await db.IdempotencyKeys.CountAsync(Ct)).ShouldBe(0, "no Idempotency-Key was sent");
+
+            // ADR-020: each booking staged its confirmation in its own transaction, once, while thirty transactions queued on the lock.
+            var outbox = await db.NotificationOutbox.AsNoTracking().ToListAsync(Ct);
+            outbox.Select(n => n.AppointmentId).ShouldBe(booked, ignoreOrder: true, "exactly one outbox row per booking");
+            outbox.ShouldAllBe(n => n.Kind == NotificationKind.BookingConfirmation);
         });
     }
 
@@ -332,7 +339,8 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>
     /// SYSTEM_DESIGN §14.4 assertion 4: the winner is the dealership's only appointment, active, on the only bay and technician, with
-    /// exactly one audit row; no audit row references a missing appointment; the only idempotency row (if any) is the winner's.
+    /// exactly one audit row; no audit row references a missing appointment; the only idempotency row (if any) is the winner's; the
+    /// winner's booking confirmation is the dealership's only notification outbox row (ADR-020, proposal item A5).
     /// </summary>
     private Task ShouldHaveExactlyTheWinnerInTheDatabaseAsync(Guid dealershipId, Outcome winner) => _factory.WithDbAsync(async db =>
     {
@@ -349,6 +357,15 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
         var entry = history.ShouldHaveSingleItem();
         (entry.AppointmentId, entry.EventType).ShouldBe((booked.Id, "Booked"));
         (await db.AppointmentHistory.CountAsync(h => !db.Appointments.Any(a => a.Id == h.AppointmentId), Ct)).ShouldBe(0, "orphaned history");
+
+        // The confirmation email is staged in the winner's transaction (ADR-020): exactly one outbox row, the winner's, addressed to the
+        // winner's customer; the 29 refusals rolled back before staging anything, and nothing was staged twice.
+        var outbox = await db.NotificationOutbox.AsNoTracking()
+            .Where(n => db.Appointments.Any(a => a.Id == n.AppointmentId && a.DealershipId == dealershipId)).ToListAsync(Ct);
+        var notification = outbox.ShouldHaveSingleItem("exactly one confirmation is staged, for the winner");
+        (notification.AppointmentId, notification.Kind, notification.Recipient).ShouldBe((booked.Id, NotificationKind.BookingConfirmation, booked.Customer.Email));
+        notification.ReadSnapshot().AppointmentId.ShouldBe(booked.Id);
+        (await db.NotificationOutbox.CountAsync(n => !db.Appointments.Any(a => a.Id == n.AppointmentId), Ct)).ShouldBe(0, "orphaned outbox rows");
 
         (await db.IdempotencyKeys.CountAsync(k => k.ResourceId != null && !db.Appointments.Any(a => a.Id == k.ResourceId), Ct)).ShouldBe(0, "orphaned idempotency rows");
         var keys = await db.IdempotencyKeys.AsNoTracking().ToListAsync(Ct);
