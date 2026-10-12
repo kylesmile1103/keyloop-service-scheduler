@@ -30,10 +30,24 @@ function generatedUnion(name: string): string[] {
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1])
 }
 
+const domainSource = (file: string) => readFileSync(path.join(repo, "src/Keyloop.ServiceScheduler.Domain/Scheduling", file), "utf8")
+
 /** Strings a domain file spells out, by pattern: the API has no enum for reason and rule codes, the domain does. */
 function domainCodes(file: string, pattern: RegExp): string[] {
-  const source = readFileSync(path.join(repo, "src/Keyloop.ServiceScheduler.Domain/Scheduling", file), "utf8")
-  return [...new Set([...source.matchAll(pattern)].map((match) => match[1]))]
+  return [...new Set([...domainSource(file).matchAll(pattern)].map((match) => match[1]))]
+}
+
+/**
+ * The rule codes the default policy names, as `RequirementRule.DefaultPolicy` writes them: a string literal
+ * (`Rule("hv-routine", ...)`) or a constant of the same file (`Rule(PostCollisionRuleCode, ...)`, Task 32a). A constant the
+ * file does not define is kept as `unresolved:<name>`, so the comparison below fails rather than skipping it.
+ */
+function policyRuleCodes(): string[] {
+  const source = domainSource("RequirementRule.cs")
+  const constants = new Map([...source.matchAll(/const string (\w+) = "([a-z-]+)"/g)].map((match) => [match[1], match[2]]))
+  return [
+    ...new Set([...source.matchAll(/\bRule\((?:"([a-z-]+)"|(\w+)),/g)].map((match) => match[1] ?? constants.get(match[2]) ?? `unresolved:${match[2]}`)),
+  ]
 }
 
 describe("the vehicle-aware catalogue is complete", () => {
@@ -66,9 +80,9 @@ describe("the vehicle-aware catalogue is complete", () => {
   })
 
   it("words every rule code the default policy and the legacy component floor can fire", () => {
-    const policy = domainCodes("RequirementRule.cs", /Rule\("([a-z-]+)"/g)
+    const policy = policyRuleCodes()
     const legacy = domainCodes("RequirementResolver.cs", /LegacyHvComponentRule = "([a-z-]+)"/g)
-    expect(policy).toEqual(["hv-awareness", "hv-routine", "hv-aircon", "hv-components", "heavy-vehicle", "hv-live-diagnosis"])
+    expect(policy).toEqual(["hv-awareness", "hv-routine", "hv-aircon", "hv-components", "hv-post-collision", "heavy-vehicle", "hv-live-diagnosis"])
     expect(Object.keys(ruleExplanations).sort()).toEqual([...legacy, ...policy].sort())
     // A dealership's own rule is still named, never dropped.
     expect(ruleExplanation("wash-bay-only")).toBe("the workshop's rule wash-bay-only applies")
@@ -151,6 +165,28 @@ describe("an allocation, explained in one sentence", () => {
       "Amelia Clarke: the technician you asked for, free and qualified with General service, for a petrol or diesel vehicle (declared)."
     )
     expect(explained.bay).toBe("Bay 1 - Standard: the free bays that fit the job were equally suited and equally busy, so the first by name.")
+  })
+  it("explains an accident damage assessment of a vehicle that may be high-voltage: level 3, the damage skill and the collision rule (Task 32a)", () => {
+    const explained = explainAllocation({
+      allocation: { decidedBy: "OnlyQualifiedResource", bayDecidedBy: "SurplusCompetences", minimumHvLevel: 3, firedRules: ["hv-post-collision"] },
+      technician: "Eva Lindqvist",
+      bay: "Bay 1 - Standard",
+      service: { requiredCertifications: ["DamageAssessment"], requiredBayCapabilities: ["StandardLift"] },
+      profile: {
+        powertrain: "Unknown",
+        manufacturer: "UNKNOWN",
+        vehicleClass: "Unknown",
+        provenance: { powertrain: "Unknown", manufacturer: "Unknown", vehicleClass: "Unknown", declaredBy: null, declarationReason: null },
+      },
+    })
+
+    expect(explained.technician).toBe(
+      "Eva Lindqvist: the only free technician at HV level 3 or above with Damage assessment, for a vehicle whose powertrain isn't known, treated as high-voltage."
+    )
+    expect(explained.bay).toBe("Bay 1 - Standard: of the free bays that fit the job, the one with the least extra equipment, keeping specialist bays free.")
+    expect(explained.because).toEqual([
+      "a collision may have damaged high-voltage cabling or parts, so assessing it needs someone trained to work on them switched off",
+    ])
   })
 })
 

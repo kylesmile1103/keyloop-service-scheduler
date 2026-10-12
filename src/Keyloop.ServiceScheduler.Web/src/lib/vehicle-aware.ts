@@ -90,6 +90,7 @@ export const ruleExplanations = {
   "hv-routine": "routine work happens alongside high-voltage cabling",
   "hv-aircon": "on an electrified vehicle the air-con compressor is a high-voltage part",
   "hv-components": "high-voltage component work needs the system switched off, in an EV bay",
+  "hv-post-collision": "a collision may have damaged high-voltage cabling or parts, so assessing it needs someone trained to work on them switched off",
   "heavy-vehicle": "a heavy vehicle needs a heavy-duty lift and a heavy-vehicle technician",
   "hv-live-diagnosis": "live working on the high-voltage system needs level 4 and an EV bay",
 } as const satisfies Record<string, string>
