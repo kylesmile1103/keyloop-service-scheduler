@@ -38,7 +38,7 @@ describe("the fixed phrases for what else a description mentioned (Task 32a's cl
     })
     for (const phrase of Object.values(uncoveredPhrases)) {
       expect(phrase).toBe(phrase.toLowerCase())
-      expect(phrase).not.toMatch(/[—.]/)
+      expect(phrase).not.toMatch(/[\u2014.]/)
     }
   })
 
