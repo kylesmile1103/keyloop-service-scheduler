@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -56,6 +56,9 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.TriageServiceCandidate,
         SchedulerJsonContext.Default.TriagePreferredDate,
         SchedulerJsonContext.Default.AppointmentListItemResponse,
+        SchedulerJsonContext.Default.VehicleProfile,
+        SchedulerJsonContext.Default.ProfileProvenance,
+        SchedulerJsonContext.Default.AllocationDecision,
     ];
 
     private static readonly JsonSerializerOptions Canonical = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -120,7 +123,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         foreach (var (_, operation) in Operations(document))
         {
             var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest"
-                or "UploadBookingTriageImage";
+                or "UploadBookingTriageImage" or "ResolveVehicleProfile";
             var security = operation["security"].ShouldNotBeNull().AsArray();
             security.Any(item => item!.AsObject().Count == 0).ShouldBe(!protectedRoute);
             security.Any(item => item!["CloudflareAccess"] != null).ShouldBeTrue();
@@ -205,6 +208,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/appointments/{appointmentId}", "401"),
                 ("GET /api/v1/appointments/{appointmentId}", "403"),
                 ("GET /api/v1/me", "429"),
+                ("POST /api/v1/vehicle-profiles/resolve", "400"),
+                ("POST /api/v1/vehicle-profiles/resolve", "401"),
+                ("POST /api/v1/vehicle-profiles/resolve", "403"),
+                ("POST /api/v1/vehicle-profiles/resolve", "413"),
+                ("POST /api/v1/vehicle-profiles/resolve", "429"),
                 ("GET /api/v1/dealerships", "429"),
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "404"),
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "429"),
@@ -263,8 +271,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         string[] rfc9457 = ["type", "title", "status", "detail", "instance"];
         foreach (var (schema, members) in new (string, string[])[]
                  {
-                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl"]),
-                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl"]),
+                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes"]),
+                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl", "minimumHvLevel", "requiredBrand", "firedRules", "conflictingAttributes"]),
                  })
         {
             var problem = schemas[schema].ShouldNotBeNull(schema);
@@ -294,6 +302,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("CancelAppointment", "The cancellation: why the appointment is cancelled."),
             ("TriageBookingRequest", "The booking intake: the customer's issue and optional preferred date, as untrusted text."),
             ("UploadBookingTriageImage", "A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels."),
+            ("ResolveVehicleProfile", "Transient vehicle identifiers for offline manufacturer decoding. No registry lookup is performed."),
         ]);
     }
 
@@ -321,6 +330,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "200", "TriageBookingResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "200", "UploadBookingTriageImageResponse"),
                 ("GET /api/v1/me", "200", "CurrentUserResponse"),
+                ("POST /api/v1/vehicle-profiles/resolve", "200", "VehicleProfile"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))
@@ -365,13 +375,34 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             properties.Select(p => p.Key).ShouldBe(typeInfo.Properties.Select(p => p.Name), name);
 
             // Required: HeyAPI types a property that is not required as optional (`id?: string`), which this API never omits.
-            Required(schema).ShouldBe(typeInfo.Properties.Select(p => p.Name), ignoreOrder: true, customMessage: $"{name}.required");
+            Required(schema).ShouldBe(typeInfo.Properties.Where(p => !MayBeOmitted(name, p.Name)).Select(p => p.Name), ignoreOrder: true, customMessage: $"{name}.required");
 
             foreach (var property in typeInfo.Properties)
             {
                 IsNullable(properties[property.Name]!).ShouldBe(property.IsGetNullable, $"{name}.{property.Name} nullable");
             }
         }
+    }
+
+    private static bool MayBeOmitted(string type, string property) => (type, property) is
+        ("AppointmentResponse", "allocation") or ("VehicleResponse", "profile") or
+        ("TechnicianResponse", "hvLevel" or "hvLevelValidUntil" or "hvLevelConfirmed" or "brandSpecialisms");
+
+    [Fact]
+    public async Task Vehicle_profile_resolution_is_body_only_and_booking_shapes_are_explicit()
+    {
+        var document = await ServedAsync();
+        var availability = Operations(document).Single(o => Text(o.Operation["operationId"]) == "GetAvailability").Operation;
+        var parameters = availability["parameters"]!.AsArray().Select(p => Text(p!["name"])).ToArray();
+        parameters.ShouldContain("powertrain");
+        parameters.ShouldContain("manufacturer");
+        parameters.ShouldContain("vehicleClass");
+        parameters.ShouldNotContain("vin");
+        var schemas = document["components"]!["schemas"]!;
+        schemas["VehicleRequest"]!["properties"]!["profile"].ShouldNotBeNull();
+        schemas["BookAppointmentRequest"]!["properties"]!["needsLiveDiagnosis"].ShouldNotBeNull();
+        schemas["VehicleProfileRequest"]!["properties"]!["provenance"].ShouldBeNull("clients cannot assert trusted provenance");
+        schemas["VehicleProfileRequest"]!["properties"]!["conflictChoice"].ShouldNotBeNull();
     }
 
     private async Task<JsonNode> ServedAsync() => JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;

@@ -124,7 +124,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         // seed, so Scalar's "Test request" works against a seeded database as is. The date is a string (it binds as one, so the
         // validator can reject any other form with a field error), documented as an RFC 3339 full-date.
         var parameters = availability.GetProperty("parameters").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!);
-        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date", "X-Request-Id"], ignoreOrder: true);
+        parameters.Keys.ShouldBe(["dealershipId", "serviceTypeId", "date", "powertrain", "manufacturer", "vehicleClass", "needsLiveDiagnosis", "X-Request-Id"], ignoreOrder: true);
         foreach (var (name, location, format, example) in new[]
                  {
                      ("dealershipId", "path", "uuid", ReferenceDataSeed.ReadingDealershipId.ToString()),
@@ -218,9 +218,9 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var (schema, properties) in new (string, string[])[]
                  {
-                     ("BookAppointmentRequest", ["serviceTypeId", "startUtc", "customer", "vehicle", "preferredBayId", "preferredTechnicianId", "notes"]),
+                     ("BookAppointmentRequest", ["needsLiveDiagnosis", "serviceTypeId", "startUtc", "customer", "vehicle", "preferredBayId", "preferredTechnicianId", "notes"]),
                      ("CustomerRequest", ["name", "email", "phone"]),
-                     ("VehicleRequest", ["vin", "registration", "make", "model"]),
+                     ("VehicleRequest", ["profile", "vin", "registration", "make", "model"]),
                  })
         {
             var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
@@ -234,12 +234,12 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("AppointmentResponse",
                      [
                          "id", "dealershipId", "serviceType", "bay", "technician", "startUtc", "endUtc", "startLocal", "endLocal", "status", "customer",
-                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc",
+                         "vehicle", "notes", "cancellationReason", "createdAtUtc", "updatedAtUtc", "allocation",
                      ]),
                      ("ServiceTypeSummary", ["id", "code", "name", "durationMinutes"]),
                      ("ResourceSummary", ["id", "name"]),
                      ("CustomerResponse", ["name", "email", "phone"]),
-                     ("VehicleResponse", ["vin", "registration", "make", "model"]),
+                     ("VehicleResponse", ["vin", "registration", "make", "model", "profile"]),
                  })
         {
             var props = schemas.GetProperty(schema).GetProperty("properties").EnumerateObject().ToList();
@@ -371,7 +371,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
                      ("WorkshopScheduleResponse", ["dealership", "date", "operatingWindow", "slotGranularityMinutes", "bays", "technicians"]),
                      ("DealershipSummary", ["id", "name", "timeZoneId"]),
                      ("BayScheduleResponse", ["id", "name", "capabilities", "isActive", "appointments"]),
-                     ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive"]),
+                     ("TechnicianResponse", ["id", "name", "employeeNumber", "certifications", "isActive", "hvLevel", "hvLevelValidUntil", "hvLevelConfirmed", "brandSpecialisms"]),
                      ("ScheduledAppointmentResponse",
                      [
                          "id", "startUtc", "endUtc", "startLocal", "endLocal", "status", "serviceType", "technician", "vin", "registration", "customerName",
@@ -402,7 +402,8 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
     private static JsonNode? Example(JsonElement schema) =>
         schema.TryGetProperty("examples", out var examples) && examples.ValueKind == JsonValueKind.Array && examples.GetArrayLength() > 0
             ? JsonNode.Parse(examples[0].GetRawText())
-            : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText()) : null;
+            : schema.TryGetProperty("example", out var example) ? JsonNode.Parse(example.GetRawText())
+                : schema.TryGetProperty("oneOf", out var branches) ? branches.EnumerateArray().Select(Example).FirstOrDefault(e => e is not null) : null;
 
     /// <summary>The object Scalar would send: each property's example, with nested objects built from their own schemas' examples.</summary>
     private static JsonObject ExampleOf(JsonElement schemas, string schema)

@@ -49,6 +49,10 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// preferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's
     /// load. Send an <c>Idempotency-Key</c> (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours
     /// with the same key and body returns the stored 201 with <c>Idempotent-Replayed: true</c> and books nothing; only successes are stored.
+    /// With Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.
+    /// A concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.
+    /// Decoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.
+    /// Successful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.
     /// </remarks>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership to book at (the example is the seeded Reading dealership).</param>
     /// <param name="request">
@@ -67,7 +71,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// <response code="404">No dealership or no service type has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> or <c>service-type</c> and the <c>id</c>).</response>
     /// <response code="409">The slot is taken: every qualified bay or technician is busy (<c>slot-unavailable</c>), or the database's overlap backstop fired (<c>slot-conflict</c>, with <c>conflictingResource</c>); both carry <c>suggestedSlots</c>, the nearest bookable starts that day.</response>
     /// <response code="413">The request body exceeds the 64 KiB limit (framework RFC 9110 problem).</response>
-    /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, or <c>idempotency-key-reuse</c>.</response>
+    /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, or <c>idempotency-key-reuse</c>, or <c>vehicle-profile-conflict</c>. Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.</response>
     /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
     /// <response code="403">The caller's role does not permit this operation (<c>forbidden</c>).</response>
     /// <response code="429">Too many bookings from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>

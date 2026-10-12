@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
@@ -121,6 +122,9 @@ builder.Services.AddScoped<GetServiceTypesHandler>();
 builder.Services.AddScoped<GetAvailabilityHandler>();
 builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
 builder.Services.AddScoped<BookAppointmentHandler>();
+builder.Services.AddScoped<RequirementPolicyReader>();
+builder.Services.AddScoped<ResolveVehicleProfileHandler>();
+builder.Services.AddScoped<IValidator<ResolveVehicleProfileRequest>, ResolveVehicleProfileValidator>();
 builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
 builder.Services.AddScoped<GetAppointmentHandler>();
 builder.Services.AddScoped<ListAppointmentsHandler>();

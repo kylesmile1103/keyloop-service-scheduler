@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -101,6 +101,10 @@ export const listAppointments = <ThrowOnError extends boolean = false>(options: 
  * preferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's
  * load. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours
  * with the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.
+ * With Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.
+ * A concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.
+ * Decoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.
+ * Successful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.
  */
 export const bookAppointment = <ThrowOnError extends boolean = false>(options: Options<BookAppointmentData, ThrowOnError>): RequestResult<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError> => (options.client ?? client).post<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -244,4 +248,23 @@ export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: O
         }],
     url: '/api/v1/me',
     ...options
+});
+
+/**
+ * Resolve vehicle attributes from a transient VIN
+ *
+ * Booking-flow authorization is required. Offline WMI decoding returns manufacturer provenance VinDecoded or Unknown. Powertrain and class stay Unknown. VIN and registration are never stored, echoed, logged or traced.
+ */
+export const resolveVehicleProfile = <ThrowOnError extends boolean = false>(options: Options<ResolveVehicleProfileData, ThrowOnError>): RequestResult<ResolveVehicleProfileResponses, ResolveVehicleProfileErrors, ThrowOnError> => (options.client ?? client).post<ResolveVehicleProfileResponses, ResolveVehicleProfileErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/vehicle-profiles/resolve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });

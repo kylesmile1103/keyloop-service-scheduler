@@ -17,6 +17,26 @@ public class OptionsValidatorTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Vehicle_aware_flag_is_validated_and_defaults_off(bool enabled)
+    {
+        new SchedulingOptions().VehicleAwareRequirements.ShouldBeFalse();
+        new SchedulingOptionsValidator().Validate(null, new SchedulingOptions { VehicleAwareRequirements = enabled }).Succeeded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Vehicle_aware_flag_rejects_non_boolean_configuration()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Scheduling:VehicleAwareRequirements"] = "yes" }).Build();
+        var services = new ServiceCollection();
+        services.AddOptions<SchedulingOptions>().Bind(configuration.GetSection(SchedulingOptions.SectionName));
+        using var provider = services.BuildServiceProvider();
+        Should.Throw<InvalidOperationException>(() => provider.GetRequiredService<IOptions<SchedulingOptions>>().Value);
+    }
+
+    [Theory]
     [InlineData(4)]
     [InlineData(61)]
     public void Slot_granularity_must_be_5_to_60_minutes(int minutes) =>

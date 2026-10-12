@@ -38,6 +38,10 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose bays, technicians and opening hours are used (the example is the seeded Reading dealership).</param>
     /// <param name="serviceTypeId" example="3153f30d-5700-8f07-a25d-4a4ea44dfeef">The service to fit (the example is the seeded Interim Service).</param>
     /// <param name="date" example="2026-10-13">The dealership's local calendar date, exactly <c>yyyy-MM-dd</c>, from yesterday to the end of the booking horizon.</param>
+    /// <param name="powertrain" example="BatteryElectric">Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.</param>
+    /// <param name="manufacturer" example="VOLKSWAGEN">Optional OEM code; manufacturer preferences are deferred.</param>
+    /// <param name="vehicleClass" example="Heavy">Optional class; Heavy requires a heavy lift and HeavyVehicle certification.</param>
+    /// <param name="needsLiveDiagnosis" example="false">Explicit live HV work requiring level 4 and an EV bay.</param>
     /// <param name="handler">Computes availability.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="200">The operating window and the bookable starts in ascending order with free bay and technician counts; no starts, and a reason when the day can have none.</response>

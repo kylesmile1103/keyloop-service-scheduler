@@ -16,6 +16,12 @@ public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailability
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(options);
+        RuleFor(q => q.Powertrain).Must(p => p is null || (Enum.TryParse<Domain.Scheduling.Powertrain>(p, true, out var value)
+            && Enum.IsDefined(value) && !int.TryParse(p, out _))).WithMessage("powertrain must be a named powertrain value.");
+        RuleFor(q => q.VehicleClass).Must(p => p is null || (Enum.TryParse<Domain.Scheduling.VehicleClass>(p, true, out var value)
+            && Enum.IsDefined(value) && !int.TryParse(p, out _))).WithMessage("vehicleClass must be a named vehicle class.");
+        RuleFor(q => q.Manufacturer).Must(m => m is null || (m.Trim().Length is >= 1 and <= 32
+            && m.Trim().All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))).WithMessage("manufacturer must be an OEM code of at most 32 characters.");
         var horizonDays = options.Value.BookingHorizonDays;
 
         // Read per validation, not per construction: the clock moves.

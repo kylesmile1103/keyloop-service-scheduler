@@ -37,6 +37,24 @@ For an isolated manual check, supply a temporary PostgreSQL password and `--AppH
 
 **`TODO(final-gate)`:** add Task 17b's approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports, and record the final clean-clone startup. No screenshot is embedded until that evidence exists.
 
+## Vehicle-aware allocation (Task 31a)
+
+ADR-029 Phases 0 and 1 are implemented behind `Scheduling:VehicleAwareRequirements`, default **false in every environment**. The React booking UI remains the existing flow until Task 31b; use Scalar or API requests to try the new contract. In a disposable Development database, enable it with `Scheduling__VehicleAwareRequirements=true` on the API process. For an isolated whole-stack trial, temporarily set `Scheduling:VehicleAwareRequirements` to true in `appsettings.Development.json` in your own working tree and run:
+
+```bash
+dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --AppHost:UsePersistentResources=false --Parameters:postgres-password=local-vehicle-trial-password
+```
+
+Stop that AppHost afterwards and restore the false setting. The explicit temporary password and nonpersistent resources keep this trial separate from the developer volume and persisted secret. Run only one AppHost on the machine at a time.
+
+Fresh Reading technicians have confirmed levels 1..3 through 2028-12-31. Every seeded service is bookable for an ICE declaration and for Unknown. `needsLiveDiagnosis: true` on an HV job returns `422 no-qualified-resources` with `minimumHvLevel: 4` and `firedRules`, because no seed technician has level 4. Existing databases are different: migration maps the old HV certification to level 3 **unconfirmed**, while startup seeding and demo reseeding preserve every existing technician. Review their competences explicitly before enabling. The dated amendment in [ADR-029](docs/design/ADR-029-vehicle-aware-allocation.md) records the revised Reading story.
+
+Resolve a VIN through protected `POST /api/v1/vehicle-profiles/resolve` with `{ "vin": "WVWZZZ1KZAW123456" }` in the **body**. It returns manufacturer `VOLKSWAGEN` with `VinDecoded` provenance; powertrain/class remain Unknown. No registry is called or identifier stored. Availability accepts `powertrain=BatteryElectric`, `manufacturer=VOLKSWAGEN`, `vehicleClass=Heavy` and optional `needsLiveDiagnosis=true`, never a VIN.
+
+Booking keeps its existing vehicle fields and accepts `vehicle.profile: { "powertrain": "Ice", "declarationReason": "Engine checked at intake" }`. The server records Declared provenance, the authenticated actor and reason in private history. For a WMI/manufacturer discrepancy, for example declaring `BMW` against WVW, acknowledge with `conflictChoice: "UseDecoded"`; otherwise booking returns `422 vehicle-profile-conflict`. Decoded facts are retained. Booking/details return `allocation` with criterion, policy version, resolved HV minimum, fired rules, preferred hints and exclusion reason codes. Schedule technicians expose level, validity, confirmation and brand data when enabled. Declaration text never goes to email or telemetry; public reads keep ADR-027 masking.
+
+The flag-off response and canonical request JSON stay compatible, including existing idempotency keys. Brand specialist preference, continuity, warranty/OEM rules, Clef questions, registries, multi-technician booking and new UI are later tasks.
+
 ## Optional booking intake triage
 
 Clef-flash also evaluates optional photos of vehicles, warning lights or paperwork. Upload up to four PNG/JPEG/WebP photos (4 MiB each, 8 MiB total, 16 megapixels each) through `POST /api/v1/dealerships/{id}/booking-triage/images`, body `{ "contentType": "image/png", "base64": "..." }`, then include the returned `imageIds` with the description. Upload IDs are private, dealership-scoped and expire after one hour; storage deletes the photo within about another hour. Photos are stored and sent to Clef as uploaded, including embedded metadata such as GPS location. Uploads share the triage rate limit with evaluations (four new photos and one suggestion use five of the ten permits a minute) and, like evaluations, require Admin or ServiceAdvisor (ADR-027); the triage status read stays public. Production uses private R2 through the Container relay; local runs use a bounded transient store. PDF conversion is not included. The design is ADR-028, which supersedes the Jev decision (ADR-026).

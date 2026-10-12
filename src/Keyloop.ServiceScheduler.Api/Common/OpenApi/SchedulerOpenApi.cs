@@ -199,6 +199,26 @@ internal static class SchedulerOpenApi
                 Type = JsonSchemaType.String,
                 Description = "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL.",
             };
+            schema.Properties["minimumHvLevel"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.Integer, Minimum = "0", Maximum = "4",
+                Description = "Vehicle-aware no-qualified-resources: the resolved minimum HV competence level.",
+            };
+            schema.Properties["requiredBrand"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.String | JsonSchemaType.Null,
+                Description = "Reserved for a later brand rule; null on vehicle-aware no-qualified-resources in Phase 1.",
+            };
+            schema.Properties["firedRules"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.Array, Items = new OpenApiSchema { Type = JsonSchemaType.String },
+                Description = "Vehicle-aware no-qualified-resources: policy rule codes in deterministic order.",
+            };
+            schema.Properties["conflictingAttributes"] = new OpenApiSchema
+            {
+                Type = JsonSchemaType.Array, Items = new OpenApiSchema { Type = JsonSchemaType.String },
+                Description = "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence.",
+            };
             schema.Required ??= new HashSet<string>(StringComparer.Ordinal);
             schema.Required.Add(TraceIdProperty);
         }

@@ -20,6 +20,7 @@ public static partial class AppointmentMapper
     /// <summary>The response for <paramref name="appointment"/>; the other parameters fill the members of the same name.</summary>
     [MapProperty(nameof(@Appointment.Slot.StartUtc), nameof(AppointmentResponse.StartUtc))]
     [MapProperty(nameof(@Appointment.Slot.EndUtc), nameof(AppointmentResponse.EndUtc))]
+    [MapProperty(nameof(Appointment.AllocationDecision), nameof(AppointmentResponse.Allocation))]
     public static partial AppointmentResponse ToResponse(
         Appointment appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician, string startLocal, string endLocal);
 
@@ -30,6 +31,7 @@ public static partial class AppointmentMapper
 
     public static partial CustomerResponse ToResponse(CustomerDetails customer);
 
+    [MapperIgnoreTarget(nameof(VehicleResponse.Profile))]
     public static partial VehicleResponse ToResponse(VehicleDetails vehicle);
 
     [MapProperty(nameof(ServiceType.Duration), nameof(ServiceTypeSummary.DurationMinutes), Use = nameof(MapDuration))]

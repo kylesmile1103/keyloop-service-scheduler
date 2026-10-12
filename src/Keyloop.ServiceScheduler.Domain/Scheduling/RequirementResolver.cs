@@ -31,7 +31,7 @@ public static class RequirementResolver
             {
                 RequirementCondition.ServicePowertrain => rule.ServiceCodes.Contains(service.Code, StringComparer.Ordinal) && MatchesPowertrain(rule, profile.Powertrain),
                 RequirementCondition.VehicleClass => profile.VehicleClass == rule.VehicleClass,
-                RequirementCondition.LiveDiagnosis => needsLiveDiagnosis && (MatchesPowertrain(rule, profile.Powertrain) || minimum > 0),
+                RequirementCondition.LiveDiagnosis => needsLiveDiagnosis,
                 _ => throw new ArgumentException("Unknown policy condition.", nameof(rules)),
             };
             if (!applies)

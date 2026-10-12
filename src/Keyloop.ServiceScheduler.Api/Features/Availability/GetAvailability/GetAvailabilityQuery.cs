@@ -41,6 +41,22 @@ public sealed record GetAvailabilityQuery
     [DataType(DataType.Date)]
     public string? Date { get; init; }
 
+    /// <summary>Optional powertrain, including Unknown. No VIN is accepted in a URL.</summary>
+    [FromQuery(Name = "powertrain")]
+    public string? Powertrain { get; init; }
+
+    /// <summary>Optional normalized OEM code.</summary>
+    [FromQuery(Name = "manufacturer")]
+    public string? Manufacturer { get; init; }
+
+    /// <summary>Optional vehicle class.</summary>
+    [FromQuery(Name = "vehicleClass")]
+    public string? VehicleClass { get; init; }
+
+    /// <summary>Optional explicit live HV work, so availability matches booking's flag.</summary>
+    [FromQuery(Name = "needsLiveDiagnosis")]
+    public bool? NeedsLiveDiagnosis { get; init; }
+
     /// <summary><see cref="Date"/> parsed strictly as <see cref="DateFormat"/>, or null when it is missing or in any other form.</summary>
     public DateOnly? LocalDate =>
         DateOnly.TryParseExact(Date, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;

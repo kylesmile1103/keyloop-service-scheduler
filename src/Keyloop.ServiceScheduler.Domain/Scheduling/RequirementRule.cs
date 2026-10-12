@@ -36,7 +36,7 @@ public sealed record RequirementRule
             Rule("hv-components", 40, 3, ["EV-BATTERY-CHECK", "EV-CHARGING-FAULT"]) with { BayCapabilities = [BayCapability.EvHighVoltage] },
             Rule("heavy-vehicle", 50, 0, []) with { Condition = RequirementCondition.VehicleClass, Powertrains = [], VehicleClass = Scheduling.VehicleClass.Heavy,
                 BayCapabilities = [BayCapability.HeavyDutyLift], Certifications = [Certification.HeavyVehicle] },
-            Rule("hv-live-diagnosis", 60, 4, []) with { Condition = RequirementCondition.LiveDiagnosis, BayCapabilities = [BayCapability.EvHighVoltage] },
+            Rule("hv-live-diagnosis", 60, 4, []) with { Condition = RequirementCondition.LiveDiagnosis, Powertrains = [], BayCapabilities = [BayCapability.EvHighVoltage] },
         ];
 
         RequirementRule Rule(string code, int order, int level, string[] services) => new()

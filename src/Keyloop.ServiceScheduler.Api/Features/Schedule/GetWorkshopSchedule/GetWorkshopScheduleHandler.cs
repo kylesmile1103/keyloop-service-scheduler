@@ -36,7 +36,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         if (dealership.ResolveOperatingWindow(date) is not { } window)
         {
             var (bays, technicians) = await reader.ReadResourcesAsync(dealership.Id, ct);
-            return Response(dealership, date, operatingWindow: null, [.. bays.Select(b => ScheduleMapper.ToResponse(b, []))], [.. technicians.Select(ScheduleMapper.ToResponse)]);
+            return Response(dealership, date, operatingWindow: null, [.. bays.Select(b => ScheduleMapper.ToResponse(b, []))], [.. technicians.Select(t => ScheduleMapper.ToResponse(t, options.Value.VehicleAwareRequirements))]);
         }
 
         // Every status is read, then cancelled appointments are dropped: the board shows what happened as well as what is booked.
@@ -61,7 +61,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
             date,
             ScheduleMapper.ToResponse(window, zone),
             [.. day.Bays.Select(b => ScheduleMapper.ToResponse(b, appointmentsByBay[b.Id]))],
-            [.. day.Technicians.Select(ScheduleMapper.ToResponse)]);
+            [.. day.Technicians.Select(t => ScheduleMapper.ToResponse(t, options.Value.VehicleAwareRequirements))]);
     }
 
     /// <summary>The services the appointments reference (the catalogue is global; only those referenced are read).</summary>

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 
@@ -19,6 +20,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 /// <param name="Notes">Free-text notes from booking, trimmed; null when none were given.</param>
 /// <param name="CancellationReason">Why the appointment was cancelled; null unless <c>status</c> is <c>Cancelled</c>.</param>
 /// <param name="CreatedAtUtc">When it was booked, UTC.</param>
+/// <param name="Allocation">Vehicle-aware decision, policy version and fired rules. Absent on legacy bookings.</param>
 /// <param name="UpdatedAtUtc">When its status last changed, UTC (the booking time until then).</param>
 public sealed record AppointmentResponse(
     Guid Id,
@@ -36,7 +38,8 @@ public sealed record AppointmentResponse(
     string? Notes,
     string? CancellationReason,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AllocationDecision? Allocation = null);
 
 /// <summary>The customer's contact details as booked.</summary>
 /// <param name="Name">Full name, trimmed.</param>
@@ -45,8 +48,10 @@ public sealed record AppointmentResponse(
 public sealed record CustomerResponse(string Name, string Email, string Phone);
 
 /// <summary>The vehicle as booked.</summary>
+/// <param name="Profile">Resolved facts and server-assigned provenance, present on vehicle-aware bookings.</param>
 /// <param name="Vin">The 17-character VIN, upper case.</param>
 /// <param name="Registration">Registration plate, upper case.</param>
 /// <param name="Make">Manufacturer.</param>
 /// <param name="Model">Model.</param>
-public sealed record VehicleResponse(string Vin, string Registration, string Make, string Model);
+public sealed record VehicleResponse(string Vin, string Registration, string Make, string Model,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VehicleProfile? Profile = null);

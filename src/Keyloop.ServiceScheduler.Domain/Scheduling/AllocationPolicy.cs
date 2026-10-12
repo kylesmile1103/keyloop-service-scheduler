@@ -71,7 +71,7 @@ public static class AllocationPolicy
                     ? preferred.HvLevel >= requirements.MinimumHvLevel ? "preferred-technician:hv-expired" : "preferred-technician:minimum-hv-level"
                 : "preferred-technician:busy");
         }
-        return new(bay, technician, new(criterion, bayCriterion, requirements.PolicyVersion, requirements.MinimumHvLevel, requirements.FiredRules, reasons.ToArray()));
+        return new(bay, technician, new(criterion, bayCriterion, requirements.PolicyVersion, requirements.MinimumHvLevel, requirements.FiredRules, reasons.ToArray(), preferredBayId, preferredTechnicianId));
     }
 
     private static (T? Resource, AllocationCriterion Criterion) Explain<T>(IReadOnlyList<T> candidates, Guid? preferred,

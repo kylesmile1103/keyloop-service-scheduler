@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -46,7 +47,15 @@ public sealed record BayScheduleResponse(
 /// <param name="EmployeeNumber">The dealership's employee number for the technician, unique within the dealership.</param>
 /// <param name="Certifications">What the technician is certified to perform, in the enumeration's declared order.</param>
 /// <param name="IsActive">False when the technician takes no new bookings; appointments made before still name them.</param>
-public sealed record TechnicianResponse(Guid Id, string Name, string EmployeeNumber, IReadOnlyList<Certification> Certifications, bool IsActive);
+/// <param name="HvLevel">Vehicle-aware competence level 0..4; absent when the flag is off.</param>
+/// <param name="HvLevelValidUntil">Inclusive local-date expiry; omitted when unlimited or the flag is off.</param>
+/// <param name="HvLevelConfirmed">False includes migrated levels, which still count.</param>
+/// <param name="BrandSpecialisms">Normalized OEM codes; data only in Phase 1.</param>
+public sealed record TechnicianResponse(Guid Id, string Name, string EmployeeNumber, IReadOnlyList<Certification> Certifications, bool IsActive,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? HvLevel = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateOnly? HvLevelValidUntil = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? HvLevelConfirmed = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? BrandSpecialisms = null);
 
 /// <summary>An appointment on the board: when it runs, what it is, who works on it, and for which vehicle and customer.</summary>
 /// <param name="Id">The appointment's id; <c>GET /api/v1/appointments/{id}</c> has the whole record (contact details, make and model, notes).</param>

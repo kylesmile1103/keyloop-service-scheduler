@@ -124,6 +124,16 @@ public sealed class VehicleAwareAllocationTests
         result.Decision.DecidedBy.ShouldBe(decidedBy);
     }
 
+    [Fact]
+    public void An_ICE_declaration_cannot_relax_explicit_live_HV_work()
+    {
+        var requirements = RequirementResolver.Resolve(Service, VehicleProfile.Unknown with { Powertrain = Powertrain.Ice },
+            RequirementRule.DefaultPolicy(Site), needsLiveDiagnosis: true);
+        requirements.MinimumHvLevel.ShouldBe(4);
+        requirements.BayCapabilities.ShouldContain(BayCapability.EvHighVoltage);
+        requirements.FiredRules.ShouldContain("hv-live-diagnosis");
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(5)]

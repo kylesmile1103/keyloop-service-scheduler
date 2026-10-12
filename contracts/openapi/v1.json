@@ -240,6 +240,42 @@
             "example": "2026-10-13"
           },
           {
+            "name": "powertrain",
+            "in": "query",
+            "description": "Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "BatteryElectric"
+          },
+          {
+            "name": "manufacturer",
+            "in": "query",
+            "description": "Optional OEM code; manufacturer preferences are deferred.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "VOLKSWAGEN"
+          },
+          {
+            "name": "vehicleClass",
+            "in": "query",
+            "description": "Optional class; Heavy requires a heavy lift and HeavyVehicle certification.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "Heavy"
+          },
+          {
+            "name": "needsLiveDiagnosis",
+            "in": "query",
+            "description": "Explicit live HV work requiring level 4 and an EV bay.",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": false
+          },
+          {
             "name": "X-Request-Id",
             "in": "header",
             "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
@@ -352,7 +388,7 @@
           "Appointments"
         ],
         "summary": "Book an appointment",
-        "description": "Reserves one bay with every capability the service requires and one technician with every certification it requires for the\nwhole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free\npreferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's\nload. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours\nwith the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.",
+        "description": "Reserves one bay with every capability the service requires and one technician with every certification it requires for the\nwhole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free\npreferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's\nload. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours\nwith the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.\nWith Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.\nA concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.\nDecoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.\nSuccessful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.",
         "operationId": "BookAppointment",
         "parameters": [
           {
@@ -548,7 +584,7 @@
             }
           },
           "422": {
-            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`.",
+            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, or `idempotency-key-reuse`, or `vehicle-profile-conflict`. Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -1816,10 +1852,249 @@
           }
         ]
       }
+    },
+    "/api/v1/vehicle-profiles/resolve": {
+      "post": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Resolve vehicle attributes from a transient VIN",
+        "description": "Booking-flow authorization is required. Offline WMI decoding returns manufacturer provenance VinDecoded or Unknown. Powertrain and class stay Unknown. VIN and registration are never stored, echoed, logged or traced.",
+        "operationId": "ResolveVehicleProfile",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Transient vehicle identifiers for offline manufacturer decoding. No registry lookup is performed.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveVehicleProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Vehicle facts with per-attribute provenance, without identifiers.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed identifier (validation-error).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "BookingsWrite role required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds the configured limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (rate-limited, Retry-After).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AllocationCriterion": {
+        "enum": [
+          "OnlyQualifiedResource",
+          "PreferredResource",
+          "SurplusCompetences",
+          "LowestLoad",
+          "Name",
+          "Id"
+        ],
+        "type": "string"
+      },
+      "AllocationDecision": {
+        "required": [
+          "decidedBy",
+          "bayDecidedBy",
+          "policyVersion",
+          "minimumHvLevel",
+          "firedRules",
+          "reasons",
+          "preferredBayId",
+          "preferredTechnicianId"
+        ],
+        "type": "object",
+        "properties": {
+          "decidedBy": {
+            "description": "First comparison separating the technician winner from the runner-up, or OnlyQualifiedResource.",
+            "$ref": "#/components/schemas/AllocationCriterion"
+          },
+          "bayDecidedBy": {
+            "description": "The separate deciding criterion for the service bay.",
+            "$ref": "#/components/schemas/AllocationCriterion"
+          },
+          "policyVersion": {
+            "type": "integer",
+            "description": "The resolved dealership policy version at booking.",
+            "format": "int32"
+          },
+          "minimumHvLevel": {
+            "type": "integer",
+            "description": "The resolved HV competence floor at booking.",
+            "format": "int32"
+          },
+          "firedRules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Policy rule codes in deterministic order."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bounded exclusion reason codes for preferred resources that were not chosen."
+          },
+          "preferredBayId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Original preferred bay hint, including one excluded by qualification or busy time.",
+            "format": "uuid"
+          },
+          "preferredTechnicianId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Original preferred technician hint.",
+            "format": "uuid"
+          }
+        },
+        "description": "The persisted explanation is a snapshot of the policy and minimum in force when allocated."
+      },
       "AppointmentListItemResponse": {
         "required": [
           "id",
@@ -1987,6 +2262,17 @@
             "type": "string",
             "description": "When its status last changed, UTC (the booking time until then).",
             "format": "date-time"
+          },
+          "allocation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Vehicle-aware decision, policy version and fired rules. Absent on legacy bookings.",
+                "$ref": "#/components/schemas/AllocationDecision"
+              }
+            ]
           }
         },
         "description": "An appointment: one service for one vehicle, with the bay and the technician reserved for it over the same time slot."
@@ -2159,6 +2445,14 @@
         ],
         "type": "object",
         "properties": {
+          "needsLiveDiagnosis": {
+            "examples": [
+              false
+            ],
+            "type": "boolean",
+            "description": "Explicit live HV working flag: requires level 4 and an EV bay when vehicle-aware requirements are enabled.",
+            "default": false
+          },
           "serviceTypeId": {
             "examples": [
               "3153f30d-5700-8f07-a25d-4a4ea44dfeef"
@@ -2545,6 +2839,33 @@
           "loginUrl": {
             "type": "string",
             "description": "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL."
+          },
+          "minimumHvLevel": {
+            "maximum": 4,
+            "minimum": 0,
+            "type": "integer",
+            "description": "Vehicle-aware no-qualified-resources: the resolved minimum HV competence level."
+          },
+          "requiredBrand": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Reserved for a later brand rule; null on vehicle-aware no-qualified-resources in Phase 1."
+          },
+          "firedRules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Vehicle-aware no-qualified-resources: policy rule codes in deterministic order."
+          },
+          "conflictingAttributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence."
           }
         }
       },
@@ -2577,6 +2898,19 @@
           }
         },
         "description": "The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times."
+      },
+      "Powertrain": {
+        "enum": [
+          "Ice",
+          "MildHybrid",
+          "FullHybrid",
+          "PluginHybrid",
+          "BatteryElectric",
+          "FuelCell",
+          "Unknown"
+        ],
+        "type": "string",
+        "description": "Closed powertrain vocabulary; all hybrid/electric/fuel-cell and Unknown values take conservative HV requirements."
       },
       "ProblemDetails": {
         "required": [
@@ -2622,8 +2956,111 @@
           "loginUrl": {
             "type": "string",
             "description": "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL."
+          },
+          "minimumHvLevel": {
+            "maximum": 4,
+            "minimum": 0,
+            "type": "integer",
+            "description": "Vehicle-aware no-qualified-resources: the resolved minimum HV competence level."
+          },
+          "requiredBrand": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Reserved for a later brand rule; null on vehicle-aware no-qualified-resources in Phase 1."
+          },
+          "firedRules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Vehicle-aware no-qualified-resources: policy rule codes in deterministic order."
+          },
+          "conflictingAttributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "vehicle-profile-conflict: attributes whose declarations disagree with decoded evidence."
           }
         }
+      },
+      "ProfileConflictChoice": {
+        "enum": [
+          "UseDecoded",
+          null
+        ]
+      },
+      "ProfileProvenance": {
+        "required": [
+          "powertrain",
+          "manufacturer",
+          "vehicleClass",
+          "declaredBy",
+          "declarationReason"
+        ],
+        "type": "object",
+        "properties": {
+          "powertrain": {
+            "description": "Evidence for the powertrain attribute.",
+            "$ref": "#/components/schemas/ProfileSource"
+          },
+          "manufacturer": {
+            "description": "Evidence for the manufacturer attribute.",
+            "$ref": "#/components/schemas/ProfileSource"
+          },
+          "vehicleClass": {
+            "description": "Evidence for the class attribute.",
+            "$ref": "#/components/schemas/ProfileSource"
+          },
+          "declaredBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Authenticated declaration actor, private audit data; null for no powertrain declaration."
+          },
+          "declarationReason": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Private reason, 1..500 trimmed characters; never email or telemetry content."
+          }
+        },
+        "description": "Evidence for each attribute. Declaration accountability is private audit data, never telemetry or email content."
+      },
+      "ProfileSource": {
+        "enum": [
+          "Unknown",
+          "Declared",
+          "VinDecoded",
+          "RegistryLookup",
+          "SuggestedConfirmed"
+        ],
+        "type": "string",
+        "description": "Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases."
+      },
+      "ResolveVehicleProfileRequest": {
+        "type": "object",
+        "properties": {
+          "vin": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional 17-character VIN; never echoed or retained."
+          },
+          "registration": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional registration, 1..16 characters; no registry lookup is performed."
+          }
+        },
+        "description": "VIN and registration are body-only, transient inputs. Offline WMI decoding needs no registration."
       },
       "ResourceSummary": {
         "required": [
@@ -2824,6 +3261,39 @@
           "isActive": {
             "type": "boolean",
             "description": "False when the technician takes no new bookings; appointments made before still name them."
+          },
+          "hvLevel": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "Vehicle-aware competence level 0..4; absent when the flag is off.",
+            "format": "int32"
+          },
+          "hvLevelValidUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Inclusive local-date expiry; omitted when unlimited or the flag is off.",
+            "format": "date"
+          },
+          "hvLevelConfirmed": {
+            "type": [
+              "null",
+              "boolean"
+            ],
+            "description": "False includes migrated levels, which still count."
+          },
+          "brandSpecialisms": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Normalized OEM codes; data only in Phase 1."
           }
         },
         "description": "A technician on the dealership's roster: a lane of the board when it is viewed by technician."
@@ -2988,6 +3458,83 @@
         },
         "description": "A private, dealership-scoped upload reference usable for triage until expiry."
       },
+      "VehicleClass": {
+        "enum": [
+          "Car",
+          "LightCommercial",
+          "Heavy",
+          "Unknown"
+        ],
+        "type": "string",
+        "description": "Workshop-relevant vehicle class; Heavy adds lift and task competence requirements."
+      },
+      "VehicleProfile": {
+        "required": [
+          "powertrain",
+          "manufacturer",
+          "vehicleClass",
+          "provenance"
+        ],
+        "type": "object",
+        "properties": {
+          "powertrain": {
+            "description": "Resolved powertrain; Unknown conservatively inherits concrete HV rules.",
+            "$ref": "#/components/schemas/Powertrain"
+          },
+          "manufacturer": {
+            "type": "string",
+            "description": "Normalized OEM code, or UNKNOWN."
+          },
+          "vehicleClass": {
+            "description": "Resolved workshop class; Unknown carries no heavy-vehicle assertion.",
+            "$ref": "#/components/schemas/VehicleClass"
+          },
+          "provenance": {
+            "description": "Server-assigned attribute sources and private declaration accountability.",
+            "$ref": "#/components/schemas/ProfileProvenance"
+          }
+        },
+        "description": "Vehicle facts independent of identifiers. Unknown powertrain is conservatively treated as high voltage."
+      },
+      "VehicleProfileRequest": {
+        "type": "object",
+        "properties": {
+          "powertrain": {
+            "description": "Powertrain observed at intake; a concrete value requires a reason.",
+            "$ref": "#/components/schemas/Powertrain"
+          },
+          "manufacturer": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Normalized OEM code, maximum 32 ASCII letters/digits/hyphens."
+          },
+          "vehicleClass": {
+            "description": "Car, light commercial, heavy, or Unknown.",
+            "$ref": "#/components/schemas/VehicleClass"
+          },
+          "declarationReason": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Private audit reason, 1..500 characters after trimming, required for concrete powertrain."
+          },
+          "conflictChoice": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "UseDecoded acknowledges a discrepancy and retains decoded values and their provenance.",
+                "$ref": "#/components/schemas/ProfileConflictChoice"
+              }
+            ]
+          }
+        },
+        "description": "Advisor-declared facts; source, actor and reason are assigned by the server. Omission means Unknown."
+      },
       "VehicleRequest": {
         "required": [
           "vin",
@@ -2997,6 +3544,22 @@
         ],
         "type": "object",
         "properties": {
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Optional advisor declaration. Omission keeps powertrain Unknown; the server resolves manufacturer from VIN.",
+                "examples": [
+                  {
+                    "powertrain": "Unknown"
+                  }
+                ],
+                "$ref": "#/components/schemas/VehicleProfileRequest"
+              }
+            ]
+          },
           "vin": {
             "examples": [
               "WVWZZZ1KZAW123456"
@@ -3052,6 +3615,17 @@
           "model": {
             "type": "string",
             "description": "Model."
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Resolved facts and server-assigned provenance, present on vehicle-aware bookings.",
+                "$ref": "#/components/schemas/VehicleProfile"
+              }
+            ]
           }
         },
         "description": "The vehicle as booked."

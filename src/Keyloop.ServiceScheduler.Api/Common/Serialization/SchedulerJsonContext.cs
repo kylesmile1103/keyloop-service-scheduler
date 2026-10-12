@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
@@ -62,8 +63,14 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(AvailabilitySlotResponse))]
 [JsonSerializable(typeof(IReadOnlyList<AvailabilitySlotResponse>))]
 [JsonSerializable(typeof(DateOnly))] // date (the schedule's too, Task 12); the localDate extension of a closed-day outside-operating-hours
+[JsonSerializable(typeof(bool?))]
 [JsonSerializable(typeof(Guid?))] // the serviceTypeId query parameter: the OpenAPI document builds parameter schemas through this resolver too
 // Task 10: booking (the request and the appointment response, which is also the memoised idempotency body)
+[JsonSerializable(typeof(VehicleProfile))]
+[JsonSerializable(typeof(ProfileProvenance))]
+[JsonSerializable(typeof(VehicleProfileRequest))]
+[JsonSerializable(typeof(ResolveVehicleProfileRequest))]
+[JsonSerializable(typeof(AllocationDecision))]
 [JsonSerializable(typeof(BookAppointmentRequest))]
 [JsonSerializable(typeof(CustomerRequest))]
 [JsonSerializable(typeof(VehicleRequest))]

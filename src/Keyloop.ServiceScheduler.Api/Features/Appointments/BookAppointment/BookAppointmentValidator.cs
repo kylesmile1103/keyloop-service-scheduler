@@ -1,4 +1,5 @@
 using FluentValidation;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Common.Validation;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 
@@ -53,6 +54,7 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
     {
         public VehicleRequestValidator()
         {
+            RuleFor(v => v.Profile).SetValidator(new VehicleProfileRequestValidator()!);
             RuleFor(v => v.Vin)
                 .Must(vin => Vin.TryCreate(vin, out _))
                 .WithMessage("vehicle.vin must be a 17-character VIN of digits and letters other than I, O and Q.");
