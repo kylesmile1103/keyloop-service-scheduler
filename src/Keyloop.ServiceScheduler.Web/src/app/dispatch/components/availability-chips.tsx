@@ -3,10 +3,10 @@ import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { useQuery } from "@tanstack/react-query"
 import { ChevronRight } from "lucide-react"
-import type { ReactNode } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 
 import { getAvailabilityOptions } from "@/api/@tanstack/react-query.gen"
-import type { AvailabilitySlotResponse, ServiceTypeResponse } from "@/api/types.gen"
+import type { AvailabilityResponse, AvailabilitySlotResponse, ServiceTypeResponse } from "@/api/types.gen"
 import { IllustratedState } from "@/components/illustrated-state"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
@@ -50,6 +50,12 @@ interface AvailabilityChipsProps {
   /** Offered when the day has no free slot: the next day worth trying. */
   nextDate?: string | null
   onDateChange?: (date: string) => void
+  /**
+   * Raised (1, 2, …) to move keyboard focus into the start times once they are on screen: to the chosen chip or the first
+   * one, or else to what the area offers instead (the next day to try, Try again). A suggestion that was just used sets
+   * the service and the day, and a start is the next thing to choose.
+   */
+  focusRequest?: number
 }
 
 /**
@@ -57,8 +63,45 @@ interface AvailabilityChipsProps {
  * each with its local time and remaining capacity. Arrow keys move between chips, Space chooses, Tab enters and leaves the
  * group. Only bookable starts are drawn; a day without one says why and offers the next day.
  */
-export function AvailabilityChips({
-  dealershipId,
+export function AvailabilityChips({ dealershipId, focusRequest = 0, ...view }: AvailabilityChipsProps) {
+  const { serviceType, date } = view
+  const availabilityOptions = getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: serviceType?.id ?? "", date } })
+  const availability = useQuery({ ...availabilityOptions, enabled: Boolean(serviceType) })
+  // Kept while Try again looks again, so the alert and its focused button stay in the dialog until the answer.
+  const failure = useQueryFailure(availability, availabilityOptions.queryKey)
+
+  const area = useRef<HTMLDivElement>(null)
+  const handled = useRef(0)
+  // The answer for this service and day is on screen (chips, the no-slot state or a failure), not the loading skeleton.
+  const settled = serviceType !== undefined && (failure !== null || availability.data !== undefined)
+  useEffect(() => {
+    if (focusRequest === 0 || handled.current === focusRequest || !settled) return
+    handled.current = focusRequest
+    area.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"], [role="radio"], button')?.focus()
+  }, [focusRequest, settled])
+
+  return (
+    <div ref={area} className="contents">
+      <AvailabilityView
+        {...view}
+        data={availability.data}
+        failure={failure}
+        retrying={availability.isFetching}
+        onRetry={() => void availability.refetch()}
+      />
+    </div>
+  )
+}
+
+interface AvailabilityViewProps extends Omit<AvailabilityChipsProps, "dealershipId" | "focusRequest"> {
+  data: AvailabilityResponse | undefined
+  failure: unknown
+  retrying: boolean
+  onRetry: () => void
+}
+
+/** The start-time area for one answer of the availability read: a hint, its failure, the skeleton, no slot, or the chips. */
+function AvailabilityView({
   serviceType,
   date,
   value,
@@ -68,12 +111,11 @@ export function AvailabilityChips({
   invalid = false,
   nextDate,
   onDateChange,
-}: AvailabilityChipsProps) {
-  const availabilityOptions = getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: serviceType?.id ?? "", date } })
-  const availability = useQuery({ ...availabilityOptions, enabled: Boolean(serviceType) })
-  // Kept while Try again looks again, so the alert and its focused button stay in the dialog until the answer.
-  const failure = useQueryFailure(availability, availabilityOptions.queryKey)
-
+  data,
+  failure,
+  retrying,
+  onRetry,
+}: AvailabilityViewProps) {
   if (!serviceType) return <Hint>Choose a service to see its free start times.</Hint>
 
   if (failure !== null) {
@@ -83,16 +125,11 @@ export function AvailabilityChips({
     return dateError ? (
       <Hint>{dateError}</Hint>
     ) : (
-      <ProblemAlert
-        title="Couldn’t look up free times"
-        error={failure}
-        onRetry={() => void availability.refetch()}
-        retrying={availability.isFetching}
-      />
+      <ProblemAlert title="Couldn’t look up free times" error={failure} onRetry={onRetry} retrying={retrying} />
     )
   }
 
-  if (availability.data === undefined) {
+  if (data === undefined) {
     return (
       <div aria-busy="true" className="flex flex-col gap-2">
         <p role="status" className="sr-only">
@@ -108,7 +145,7 @@ export function AvailabilityChips({
     )
   }
 
-  const { slots, unavailableReason } = availability.data
+  const { slots, unavailableReason } = data
   if (slots.length === 0) {
     const day = formatDay(date, "long").replace(/ \d{4}$/, "")
     const reason =

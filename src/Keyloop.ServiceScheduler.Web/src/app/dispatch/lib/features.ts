@@ -43,3 +43,27 @@ export const certifications: Record<Certification, Feature> = {
 export function featureLabel(name: string): string {
   return (bayCapabilities as Record<string, Feature>)[name]?.label ?? (certifications as Record<string, Feature>)[name]?.label ?? name
 }
+
+// What every bay and every technician has says least about a lane, so it goes last.
+const commonest = new Set<string>(["StandardLift", "GeneralService"])
+
+/**
+ * Equipment and certifications as `CapabilityBadges` lists them: the distinguishing ones first, each need once (a service
+ * can need a capability and a certification of the same name, Diagnostics), and without what every bay and technician has
+ * when `distinctiveOnly`. Empty when nothing is left to show.
+ */
+export function featureList(
+  capabilities: readonly BayCapability[],
+  certified: readonly Certification[],
+  distinctiveOnly = false
+): Array<Feature & { key: string; id: string }> {
+  return [
+    // The kind keeps the keys of a capability and a certification of the same name apart.
+    ...capabilities.map((capability) => ({ key: capability, id: `bay-${capability}`, ...bayCapabilities[capability] })),
+    ...certified.map((certification) => ({ key: certification, id: `technician-${certification}`, ...certifications[certification] })),
+  ]
+    .filter((feature) => !distinctiveOnly || !commonest.has(feature.key))
+    // ...and then it is one need, said once: "Diagnostics", not "Diagnostics Diagnostics".
+    .filter((feature, index, all) => all.findIndex((other) => other.label === feature.label) === index)
+    .sort((a, b) => Number(commonest.has(a.key)) - Number(commonest.has(b.key)))
+}

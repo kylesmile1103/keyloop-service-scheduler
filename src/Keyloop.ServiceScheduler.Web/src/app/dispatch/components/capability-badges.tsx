@@ -3,10 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
-import { bayCapabilities, certifications } from "../lib/features"
-
-// What every bay and every technician has says least about a lane, so it goes last.
-const commonest = new Set<string>(["StandardLift", "GeneralService"])
+import { featureList } from "../lib/features"
 
 interface CapabilityBadgesProps {
   /** A bay's equipment. */
@@ -21,6 +18,8 @@ interface CapabilityBadgesProps {
   distinctiveOnly?: boolean
   /** What assistive technology hears before the list ("Needs"); by default "Equipment", "Certified for" or "Missing". */
   label?: string
+  /** An id for the spoken list, for a control that is described by it (`aria-describedby`): a suggested service's card. */
+  descriptionId?: string
   className?: string
 }
 
@@ -35,17 +34,10 @@ export function CapabilityBadges({
   variant = "secondary",
   distinctiveOnly = false,
   label,
+  descriptionId,
   className,
 }: CapabilityBadgesProps) {
-  const features = [
-    // A service can need a capability and a certification of the same name (Diagnostics): the kind keeps their keys apart.
-    ...capabilities.map((capability) => ({ key: capability, id: `bay-${capability}`, ...bayCapabilities[capability] })),
-    ...certified.map((certification) => ({ key: certification, id: `technician-${certification}`, ...certifications[certification] })),
-  ]
-    .filter((feature) => !distinctiveOnly || !commonest.has(feature.key))
-    // ...and then it is one need, said once: "Diagnostics", not "Diagnostics Diagnostics".
-    .filter((feature, index, all) => all.findIndex((other) => other.label === feature.label) === index)
-    .sort((a, b) => Number(commonest.has(a.key)) - Number(commonest.has(b.key)))
+  const features = featureList(capabilities, certified, distinctiveOnly)
   if (features.length === 0) return null
 
   const shown = features.slice(0, max)
@@ -54,7 +46,7 @@ export function CapabilityBadges({
 
   return (
     <div className={cn("flex min-w-0 items-center gap-1 overflow-hidden", className)}>
-      <span className="sr-only">{`${heading}: ${features.map((feature) => feature.label).join(", ")}.`}</span>
+      <span id={descriptionId} className="sr-only">{`${heading}: ${features.map((feature) => feature.label).join(", ")}.`}</span>
       {shown.map(({ id, label, icon: Icon }) => (
         <Badge key={id} variant={variant} aria-hidden="true" className="min-w-0 shrink font-normal">
           <Icon />
@@ -72,3 +64,4 @@ export function CapabilityBadges({
     </div>
   )
 }
+
