@@ -148,6 +148,8 @@ interface Selection {
   row: AppointmentRow
   intent: RowIntent
   open: boolean
+  /** Who it was selected as (`CurrentUser.identity`): the row is that caller's view of the booking. */
+  identity: string
 }
 
 interface DealershipAppointmentsProps {
@@ -171,6 +173,11 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const list = useRef<HTMLElement>(null)
   const opener = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
+  const { identity } = useCurrentUser()
+  // A row selected as another caller (or before `/me` failed) is that caller's view: the sheet closes in the same render,
+  // so the full name, VIN and plate never paint for the next one (ARCHITECTURE §15).
+  if (selection && selection.identity !== identity) setSelection(null)
+  const selected = selection?.identity === identity ? selection : null
 
   const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } })
   const schedule = useQuery({ ...scheduleOptions, refetchOnWindowFocus: true })
@@ -196,10 +203,13 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
     getColumnCanGlobalFilter: canSearchColumn,
   })
 
-  const openAppointment = useCallback<OpenAppointment>((row, intent, trigger) => {
-    opener.current = trigger
-    setSelection({ row, intent, open: true })
-  }, [])
+  const openAppointment = useCallback<OpenAppointment>(
+    (row, intent, trigger) => {
+      opener.current = trigger
+      setSelection({ row, intent, open: true, identity })
+    },
+    [identity]
+  )
 
   // A Try again that succeeds takes its own button away with the failure; focus then moves to the list (below).
   const retried = useRef(false)
@@ -214,7 +224,7 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   }, [schedule.data])
 
   const dayWords = date === today ? "Today" : formatDay(date, "long")
-  const current = selection?.open ? selection.row.id : null
+  const current = selected?.open ? selected.row.id : null
 
   return (
     <OpenAppointmentContext value={openAppointment}>
@@ -288,14 +298,14 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
       </ListFrame>
 
       <AppointmentSheet
-        appointment={selection?.row ?? null}
-        open={selection?.open ?? false}
+        appointment={selected?.row ?? null}
+        open={selected?.open ?? false}
         onOpenChange={(open) => setSelection((previous) => (previous ? { ...previous, open } : previous))}
         side={phone ? "bottom" : "right"}
         dealershipId={dealership.id}
         date={date}
         timeZone={timeZone}
-        initialFocus={selection?.intent === "cancel" ? "reason" : "title"}
+        initialFocus={selected?.intent === "cancel" ? "reason" : "title"}
         returnFocus={() => (opener.current?.isConnected ? opener.current : list.current)}
         onCancelled={() => {
           // Its row is about to leave the list: focus goes to the list instead.

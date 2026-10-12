@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { CurrentUserResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
-import { mockBoardApi } from "@/test/board-api"
+import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
@@ -207,58 +207,246 @@ describe("the details sheet", () => {
   })
 })
 
+/** What step 2 holds, every value personal. */
+const draft = {
+  Name: "Draft Private Customer",
+  Email: "draft.private@example.invalid",
+  Phone: "+44 7700 900777",
+  VIN: "WVWZZZ1KZAW654321",
+  Registration: "DR22 AFT",
+  Make: "Volkswagen",
+  Model: "Golf",
+}
+const description = "Private description of the brakes"
+
+/** Every value the dialog's fields hold, and its text. */
+function dialogContents(dialog: HTMLElement): string {
+  const values = Array.from(dialog.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")).map((field) => field.value)
+  return `${dialog.textContent ?? ""} ${values.join(" ")}`
+}
+
+/**
+ * A booking entered by hand: a description and a photo, Interim Service at 10:15, then (unless it stays on step 1, where the
+ * photo's preview shows) the customer and the vehicle.
+ */
+async function enterDraft(dialog: HTMLElement, step: 1 | 2 = 2) {
+  fireEvent.change(await within(dialog).findByRole("textbox", { name: "Describe the issue" }), { target: { value: description } })
+  const photo = new File([new Uint8Array([137, 80, 78, 71])], "private-vehicle-photo.png", { type: "image/png" })
+  fireEvent.change(within(dialog).getByLabelText("Photos or paperwork (optional)"), { target: { files: [photo] } })
+  expect(within(dialog).getByAltText("Selected photo: private-vehicle-photo.png")).toBeInTheDocument()
+  if (step === 1) return
+  fireEvent.click(await within(dialog).findByRole("combobox", { name: "Service" }))
+  pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+  fireEvent.click(await within(dialog).findByRole("radio", { name: "10:15, 4 bays and 3 technicians free" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Next" }))
+  await within(dialog).findByRole("heading", { name: "Customer and vehicle" })
+  for (const [label, value] of Object.entries(draft)) {
+    fireEvent.change(within(dialog).getByRole("textbox", { name: label }), { target: { value } })
+  }
+}
+
+function expectDraftGone(dialog: HTMLElement) {
+  const contents = dialogContents(dialog)
+  for (const value of [...Object.values(draft), description, "private-vehicle-photo.png"]) {
+    expect(contents, `${value} still in the dialog`).not.toContain(value)
+  }
+  expect(within(dialog).queryByAltText("Selected photo: private-vehicle-photo.png")).not.toBeInTheDocument()
+}
+
 describe("a booking dialog open when the identity changes", () => {
-  it("keeps what was typed, stops Suggest, the photos and Book, and says what to do once signed out", async () => {
-    let me: CurrentUserResponse = serviceAdvisor
-    const { requests } = mockBoardApi({ me: () => me, triageStatus: () => triageEnabled, serviceTypes: () => [interimServiceType] })
-    renderBoard(board)
-
-    fireEvent.click(await bookButton())
-    const dialog = await screen.findByRole("dialog", { name: "Book appointment" })
-    const description = await within(dialog).findByRole("textbox", { name: "Describe the issue" })
-    fireEvent.change(description, { target: { value: "Brakes squeal" } })
-
-    // Signed out in another tab: the board notices when its window regains focus.
-    me = anonymous
-    refocus()
-
-    const signIn = await within(dialog).findByRole("link", { name: "Sign in" })
-    expect(signIn).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(board)}`)
-    // An outline button, its border not overridden by the base's transparent one.
-    expect(signIn).not.toHaveClass("border-transparent")
-    const suggest = within(dialog).getByRole("button", { name: "Suggest a service" })
-    expectUnavailableButFocusable(suggest)
-    const reason = document.getElementById(suggest.getAttribute("aria-describedby")!)
-    expect(reason).toHaveTextContent("You’re signed out, so this booking can’t be made. Sign in to book: what you entered here isn’t kept and will need entering again.")
-    expect(within(dialog).getByLabelText("Photos or paperwork (optional)")).toBeDisabled()
-    // What was typed is still there.
-    expect(description).toHaveValue("Brakes squeal")
-
-    fireEvent.click(suggest)
-    expect(writes(requests)).toHaveLength(0)
+  beforeEach(() => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:test-photo") })
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
   })
 
-  it("keeps Book unavailable with the role's reason when the account loses its booking role", async () => {
-    let me: CurrentUserResponse = serviceAdvisor
-    const { requests } = mockBoardApi({ me: () => me, serviceTypes: () => [interimServiceType] })
+  async function openWithDraft(
+    next: () => CurrentUserResponse | Response,
+    options: Parameters<typeof mockBoardApi>[0] = {},
+    step: 1 | 2 = 2
+  ) {
+    let changed = false
+    const api = mockBoardApi({
+      me: () => (changed ? next() : admin),
+      triageStatus: () => triageEnabled,
+      serviceTypes: () => [interimServiceType],
+      ...options,
+    })
     renderBoard(board)
-
     fireEvent.click(await bookButton())
     const dialog = await screen.findByRole("dialog", { name: "Book appointment" })
-    fireEvent.click(await within(dialog).findByRole("combobox", { name: "Service" }))
-    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
-    const chip = await within(dialog).findByRole("radio", { name: "10:15, 4 bays and 3 technicians free" })
-    fireEvent.click(chip)
-    fireEvent.click(within(dialog).getByRole("button", { name: "Next" }))
-    await within(dialog).findByRole("heading", { name: "Customer and vehicle" })
+    await enterDraft(dialog, step)
+    return {
+      api,
+      dialog,
+      change() {
+        changed = true
+        refocus()
+      },
+    }
+  }
 
-    me = viewer
+  it("discards the draft and its photo once signed out, says why, and offers Sign in", async () => {
+    const { api, dialog, change } = await openWithDraft(() => anonymous)
+    within(dialog).getByRole("textbox", { name: "Email" }).focus()
+
+    change()
+
+    const notice = await within(dialog).findByText(/^The session changed: you’re signed out\./)
+    // The focused field went with the draft: focus is on the notice that says why, still in the dialog.
+    await waitFor(() => expect(notice.closest("[tabindex]")).toHaveFocus())
+    expect(notice).toHaveTextContent(
+      "The session changed: you’re signed out. The booking you were entering was discarded, with its customer, vehicle, description and photos. Sign in to book."
+    )
+    expectDraftGone(dialog)
+    const signIn = within(dialog).getByRole("link", { name: "Sign in" })
+    expect(signIn).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(board)}`)
+    expect(signIn).not.toHaveClass("border-transparent")
+    // Back at the start, with Suggest a service and the photos unavailable, named by the notice.
+    const suggest = within(dialog).getByRole("button", { name: "Suggest a service" })
+    expectUnavailableButFocusable(suggest)
+    expect(document.getElementById(suggest.getAttribute("aria-describedby")!)).toBe(notice.closest("[id]"))
+    expect(within(dialog).getByLabelText("Photos or paperwork (optional)")).toBeDisabled()
+    fireEvent.click(suggest)
+    expect(writes(api.requests)).toHaveLength(0)
+  })
+
+  it("discards the description and the photo on step 1 too, revoking the preview's address", async () => {
+    const { dialog, change } = await openWithDraft(() => anonymous, {}, 1)
+    vi.mocked(URL.revokeObjectURL).mockClear()
+
+    change()
+
+    await within(dialog).findByText(/^The session changed: you’re signed out\./)
+    expectDraftGone(dialog)
+    expect(within(dialog).getByRole("textbox", { name: "Describe the issue" })).toHaveValue("")
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-photo")
+  })
+
+  it("discards it when the account loses its booking role, with the role's reason on Book's place", async () => {
+    const { api, dialog, change } = await openWithDraft(() => ({ ...admin, roles: ["Viewer"] }))
+
+    change()
+
+    const notice = await within(dialog).findByText(/^The session changed: this account can’t book any more\./)
+    expect(notice).toHaveTextContent("The booking you were entering was discarded, with its customer, vehicle, description and photos.")
+    expectDraftGone(dialog)
+    const suggest = within(dialog).getByRole("button", { name: "Suggest a service" })
+    expectUnavailableButFocusable(suggest)
+    expect(document.getElementById(suggest.getAttribute("aria-describedby")!)).toHaveTextContent("this account can’t book any more")
+    expect(writes(api.requests)).toHaveLength(0)
+  })
+
+  it("discards it when another account signs in, even one that may book", async () => {
+    const { dialog, change } = await openWithDraft(() => serviceAdvisor)
+
+    change()
+
+    const notice = await within(dialog).findByText(/^The session changed: another account is signed in\./)
+    expect(notice).toHaveTextContent("Enter it again to book it.")
+    expectDraftGone(dialog)
+    expectAvailable(within(dialog).getByRole("button", { name: "Suggest a service" }))
+  })
+
+  it("discards it when who is signed in cannot be checked, with Try again", async () => {
+    const { dialog, change } = await openWithDraft(() => new Response("", { status: 502, statusText: "Bad Gateway" }))
+
+    change()
+
+    expect(await within(dialog).findByText(/^The session changed: who is signed in couldn’t be checked\./)).toBeInTheDocument()
+    expectDraftGone(dialog)
+    expect(within(dialog).getByRole("button", { name: "Try again" })).toBeInTheDocument()
+  })
+
+  it("says a booking may have been made when Book had been pressed", async () => {
+    const { dialog, change } = await openWithDraft(() => anonymous, { book: () => new Promise(() => {}) })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    await within(dialog).findByRole("button", { name: "Booking…" })
+
+    change()
+
+    const notice = await within(dialog).findByText(/^The session changed: you’re signed out\./)
+    expect(notice).toHaveTextContent("Book had been pressed, so it may have been booked: check the board before entering it again.")
+    expectDraftGone(dialog)
+  })
+
+  it("says a booking had been made when the phone's success state was showing", async () => {
+    phoneViewport()
+    let changed = false
+    mockBoardApi({ me: () => (changed ? anonymous : admin), triageStatus: () => triageEnabled, serviceTypes: () => [interimServiceType] })
+    renderBoard(board)
+    const fab = (await screen.findAllByRole("button", { name: "Book appointment" })).find((button) => button.dataset.slot === "book-fab")!
+    fireEvent.click(fab)
+    const sheet = await screen.findByRole("dialog", { name: "Book appointment" })
+    await enterDraft(sheet)
+    fireEvent.click(within(sheet).getByRole("button", { name: "Book" }))
+    expect(await within(sheet).findByRole("heading", { name: "Booked" })).toBeInTheDocument()
+
+    changed = true
     refocus()
 
-    await waitFor(() => expectUnavailableButFocusable(within(dialog).getByRole("button", { name: "Book" })))
-    const book = within(dialog).getByRole("button", { name: "Book" })
-    expect(document.getElementById(book.getAttribute("aria-describedby")!)).toHaveTextContent(READ_ONLY_REASON)
-    fireEvent.submit(book.closest("form")!)
-    expect(writes(requests)).toHaveLength(0)
+    const notice = await within(sheet).findByText(/^The session changed: you’re signed out\./)
+    expect(notice).toHaveTextContent("This dialog was cleared. The booking had been made: it is on the board. Sign in to book.")
+    expect(within(sheet).queryByRole("heading", { name: "Booked" })).not.toBeInTheDocument()
+    expectDraftGone(sheet)
+  })
+
+  it("keeps the draft between two roles that may book, for the same email", async () => {
+    const { dialog, change } = await openWithDraft(() => ({ ...admin, roles: ["ServiceAdvisor"] }))
+
+    change()
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Book appointment" })).toBeInTheDocument())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(within(dialog).getByRole("textbox", { name: "Email" })).toHaveValue(draft.Email)
+    expect(within(dialog).queryByText(/The session changed/)).not.toBeInTheDocument()
+    expectAvailable(within(dialog).getByRole("button", { name: "Book" }))
+  })
+})
+
+describe("a /me that fails after it has answered", () => {
+  it("withdraws booking and the whole record at once, clears what was read, and offers Try again", async () => {
+    let failing = false
+    const api = mockBoardApi({ me: () => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : admin) })
+    const { queryClient } = renderBoard(board)
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
+    fireEvent.keyDown(sheet, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
+    const recordsBefore = recordReads()
+    const schedulesBefore = requestsTo(api.requests, "/schedule").length
+
+    // A gateway error when the window regains focus: who is signed in is no longer known.
+    failing = true
+    refocus()
+
+    await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
+    expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
+    // Booking asks to sign in, and says the check failed, with Try again.
+    fireEvent.click(await bookButton())
+    const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(within(prompt).getByText("Couldn’t check who is signed in, so the app treats you as signed out.")).toBeInTheDocument()
+    // The record is not read while nobody is known, even from a sheet opened again.
+    fireEvent.click(within(prompt).getByRole("button", { name: "Not now" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
+    fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
+    const reopened = await screen.findByRole("dialog", { name: "Interim Service" })
+    expect(within(reopened).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
+    fireEvent.keyDown(reopened, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    expect(recordReads()).toBe(recordsBefore)
+
+    // Try again, and /me answers: booking opens again.
+    failing = false
+    fireEvent.click(await bookButton())
+    const again = await screen.findByRole("dialog", { name: "Sign in to book" })
+    fireEvent.click(within(again).getByRole("button", { name: "Try again" }))
+    await waitFor(() => expect(screen.queryByText("Couldn’t check who is signed in, so the app treats you as signed out.")).not.toBeInTheDocument())
+    fireEvent.click(within(again).getByRole("button", { name: "Not now" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
+    fireEvent.click(await bookButton())
+    expect(await screen.findByRole("dialog", { name: "Book appointment" })).toBeInTheDocument()
   })
 })

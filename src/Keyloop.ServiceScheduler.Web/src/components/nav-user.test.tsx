@@ -20,7 +20,8 @@ afterEach(() => {
 })
 
 beforeAll(async () => {
-  await import("@/app/settings/appearance/page")
+  // The board is where most of these render: loaded once here, so a test never waits on its lazy chunk under load.
+  await Promise.all([import("@/app/settings/appearance/page"), import("@/app/dispatch/page")])
 })
 
 const board = `/dispatch?dealership=${reading.id}&date=2026-10-14`

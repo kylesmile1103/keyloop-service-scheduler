@@ -1,5 +1,5 @@
 import { QueryObserver } from "@tanstack/react-query"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   getAppointmentQueryKey,
@@ -16,7 +16,7 @@ import { calendarRange } from "@/app/calendar/lib/calendar"
 import { overviewWindow } from "@/app/overview/lib/overview"
 import { rangeReadOptions } from "@/lib/appointment-range"
 import { createQueryClient } from "@/lib/query-client"
-import { clearCallerData, holdsCallerData } from "@/lib/session-cache"
+import { callerGeneration, clearCallerData, holdsCallerData } from "@/lib/session-cache"
 import { reading } from "@/test/dealerships"
 import { admin } from "@/test/identities"
 
@@ -114,5 +114,32 @@ describe("clearing what the previous caller read", () => {
     clearCallerData(queryClient)
 
     expect(mutations.getAll()).toEqual([running])
+  })
+
+  it("drops a mutation that was still running as soon as it settles, its answer the previous caller's", async () => {
+    const queryClient = createQueryClient()
+    const mutations = queryClient.getMutationCache()
+    let answer!: (value: unknown) => void
+    const running = mutations.build(queryClient, { mutationFn: () => new Promise((resolve) => (answer = resolve)) })
+    const done = running.execute({ customer: { name: "Ada Lovelace" } })
+    await vi.waitFor(() => expect(answer).toBeTypeOf("function"))
+
+    clearCallerData(queryClient)
+    expect(mutations.getAll()).toEqual([running])
+    answer(personal)
+    await done
+
+    expect(mutations.getAll()).toEqual([])
+  })
+
+  it("counts each change, so a write can tell that the caller changed while it ran", () => {
+    const queryClient = createQueryClient()
+    const before = callerGeneration(queryClient)
+
+    clearCallerData(queryClient)
+    clearCallerData(queryClient)
+
+    expect(callerGeneration(queryClient)).toBe(before + 2)
+    expect(callerGeneration(createQueryClient())).toBe(0)
   })
 })

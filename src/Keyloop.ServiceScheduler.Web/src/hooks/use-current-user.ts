@@ -6,28 +6,38 @@ import {
   type Capabilities,
   capabilitiesOf,
   currentUserQuery,
-  DEFAULT_LOGIN_URL,
   type IdentitySource,
+  identityKey,
   identitySource,
   knownRoles,
+  LOGOUT_PATH,
   NO_ROLE_REASON,
   READ_ONLY_REASON,
   type Role,
 } from "@/lib/session"
 
 export interface CurrentUser extends Capabilities {
-  /** `loading` until the first answer; `failed` when `/me` could not be read and nothing is known (treated as signed out). */
+  /**
+   * `loading` until the first answer; `failed` when the last read of `/me` failed, even after an earlier answer and while
+   * it is tried again (treated as signed out: nobody is known, so nothing is allowed).
+   */
   status: "loading" | "ready" | "failed"
-  /** The last answer, kept while it is read again. */
+  /** The last answer, kept while it is read again; none while `failed` (an answer from before the failure is not trusted). */
   user: CurrentUserResponse | undefined
+  /**
+   * Who the screen is for: the answer's fingerprint (`identityKey`), or `loading` / `failed`. A view that keeps something
+   * read as one caller outside the query cache (a selected booking's snapshot, a booking being entered) drops it when this
+   * changes, in the same render, so it never paints for the next caller.
+   */
+  identity: string
   authenticated: boolean
   roles: Role[]
-  loginUrl: string
+  /** Where Sign out leads (the hostname's Access logout), when `/me` offers one; Sign in builds its own (`signInHref`). */
   logoutUrl: string | null
   source: IdentitySource
   /** The failure behind `failed`. */
   error: unknown
-  /** True while `/me` is being read (again). */
+  /** True while `/me` is being read (again), Try again or TanStack's own retry included. */
   fetching: boolean
   refetch: () => void
 }
@@ -35,24 +45,27 @@ export interface CurrentUser extends Capabilities {
 /**
  * The signed-in identity (`GET /api/v1/me`) and what it may do. Every component asks the same cached query, which is
  * read again when the window regains focus. Until the first answer nothing is allowed, so a write control never shows as
- * usable and then changes its mind.
+ * usable and then changes its mind; and a read that fails withdraws everything at once, though TanStack keeps the earlier
+ * answer in the cache: whoever was signed in may have signed out since (`cachedCapabilities` decides the same way).
  */
 export function useCurrentUser(): CurrentUser {
   const options = currentUserQuery()
   const query = useQuery(options)
   // Kept while Try again reads it again, so a failed check stays failed (and its Try again focused) until the answer.
   const failure = useQueryFailure(query, options.queryKey)
-  const user = query.data
+  // A failed attempt counts at once, before TanStack's own retry (lib/query-client.ts) has its answer.
+  const failed = failure !== null || query.failureCount > 0
+  const user = failed ? undefined : query.data
   return {
-    status: user ? "ready" : failure !== null ? "failed" : "loading",
+    status: failed ? "failed" : user ? "ready" : "loading",
     user,
+    identity: user ? identityKey(user) : failed ? "failed" : "loading",
     authenticated: user?.authenticated === true,
     roles: user?.authenticated ? knownRoles(user.roles) : [],
     ...capabilitiesOf(user),
-    loginUrl: user?.loginUrl ?? DEFAULT_LOGIN_URL,
-    logoutUrl: user?.logoutUrl ?? null,
+    logoutUrl: user?.logoutUrl ? LOGOUT_PATH : null,
     source: identitySource(),
-    error: failure,
+    error: failure ?? query.failureReason,
     fetching: query.isFetching,
     refetch: () => void query.refetch(),
   }

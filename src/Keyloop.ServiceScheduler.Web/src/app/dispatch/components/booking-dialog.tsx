@@ -6,8 +6,8 @@
  * free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
  */
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CalendarDays, Check, ChevronRight, CircleAlert, LoaderCircle, RotateCw } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { CalendarDays, Check, ChevronRight, CircleAlert, LoaderCircle, RotateCw, TriangleAlert } from "lucide-react"
 import { type FormEvent, type ReactNode, type Ref, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { Controller, type FieldPath, useForm, useWatch } from "react-hook-form"
 import { labelDayButton } from "react-day-picker"
@@ -44,9 +44,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { useCountdown } from "@/hooks/use-countdown"
-import { useWriteAccess, type WriteAccess } from "@/hooks/use-current-user"
+import { type CurrentUser, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
 import { featureLabel } from "@/lib/features"
@@ -60,6 +61,7 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
+import { cachedCapabilities } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
 
@@ -97,9 +99,30 @@ export interface BookingDialogProps {
  * can never book twice; a conflict offers the API's suggested starts, a refused rule says why, and field errors land on
  * their fields.
  */
-export function BookingDialog({ open, onOpenChange, fullScreen, ...flow }: BookingDialogProps) {
+export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: BookingDialogProps) {
   // Whether to offer suggestions, read while the dialog is still closed (see `bookingTriageStatusQuery`).
   useQuery(bookingTriageStatusQuery())
+  const queryClient = useQueryClient()
+  const owner = draftOwner(useCurrentUser())
+  // The phone's success state, kept here so a discard knows a booking had been made.
+  const [booked, setBooked] = useState<AppointmentResponse | null>(null)
+  // The booking being entered belongs to the account that opened the dialog. When the identity changes to one that may not
+  // book, or to another email, it is discarded in the same render (the flow starts again under a new key: its fields, the
+  // description and the photos' previews go, and their object URLs are revoked), and the dialog says so. A change between
+  // two roles that may book, for the same email, keeps it (`owner` does not change).
+  const [draft, setDraft] = useState<{ owner: string | null; key: number; discard: Discard | null }>({ owner, key: 0, discard: null })
+  if (owner !== draft.owner) {
+    const held = draft.owner !== null
+    setDraft({
+      owner,
+      key: held ? draft.key + 1 : draft.key,
+      discard: held
+        ? { booked: booked !== null, bookWasPending: queryClient.isMutating({ mutationKey: BOOK_MUTATION_KEY }) > 0 }
+        : draft.discard,
+    })
+    if (held) setBooked(null)
+  }
+  const flow = { ...props, discard: draft.discard, booked, onBookedChange: setBooked }
   if (fullScreen) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -109,7 +132,7 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...flow }: Booki
           // auto height, 85dvh cap and radius (a bare `h-dvh` loses to the variant's `h-auto` on specificity).
           className="gap-0 overflow-clip p-0 data-[side=bottom]:h-dvh data-[side=bottom]:max-h-dvh data-[side=bottom]:rounded-none *:data-[slot=sheet-close]:top-2 *:data-[slot=sheet-close]:right-2"
         >
-          <BookingFlow {...flow} layout="sheet" onClose={() => onOpenChange(false)} />
+          <BookingFlow key={draft.key} {...flow} layout="sheet" onClose={() => onOpenChange(false)} />
         </SheetContent>
       </Sheet>
     )
@@ -117,19 +140,41 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...flow }: Booki
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 shadow-xl sm:max-w-2xl">
-        <BookingFlow {...flow} layout="dialog" onClose={() => onOpenChange(false)} />
+        <BookingFlow key={draft.key} {...flow} layout="dialog" onClose={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
 }
 
 type Layout = "dialog" | "sheet"
+type BookVariables = Parameters<NonNullable<ReturnType<typeof bookAppointmentMutation>["mutationFn"]>>[0]
 type Step = 1 | 2
 
 interface BookingFlowProps extends Omit<BookingDialogProps, "open" | "onOpenChange" | "fullScreen"> {
   layout: Layout
   onClose: () => void
+  /** Why the booking being entered was discarded while the dialog was open, if it was. */
+  discard: Discard | null
+  /** The phone's success state (held by the dialog). */
+  booked: AppointmentResponse | null
+  onBookedChange: (booked: AppointmentResponse | null) => void
 }
+
+/** A booking being entered that the dialog discarded when the identity changed. */
+interface Discard {
+  /** It had been booked (the phone's success state was showing). */
+  booked: boolean
+  /** Book had been pressed and had no answer yet: it may have been booked. */
+  bookWasPending: boolean
+}
+
+/** Whose booking the dialog holds: the email of an account that may book (Admin or Service advisor), else nobody. */
+function draftOwner(current: CurrentUser): string | null {
+  return current.status === "ready" && current.canWrite ? (current.user?.email ?? "").toLowerCase() : null
+}
+
+/** The booking request's mutation key, so the dialog can tell whether a Book is still out when it discards a draft. */
+const BOOK_MUTATION_KEY = ["bookAppointment"]
 
 const blank = (date: string): BookingFormInput => ({
   serviceTypeId: "",
@@ -166,12 +211,23 @@ const formPaths = Object.keys(formLabels) as ReadonlyArray<keyof typeof formLabe
 /** Business rules about the start time (§8.7): the fix is another start, back on step 1. */
 const timeRules = new Set(["outside-operating-hours", "lead-time-not-met", "beyond-booking-horizon", "slot-not-aligned"])
 
-function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooked, onViewOnBoard, onClose }: BookingFlowProps) {
+function BookingFlow({
+  dealership,
+  schedule,
+  initialDate,
+  today,
+  layout,
+  onBooked,
+  onViewOnBoard,
+  onClose,
+  discard,
+  booked,
+  onBookedChange: setBooked,
+}: BookingFlowProps) {
   const dealershipId = dealership.id
   const timeZone = dealership.timeZoneId
   const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>(1)
-  const [booked, setBooked] = useState<AppointmentResponse | null>(null)
   // One booking intention, one key: every attempt (a retry after a lost answer, a suggested slot after a conflict) sends it,
   // so the API books at most once (§7.5). A new key only after a success, for the next booking.
   const idempotencyKey = useRef(crypto.randomUUID())
@@ -183,11 +239,14 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   const moved = useRef(false)
   const [waiting, startWaiting] = useCountdown()
   // The dialog opens only for an account that may book, but the identity can change while it is open (a sign-out in
-  // another tab, a session that ended): then Book, Suggest a service and the photos stop, with the reason on screen, and
-  // what was typed stays where it is (it is never stored, so it needs entering again after signing in).
-  const access = useWriteAccess()
+  // another tab, a session that ended, a role removed): the dialog then discards what was typed (`BookingDialog`), and
+  // Book, Suggest a service, its Try again and the photos stop, named by the notice that says why.
+  const current = useCurrentUser()
+  const access = writeAccessOf(current)
   const blocked = access.state === "sign-in" || access.state === "denied"
   const blockedId = useId()
+  const noticeRef = useRef<HTMLDivElement>(null)
+  const discardedId = useId()
 
   const form = useForm<BookingFormInput, unknown, BookingForm>({
     resolver: zodResolver(bookingSchema),
@@ -212,16 +271,20 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
 
+  // Who is signed in changed before Book's answer arrived, so the answer was thrown away (`useWriteMutation`).
+  const [answerDiscarded, setAnswerDiscarded] = useState(false)
   const generated = bookAppointmentMutation()
-  const book = useMutation({
-    ...generated,
+  const book = useWriteMutation({
+    mutationKey: BOOK_MUTATION_KEY,
     // The generated mutation, inside a `ui.book_appointment` span whose fetch carries `traceparent` to the API, so one trace
-    // runs from the click to PostgreSQL in the Aspire dashboard.
-    mutationFn: (variables, context) =>
+    // runs from the click to PostgreSQL in the Aspire dashboard. Checked as it is sent; an answer that arrives after the
+    // identity changed is thrown away, with no toast, no closing and nothing kept.
+    mutationFn: (variables: BookVariables, _guard, context) =>
       withSpan("ui.book_appointment", ({ fetch }) => generated.mutationFn!({ ...variables, fetch }, context), {
         "keyloop.dealership_id": dealershipId,
         "keyloop.service_type_id": variables.body.serviceTypeId,
       }),
+    onDiscarded: () => setAnswerDiscarded(true),
     onSuccess: (appointment) => {
       idempotencyKey.current = crypto.randomUUID()
       const day = appointment.startLocal.slice(0, 10)
@@ -272,6 +335,15 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   // The last refusal, kept while this booking is tried again (Try again, a suggested start, Book): the alert and the
   // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
   const failure = useMutationFailure(book)
+
+  // A discard took the focused field with it: focus goes to the notice that says why, unless something else holds it (a
+  // dialog opened over this one). A layout effect: before the dialog's focus guard puts lost focus on the dialog itself.
+  useLayoutEffect(() => {
+    if (!discard) return
+    const popup = formRef.current?.closest('[role="dialog"]')
+    const active = document.activeElement
+    if (!active || active === document.body || active === popup) noticeRef.current?.focus()
+  }, [discard])
 
   // The new step's heading takes focus, so keyboard and screen-reader users start at its top (UI_DESIGN 11.14).
   useEffect(() => {
@@ -330,10 +402,12 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   }
 
   function submit(event?: FormEvent) {
-    if (blocked) {
+    // The identity in the cache decides too, not only the last render: `/me` may have changed since.
+    if (blocked || !cachedCapabilities(queryClient).canWrite) {
       event?.preventDefault()
       return
     }
+    setAnswerDiscarded(false)
     void form.handleSubmit(
       (values) => {
         const body = toBookingRequest(values)
@@ -350,7 +424,8 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
 
   /** The same request again, with the same key: safe after a lost answer, and replayed (not re-booked) if it had succeeded. */
   function retry() {
-    if (!lastRequest.current || book.isPending || blocked) return
+    if (!lastRequest.current || book.isPending || blocked || !cachedCapabilities(queryClient).canWrite) return
+    setAnswerDiscarded(false)
     book.mutate({ path: { dealershipId }, body: lastRequest.current, headers: { "Idempotency-Key": idempotencyKey.current } })
   }
 
@@ -363,6 +438,7 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   function bookAnother() {
     form.reset(blank(date))
     book.reset()
+    setAnswerDiscarded(false)
     triage.reset()
     setCopiedNotes("")
     setBooked(null)
@@ -453,7 +529,26 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
         )}
       </div>
 
-      {!booked && blocked && <BlockedNotice id={blockedId} access={access} sheet={sheet} />}
+      {!booked && (blocked || discard) && (
+        <SessionNotice
+          id={blockedId}
+          ref={noticeRef}
+          access={access}
+          failed={current.status === "failed"}
+          retrying={current.fetching}
+          onRetry={current.refetch}
+          discard={discard}
+          sheet={sheet}
+        />
+      )}
+      {!booked && !blocked && answerDiscarded && (
+        <div className={cn("border-t px-4 py-3 sm:px-6", sheet && "bg-popover")}>
+          <WriteReason
+            id={discardedId}
+            reason="Who is signed in changed before the answer to Book arrived, so it isn’t shown. Book again to see it: with the same details this booking can’t be made twice."
+          />
+        </div>
+      )}
       {!booked && (
         <footer
           className={cn(
@@ -493,21 +588,58 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
   )
 }
 
+/** What the session notice says: why the booking was discarded (or cannot be made), and what to do next. */
+function sessionNoticeText(access: WriteAccess, failed: boolean, discard: Discard | null): string {
+  if (!discard) return access.state === "denied" ? access.reason : "You’re signed out, so this booking can’t be made. Sign in to book."
+  const why = failed
+    ? "who is signed in couldn’t be checked"
+    : access.state === "sign-in"
+      ? "you’re signed out"
+      : access.state === "denied"
+        ? "this account can’t book any more"
+        : "another account is signed in"
+  const outcome = discard.booked
+    ? "This dialog was cleared. The booking had been made: it is on the board."
+    : "The booking you were entering was discarded, with its customer, vehicle, description and photos."
+  const pending = discard.bookWasPending ? " Book had been pressed, so it may have been booked: check the board before entering it again." : ""
+  const next = access.state === "sign-in" ? " Sign in to book." : access.state === "allowed" && !discard.booked ? " Enter it again to book it." : ""
+  return `The session changed: ${why}. ${outcome}${pending}${next}`
+}
+
+interface SessionNoticeProps {
+  id: string
+  ref: Ref<HTMLDivElement>
+  access: WriteAccess
+  /** `/me` could not be read: Try again reads it again. */
+  failed: boolean
+  retrying: boolean
+  onRetry: () => void
+  discard: Discard | null
+  sheet: boolean
+}
+
 /**
- * Why this booking cannot be made any more, above the footer: signed out (with Sign in, and the warning that what was typed
- * is not kept), or a role that cannot book. Book, Suggest a service and the photos name it with `aria-describedby`.
+ * Above the footer, when the identity changed while the dialog was open: that the booking being entered was discarded
+ * because the session changed (and, if Book had been pressed, that it may have been booked), or, with nothing discarded,
+ * why it cannot be made; Sign in when signed out, Try again when `/me` could not be read. Book, Suggest a service, its
+ * Try again and the photos name it with `aria-describedby` while they are unavailable. It takes focus when the discarded
+ * fields took it with them.
  */
-function BlockedNotice({ id, access, sheet }: { id: string; access: WriteAccess; sheet: boolean }) {
+function SessionNotice({ id, ref, access, failed, retrying, onRetry, discard, sheet }: SessionNoticeProps) {
   return (
-    <div className={cn("flex flex-col gap-2 border-t px-4 py-3 sm:px-6", sheet && "bg-popover")}>
-      {access.state === "sign-in" ? (
-        <>
-          <WriteReason id={id} reason="You’re signed out, so this booking can’t be made. Sign in to book: what you entered here isn’t kept and will need entering again." />
-          <SignInAction size="sm" variant="outline" className="self-start" />
-        </>
-      ) : access.state === "denied" ? (
-        <WriteReason id={id} reason={access.reason} />
-      ) : null}
+    <div ref={ref} tabIndex={-1} className={cn("flex flex-col gap-2 border-t px-4 py-3 outline-none sm:px-6", sheet && "bg-popover")}>
+      <WriteReason id={id} icon={discard ? TriangleAlert : undefined} reason={sessionNoticeText(access, failed, discard)} />
+      {(failed || access.state === "sign-in") && (
+        <div className="flex flex-wrap gap-2">
+          {failed && (
+            <Button type="button" size="sm" variant="outline" onClick={onRetry} disabled={retrying} focusableWhenDisabled className="pointer-coarse:h-11">
+              <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />
+              Try again
+            </Button>
+          )}
+          {access.state === "sign-in" && <SignInAction size="sm" variant="outline" className="pointer-coarse:h-11" />}
+        </div>
+      )}
     </div>
   )
 }

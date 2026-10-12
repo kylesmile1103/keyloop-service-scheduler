@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { capabilitiesOf, identityKey, identitySource, knownRoles, nameOf, signInHref } from "@/lib/session"
+import { capabilitiesOf, identityKey, identitySource, knownRoles, LOGIN_PATH, nameOf, safeReturnTo, signInHref } from "@/lib/session"
 import { admin, anonymous, noRole, serviceAdvisor, unnamedAdvisor, viewer } from "@/test/identities"
 
 describe("what each caller may do", () => {
@@ -43,26 +43,46 @@ describe("the identity's fingerprint", () => {
 
 describe("the sign-in address", () => {
   it("returns to the page the user is on, its dealership and day included", () => {
-    const href = signInHref(anonymous.loginUrl, "/dispatch?dealership=45fa64a1-baa9-8c61-b11a-ee9d7572ae3e&date=2026-10-14")
+    const href = signInHref("/dispatch?dealership=45fa64a1-baa9-8c61-b11a-ee9d7572ae3e&date=2026-10-14")
 
     expect(href).toBe("/auth/login?returnTo=%2Fdispatch%3Fdealership%3D45fa64a1-baa9-8c61-b11a-ee9d7572ae3e%26date%3D2026-10-14")
     const returnTo = new URL(href, window.location.origin).searchParams.get("returnTo")
     expect(returnTo).toBe("/dispatch?dealership=45fa64a1-baa9-8c61-b11a-ee9d7572ae3e&date=2026-10-14")
   })
 
-  it("keeps the rest of the API's login URL", () => {
-    expect(signInHref("/auth/login?returnTo=%2F&prompt=login", "/resources/bays")).toBe(
-      "/auth/login?returnTo=%2Fresources%2Fbays&prompt=login"
-    )
+  it("is always the API's own login path on this origin, whatever else was offered", () => {
+    expect(LOGIN_PATH).toBe("/auth/login")
+    const href = signInHref("/resources/bays")
+    expect(href).toBe("/auth/login?returnTo=%2Fresources%2Fbays")
+    expect(new URL(href, window.location.origin).origin).toBe(window.location.origin)
   })
 
-  it("never returns anywhere but a local path", () => {
-    expect(signInHref(anonymous.loginUrl, "//evil.example/steal")).toBe("/auth/login?returnTo=%2F")
-    expect(signInHref(anonymous.loginUrl, "https://evil.example/")).toBe("/auth/login?returnTo=%2F")
+  it.each([
+    ["a protocol-relative address", "//evil.example/steal"],
+    ["a backslash after the slash", "/\\evil.example/steal"],
+    ["a backslash further on", "/dispatch\\..\\evil"],
+    ["a leading backslash", "\\evil.example"],
+    ["an absolute URL", "https://evil.example/"],
+    ["a script URL", "javascript:alert(1)"],
+    ["a relative path", "dispatch?date=2026-10-14"],
+    ["a leading space", " /dispatch"],
+    ["nothing", ""],
+    ["a NUL", "/dispatch\u0000evil"],
+    ["a tab before another slash", "/\t/evil.example"],
+    ["a line break", "/dispatch\nSet-Cookie: x=1"],
+    ["DEL", "/dispatch\u007f"],
+    ["a C1 control", "/dispatch\u0085"],
+    ["a lone surrogate", "/dispatch\ud800"],
+  ])("returns to / instead of %s", (_, returnTo) => {
+    expect(safeReturnTo(returnTo)).toBe("/")
+    expect(signInHref(returnTo)).toBe("/auth/login?returnTo=%2F")
   })
 
-  it("uses the API's login path before /me has answered", () => {
-    expect(signInHref("", "/appointments")).toBe("/auth/login?returnTo=%2Fappointments")
+  it("keeps a local path with an encoded slash, a scheme-like segment or a non-Latin letter as it is", () => {
+    for (const path of ["/dispatch?q=%2F%2Fx", "/notes/https:/x", "/dispatch?dealership=M\u00fcnchen", "/emoji/\ud83d\ude97"]) {
+      expect(safeReturnTo(path)).toBe(path)
+      expect(new URL(signInHref(path), window.location.origin).searchParams.get("returnTo")).toBe(path)
+    }
   })
 })
 

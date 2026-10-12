@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { LoaderCircle } from "lucide-react"
 import { type FormEvent, type ReactNode, type RefObject, useId, useRef, useState } from "react"
 
@@ -9,7 +9,7 @@ import {
   getAvailabilityQueryKey,
   getWorkshopScheduleQueryKey,
 } from "@/api/@tanstack/react-query.gen"
-import type { AppointmentResponse, CurrentUserResponse, GetAvailabilityData } from "@/api/types.gen"
+import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
 import vehiclePlaceholder from "@/assets/illustrations/vehicle-placeholder.webp"
 import { SignInPanel } from "@/components/auth/sign-in-prompt"
 import { WriteReason } from "@/components/auth/write-reason"
@@ -24,10 +24,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 import { formatLocalTime } from "@/lib/local-time"
-import { capabilitiesOf, currentUserQueryKey } from "@/lib/session"
+import { cachedCapabilities } from "@/lib/session"
 import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
@@ -85,13 +86,23 @@ export function AppointmentSheet({
 }: AppointmentSheetProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
   const reasonRef = useRef<HTMLTextAreaElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   return (
     <Sheet open={open && appointment !== null} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={popupRef}
         side={side}
         initialFocus={() => (initialFocus === "reason" ? reasonRef.current : null) ?? titleRef.current ?? true}
-        finalFocus={() => returnFocus() ?? true}
+        // A dialog opened over the sheet keeps focus when the sheet closes beneath it (the session dialog, after a refusal
+        // that also closed the sheet because the identity changed). Otherwise focus goes back where the sheet came from, or,
+        // when that is gone (the view reading its data again after the identity changed), to the page's content rather
+        // than wherever the browser would fall back to.
+        finalFocus={() => {
+          if (focusInOtherDialog(popupRef.current)) return false
+          const target = returnFocus()
+          return target?.isConnected ? target : (document.getElementById("content") ?? true)
+        }}
         className={cn(
           "gap-0 p-0 *:data-[slot=sheet-close]:pointer-coarse:size-11",
           side === "right" && "w-full"
@@ -119,6 +130,12 @@ export function AppointmentSheet({
   )
 }
 
+/** Whether focus is in a dialog other than `popup`, which then keeps it. */
+function focusInOtherDialog(popup: HTMLElement | null): boolean {
+  const active = document.activeElement
+  return active instanceof HTMLElement && !popup?.contains(active) && active.closest('[role="dialog"]') !== null
+}
+
 interface SheetBodyProps {
   appointment: BoardAppointment
   open: boolean
@@ -138,12 +155,16 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const writeAccess = writeAccessOf(current)
   const path = { appointmentId: appointment.id }
   const detailsOptions = getAppointmentOptions({ path })
-  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes,
-  // the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
-  // rendered for the new caller, and a visitor must never send the read.
+  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes or
+  // fails, the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before this sheet has
+  // rendered for the new state, and a visitor (or nobody known) must never send the read. Not read again when the window
+  // regains focus or the network returns: `/me` is read again at that same moment, so the cache would still name the
+  // caller from before (a sign-out in another tab); the record is read when the sheet opens, and on Try again.
   const details = useQuery({
     ...detailsOptions,
-    enabled: () => open && capabilitiesOf(queryClient.getQueryData<CurrentUserResponse>(currentUserQueryKey())).canViewDetails,
+    enabled: () => open && cachedCapabilities(queryClient).canViewDetails,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
   // Skeletons while the record may still come: until `/me` answers, and while a role's read is out.
   const recordLoading = detailsAccess === "checking" || (detailsAccess === "allowed" && details.isPending)
@@ -320,6 +341,8 @@ function Pending({ loading, children }: { loading: boolean; children: ReactNode 
   return loading ? <Skeleton className="h-4 w-40" /> : children
 }
 
+type CancelVariables = Parameters<NonNullable<ReturnType<typeof cancelAppointmentMutation>["mutationFn"]>>[0]
+
 interface CancelFormProps {
   /** Whether this account may cancel: the form for Admin and Service advisor, the reason for any other role. */
   access: WriteAccess
@@ -336,10 +359,14 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
   const errorId = useId()
   const countId = useId()
   const deniedId = useId()
+  const queryClient = useQueryClient()
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
-  const cancel = useMutation({
-    ...cancelAppointmentMutation(),
+  const generated = cancelAppointmentMutation()
+  // Checked as it is sent, and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a late
+  // answer neither caches the record nor shows a toast for the next caller.
+  const cancel = useWriteMutation({
+    mutationFn: (variables: CancelVariables, _guard, context) => generated.mutationFn!(variables, context),
     onSuccess: (cancelled) => {
       toast.add({
         type: "success",
@@ -363,6 +390,8 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    // The identity in the cache decides, not the last render: `/me` may have changed since.
+    if (!cachedCapabilities(queryClient).canWrite) return
     const trimmed = reason.trim()
     if (!trimmed) {
       setMissingReason(true)

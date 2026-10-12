@@ -7,7 +7,6 @@ import {
   failureStatus,
   fieldErrors,
   parseProblem,
-  problemLoginUrl,
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
@@ -185,12 +184,6 @@ describe("refusals of identity (ADR-027)", () => {
     expect(failureStatus({ statusCode: 403, message: "Forbidden" })).toBe(403)
     expect(failureStatus({ statusCode: 0, message: "Failed to fetch", cause: new TypeError("Failed to fetch") })).toBeUndefined()
     expect(failureStatus(new TypeError("Failed to fetch"))).toBeUndefined()
-  })
-
-  it("reads the login URL a 401 carries, also through a wrapping HttpError", () => {
-    expect(problemLoginUrl(unauthenticated)).toBe("/auth/login?returnTo=%2F")
-    expect(problemLoginUrl({ statusCode: 401, message: "Sign in", cause: unauthenticated })).toBe("/auth/login?returnTo=%2F")
-    expect(problemLoginUrl(rateLimited)).toBeUndefined()
   })
 
   it("titles a refused write in the words of what was being done", () => {

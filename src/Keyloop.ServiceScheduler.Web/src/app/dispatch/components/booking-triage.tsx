@@ -198,7 +198,17 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
         {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today) : ""}
       </p>
 
-      {alert && <TriageProblem error={alert} waiting={waiting} retrying={pending} onRetry={() => triage.retry()} />}
+      {alert && (
+        <TriageProblem
+          error={alert}
+          waiting={waiting}
+          retrying={pending}
+          blockedBy={blockedBy}
+          onRetry={() => {
+            if (!blockedBy) triage.retry()
+          }}
+        />
+      )}
 
       {answer && (
         <Suggestions
@@ -480,12 +490,22 @@ function isValidation(error: unknown): boolean {
   return problem !== null && problemSlug(problem) === "validation-error"
 }
 
+interface TriageProblemProps {
+  error: unknown
+  waiting: number
+  retrying: boolean
+  /** As Suggest a service's: the id of the reason this account cannot ask any more; Try again is then unavailable and names it. */
+  blockedBy?: string
+  onRetry: () => void
+}
+
 /**
  * Why there are no suggestions, in the shared problem alert (UI_DESIGN 11.16): a rate limit waits (Suggest a service
  * counts down), a refusal says what the API said, and any other failure (`503 triage-unavailable`, the network) offers
- * Try again with the same description. Manual selection below works throughout.
+ * Try again with the same description, unavailable with Suggest a service's reason when the account cannot ask. Manual
+ * selection below works throughout.
  */
-function TriageProblem({ error, waiting, retrying, onRetry }: { error: unknown; waiting: number; retrying: boolean; onRetry: () => void }) {
+function TriageProblem({ error, waiting, retrying, blockedBy, onRetry }: TriageProblemProps) {
   const problem = parseProblem(error)
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
 
@@ -505,5 +525,14 @@ function TriageProblem({ error, waiting, retrying, onRetry }: { error: unknown; 
   if (status !== undefined && status < 500 && !(problem && problemSlug(problem) === "triage-unavailable")) {
     return <ProblemAlert tone="warning" title={problem?.title ?? `The server answered ${status}`} error={error} />
   }
-  return <ProblemAlert title="Couldn’t suggest a service" error={error} onRetry={onRetry} retrying={retrying} />
+  return (
+    <ProblemAlert
+      title="Couldn’t suggest a service"
+      error={error}
+      onRetry={onRetry}
+      retrying={retrying}
+      retryDisabled={Boolean(blockedBy)}
+      retryDescribedBy={blockedBy}
+    />
+  )
 }

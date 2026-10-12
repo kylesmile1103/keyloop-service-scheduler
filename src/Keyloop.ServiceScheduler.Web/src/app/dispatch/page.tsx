@@ -114,6 +114,8 @@ interface Selection {
   appointment: BoardAppointment
   dealershipId: string
   open: boolean
+  /** Who it was selected as (`CurrentUser.identity`): the snapshot is that caller's view of the booking. */
+  identity: string
 }
 
 interface DealershipDayProps {
@@ -144,7 +146,8 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const [booking, setBooking] = useState({ session: 0, open: false })
   const opener = useRef<HTMLElement | null>(null)
   const board = useRef<HTMLDivElement>(null)
-  const access = writeAccessOf(useCurrentUser())
+  const currentUser = useCurrentUser()
+  const access = writeAccessOf(currentUser)
   const [signInPrompt, setSignInPrompt] = useState(false)
   const reasonId = useId()
   // Every Book action is unavailable, but keeps focus, while it cannot book; the reason names it for screen readers.
@@ -162,13 +165,16 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
 
   const allLanes = useMemo(() => (schedule.data ? buildLanes(schedule.data, mode) : []), [schedule.data, mode])
   const lanes = allLanes.filter((lane) => !hidden.has(lane.id))
-  const current = selection?.dealershipId === dealership.id ? selection : null
+  // The selected booking is the previous caller's snapshot (full name, VIN, plate for a role) once the identity changes or
+  // cannot be checked: the sheet closes in the same render, so it never paints for the next caller (ARCHITECTURE §15).
+  if (selection && selection.identity !== currentUser.identity) setSelection(null)
+  const current = selection?.dealershipId === dealership.id && selection.identity === currentUser.identity ? selection : null
   const onBoard = new Set(lanes.flatMap((lane) => lane.appointments.map((appointment) => appointment.id)))
   const { bookedId, highlight } = useBookedHighlight(onBoard, board)
 
   const openDetails = (appointment: BoardAppointment, element: HTMLElement) => {
     opener.current = element
-    setSelection({ appointment, dealershipId: dealership.id, open: true })
+    setSelection({ appointment, dealershipId: dealership.id, open: true, identity: currentUser.identity })
   }
 
   const openBooking = () => {
