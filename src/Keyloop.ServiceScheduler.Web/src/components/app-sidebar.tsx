@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUpRight, BookOpenText, CalendarRange, ClipboardList, ListChecks, UsersRound, Warehouse } from "lucide-react"
+import { ArrowUpRight, BookOpenText, CalendarRange, ClipboardList, ListChecks, SunMoon, UserRound, UsersRound, Warehouse } from "lucide-react"
 
 import { Logo } from "@/components/logo"
 import { NavMain } from "@/components/nav-main"
@@ -44,6 +44,13 @@ const data = {
         { title: "Technicians", url: "/resources/technicians", icon: UsersRound, carry: [DEALERSHIP_PARAM] },
         { title: "Bays", url: "/resources/bays", icon: Warehouse, carry: [DEALERSHIP_PARAM] },
         { title: "Services", url: "/resources/services", icon: ListChecks, carry: [DEALERSHIP_PARAM] },
+      ],
+    },
+    {
+      label: "Settings",
+      items: [
+        { title: "Appearance", url: "/settings/appearance", icon: SunMoon },
+        { title: "Account", url: "/settings/account", icon: UserRound },
       ],
     },
   ],
