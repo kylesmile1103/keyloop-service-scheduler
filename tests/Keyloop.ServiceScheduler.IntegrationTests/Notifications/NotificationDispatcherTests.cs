@@ -34,9 +34,9 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     public async ValueTask DisposeAsync() => await _factory.DisposeAsync();
     private NotificationDispatcher Dispatcher() => new(_factory.Services.GetRequiredService<IServiceScopeFactory>(), _sender,
         new NotificationSignal(), Options.Create(_options), _factory.Clock, _logger);
-    private async Task BookAsync(int hour = 9, string? email = null) => await _factory.WithDbAsync(async db =>
+    private async Task BookAsync(int hour = 9, string? email = null, DateTime? bookedAtUtc = null) => await _factory.WithDbAsync(async db =>
     {
-        db.Add(_workshop.Book(TestData.LondonTime(hour), email: email ?? TestData.DeliverableEmail()));
+        db.Add(_workshop.Book(TestData.LondonTime(hour), email: email ?? TestData.DeliverableEmail(), bookedAtUtc: bookedAtUtc));
         await db.SaveChangesAsync(Ct);
     });
     private Task<NotificationOutboxEntry> RowAsync() => _factory.WithDbAsync(db => db.NotificationOutbox.AsNoTracking().SingleAsync(Ct));
@@ -454,11 +454,25 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     }
 
     [Fact]
-    public async Task Backlog_gauges_report_pending_rows_and_the_oldest_age_while_dispatch_is_disabled()
+    public async Task Backlog_gauges_report_only_pending_rows_and_the_oldest_pending_age_while_dispatch_is_disabled()
     {
-        // SystemTest defaults to Enabled=false, Provider=None: the dispatcher never runs, the backlog must still be visible (G2).
-        await BookAsync(9);
-        await BookAsync(10, "customer2@example.com");
+        // SystemTest defaults to Enabled=false, Provider=None: the host's dispatcher never runs, the backlog must still be visible (G2).
+        // Terminal rows come first and are older, so the gauges fail if they count or age anything but Pending rows: one Sent (by a
+        // dispatcher of the test's own) and one Suppressed (a reserved domain), both a minute older than the two Pending rows.
+        var terminalAt = _factory.Clock.GetUtcNow().UtcDateTime;
+        await BookAsync(8, TestData.DeliverableEmail(1), terminalAt);
+        await BookAsync(9, "customer9@example.com", terminalAt);
+        using (var dispatcher = Dispatcher())
+        {
+            await dispatcher.DispatchOnceAsync(Ct);
+        }
+        (await _factory.WithDbAsync(db => db.NotificationOutbox.AsNoTracking().Select(e => e.Status).ToListAsync(Ct)))
+            .ShouldBe([NotificationStatus.Sent, NotificationStatus.Suppressed], ignoreOrder: true);
+
+        _factory.Clock.Advance(TimeSpan.FromSeconds(60));
+        var pendingAt = _factory.Clock.GetUtcNow().UtcDateTime;
+        await BookAsync(10, TestData.DeliverableEmail(2), pendingAt);
+        await BookAsync(11, TestData.DeliverableEmail(3), pendingAt);
         _factory.Clock.Advance(TimeSpan.FromSeconds(90));
         using var metrics = new MetricsCollector();
         await EventuallyAsync(() =>
@@ -467,9 +481,9 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
             return Task.FromResult(metrics.Of("scheduler.notifications.outbox_pending").Count > 0 ? metrics : null);
         });
         var latestPending = metrics.Of("scheduler.notifications.outbox_pending").GroupBy(m => m.Tag("kind")).ToDictionary(g => g.Key!, g => g.Last().Value);
-        latestPending["BookingConfirmation"].ShouldBe(2);
+        latestPending["BookingConfirmation"].ShouldBe(2, "the Sent and Suppressed rows are not backlog");
         latestPending["Cancellation"].ShouldBe(0);
-        metrics.Of("scheduler.notifications.oldest_pending_age").Last().Value.ShouldBe(90);
+        metrics.Of("scheduler.notifications.oldest_pending_age").Last().Value.ShouldBe(90, "the oldest Pending row's age, not an older terminal row's (150 s)");
     }
 
     private WebApplicationFactory<Program> EnabledHost() => _factory.WithWebHostBuilder(builder => builder

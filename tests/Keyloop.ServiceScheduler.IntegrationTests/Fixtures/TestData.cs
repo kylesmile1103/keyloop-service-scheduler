@@ -78,17 +78,20 @@ public static class TestData
             notes);
     }
 
-    /// <summary>A confirmed appointment on <see cref="BookingDay"/> (or the date of <paramref name="startUtc"/>) built through the aggregate, so it raises <c>AppointmentBooked</c>.</summary>
+    /// <summary>
+    /// A confirmed appointment on <see cref="BookingDay"/> (or the date of <paramref name="startUtc"/>) built through the aggregate, so it raises
+    /// <c>AppointmentBooked</c>, booked at <paramref name="bookedAtUtc"/> (default <see cref="Now"/>), which also dates its outbox row.
+    /// </summary>
     public static Appointment NewAppointment(
         Dealership dealership, ServiceType serviceType, ServiceBay bay, Technician technician, DateTime startUtc, int customer = 1, string vin = "WVWZZZ1KZAW123456",
-        string? email = null)
+        string? email = null, DateTime? bookedAtUtc = null)
     {
         ArgumentNullException.ThrowIfNull(dealership);
         var window = dealership.ResolveOperatingWindow(LocalTimeConverter.ToLocalDate(startUtc, dealership.TimeZone))
             ?? throw new InvalidOperationException("The dealership is closed on that date.");
         return Appointment.Book(
             Guid.CreateVersion7(), dealership, serviceType, bay, technician, TimeSlot.FromStart(startUtc, serviceType.Duration), window,
-            Customer(customer, email), Vehicle(vin), notes: null, Now);
+            Customer(customer, email), Vehicle(vin), notes: null, bookedAtUtc ?? Now);
     }
 
     /// <summary>
@@ -125,7 +128,8 @@ public static class TestData
     public sealed record Workshop(
         Dealership Dealership, ServiceType Interim, ServiceBay Bay1, ServiceBay Bay2, Technician Technician1, Technician Technician2)
     {
-        public Appointment Book(DateTime startUtc, ServiceBay? bay = null, Technician? technician = null, int customer = 1, string? email = null) =>
-            NewAppointment(Dealership, Interim, bay ?? Bay1, technician ?? Technician1, startUtc, customer, email: email);
+        public Appointment Book(
+            DateTime startUtc, ServiceBay? bay = null, Technician? technician = null, int customer = 1, string? email = null, DateTime? bookedAtUtc = null) =>
+            NewAppointment(Dealership, Interim, bay ?? Bay1, technician ?? Technician1, startUtc, customer, email: email, bookedAtUtc: bookedAtUtc);
     }
 }
