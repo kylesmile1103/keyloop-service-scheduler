@@ -45,7 +45,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         var tags = root.GetProperty("tags").EnumerateArray().ToList();
-        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule"]);
+        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule", "Features"]);
         tags.ShouldAllBe(tag => !string.IsNullOrWhiteSpace(tag.GetProperty("description").GetString()));
 
         // Scalar then targets the current origin, and the build-time document cannot differ by host.

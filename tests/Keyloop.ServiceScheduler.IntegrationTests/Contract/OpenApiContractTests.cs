@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -34,6 +34,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     private static readonly JsonTypeInfo[] ResponseTypes =
     [
         SchedulerJsonContext.Default.CurrentUserResponse,
+        SchedulerJsonContext.Default.FeatureSwitchesResponse,
         SchedulerJsonContext.Default.DealershipResponse,
         SchedulerJsonContext.Default.DayOperatingHoursResponse,
         SchedulerJsonContext.Default.ServiceTypeResponse,
@@ -208,6 +209,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/appointments/{appointmentId}", "401"),
                 ("GET /api/v1/appointments/{appointmentId}", "403"),
                 ("GET /api/v1/me", "429"),
+                ("GET /api/v1/features", "429"),
                 ("POST /api/v1/vehicle-profiles/resolve", "400"),
                 ("POST /api/v1/vehicle-profiles/resolve", "401"),
                 ("POST /api/v1/vehicle-profiles/resolve", "403"),
@@ -332,6 +334,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "200", "UploadBookingTriageImageResponse"),
                 ("GET /api/v1/me", "200", "CurrentUserResponse"),
                 ("POST /api/v1/vehicle-profiles/resolve", "200", "VehicleProfile"),
+                ("GET /api/v1/features", "200", "FeatureSwitchesResponse"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))
@@ -407,6 +410,24 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private async Task<JsonNode> ServedAsync() => JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
+
+    [Fact]
+    public async Task Feature_discovery_documents_the_switch_example_and_success_cache_header()
+    {
+        var document = await ServedAsync();
+        var operation = (document["paths"]!["/api/v1/features"]?["get"]).ShouldNotBeNull();
+        Text(operation["operationId"]).ShouldBe("GetFeatures");
+        Text(operation["summary"]).ShouldNotBeNullOrWhiteSpace();
+        Text(operation["description"]).ShouldNotBeNull().ShouldContain("restart");
+        Text(operation["responses"]!["200"]!["headers"]!["Cache-Control"]!["description"])
+            .ShouldNotBeNull().ShouldContain("public, max-age=60, must-revalidate");
+        var schema = document["components"]!["schemas"]!["FeatureSwitchesResponse"].ShouldNotBeNull();
+        schema["examples"]!.AsArray().ShouldHaveSingleItem()!.ToJsonString().ShouldBe("""{"vehicleAwareRequirements":false}""");
+        var property = schema["properties"]!["vehicleAwareRequirements"].ShouldNotBeNull();
+        Text(property["type"]).ShouldBe("boolean");
+        Text(property["description"]).ShouldNotBeNullOrWhiteSpace();
+        property["examples"]!.AsArray().ShouldHaveSingleItem()!.GetValue<bool>().ShouldBeFalse();
+    }
 
     [Theory]
     [InlineData("ListAppointments")]

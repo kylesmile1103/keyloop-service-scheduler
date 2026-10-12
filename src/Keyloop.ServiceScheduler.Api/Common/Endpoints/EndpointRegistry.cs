@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
+using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
@@ -41,6 +42,7 @@ public static class EndpointRegistry
         ListAppointmentsEndpoint.Map(group);
         GetCurrentUserEndpoint.Map(group);
         ResolveVehicleProfileEndpoint.Map(group);
+        GetFeaturesEndpoint.Map(group);
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

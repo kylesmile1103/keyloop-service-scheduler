@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
+using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
@@ -107,5 +108,6 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(AppointmentListItemResponse))]
 [JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
 [JsonSerializable(typeof(CurrentUserResponse))]
+[JsonSerializable(typeof(FeatureSwitchesResponse))]
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

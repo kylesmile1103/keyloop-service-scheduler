@@ -462,6 +462,16 @@ export type DealershipSummary = {
     timeZoneId: string;
 };
 
+/**
+ * Environment-wide switches a client needs to decide which controls to render. Identical for every caller.
+ */
+export type FeatureSwitchesResponse = {
+    /**
+     * Whether vehicle-aware booking inputs, availability filters and allocation explanations are enabled. Changes require an API restart.
+     */
+    vehicleAwareRequirements: boolean;
+};
+
 export type HttpValidationProblemDetails = {
     type?: null | string;
     title?: null | string;
@@ -1651,3 +1661,34 @@ export type ResolveVehicleProfileResponses = {
 };
 
 export type ResolveVehicleProfileResponse = ResolveVehicleProfileResponses[keyof ResolveVehicleProfileResponses];
+
+export type GetFeaturesData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/features';
+};
+
+export type GetFeaturesErrors = {
+    /**
+     * Too many requests from this client (rate-limited, with Retry-After); never cached.
+     */
+    429: ProblemDetails;
+};
+
+export type GetFeaturesError = GetFeaturesErrors[keyof GetFeaturesErrors];
+
+export type GetFeaturesResponses = {
+    /**
+     * Only the vehicleAwareRequirements boolean; no personal data, dealership data, secrets or other settings.
+     */
+    200: FeatureSwitchesResponse;
+};
+
+export type GetFeaturesResponse = GetFeaturesResponses[keyof GetFeaturesResponses];

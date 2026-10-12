@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetFeaturesData, GetFeaturesErrors, GetFeaturesResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -267,4 +267,19 @@ export const resolveVehicleProfile = <ThrowOnError extends boolean = false>(opti
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * Discover this environment's client rendering switches
+ *
+ * Public and identical for every caller. Read before displaying vehicle-aware booking controls or sending vehicle-aware availability inputs. The effective switches require an API restart to change, matching booking and availability. Successful responses use Cache-Control: public, max-age=60, must-revalidate. A recently restarted deployment may differ from a cached read; refresh discovery after vehicle-aware-requirements-disabled.
+ */
+export const getFeatures = <ThrowOnError extends boolean = false>(options?: Options<GetFeaturesData, ThrowOnError>): RequestResult<GetFeaturesResponses, GetFeaturesErrors, ThrowOnError> => (options?.client ?? client).get<GetFeaturesResponses, GetFeaturesErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/features',
+    ...options
 });

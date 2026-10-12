@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
+using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
 using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
@@ -118,6 +119,7 @@ builder.Services.AddHealthChecks().AddCheck<SchedulerReadinessCheck>("scheduler_
 
 // Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12).
 builder.Services.AddScoped<GetDealershipsHandler>();
+builder.Services.AddScoped<GetFeaturesHandler>();
 builder.Services.AddScoped<GetServiceTypesHandler>();
 builder.Services.AddScoped<GetAvailabilityHandler>();
 builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
@@ -184,6 +186,8 @@ var app = builder.Build();
 try
 {
     app.Services.GetRequiredService<IStartupValidator>().Validate();
+    // IOptions binds lazily: pin the scheduling snapshot now so discovery and enforcement require a restart even before their first request.
+    _ = app.Services.GetRequiredService<IOptions<SchedulingOptions>>().Value;
     var triage = app.Services.GetRequiredService<IOptions<TriageConnectionOptions>>().Value;
     if (app.Environment.IsProduction() && triage.Enabled && triage.ImagesEnabled && triage.ImageStoreUrl.Length == 0)
     {

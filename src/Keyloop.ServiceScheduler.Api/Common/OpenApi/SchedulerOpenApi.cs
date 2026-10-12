@@ -23,6 +23,7 @@ public static class ApiTags
     public const string Availability = "Availability";
     public const string Appointments = "Appointments";
     public const string Schedule = "Schedule";
+    public const string Features = "Features";
 }
 
 /// <summary>
@@ -67,6 +68,7 @@ internal static class SchedulerOpenApi
         (ApiTags.Appointments, "Book, read and cancel appointments."),
         ("Identity", "The current caller, API roles and hosted Access navigation URLs."),
         (ApiTags.Schedule, "The dispatch board: a dealership's bays, technicians and appointments for one day."),
+        (ApiTags.Features, "Environment-wide switches for client rendering, identical for every caller."),
     ];
 
     private const string TraceIdProperty = "traceId";

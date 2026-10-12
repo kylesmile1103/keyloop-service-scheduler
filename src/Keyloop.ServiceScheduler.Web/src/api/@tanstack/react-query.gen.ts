@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, resolveVehicleProfile, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, ResolveVehicleProfileData, ResolveVehicleProfileError, ResolveVehicleProfileResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getFeatures, getServiceTypes, getWorkshopSchedule, listAppointments, type Options, resolveVehicleProfile, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetFeaturesData, GetFeaturesError, GetFeaturesResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, ResolveVehicleProfileData, ResolveVehicleProfileError, ResolveVehicleProfileResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -329,3 +329,23 @@ export const resolveVehicleProfileMutation = (options?: Partial<Options<ResolveV
     };
     return mutationOptions;
 };
+
+export const getFeaturesQueryKey = (options?: Options<GetFeaturesData>) => createQueryKey('getFeatures', options);
+
+/**
+ * Discover this environment's client rendering switches
+ *
+ * Public and identical for every caller. Read before displaying vehicle-aware booking controls or sending vehicle-aware availability inputs. The effective switches require an API restart to change, matching booking and availability. Successful responses use Cache-Control: public, max-age=60, must-revalidate. A recently restarted deployment may differ from a cached read; refresh discovery after vehicle-aware-requirements-disabled.
+ */
+export const getFeaturesOptions = (options?: Options<GetFeaturesData>) => queryOptions<GetFeaturesResponse, GetFeaturesError, GetFeaturesResponse, ReturnType<typeof getFeaturesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getFeatures({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getFeaturesQueryKey(options)
+});
