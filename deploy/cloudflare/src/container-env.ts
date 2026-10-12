@@ -72,6 +72,9 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     Triage__Enabled: env.TRIAGE_ENABLED,
   };
   if (env.TRIAGE_ENABLED === "true") {
+    result.Triage__Model = "@cf/cloudflare/clef-flash";
+    result.Triage__ImagesEnabled = "true";
+    result.Triage__ImageStoreUrl = "http://triage-media.internal";
     result.Triage__AccountId = env.TRIAGE_ACCOUNT_ID;
     result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
     result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");

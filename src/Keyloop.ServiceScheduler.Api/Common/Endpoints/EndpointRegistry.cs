@@ -12,6 +12,7 @@ using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 using Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
+using Keyloop.ServiceScheduler.Api.Features.Triage.UploadBookingTriageImage;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
@@ -35,6 +36,7 @@ public static class EndpointRegistry
         GetWorkshopScheduleEndpoint.Map(group);
         GetBookingTriageStatusEndpoint.Map(group);
         TriageBookingEndpoint.Map(group);
+        UploadBookingTriageImageEndpoint.Map(group);
         ListAppointmentsEndpoint.Map(group);
         GetCurrentUserEndpoint.Map(group);
 

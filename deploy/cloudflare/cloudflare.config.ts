@@ -1,4 +1,4 @@
-import { bindings, defineConfig, defineContainer, exports } from "cf/config";
+import { bindings, defineConfig, defineContainer, exports, triggers } from "cf/config";
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 import { edgeSettings } from "./src/settings.ts";
 
@@ -23,6 +23,7 @@ export default defineConfig({
     domains: ["keyloop.kylesmile.me"],
     workersDev: false,
     previewUrls: false,
+    triggers: settings.triageEnabled === "true" ? [triggers.scheduled({ schedule: "0 * * * *" })] : [],
     assets: {
       notFoundHandling: "single-page-application",
       runWorkerFirst: ["/api", "/api/*", "/auth/*", "/otlp", "/otlp/*"],
@@ -41,6 +42,7 @@ export default defineConfig({
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),
       ...(settings.triageEnabled === "true" ? {
         AI_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_ai_token" }),
+        TRIAGE_IMAGES: bindings.r2({ name: settings.triageBucket }),
       } : {}),
       AUTH_TEAM_DOMAIN: bindings.text(settings.authTeamDomain),
       AUTH_AUDIENCE: bindings.text(settings.authAudience),

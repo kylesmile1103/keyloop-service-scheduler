@@ -6,7 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Triage;
 
-public sealed class JevQuestionBuilderTests
+public sealed class ClefQuestionBuilderTests
 {
     internal static readonly ServiceType Brakes = ServiceType.Create(Guid.NewGuid(), "BRAKES-PADS-DISCS", "Brake Pads & Discs",
         ServiceDuration.Create(90), [Keyloop.ServiceScheduler.Domain.Resources.BayCapability.StandardLift],
@@ -19,17 +19,17 @@ public sealed class JevQuestionBuilderTests
     {
         var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes();
         ServiceTriageRubric.Entries.Keys.Order().ShouldBe(services.Select(s => s.Code).Order());
-        var request = JevQuestionBuilder.Build("typesafe/jev", "service due", services, Reading,
+        var request = ClefQuestionBuilder.Build("@cf/cloudflare/clef-flash", "service due", services, Reading,
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 90);
-        request.Input.Questions["service"].Criteria.Select(c => c.Key).ShouldBe(services.Select(s => s.Code).Append("NONE_OF_THESE"));
+        request.Questions["service"].Criteria.Select(c => c.Key).ShouldBe(services.Select(s => s.Code).Append("NONE_OF_THESE"));
     }
 
     [Fact]
     public void Builds_closed_service_choice_with_structured_rubric_and_untrusted_state()
     {
         var request = Build("2026-10-12T08:00:00Z");
-        request.Input.State.CustomerDescription.ShouldBe("brakes squeal");
-        var service = request.Input.Questions["service"];
+        request.State.CustomerDescription.ShouldBe("brakes squeal");
+        var service = request.Questions["service"];
         service.Type.ShouldBe("choice");
         service.Criteria.Select(c => c.Key).ShouldBe(["BRAKES-PADS-DISCS", "NONE_OF_THESE"]);
         service.Criteria[Brakes.Code]!["typical_symptoms"]!.ToJsonString().ShouldContain("squeal");
@@ -42,7 +42,7 @@ public sealed class JevQuestionBuilderTests
     [InlineData("2026-03-28T23:30:00Z", "2026-03-28", "Saturday 28 March 2026")]
     public void Dates_follow_dealership_zone_across_DST(string utc, string localToday, string todayDescription)
     {
-        var question = Build(utc).Input.Questions["preferred_date"];
+        var question = Build(utc).Questions["preferred_date"];
         question.Criteria.Count.ShouldBe(15);
         question.Criteria.First().Key.ShouldBe(localToday);
         question.Instructions["today"]!.GetValue<string>().ShouldBe(todayDescription);
@@ -57,10 +57,10 @@ public sealed class JevQuestionBuilderTests
     public void Horizon_is_converted_from_the_last_bookable_instant_to_local_date()
     {
         var request = Build("2026-10-12T23:30:00Z", horizon: 2);
-        var dates = request.Input.Questions["preferred_date"].Criteria;
+        var dates = request.Questions["preferred_date"].Criteria;
         dates.Select(c => c.Key).ShouldBe(["2026-10-13", "2026-10-14", "2026-10-15", "NO_SPECIFIC_DATE"]);
     }
 
-    private static JevRequest Build(string utc, int horizon = 90) => JevQuestionBuilder.Build("typesafe/jev", "  brakes squeal  ",
+    private static ClefRequest Build(string utc, int horizon = 90) => ClefQuestionBuilder.Build("@cf/cloudflare/clef-flash", "  brakes squeal  ",
         [Brakes], Reading, new FakeTimeProvider(DateTimeOffset.Parse(utc, CultureInfo.InvariantCulture)), horizon);
 }

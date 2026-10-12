@@ -103,7 +103,7 @@ describe("container lifecycle with the real Container class", () => {
         Security__ForwardedHeaders__Enabled: "true",
       }),
     }]);
-    expect(runtime.intercepted).toEqual(["email.internal"]);
+    expect(runtime.intercepted).toEqual(["email.internal", "triage-media.internal"]);
     expect(runtime.proxied.map(request => new URL(request.url).pathname)).toEqual(["/api/v1/dealerships"]);
   });
 

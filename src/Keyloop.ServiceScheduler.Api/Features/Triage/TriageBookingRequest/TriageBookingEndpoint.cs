@@ -30,7 +30,7 @@ public sealed class TriageBookingEndpoint : IEndpoint
     /// <remarks>A person must confirm a suggestion before asking for availability and booking. No description is stored.</remarks>
     /// <param name="dealershipId">Dealership whose active resources and local dates bound the choices.</param>
     /// <param name="request">The booking intake description.</param>
-    /// <param name="handler">Evaluates the closed catalogue through Jev.</param>
+    /// <param name="handler">Evaluates the closed catalogue through Clef.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="200">Model, recommendation, service confidence, up to three candidates and an optional local date.</response>
     /// <response code="400">Description is missing, blank or over the limit (validation-error).</response>

@@ -24,6 +24,7 @@ public sealed class NotificationBacklogMonitor(IServiceScopeFactory scopes, Time
     private Backlog? _backlog;
     private long _attemptedAt;
     private int _refreshing;
+    private int _disposed;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -34,10 +35,29 @@ public sealed class NotificationBacklogMonitor(IServiceScopeFactory scopes, Time
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         Interlocked.CompareExchange(ref s_current, null, this);
-        await _stopping.CancelAsync();
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return; // The host can dispose the monitor before stopping it; a background refresh then sees the disposed token and gives up.
+        }
+
+        try
+        {
+            await _stopping.CancelAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposed between the check and the cancel: nothing is left to cancel.
+        }
     }
 
-    public void Dispose() => _stopping.Dispose();
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+        {
+            Interlocked.CompareExchange(ref s_current, null, this);
+            _stopping.Dispose();
+        }
+    }
 
     internal static IEnumerable<Measurement<long>> ObservePending() => Volatile.Read(ref s_current)?.Pending() ?? [];
 

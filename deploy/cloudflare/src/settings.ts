@@ -38,6 +38,8 @@ export function edgeSettings(source: Source) {
   const triageEnabled = flag(source, "KEYLOOP_TRIAGE_ENABLED");
   const triageAccountId = setting(source, "KEYLOOP_TRIAGE_ACCOUNT_ID", "");
   const triageGatewayId = setting(source, "KEYLOOP_TRIAGE_GATEWAY_ID", "keyloop-scheduler");
+  const triageBucket = setting(source, "KEYLOOP_TRIAGE_BUCKET", "keyloop-scheduler-triage");
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(triageBucket)) throw new Error("Configure a valid triage R2 bucket name");
   triageSettings(triageEnabled, triageAccountId, triageGatewayId);
   const emailTransport = setting(source, "KEYLOOP_EMAIL_TRANSPORT", "binding");
   if (emailTransport !== "binding" && emailTransport !== "rest") throw new Error("Set KEYLOOP_EMAIL_TRANSPORT to binding or rest");
@@ -58,6 +60,6 @@ export function edgeSettings(source: Source) {
     secretsStoreId, apiImage, authTeamDomain, authAudience, authAdmin, authServiceAdvisor, authViewer, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
     emailAllowedAddresses, emailAllowedDomains, emailMaxPerRecipientPerDay: caps.perRecipient, emailMaxPerDay: caps.perDay,
     otlpRelayEnabled, grafanaOtlpEndpoint,
-    triageEnabled, triageAccountId, triageGatewayId,
+    triageEnabled, triageAccountId, triageGatewayId, triageBucket,
   };
 }

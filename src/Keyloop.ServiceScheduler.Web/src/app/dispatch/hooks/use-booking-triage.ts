@@ -2,87 +2,149 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { useRef, useState } from "react"
 
 import { getBookingTriageStatusOptions, triageBookingRequestMutation } from "@/api/@tanstack/react-query.gen"
+import { uploadBookingTriageImage } from "@/api/sdk.gen"
 import type { TriageBookingResponse } from "@/api/types.gen"
 import { useCountdown } from "@/hooks/use-countdown"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { fieldErrors, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 import { withSpan } from "@/lib/telemetry"
 
-/**
- * `GET /booking-triage`: a deployment setting, read once and kept. The booking dialog asks for it as soon as the board shows
- * (while it is still closed), so the section is in place from the dialog's first frame instead of arriving after it.
- */
 export const bookingTriageStatusQuery = () => ({ ...getBookingTriageStatusOptions(), staleTime: 10 * 60_000 })
 
-/** The answer on screen, with the description it was for (to say when the text has changed since). */
 export interface TriageAnswer {
   response: TriageBookingResponse
   description: string
+  imageVersion: number
 }
 
-/**
- * Booking intake triage (ARCHITECTURE §8.10) for one booking: whether suggestions are on, the description, the last
- * answer and the candidate chosen in it, and the "copy into Notes" choice. It lives with the booking flow rather than in
- * step 1, so all of it is still there when the person comes back from step 2.
- *
- * Privacy: the description stays in this state. It leaves the browser only as the body of the triage request (never in an
- * address, a query key or a span attribute), and in the booking's notes when the person keeps the copy box ticked.
- */
+interface Submission {
+  description: string
+  photos: File[]
+  imageVersion: number
+  flowVersion: number
+}
+
+function imageBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1] ?? "")
+    reader.onerror = () => reject(new Error("The photo could not be read. Choose it again."))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Description and photos stay in dialog state; neither is a cache key or telemetry attribute. */
 export function useBookingTriage(dealershipId: string) {
-  // A failed read, or `enabled: false`, hides the section.
   const status = useQuery(bookingTriageStatusQuery())
   const [description, setDescription] = useState("")
+  const [photos, setPhotos] = useState<File[]>([])
+  const [imageVersion, setImageVersion] = useState(0)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [copyToNotes, setCopyToNotes] = useState(true)
   const [answer, setAnswer] = useState<TriageAnswer | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [descriptionError, setDescriptionError] = useState<string | null>(null)
   const [waiting, startWaiting] = useCountdown()
-  const lastSent = useRef<string | null>(null)
+  const lastSent = useRef<Submission | null>(null)
+  const flowVersion = useRef(0)
+  const uploads = useRef(new Map<File, { id: string; expires: number }>())
+  const maxImages = status.data?.maxImages ?? 4
+  const maxImageBytes = status.data?.maxImageBytes ?? 4 * 1024 * 1024
+  const maxTotalImageBytes = status.data?.maxTotalImageBytes ?? 8 * 1024 * 1024
 
   const generated = triageBookingRequestMutation()
   const request = useMutation({
-    ...generated,
-    // The generated mutation inside a `ui.booking_triage` span, so the trace runs from the click through the API to the
-    // gateway call. Its attributes name the dealership only: the description is never an attribute.
-    mutationFn: (variables, context) =>
-      withSpan("ui.booking_triage", ({ fetch }) => generated.mutationFn!({ ...variables, fetch }, context), {
-        "keyloop.dealership_id": dealershipId,
-      }),
-    onSuccess: (response, variables) => {
-      setAnswer({ response, description: variables.body.description })
-      // Even a confident suggestion waits for the person's "Use this"; a "confirm" preselects nothing.
+    mutationKey: generated.mutationKey,
+    mutationFn: (submission: Submission, context) =>
+      withSpan("ui.booking_triage", async ({ fetch }) => {
+        const imageIds: string[] = []
+        for (const photo of submission.photos) {
+          let upload = uploads.current.get(photo)
+          if (!upload || upload.expires <= Date.now() + 30_000) {
+            const response = await uploadBookingTriageImage({
+              path: { dealershipId },
+              body: { contentType: photo.type, base64: await imageBase64(photo) },
+              fetch,
+              throwOnError: true,
+            })
+            upload = { id: response.data.imageId, expires: Date.parse(response.data.expiresAt) }
+            uploads.current.set(photo, upload)
+          }
+          imageIds.push(upload.id)
+        }
+        return generated.mutationFn!({
+          path: { dealershipId },
+          body: { description: submission.description, ...(imageIds.length ? { imageIds } : {}) },
+          fetch,
+        }, context)
+      }, { "keyloop.dealership_id": dealershipId }),
+    onSuccess: (response, submission) => {
+      if (submission.flowVersion !== flowVersion.current) return
+      setAnswer({ response, description: submission.description, imageVersion: submission.imageVersion })
       setSelected(response.recommendation === "suggest" ? (response.services[0]?.serviceType.id ?? null) : null)
     },
-    onError: (error) => {
+    onError: (error, submission) => {
+      if (submission.flowVersion !== flowVersion.current) return
       setAnswer(null)
       setSelected(null)
       const problem = parseProblem(error)
       if (problem && problemSlug(problem) === "validation-error") {
-        setDescriptionError(fieldErrors(problem, { description: "Description" }).description ?? problem.detail ?? "Check the description.")
+        const errors = fieldErrors(problem, { description: "Description", imageIds: "Photos", base64: "Photo", contentType: "Photo type" })
+        const mediaError = errors.imageIds ?? errors.base64 ?? errors.contentType
+        if (mediaError) {
+          setImageError(mediaError)
+          uploads.current.clear()
+        } else setDescriptionError(errors.description ?? problem.detail ?? "Check the description.")
       }
       const httpStatus = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
       if (httpStatus === 429) startWaiting(Math.max(1, Math.ceil(Number(problem?.retryAfterSeconds ?? 1))))
     },
   })
-  // Kept while the same description is tried again, so the alert and its focused Try again stay until the answer.
   const failure = useMutationFailure(request)
 
   function send(text: string) {
     if (request.isPending || waiting > 0) return
     setDescriptionError(null)
-    lastSent.current = text
-    request.mutate({ path: { dealershipId }, body: { description: text } })
+    setImageError(null)
+    const submission = { description: text, photos: [...photos], imageVersion, flowVersion: flowVersion.current }
+    lastSent.current = submission
+    request.mutate(submission)
   }
 
   return {
-    /** `true` once the API says suggestions are on; `false` while that is unknown, off, or could not be read. */
     enabled: status.data?.enabled === true,
+    imagesEnabled: status.data?.imagesEnabled === true,
+    provider: status.data?.provider ?? "Clef-flash via Cloudflare AI Gateway",
     maxLength: status.data?.maxDescriptionLength ?? 500,
-    description,
-    setDescription(text: string) {
-      setDescription(text)
-      if (descriptionError) setDescriptionError(null)
+    maxImages,
+    photos,
+    imageVersion,
+    imageError,
+    addPhotos(files: File[]) {
+      const next = [...photos, ...files]
+      if (next.length > maxImages) { setImageError(`Choose at most ${maxImages} photos.`); return }
+      if (files.some(file => !["image/png", "image/jpeg", "image/webp"].includes(file.type))) {
+        setImageError("Choose PNG, JPEG or WebP photos."); return
+      }
+      if (files.some(file => file.size === 0 || file.size > maxImageBytes)) {
+        setImageError("Each photo must contain 1 byte to 4 MiB."); return
+      }
+      if (next.reduce((total, file) => total + file.size, 0) > maxTotalImageBytes) {
+        setImageError("Photos must total at most 8 MiB."); return
+      }
+      setPhotos(next)
+      setImageVersion(value => value + 1)
+      setImageError(null)
     },
+    removePhoto(index: number) {
+      const photo = photos[index]
+      if (photo) uploads.current.delete(photo)
+      setPhotos(photos.filter((_, position) => position !== index))
+      setImageVersion(value => value + 1)
+      setImageError(null)
+    },
+    description,
+    setDescription(text: string) { setDescription(text); if (descriptionError) setDescriptionError(null) },
     copyToNotes,
     setCopyToNotes,
     answer,
@@ -91,25 +153,21 @@ export function useBookingTriage(dealershipId: string) {
     descriptionError,
     pending: request.isPending,
     failure,
-    /** Seconds left of a rate limit's wait. */
     waiting,
-    /** Asks for suggestions for the description as typed (trimmed); a blank one is the person's to fill in first. */
     suggest(): boolean {
       const text = description.trim()
-      if (!text) {
-        setDescriptionError("Describe the issue to get a suggestion.")
-        return false
-      }
+      if (!text) { setDescriptionError("Describe the issue to get a suggestion."); return false }
       send(text)
       return true
     },
-    /** The last description sent, again (Try again after a failure). */
-    retry() {
-      if (lastSent.current) send(lastSent.current)
-    },
-    /** A fresh start for the next booking (Book another). */
+    retry() { if (lastSent.current) send(lastSent.current.description) },
     reset() {
+      flowVersion.current++
       setDescription("")
+      setPhotos([])
+      setImageVersion(0)
+      setImageError(null)
+      uploads.current.clear()
       setCopyToNotes(true)
       setAnswer(null)
       setSelected(null)

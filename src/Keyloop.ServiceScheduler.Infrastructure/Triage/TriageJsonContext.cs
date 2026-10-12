@@ -1,17 +1,28 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
+using System.Text.Encodings.Web;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Triage;
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
-[JsonSerializable(typeof(JevRequest))]
+[JsonSerializable(typeof(ClefRequest))]
 [JsonSerializable(typeof(ServiceRubric))]
-[JsonSerializable(typeof(JevEnvelope))]
-internal sealed partial class TriageJsonContext : JsonSerializerContext;
+[JsonSerializable(typeof(ClefEnvelope))]
+internal sealed partial class TriageJsonContext : JsonSerializerContext
+{
+    // This JSON is an HTTP body, never HTML. Preserve base64 '+' characters instead of expanding them to six-byte
+    // escapes, which could push valid 8 MiB image inputs past Cloudflare's 13 MiB request limit.
+    internal static TriageJsonContext Transport { get; } = new(new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    });
+}
 
-internal sealed record JevEnvelope(JevResult? Result, Dictionary<string, JevAnswer>? Answers, JevUsage? Usage, bool? Success);
-// /ai/run answers a third-party model with a completed run, { "result": { "state": "Completed", "result": { model body } } },
-// observed on the first live call (2026-10-12); the single-wrapped and bare model bodies are accepted as well.
-internal sealed record JevResult(Dictionary<string, JevAnswer>? Answers, JevUsage? Usage, string? State, JevResult? Result);
-public sealed record JevAnswer(string? Type, string? Choice, double? Confidence, Dictionary<string, double>? Probabilities);
-internal sealed record JevUsage(int? InputTokens);
-public sealed record JevEvaluation(JevAnswer Service, JevAnswer PreferredDate, int? InputTokens);
+internal sealed record ClefEnvelope(ClefResult? Result, Dictionary<string, ClefAnswer>? Answers, ClefUsage? Usage, bool? Success);
+// Retain the legacy completed-run wrapper captured from Jev on 2026-10-12. Native Clef also accepts the single-wrapped
+// and bare model bodies documented by Workers AI.
+internal sealed record ClefResult(Dictionary<string, ClefAnswer>? Answers, ClefUsage? Usage, string? State, ClefResult? Result);
+public sealed record ClefAnswer(string? Type, string? Choice, double? Confidence, Dictionary<string, double>? Probabilities);
+internal sealed record ClefUsage(int? InputTokens);
+public sealed record ClefEvaluation(ClefAnswer Service, ClefAnswer PreferredDate, int? InputTokens);

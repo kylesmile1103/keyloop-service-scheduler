@@ -15,6 +15,7 @@ export function fakeEnv() {
     AUTH_ADMIN: "",
     AUTH_SERVICE_ADVISOR: "",
     AUTH_VIEWER: "",
+    TRIAGE_IMAGES: { put: vi.fn(), get: vi.fn(), delete: vi.fn(), head: vi.fn(), list: vi.fn(), createMultipartUpload: vi.fn(), resumeMultipartUpload: vi.fn() },
     AI_TOKEN: { get: vi.fn().mockResolvedValue("test-token") },
     TRIAGE_ENABLED: "false" as Env["TRIAGE_ENABLED"],
     TRIAGE_ACCOUNT_ID: "00000000000000000000000000000000",

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Triage;
 
-public sealed class JevAnswerValidatorTests
+public sealed class ClefAnswerValidatorTests
 {
     [Theory]
     [InlineData("bare")]
@@ -21,8 +21,8 @@ public sealed class JevAnswerValidatorTests
             "run" => "{\"result\":{\"state\":\"Completed\",\"result\":" + response + "},\"success\":true,\"errors\":[],\"messages\":[]}",
             _ => response,
         };
-        var parsed = JsonSerializer.Deserialize(json, TriageJsonContext.Default.JevEnvelope);
-        var answer = JevAnswerValidator.Validate(parsed, request);
+        var parsed = JsonSerializer.Deserialize(json, TriageJsonContext.Default.ClefEnvelope);
+        var answer = ClefAnswerValidator.Validate(parsed, request);
         answer.Service.Choice.ShouldBe("BRAKES-PADS-DISCS");
         answer.InputTokens.ShouldBe(123);
     }
@@ -35,20 +35,20 @@ public sealed class JevAnswerValidatorTests
     {
         var (request, response) = Valid();
         var json = "{\"result\":{\"state\":\"" + state + "\",\"result\":" + response + "},\"success\":true}";
-        var parsed = JsonSerializer.Deserialize(json, TriageJsonContext.Default.JevEnvelope);
-        Should.Throw<TriageUnavailableException>(() => JevAnswerValidator.Validate(parsed, request)).Reason.ShouldBe("invalid-answer");
+        var parsed = JsonSerializer.Deserialize(json, TriageJsonContext.Default.ClefEnvelope);
+        Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(parsed, request)).Reason.ShouldBe("invalid-answer");
     }
 
     [Fact]
-    public void Accepts_the_response_captured_on_the_first_live_call()
+    public void Accepts_the_legacy_Jev_response_with_the_same_typed_answer_schema()
     {
         // The Reading catalogue and clock of the captured request (2026-10-12T08:00Z, 90-day horizon) and the body Cloudflare
         // returned for it through the keyloop-scheduler gateway on 2026-10-12, unedited.
-        var request = JevQuestionBuilder.Build("typesafe/jev", "Brakes squeal, it's an EV, need it Thursday.",
-            ReferenceDataSeed.CreateServiceTypes(), JevQuestionBuilderTests.Reading,
+        var request = ClefQuestionBuilder.Build("@cf/cloudflare/clef-flash", "Brakes squeal, it's an EV, need it Thursday.",
+            ReferenceDataSeed.CreateServiceTypes(), ClefQuestionBuilderTests.Reading,
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 90);
-        var parsed = JsonSerializer.Deserialize(LiveResponse, TriageJsonContext.Default.JevEnvelope);
-        var answer = JevAnswerValidator.Validate(parsed, request);
+        var parsed = JsonSerializer.Deserialize(LiveResponse, TriageJsonContext.Default.ClefEnvelope);
+        var answer = ClefAnswerValidator.Validate(parsed, request);
         answer.Service.Choice.ShouldBe("BRAKES-PADS-DISCS");
         answer.PreferredDate.Choice.ShouldBe("2026-10-15");
         answer.InputTokens.ShouldBe(1942);
@@ -91,15 +91,15 @@ public sealed class JevAnswerValidatorTests
             case "wrong-winner": service["choice"] = "NONE_OF_THESE"; break;
             case "null-answer": response["answers"]!["service"] = null; break;
         }
-        var parsed = JsonSerializer.Deserialize(response.ToJsonString(), TriageJsonContext.Default.JevEnvelope);
-        var exception = Should.Throw<TriageUnavailableException>(() => JevAnswerValidator.Validate(parsed, request));
+        var parsed = JsonSerializer.Deserialize(response.ToJsonString(), TriageJsonContext.Default.ClefEnvelope);
+        var exception = Should.Throw<TriageUnavailableException>(() => ClefAnswerValidator.Validate(parsed, request));
         exception.Reason.ShouldBe("invalid-answer");
         exception.ToString().ShouldNotContain("PRIVATE UNKNOWN");
     }
 
-    private static (JevRequest Request, string Response) Valid()
+    private static (ClefRequest Request, string Response) Valid()
     {
-        var request = JevQuestionBuilder.Build("typesafe/jev", "brakes squeal", [JevQuestionBuilderTests.Brakes], JevQuestionBuilderTests.Reading,
+        var request = ClefQuestionBuilder.Build("@cf/cloudflare/clef-flash", "brakes squeal", [ClefQuestionBuilderTests.Brakes], ClefQuestionBuilderTests.Reading,
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 1);
         return (request, """
             {"answers":{"service":{"type":"choice","choice":"BRAKES-PADS-DISCS","confidence":0.8,"probabilities":{"BRAKES-PADS-DISCS":0.9,"NONE_OF_THESE":0.1}},

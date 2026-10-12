@@ -52,6 +52,8 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
 
     private static ProblemDetails Map(Exception exception) => exception switch
     {
+        TriageInputException input => Problem(new HttpValidationProblemDetails(new Dictionary<string, string[]>
+            { [input.Field] = [input.Message] }), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError, "One or more fields are invalid."),
         TriageUnavailableException unavailable => Problem(StatusCodes.Status503ServiceUnavailable, ProblemTypes.TriageUnavailable, unavailable.Message),
         DomainRuleViolationException rule => Problem(
             StatusCodes.Status422UnprocessableEntity, ProblemTypes.ForRule(rule.RuleCode), rule.Message, [.. rule.Extensions]),

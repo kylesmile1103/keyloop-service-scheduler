@@ -17,7 +17,7 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
       notificationsEnabled: "false", emailSendingEnabled: "false", emailTransport: "binding", emailAccountId: "",
       emailAllowedAddresses: "", emailAllowedDomains: "", emailMaxPerRecipientPerDay: "10", emailMaxPerDay: "100",
       otlpRelayEnabled: "false", grafanaOtlpEndpoint: "",
-      triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler",
+      triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler", triageBucket: "keyloop-scheduler-triage",
     });
   });
   it("accepts a complete REST, notification and OTLP profile", () => {

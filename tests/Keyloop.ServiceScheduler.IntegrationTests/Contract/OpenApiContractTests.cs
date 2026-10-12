@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "GetCurrentUser"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -52,6 +52,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.TechnicianResponse,
         SchedulerJsonContext.Default.BookingTriageStatusResponse,
         SchedulerJsonContext.Default.TriageBookingResponse,
+        SchedulerJsonContext.Default.UploadBookingTriageImageResponse,
         SchedulerJsonContext.Default.TriageServiceCandidate,
         SchedulerJsonContext.Default.TriagePreferredDate,
         SchedulerJsonContext.Default.AppointmentListItemResponse,
@@ -118,7 +119,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         Text(schemes["AccessCookie"]!["in"]).ShouldBe("cookie");
         foreach (var (_, operation) in Operations(document))
         {
-            var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest";
+            var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest"
+                or "UploadBookingTriageImage";
             var security = operation["security"].ShouldNotBeNull().AsArray();
             security.Any(item => item!.AsObject().Count == 0).ShouldBe(!protectedRoute);
             security.Any(item => item!["CloudflareAccess"] != null).ShouldBeTrue();
@@ -198,6 +200,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/appointments/{appointmentId}/cancel", "403"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "401"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "403"),
                 ("GET /api/v1/appointments/{appointmentId}", "401"),
                 ("GET /api/v1/appointments/{appointmentId}", "403"),
                 ("GET /api/v1/me", "429"),
@@ -230,6 +234,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "404"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "429"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "503"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "413"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "429"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "503"),
             ],
             ignoreOrder: true);
 
@@ -284,6 +293,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("BookAppointment", "The booking: the service and its start time, the customer and the vehicle, with an optional preferred bay, technician and notes."),
             ("CancelAppointment", "The cancellation: why the appointment is cancelled."),
             ("TriageBookingRequest", "The booking intake: the customer's issue and optional preferred date, as untrusted text."),
+            ("UploadBookingTriageImage", "A PNG, JPEG or WebP image: contentType and base64 bytes, at most four MiB decoded and 16 megapixels."),
         ]);
     }
 
@@ -309,6 +319,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "200", "WorkshopScheduleResponse"),
                 ("GET /api/v1/booking-triage", "200", "BookingTriageStatusResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "200", "TriageBookingResponse"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage/images", "200", "UploadBookingTriageImageResponse"),
                 ("GET /api/v1/me", "200", "CurrentUserResponse"),
             ]);
 

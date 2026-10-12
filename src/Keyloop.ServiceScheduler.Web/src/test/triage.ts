@@ -13,9 +13,13 @@ import type {
 /** `GET /booking-triage` with suggestions switched on (the API ships with them off). */
 export const triageEnabled: BookingTriageStatusResponse = {
   enabled: true,
-  model: "typesafe/jev",
-  provider: "Jev by TypeSafe via Cloudflare AI Gateway",
+  model: "@cf/cloudflare/clef-flash",
+  provider: "Clef-flash via Cloudflare AI Gateway",
   maxDescriptionLength: 500,
+  imagesEnabled: true,
+  maxImages: 4,
+  maxImageBytes: 4 * 1024 * 1024,
+  maxTotalImageBytes: 8 * 1024 * 1024,
 }
 
 /** `GET /booking-triage` as the API ships: suggestions off. */
@@ -48,7 +52,7 @@ export function triageAnswer(
   preferredDate: TriagePreferredDate | null = null
 ): TriageBookingResponse {
   return {
-    model: "typesafe/jev",
+    model: "@cf/cloudflare/clef-flash",
     recommendation,
     serviceConfidence: recommendation === "suggest" ? 0.9 : recommendation === "confirm" ? 0.5 : 0.2,
     services: candidates.map(([service, probability]) => ({
