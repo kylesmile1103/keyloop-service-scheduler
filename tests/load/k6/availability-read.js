@@ -1,14 +1,13 @@
 import { config, commonOptions, arrivalRate } from './lib/config.js';
 import { discover, baseThresholds } from './lib/api.js';
-import { readIteration } from './lib/workload.js';
+import { readIteration, readThresholds } from './lib/workload.js';
 import { summarize } from './lib/summary.js';
 
 const rate = arrivalRate(config.production ? 80 : 120, 120);
 export const options = {
   ...commonOptions({
     ...baseThresholds(),
-    'http_req_duration{endpoint:GetAvailability,phase:workload}': ['p(95)<200', 'p(99)<500'],
-    'http_req_duration{endpoint:GetWorkshopSchedule,phase:workload}': ['p(95)<200', 'p(99)<500'],
+    ...readThresholds(),
   }),
   scenarios: {
     availability: {

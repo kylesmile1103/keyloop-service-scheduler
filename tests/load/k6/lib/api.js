@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import exec from 'k6/execution';
 import { Counter, Rate, Trend } from 'k6/metrics';
-import { config, fraction } from './config.js';
+import { config, fraction, optionalInteger } from './config.js';
 
 export const bookingSuccess = new Counter('booking_success');
 export const bookingConflicts = new Counter('booking_conflicts');
@@ -14,22 +14,30 @@ export const retryAfterSeconds = new Trend('retry_after_seconds');
 export const lifecycleCompleted = new Counter('lifecycle_completed');
 export const cancelled = new Counter('cancelled');
 export const secondCancelConflicts = new Counter('second_cancel_conflicts');
+export const orphansCancelled = new Counter('orphans_cancelled');
 
-export function baseThresholds(rateLimitBudget = 0.01) {
-  return {
+// rateLimitBudget is the default fraction of HTTP attempts allowed to be 429s
+// (MAX_RATE_LIMIT_RATE overrides it). droppedIterations is the default number
+// of dropped iterations allowed (MAX_DROPPED_ITERATIONS overrides it); null
+// reports them without a gate, for a profile whose VUs are expected to wait
+// out Retry-After while the arrival-rate executor keeps offering iterations.
+export function baseThresholds({ rateLimitBudget = 0.01, droppedIterations = 0 } = {}) {
+  const thresholds = {
     checks: ['rate==1'],
     unexpected_statuses: ['rate==0'],
     server_errors: ['count==0'],
     http_req_failed: ['rate<0.01'],
     rate_limited: [`rate<=${fraction('MAX_RATE_LIMIT_RATE', rateLimitBudget)}`],
     iterations: ['count>0'],
-    dropped_iterations: ['count==0'],
   };
+  const drops = optionalInteger('MAX_DROPPED_ITERATIONS', droppedIterations);
+  if (drops !== null) thresholds.dropped_iterations = [`count<=${drops}`];
+  return thresholds;
 }
 
 export function initializeMetrics() {
   [bookingSuccess, bookingConflicts, replayed, serverErrors, lifecycleCompleted,
-    cancelled, secondCancelConflicts].forEach((metric) => metric.add(0));
+    cancelled, secondCancelConflicts, orphansCancelled].forEach((metric) => metric.add(0));
 }
 
 export function header(response, name) {
@@ -54,8 +62,13 @@ export function problem(response, slugs, startUtc, requireSuggestions = false, t
   return check(response, { 'problem matches contract': () => valid && suggestions }, tags);
 }
 
-// Cooldown is per VU. Arrival rate executors may still fill the capped VU pool;
-// rate_limited and dropped_iterations expose that overload instead of hiding it.
+// The Retry-After cooldown is per VU by design: each VU models one client, and
+// all VUs share the generator's IP like clients behind one NAT. k6 has no
+// mutable state shared across VUs, so other VUs learn of the limit only from
+// their own 429. The Production preset, required for every remote run, does
+// not rely on that: the first workload 429 aborts the whole test (k6 exit 108)
+// so the IP stops sending. Setup and teardown run alone in one VU, where this
+// cooldown pauses every request from the IP, so they wait and retry instead.
 let nextRequestAt = 0;
 export function request(method, path, endpoint, body, expected, settings = {}) {
   if (settings.backoff !== false) sleep(Math.max(0, nextRequestAt - Date.now()) / 1000);
@@ -81,6 +94,9 @@ export function request(method, path, endpoint, body, expected, settings = {}) {
     const wait = valid ? Number(delay) : 60;
     retryAfterSeconds.add(wait, tags);
     nextRequestAt = Date.now() + wait * 1000;
+    if (config.production && !['setup', 'teardown'].includes(tags.phase)) {
+      exec.test.abort(`429 on ${endpoint} under the Production preset, Retry-After ${wait}s; stopping all VUs`);
+    }
     // Contention must finish this request as a 429 and fail its exact counts.
     // It never converts a throttled contender into a later booking attempt.
     if (settings.backoff === false) sleep(wait);

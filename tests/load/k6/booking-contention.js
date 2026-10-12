@@ -18,7 +18,7 @@ const startLag = new Trend('contention_start_lag', true);
 const verified = new Counter('contention_verified');
 
 const thresholds = {
-  ...baseThresholds(0),
+  ...baseThresholds({ rateLimitBudget: 0 }),
   booking_success: [`count==${rounds}`],
   booking_conflicts: [`count==${rounds * (contenders - 1)}`],
   replayed: ['count==0'],
@@ -89,9 +89,10 @@ export function contend(context) {
 export function teardown(context) {
   // setup data is immutable across VUs. Find winners through the public board,
   // then dereference them through GetAppointment before cancelling our own rows.
-  // Each round fits the Production write window. Leave room for cancellations
-  // too when the final round used all or most of its 30 write permits.
-  if (config.production && contenders + rounds > 30) sleep(65);
+  // Under the Production preset, wait one full limiter window first: the final
+  // round may have used most of the 30 write permits, and a workload 429 aborts
+  // the run straight into teardown while its Retry-After may still be running.
+  if (config.production) sleep(65);
   for (let index = 0; index < context.slots.length; index++) {
     const slot = context.slots[index];
     const tags = { round: String(index + 1) };

@@ -6,6 +6,11 @@ export function integer(name, fallback, min = 1, max = 1000000) {
   return value;
 }
 
+// An unset variable keeps the fallback, which may be null (no limit).
+export function optionalInteger(name, fallback, min = 0, max = 1000000) {
+  return __ENV[name] === undefined || __ENV[name] === '' ? fallback : integer(name, fallback, min, max);
+}
+
 export function fraction(name, fallback) {
   const value = Number(__ENV[name] === undefined ? fallback : __ENV[name]);
   if (!Number.isFinite(value) || value < 0 || value > 1) {
@@ -14,9 +19,11 @@ export function fraction(name, fallback) {
   return value;
 }
 
-const baseUrl = (__ENV.BASE_URL || 'http://127.0.0.1:5420').replace(/\/$/, '');
 // Accept an origin only, so credentials cannot enter request tags or reports.
-const origin = /^https?:\/\/([^/:?#@]+)(?::\d+)?$/.exec(baseUrl);
+// The host is a bracketed IPv6 literal, or a name or IPv4 address without ':',
+// '@' or brackets. selftest.sh covers the accepted and refused forms.
+const baseUrl = (__ENV.BASE_URL || 'http://127.0.0.1:5420').replace(/\/$/, '');
+const origin = /^https?:\/\/(\[[0-9A-Fa-f:.]+\]|[^/:?#@[\]]+)(?::\d{1,5})?$/.exec(baseUrl);
 if (!origin) throw new Error('BASE_URL must be an http(s) origin without credentials or a path');
 const local = ['127.0.0.1', 'localhost', '[::1]'].includes(origin[1]);
 const rateEnvironment = __ENV.RATE_LIMIT_ENV || 'Development';

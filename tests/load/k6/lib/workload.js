@@ -1,6 +1,8 @@
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 import exec from 'k6/execution';
-import { availability, schedule, book, bookingBody, cancel, appointment, header, json, lifecycleCompleted } from './api.js';
+import { config } from './config.js';
+import { availability, schedule, book, bookingBody, cancel, appointment, header, json, mustRead,
+  lifecycleCompleted, orphansCancelled } from './api.js';
 
 export function readAvailability(context, date) {
   const response = availability(context, date);
@@ -79,12 +81,37 @@ export function mixedIteration(context) {
   else readAvailability(context, date);
 }
 
+// A lifecycle cancels its own booking in a finally block, but an aborted or
+// interrupted iteration never reaches it. Teardown therefore cancels whatever
+// this run still holds on its booking dates; any such leftover fails the
+// orphans_cancelled gate. Under the Production preset it first waits one full
+// limiter window, because a 429 abort leads straight here.
+export function cancelLeftoverBookings(context) {
+  if (config.production) sleep(65);
+  for (const date of context.bookingDates) {
+    const board = mustRead(schedule(context, date, 'teardown'), 'Leftover booking schedule');
+    const leftovers = board.bays.flatMap((bay) => bay.appointments).filter((a) =>
+      a.status === 'Confirmed' && a.customerName.startsWith(`${context.runId}-`));
+    for (const leftover of leftovers) {
+      if (cancel(leftover.id, false, 'teardown').status === 200) orphansCancelled.add(1);
+    }
+  }
+}
+
+// SYSTEM_DESIGN 4.2 sets availability p95 < 100 ms and booking p95 < 150 ms.
+// The schedule p95 and every p99 are local budgets with no design target.
+export function readThresholds() {
+  return {
+    'http_req_duration{endpoint:GetAvailability,phase:workload}': ['p(95)<100', 'p(99)<500'],
+    'http_req_duration{endpoint:GetWorkshopSchedule,phase:workload}': ['p(95)<200', 'p(99)<500'],
+  };
+}
+
 export function workloadThresholds() {
   return {
-    'http_req_duration{endpoint:GetAvailability,phase:workload}': ['p(95)<200', 'p(99)<500'],
-    'http_req_duration{endpoint:GetWorkshopSchedule,phase:workload}': ['p(95)<200', 'p(99)<500'],
+    ...readThresholds(),
     'http_req_duration{endpoint:BookAppointment,phase:workload}': ['p(95)<150', 'p(99)<500'],
     booking_success: ['count>0'], replayed: ['count>0'], lifecycle_completed: ['count>0'],
-    cancelled: ['count>0'], second_cancel_conflicts: ['count>0'],
+    cancelled: ['count>0'], second_cancel_conflicts: ['count>0'], orphans_cancelled: ['count==0'],
   };
 }

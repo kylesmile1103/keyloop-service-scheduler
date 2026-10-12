@@ -1,6 +1,6 @@
 import { config, commonOptions, arrivalRate } from './lib/config.js';
 import { discover, baseThresholds } from './lib/api.js';
-import { mixedIteration, workloadThresholds } from './lib/workload.js';
+import { mixedIteration, workloadThresholds, cancelLeftoverBookings } from './lib/workload.js';
 import { summarize } from './lib/summary.js';
 
 export const options = {
@@ -16,4 +16,5 @@ export const options = {
 };
 export const setup = () => discover();
 export const mixed = mixedIteration;
+export const teardown = cancelLeftoverBookings;
 export const handleSummary = (data) => summarize('soak', data);
