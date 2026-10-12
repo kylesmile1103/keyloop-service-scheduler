@@ -1,7 +1,7 @@
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 

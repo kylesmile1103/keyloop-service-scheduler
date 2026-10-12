@@ -1,10 +1,10 @@
 using System.Globalization;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
-using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;

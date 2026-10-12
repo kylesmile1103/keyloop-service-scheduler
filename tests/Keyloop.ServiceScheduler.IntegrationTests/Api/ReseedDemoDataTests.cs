@@ -1,12 +1,12 @@
 using System.Net;
-using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
-using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

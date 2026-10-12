@@ -1,7 +1,7 @@
 using System.Diagnostics.Metrics;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.UnitTests.TestSupport;
 using Microsoft.Extensions.Logging;
 

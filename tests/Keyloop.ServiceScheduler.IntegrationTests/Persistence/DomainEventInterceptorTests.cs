@@ -2,13 +2,13 @@ using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 

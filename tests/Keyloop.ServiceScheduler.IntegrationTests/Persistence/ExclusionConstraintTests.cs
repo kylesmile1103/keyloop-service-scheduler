@@ -1,6 +1,6 @@
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;

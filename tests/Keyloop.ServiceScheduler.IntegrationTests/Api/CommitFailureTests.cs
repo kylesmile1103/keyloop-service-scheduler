@@ -1,14 +1,14 @@
 using System.Net;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
-using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;

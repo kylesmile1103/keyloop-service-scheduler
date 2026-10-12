@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 

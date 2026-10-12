@@ -3,16 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
-/// <summary>
-/// Source-generated log methods with stable event ids (Addendum A §A5); product code logs only through these. Ids:
-/// 1001 BookingConfirmed (written by the post-commit TelemetryDomainEventObserver), 1002 BookingRejected, 1003 ConstraintBackstopFired, 1004 DeadlockDetected,
-/// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
-/// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog), 1105 DemoDataReseeded, 1106 DemoReseedRefused;
-/// 1200 UnhandledException; 1300 NotificationSent, 1301 NotificationRetried, 1302 NotificationFailed, 1303 NotificationDispatchCycleFailed,
-/// 1304 NotificationClaimLost (written by NotificationDispatcher), 1305 NotificationSuppressed (written by DomainEventInterceptor once a row
-/// staged Suppressed has committed, or by NotificationDispatcher when it suppresses a Pending row at claim). Never log customer PII: ids,
-/// fixed categories and the masked VIN only, never an email address, masked or not (SYSTEM_DESIGN §11.1).
-/// </summary>
+/// <summary>Source-generated request and host logs with stable event ids (ADR-016). Never log customer PII.</summary>
 internal static partial class SchedulerLog
 {
     // Typed scope state: no reflection or discovery. Nested scopes add ids as soon as they are known and flow through async EF work.
@@ -53,21 +44,9 @@ internal static partial class SchedulerLog
         Message = "Deadlock detected while booking at dealership {DealershipId}; the booking path must take one lock only (ADR-003)")]
     public static partial void DeadlockDetected(this ILogger logger, Exception exception, Guid dealershipId);
 
-    [LoggerMessage(EventId = 1005, EventName = "DomainEventObserverFailed", Level = LogLevel.Error,
-        Message = "Domain event observer {Observer} failed after commit for {EventTypes}; the committed change stands")]
-    public static partial void DomainEventObserverFailed(this ILogger logger, Exception exception, string observer, string eventTypes);
-
     [LoggerMessage(EventId = 1010, EventName = "AppointmentCancelled", Level = LogLevel.Information,
         Message = "Appointment {AppointmentId} cancelled (was {PreviousStatus})")]
     public static partial void AppointmentCancelled(this ILogger logger, Guid appointmentId, AppointmentStatus previousStatus);
-
-    [LoggerMessage(EventId = 1100, EventName = "MigrationsApplied", Level = LogLevel.Information,
-        Message = "Applied {Count} pending database migration(s): {Migrations}")]
-    public static partial void MigrationsApplied(this ILogger logger, int count, string migrations);
-
-    [LoggerMessage(EventId = 1101, EventName = "SeedCompleted", Level = LogLevel.Information,
-        Message = "Seed '{Seed}' completed: {Created} row(s) created")]
-    public static partial void SeedCompleted(this ILogger logger, string seed, int created);
 
     [LoggerMessage(EventId = 1102, EventName = "ApiStarting", Level = LogLevel.Information,
         Message = "Scheduler API starting in {Environment}: migrate on startup {MigrateOnStartup}, seed demo data {SeedDemoData}, OpenAPI and Scalar {ApiReference}, authentication {Authentication}")]
@@ -107,28 +86,4 @@ internal static partial class SchedulerLog
     [LoggerMessage(EventId = 1200, EventName = "UnhandledException", Level = LogLevel.Error,
         Message = "Unhandled exception for {Method} {Path}; answered 500 internal-error")]
     public static partial void UnhandledException(this ILogger logger, Exception exception, string method, string path);
-
-    [LoggerMessage(EventId = 1300, EventName = "NotificationSent", Level = LogLevel.Information,
-        Message = "Notification {OutboxId} ({Kind}) for appointment {AppointmentId} accepted by the sender")]
-    public static partial void NotificationSent(this ILogger logger, Guid outboxId, Guid appointmentId, string kind);
-
-    [LoggerMessage(EventId = 1301, EventName = "NotificationRetried", Level = LogLevel.Warning,
-        Message = "Notification {OutboxId} ({Kind}) for appointment {AppointmentId} failed attempt {Attempt} ({Failure}), next attempt {NextAttemptAt:O}")]
-    public static partial void NotificationRetried(this ILogger logger, Guid outboxId, Guid appointmentId, string kind, int attempt, DateTime nextAttemptAt, string failure);
-
-    [LoggerMessage(EventId = 1302, EventName = "NotificationFailed", Level = LogLevel.Error,
-        Message = "Notification {OutboxId} ({Kind}) for appointment {AppointmentId} is a dead letter after {Attempts} attempts ({Failure})")]
-    public static partial void NotificationFailed(this ILogger logger, Guid outboxId, Guid appointmentId, string kind, int attempts, string failure);
-
-    [LoggerMessage(EventId = 1303, EventName = "NotificationDispatchCycleFailed", Level = LogLevel.Error,
-        Message = "Notification dispatch cycle failed ({FailureType}), outstanding leases will expire")]
-    public static partial void NotificationDispatchCycleFailed(this ILogger logger, string failureType);
-
-    [LoggerMessage(EventId = 1304, EventName = "NotificationClaimLost", Level = LogLevel.Warning,
-        Message = "Notification {OutboxId} ({Kind}) acknowledgement ignored because the claim is no longer owned")]
-    public static partial void NotificationClaimLost(this ILogger logger, Guid outboxId, string kind);
-
-    [LoggerMessage(EventId = 1305, EventName = "NotificationSuppressed", Level = LogLevel.Information,
-        Message = "Notification {OutboxId} ({Kind}) for appointment {AppointmentId} suppressed without a send ({Reason})")]
-    public static partial void NotificationSuppressed(this ILogger logger, Guid outboxId, Guid appointmentId, string kind, string reason);
 }

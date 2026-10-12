@@ -1,7 +1,7 @@
 using System.Text.Json;
 using DotNet.Testcontainers.Builders;
 using Keyloop.ServiceScheduler.Api.Common.Options;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.Extensions.Options;
 

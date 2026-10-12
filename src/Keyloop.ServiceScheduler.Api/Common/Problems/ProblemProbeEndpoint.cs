@@ -4,6 +4,7 @@ using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

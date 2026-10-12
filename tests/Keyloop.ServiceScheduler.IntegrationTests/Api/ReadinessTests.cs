@@ -1,5 +1,5 @@
 using System.Net;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;

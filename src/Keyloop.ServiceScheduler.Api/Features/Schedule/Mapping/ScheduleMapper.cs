@@ -1,10 +1,10 @@
+using AppointmentRow = Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries.DayScheduleReader.AppointmentRow;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
+using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Keyloop.ServiceScheduler.Domain.Catalog;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
-using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 using Riok.Mapperly.Abstractions;
-using AppointmentRow = Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Queries.DayScheduleReader.AppointmentRow;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Schedule.Mapping;
 

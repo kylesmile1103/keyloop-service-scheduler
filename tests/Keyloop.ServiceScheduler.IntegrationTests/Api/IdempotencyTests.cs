@@ -1,9 +1,9 @@
 using System.Net;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
-using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;

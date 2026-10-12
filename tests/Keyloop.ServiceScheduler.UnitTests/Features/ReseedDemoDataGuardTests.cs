@@ -1,5 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 

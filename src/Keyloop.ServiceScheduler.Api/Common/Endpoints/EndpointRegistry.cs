@@ -8,6 +8,7 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Endpoints;

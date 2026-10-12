@@ -1,8 +1,8 @@
 using System.Net;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
+using System.Text.Json;
+using System.Text;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;

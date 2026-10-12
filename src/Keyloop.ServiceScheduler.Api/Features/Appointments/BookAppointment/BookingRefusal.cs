@@ -1,6 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 

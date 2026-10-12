@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Net;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
+using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Json;

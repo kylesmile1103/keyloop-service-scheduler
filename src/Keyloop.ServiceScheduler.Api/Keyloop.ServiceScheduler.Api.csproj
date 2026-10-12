@@ -21,13 +21,12 @@
     <OpenApiGenerateDocumentsOptions>--file-name v1 --openapi-version OpenApi3_1</OpenApiGenerateDocumentsOptions>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Keyloop.ServiceScheduler.Infrastructure\Keyloop.ServiceScheduler.Infrastructure.csproj" />
     <ProjectReference Include="..\Keyloop.ServiceScheduler.Domain\Keyloop.ServiceScheduler.Domain.csproj" />
     <ProjectReference Include="..\Keyloop.ServiceScheduler.ServiceDefaults\Keyloop.ServiceScheduler.ServiceDefaults.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -37,7 +36,6 @@
     <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" PrivateAssets="all" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="FluentValidation" />
-    <PackageReference Include="MailKit" />
     <!-- Compile-time mapping generator only (Addendum A §A1/§A6). -->
     <PackageReference Include="Riok.Mapperly" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>

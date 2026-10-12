@@ -1,12 +1,12 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
+using System.Text;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
-using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

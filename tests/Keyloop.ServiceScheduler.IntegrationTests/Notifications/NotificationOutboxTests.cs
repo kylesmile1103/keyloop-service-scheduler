@@ -2,14 +2,14 @@ using System.Data.Common;
 using Keyloop.ServiceScheduler.Api.Common.Http;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
+using Keyloop.ServiceScheduler.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Notifications;
 

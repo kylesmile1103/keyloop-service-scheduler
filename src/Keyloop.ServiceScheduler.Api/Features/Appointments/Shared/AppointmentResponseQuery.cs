@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;

@@ -1,9 +1,6 @@
 using System.Text.Json.Serialization;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
-using Keyloop.ServiceScheduler.Domain.Dealerships;
-using Keyloop.ServiceScheduler.Domain.Resources;
-using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
@@ -12,7 +9,9 @@ using Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
 using Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
+using Keyloop.ServiceScheduler.Domain.Resources;
+using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 
@@ -33,15 +32,6 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
     DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     UseStringEnumConverter = true,
     WriteIndented = false)]
-// Task 6: audit payloads (appointment_history.payload)
-[JsonSerializable(typeof(AppointmentBooked))]
-[JsonSerializable(typeof(AppointmentCancelled))]
-[JsonSerializable(typeof(AppointmentCheckedIn))]
-[JsonSerializable(typeof(AppointmentStarted))]
-[JsonSerializable(typeof(AppointmentCompleted))]
-[JsonSerializable(typeof(AppointmentNoShow))]
-// Task 19: the notification outbox snapshot (notification_outbox.payload), rendered into the email at dispatch
-[JsonSerializable(typeof(NotificationSnapshot))]
 // Task 7: problem extension values (SYSTEM_DESIGN §8.7), by runtime type
 [JsonSerializable(typeof(OperatingWindow))] // operatingWindow
 [JsonSerializable(typeof(DateTime))] // earliestStartUtc, latestStartUtc

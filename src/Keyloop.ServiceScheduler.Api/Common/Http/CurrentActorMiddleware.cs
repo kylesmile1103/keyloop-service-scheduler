@@ -1,3 +1,5 @@
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
+
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>

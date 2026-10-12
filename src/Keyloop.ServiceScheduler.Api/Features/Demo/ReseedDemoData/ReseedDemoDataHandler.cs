@@ -3,8 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 

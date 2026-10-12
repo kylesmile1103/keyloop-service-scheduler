@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Options;

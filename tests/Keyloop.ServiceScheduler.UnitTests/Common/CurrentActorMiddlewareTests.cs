@@ -1,5 +1,6 @@
 using System.Net;
 using Keyloop.ServiceScheduler.Api.Common.Http;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 using Microsoft.AspNetCore.Http;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Common;

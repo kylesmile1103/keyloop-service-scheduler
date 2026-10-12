@@ -1,4 +1,4 @@
-using Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
+using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 

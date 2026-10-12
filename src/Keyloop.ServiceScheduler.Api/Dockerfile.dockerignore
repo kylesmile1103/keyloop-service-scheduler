@@ -1,5 +1,5 @@
 # Build context for src/Keyloop.ServiceScheduler.Api/Dockerfile (context: the repository root). Allow-list: only the shared build
-# settings and the API and its referenced projects the API is built from are sent, never node_modules, test output or local secrets.
+# settings and the API with its referenced projects are sent, never node_modules, test output or local secrets.
 *
 !global.json
 !Directory.Build.props
@@ -7,6 +7,7 @@
 !.editorconfig
 !src/Keyloop.ServiceScheduler.ServiceDefaults/
 !src/Keyloop.ServiceScheduler.Domain/
+!src/Keyloop.ServiceScheduler.Infrastructure/
 !src/Keyloop.ServiceScheduler.Api/
 **/bin/
 **/obj/

@@ -1,6 +1,6 @@
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Catalog.Mapping;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;

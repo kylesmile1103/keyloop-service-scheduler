@@ -2,7 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Dealerships.GetDealerships;
-using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Seeding;
+using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
