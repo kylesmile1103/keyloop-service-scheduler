@@ -363,6 +363,67 @@ describe("configuration changes reach a running container", () => {
     expect(runtime.destroys).toBe(0);
   });
 
+  it("holds requests that arrive while the old container drains to the same single restart", async () => {
+    const { runtime, storage } = await warmContainer();
+    runtime.stopAfterMs = 10_000;
+    const next = deploy(runtime, storage, enableTriage);
+    const first = settle(next.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(5_000);
+    const duringDrain = settle(next.api.fetch(edgeRequest("/api/v1/features")));
+    await vi.advanceTimersByTimeAsync(5_000);
+    const atExit = settle(next.api.fetch(edgeRequest("/api/v1/me")));
+    await vi.advanceTimersByTimeAsync(3_000);
+    for (const response of [first, duringDrain, atExit]) expect(await response).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.destroys).toBe(0);
+    expect(runtime.starts).toHaveLength(2);
+  });
+
+  it("never stops a restarted container again once it runs with the recorded configuration, even if it never listens", async () => {
+    const { runtime, storage } = await warmContainer();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runtime.readyAfterMs = Number.POSITIVE_INFINITY;
+    const next = deploy(runtime, storage, enableTriage);
+    const first = settle(next.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(59_000);
+    let settled = false;
+    void first.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await first).toEqual({ error: expect.any(Error) });
+    expect(runtime.starts).toHaveLength(2);
+    // Its fingerprint matches, so each later request only waits for it again: no restart loop.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(await serve(next.api, "/api/v1/dealerships", 62_000)).toEqual({ error: expect.any(Error) });
+    }
+    // Nor does a later deploy of the same configuration stop it.
+    const again = deploy(runtime, storage, enableTriage);
+    expect(await serve(again.api, "/api/v1/dealerships", 62_000)).toEqual({ error: expect.any(Error) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.destroys).toBe(0);
+    expect(runtime.starts).toHaveLength(2);
+  });
+
+  it("keeps the previous fingerprint when the container will not stop, so the next request tries the restart again", async () => {
+    const { runtime, storage } = await warmContainer();
+    const previous = storage.get(START_FINGERPRINT_KEY);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runtime.ignoresSigterm = true;
+    // The kill does not take effect either.
+    runtime.destroy = async () => { runtime.destroys++; };
+    const next = deploy(runtime, storage, enableTriage);
+    const notStopped = { error: expect.objectContaining({ message: "The API container did not stop for a configuration restart" }) };
+    expect(await serve(next.api, "/api/v1/dealerships", STOP_GRACE_MS + 6_000)).toEqual(notStopped);
+    expect(storage.get(START_FINGERPRINT_KEY)).toBe(previous);
+    // Accepting the old container under the new fingerprint would serve it with its old configuration.
+    expect(await serve(next.api, "/api/v1/dealerships", STOP_GRACE_MS + 6_000)).toEqual(notStopped);
+    expect(runtime.signals).toEqual([15, 15]);
+    expect(runtime.destroys).toBe(2);
+    expect(runtime.starts).toHaveLength(1);
+    expect(runtime.proxied.map(request => new URL(request.url).pathname)).toEqual(["/api/v1/dealerships"]);
+  });
+
   it("kills an API that ignores SIGTERM after the grace period, then starts it with the new environment", async () => {
     const { runtime, storage } = await warmContainer();
     runtime.ignoresSigterm = true;
