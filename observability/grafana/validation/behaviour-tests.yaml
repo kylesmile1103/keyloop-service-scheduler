@@ -140,3 +140,19 @@ scenarios:
       16m: {'{http_route="/alive", http_response_status_code="200"}': 0}
       21m: {'{http_route="/alive", http_response_status_code="200"}': 0, '{http_route="/health", http_response_status_code="503"}': 1}
       26m: {'{http_route="/alive", http_response_status_code="200"}': 0, '{http_route="/health", http_response_status_code="503"}': 0}
+
+- name: HV qualification counter never fired
+  window: 10m
+  series:
+    http_server_request_duration_seconds_count{http_route="/alive", http_response_status_code="200"}: 0+1x40
+  expect:
+    alert/keyloop-allocation-below-hv-minimum: {30m: 0}
+
+- name: first unsafe HV allocation is detected at first export
+  window: 10m
+  series:
+    scheduler_allocation_below_hv_minimum_total: _x10 1x30
+    scheduler_allocation_below_hv_minimum_total{deployment_environment_name="Staging", instance="s"}: _x10 1x30
+    scheduler_allocation_below_hv_minimum_total{job="other/api", instance="o"}: _x10 1x30
+  expect:
+    alert/keyloop-allocation-below-hv-minimum: {12m: 1, 19m: 1, 22m: 0}

@@ -30,6 +30,8 @@ DASHBOARDS = {"keyloop-booking-engine", "keyloop-api-health", "keyloop-notificat
 # Pinned from grafana-observability-plan.md section 5.2, ARCHITECTURE section 12.3 and the Task 23 scope
 # (readiness). A changed threshold, pending period, window or severity must be a deliberate edit here.
 ALERTS = {
+    "keyloop-allocation-below-hv-minimum": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
+                                               panel=("keyloop-booking-engine", 1)),
     "keyloop-booking-deadlocks": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
                                       panel=("keyloop-booking-engine", 1)),
     "keyloop-booking-constraint-backstop": dict(severity="ticket", pending="0s", window="10m", condition=("gt", 0),

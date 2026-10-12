@@ -11,7 +11,7 @@ This is the local authoring deliverable for Task 23. No resources have been push
 | `dashboards/keyloop-api-health.yaml` | 13 panels: RED by route, 429s, limiter results, readiness, export presence and logs |
 | `dashboards/keyloop-notifications.yaml` | 10 panels: backlog gauges, sends/failures/retries by kind, attempt age, provider duration and logs |
 | `dashboards/keyloop-frontend.yaml` | 8 panels: browser TraceQL metrics/search, `ui.book_appointment`, `ui.stress_test` and browser-to-API descendants |
-| `alertrules/*.yaml` | Seven Grafana-managed alert templates: deadlocks, constraint backstop, 5xx, booking p95, oldest Pending age, dead letters, observed readiness |
+| `alertrules/*.yaml` | Eight Grafana-managed alert templates: HV competence invariant, deadlocks, constraint backstop, 5xx, booking p95, oldest Pending age, dead letters, observed readiness |
 | `runbooks.md` | Alert-specific investigation steps; publish at a reviewed HTTPS URL before preparing rules |
 | `validation/` | Local JSON Schema, metric and label contract, PromQL behaviour tests, offline checks with their self-tests, and alert preparation |
 | `../../scripts/validate-dashboards.sh` | Entry point for all offline checks, from the repository root |
@@ -47,7 +47,7 @@ The wrapper runs these stages, and any failure exits non-zero:
 
 1. Self-tests (`validation/test_validate.py`): each guard below rejects the defect it exists for.
 2. Structure: YAML with duplicate-key rejection, the local JSON Schema, the folder annotation, layout, links, datasource variables and the `job`/environment scope of every selector in all 48 panels.
-3. Alert contract: each of the seven rules' threshold, pending period, query window, severity, evaluation settings, and dashboard/runbook links are pinned in `validate.py` (`ALERTS`), from plan section 5.2 and ARCHITECTURE section 12.3. Changing one is a deliberate edit there.
+3. Alert contract: each of the eight rules' threshold, pending period, query window, severity, evaluation settings, and dashboard/runbook links are pinned in `validate.py` (`ALERTS`), from plan section 5.2 and ARCHITECTURE section 12.3. Changing one is a deliberate edit there.
 4. Metric and label inventory over panel, variable and alert queries: every series exists in `validation/metrics.json`; every matcher and `by`/`without`/`on`/`ignoring` label is a catalogued point label or a promoted resource label of the queried series; every `histogram_quantile` aggregates `sum by (le, ...)` over a `_bucket` series. Custom instrument kinds and units are checked against the generic and non-generic `Create...` declarations in every telemetry folder listed in `validate.py` (`TELEMETRY`): Api `Common/Telemetry/SchedulerTelemetry.cs` for booking, availability and cancellation, and Infrastructure `Telemetry/InfrastructureTelemetry.cs` for notifications (ADR-025). A missing folder fails the check. Every custom instrument name must also appear in ARCHITECTURE section 12. Framework instruments are checked against ServiceDefaults' `AddAspNetCoreInstrumentation` registration and the built-in ASP.NET Core meter catalogue, with pinned upstream citations in `validation/metrics.json`; they are not application-created instruments. `target_info` is checked as an OTLP-generated resource series.
 5. PromQL behaviour: `validation/behaviour-tests.yaml` scenarios run the committed counter queries in promtool, including each series' first export, new and reused `instance` labels, other environments and jobs, and per-label alert instances.
 6. gcx lint, with no rule disabled. gcx 1.3.0 applies its dashboard rules (`target-valid-promql`, `panel-title-description`, `panel-units`) only to `dashboard.grafana.app/v1beta1`, so it lints temporary v1beta1 copies of the dashboards (the classic spec is identical) and a synthetic v1beta1 dashboard carrying every alert query. It lints the alert rules themselves, or the prepared files with `--alerts-dir`. A canary with one defect per rule must then fail every rule, so the gate cannot silently pass everything again.
@@ -74,9 +74,11 @@ scripts/validate-dashboards.sh \
   --alerts-dir observability/grafana/.review/alertrules
 ```
 
-The command makes seven local files in `.review/alertrules`, refuses to overwrite a previous review, rejects unresolved templates, and never calls Grafana. With `--alerts-dir`, the validator requires each prepared rule to equal its tested template apart from one consistent value per placeholder, and gcx lints the prepared files rather than the templates. Use a new `--output-dir` inside this tree for a changed review.
+The command makes eight local files in `.review/alertrules`, refuses to overwrite a previous review, rejects unresolved templates, and never calls Grafana. With `--alerts-dir`, the validator requires each prepared rule to equal its tested template apart from one consistent value per placeholder, and gcx lints the prepared files rather than the templates. Use a new `--output-dir` inside this tree for a changed review.
 
-All rules evaluate each minute, use `noDataState: Ok` and `execErrState: Error`, and reference a dashboard/panel and runbook. Counter rules count a series' first export, as described above. The seven rule conditions are:
+All rules evaluate each minute, use `noDataState: Ok` and `execErrState: Error`, and reference a dashboard/panel and runbook. Counter rules count a series' first export, as described above. The eight rule conditions are:
+
+- HV competence: any first-export-aware increment of `scheduler_allocation_below_hv_minimum_total` pages immediately.
 
 | Rule | Condition | Pending period |
 | --- | --- | --- |
@@ -113,7 +115,7 @@ gcx resources push --context default \
 gcx resources push --context default \
   -p observability/grafana/folders -p observability/grafana/dashboards --on-error abort
 
-# REQUIRES USER CONFIRMATION: real write of seven locally prepared rules.
+# REQUIRES USER CONFIRMATION: real write of eight locally prepared rules.
 # Only after strict metric verification, routing and runbook review.
 gcx resources push --context default \
   -p observability/grafana/.review/alertrules --on-error abort
