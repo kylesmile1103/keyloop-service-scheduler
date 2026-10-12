@@ -1,4 +1,5 @@
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -25,17 +26,32 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("SystemTest");
+        builder.UseSetting("Auth:TeamDomain", "https://fixture.cloudflareaccess.com");
+        builder.UseSetting("Auth:Audience:0", "local-fixture-audience");
         builder.UseSetting("ConnectionStrings:schedulerdb", connectionString);
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Database:SeedDemoData", "false");
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<TimeProvider>(Clock);
+            services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
+                options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
+                options.DefaultForbidScheme = TestAuthenticationHandler.SchemeName;
+            }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, _ => { });
             if (logs is not null)
             {
                 services.AddSingleton<ILoggerProvider>(logs);
             }
         });
+    }
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        base.ConfigureClient(client);
+        // Existing engine tests exercise authorized booking and detail reads. Authentication tests explicitly select each caller.
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, "Admin");
     }
 
     /// <summary>Starts the host (which applies migrations) and deletes every row in <c>public</c> except the migration history.</summary>

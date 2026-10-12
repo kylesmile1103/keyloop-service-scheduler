@@ -528,6 +528,8 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
         using var metrics = new MetricsCollector();
         await using var demo = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
             .UseEnvironment("Demo")
+            .UseSetting("Auth:TeamDomain", "https://fixture.cloudflareaccess.com")
+            .UseSetting("Auth:Audience:0", "local-fixture-audience")
             .UseSetting("ConnectionStrings:schedulerdb", connectionString)
             .ConfigureServices(services => services.AddSingleton<TimeProvider>(TestData.Clock()).AddSingleton<ILoggerProvider>(logs)));
         using var client = demo.CreateClient();

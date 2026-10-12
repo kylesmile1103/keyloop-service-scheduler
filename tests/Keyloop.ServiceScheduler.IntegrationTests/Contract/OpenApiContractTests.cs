@@ -25,7 +25,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "GetCurrentUser"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -33,6 +33,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     /// </summary>
     private static readonly JsonTypeInfo[] ResponseTypes =
     [
+        SchedulerJsonContext.Default.CurrentUserResponse,
         SchedulerJsonContext.Default.DealershipResponse,
         SchedulerJsonContext.Default.DayOperatingHoursResponse,
         SchedulerJsonContext.Default.ServiceTypeResponse,
@@ -107,6 +108,30 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Access_header_or_cookie_is_required_only_on_protected_operations()
+    {
+        var document = await ServedAsync();
+        var schemes = document["components"]!["securitySchemes"]!.AsObject();
+        Text(schemes["CloudflareAccess"]!["name"]).ShouldBe("Cf-Access-Jwt-Assertion");
+        Text(schemes["CloudflareAccess"]!["in"]).ShouldBe("header");
+        Text(schemes["AccessCookie"]!["name"]).ShouldBe("CF_Authorization");
+        Text(schemes["AccessCookie"]!["in"]).ShouldBe("cookie");
+        foreach (var (_, operation) in Operations(document))
+        {
+            var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest";
+            var security = operation["security"].ShouldNotBeNull().AsArray();
+            security.Any(item => item!.AsObject().Count == 0).ShouldBe(!protectedRoute);
+            security.Any(item => item!["CloudflareAccess"] != null).ShouldBeTrue();
+            security.Any(item => item!["AccessCookie"] != null).ShouldBeTrue();
+            if (protectedRoute)
+            {
+                operation["responses"]!["401"].ShouldNotBeNull();
+                operation["responses"]!["403"].ShouldNotBeNull();
+            }
+        }
+    }
+
+    [Fact]
     public async Task Every_operation_documents_optional_request_id_and_echo_on_every_response()
     {
         var document = await ServedAsync();
@@ -167,6 +192,15 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             .ShouldBeEmpty("operations without a 429: declare .ProducesRateLimitedProblem() and a <response code=\"429\"> comment");
         errors.Select(e => (e.Name, e.Status)).ShouldBe(
             [
+                ("POST /api/v1/dealerships/{dealershipId}/appointments", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/appointments", "403"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "401"),
+                ("POST /api/v1/appointments/{appointmentId}/cancel", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "403"),
+                ("GET /api/v1/appointments/{appointmentId}", "401"),
+                ("GET /api/v1/appointments/{appointmentId}", "403"),
+                ("GET /api/v1/me", "429"),
                 ("GET /api/v1/dealerships", "429"),
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "404"),
                 ("GET /api/v1/dealerships/{dealershipId}/service-types", "429"),
@@ -220,8 +254,8 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         string[] rfc9457 = ["type", "title", "status", "detail", "instance"];
         foreach (var (schema, members) in new (string, string[])[]
                  {
-                     ("ProblemDetails", [.. rfc9457, "traceId"]),
-                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId"]),
+                     ("ProblemDetails", [.. rfc9457, "traceId", "loginUrl"]),
+                     ("HttpValidationProblemDetails", [.. rfc9457, "errors", "traceId", "loginUrl"]),
                  })
         {
             var problem = schemas[schema].ShouldNotBeNull(schema);
@@ -275,6 +309,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/schedule", "200", "WorkshopScheduleResponse"),
                 ("GET /api/v1/booking-triage", "200", "BookingTriageStatusResponse"),
                 ("POST /api/v1/dealerships/{dealershipId}/booking-triage", "200", "TriageBookingResponse"),
+                ("GET /api/v1/me", "200", "CurrentUserResponse"),
             ]);
 
         foreach (var (name, status, response) in Operations(document).SelectMany(o => o.Operation["responses"]!.AsObject().Select(r => (o.Name, r.Key, r.Value!))))
@@ -286,7 +321,9 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
         var references = Descendants(document).Where(n => n.Name == "$ref").Select(n => n.Node!.GetValue<string>()).Distinct().ToList();
         references.ShouldNotBeEmpty();
-        references.Where(r => !r.StartsWith("#/components/schemas/", StringComparison.Ordinal) || schemas[r["#/components/schemas/".Length..]] is null)
+        references.Where(r => !r.StartsWith("#/components/", StringComparison.Ordinal)
+                || r["#/components/".Length..].Split('/') is not [var category, var name]
+                || document["components"]?[category]?[name] is null)
             .ShouldBeEmpty("references that do not resolve to a component schema");
     }
 

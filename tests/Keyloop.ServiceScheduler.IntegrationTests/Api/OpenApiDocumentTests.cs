@@ -45,7 +45,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         }
 
         var tags = root.GetProperty("tags").EnumerateArray().ToList();
-        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Schedule"]);
+        tags.Select(tag => tag.GetProperty("name").GetString()).ShouldBe(["Dealerships", "Catalog", "Availability", "Appointments", "Identity", "Schedule"]);
         tags.ShouldAllBe(tag => !string.IsNullOrWhiteSpace(tag.GetProperty("description").GetString()));
 
         // Scalar then targets the current origin, and the build-time document cannot differ by host.
@@ -176,7 +176,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         booking.GetProperty("description").GetString().ShouldNotBeNull().ShouldContain("Idempotency-Key");
 
         var responses = booking.GetProperty("responses");
-        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["201", "400", "404", "409", "413", "422", "429"], ignoreOrder: true);
+        responses.EnumerateObject().Select(r => r.Name).ShouldBe(["201", "400", "401", "403", "404", "409", "413", "422", "429"], ignoreOrder: true);
         foreach (var (status, mediaType, schema, reasonPhrase) in new[]
                  {
                      ("201", "application/json", "AppointmentResponse", "Created"),
@@ -287,7 +287,7 @@ public sealed class OpenApiDocumentTests(PostgresFixture pg) : IAsyncLifetime
         ShouldBeDocumented(cancel, "CancelAppointment", "Appointments");
         cancel.GetProperty("description").GetString().ShouldNotBeNull().ShouldContain("re-bookable");
 
-        foreach (var (operation, statuses) in new[] { (read, new[] { "200", "404", "429" }), (cancel, ["200", "400", "404", "409", "429"]) })
+        foreach (var (operation, statuses) in new[] { (read, new[] { "200", "401", "403", "404", "429" }), (cancel, ["200", "400", "401", "403", "404", "409", "429"]) })
         {
             var operationId = operation.GetProperty("operationId").GetString();
             var responses = operation.GetProperty("responses");

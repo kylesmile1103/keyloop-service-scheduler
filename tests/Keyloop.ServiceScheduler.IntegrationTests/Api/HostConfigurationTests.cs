@@ -57,6 +57,8 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("notifications", "Notifications:MaxAttempts", "0", "NotificationOptions", "MaxAttempts")]
     [InlineData("notification_idle", "Notifications:IdleInterval", "00:00:00.500", "NotificationOptions", "IdleInterval")]
     [InlineData("notification_send_timeout", "Notifications:SendTimeout", "00:10:00", "NotificationOptions", "SendTimeout")]
+    [InlineData("auth_environment", "Auth:Mode", "Development", "AuthOptions", "Development") ]
+    [InlineData("auth_roles", "Auth:Roles:Admin:0", "private-value-sentinel", "AuthOptions", "Roles") ]
     [InlineData("reseed_key", "Demo:ReseedKey", "too-short", "DemoOptions", "ReseedKey")]
     [InlineData("triage_credentials", "Triage:Enabled", "true", "TriageConnectionOptions", "AccountId")]
     [InlineData("triage_length", "Triage:MaxDescriptionLength", "501", "TriageOptions", "MaxDescriptionLength")]
@@ -350,6 +352,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     private static async Task<HttpResponseMessage> GetAsync(HttpClient client, string kind, string forwardedFor)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/__throw?kind={kind}");
+        request.Headers.Add(TestAuthenticationHandler.Header, "Anonymous");
         request.Headers.Add("X-Forwarded-For", forwardedFor);
         request.Headers.Add("X-Forwarded-Proto", "https");
         return await client.SendAsync(request, Ct);

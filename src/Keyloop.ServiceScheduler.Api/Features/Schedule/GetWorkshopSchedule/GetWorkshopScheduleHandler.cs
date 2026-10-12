@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using Keyloop.ServiceScheduler.Api.Common.Contracts;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
@@ -20,7 +22,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 /// </summary>
 public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options)
 {
-    public async Task<WorkshopScheduleResponse> HandleAsync(GetWorkshopScheduleQuery query, CancellationToken ct)
+    public async Task<WorkshopScheduleResponse> HandleAsync(GetWorkshopScheduleQuery query, ClaimsPrincipal caller, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
 
@@ -47,8 +49,9 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         var appointmentsByBay = day.Bays.ToDictionary(b => b.Id, _ => new List<ScheduledAppointmentResponse>());
         foreach (var appointment in scheduled)
         {
-            appointmentsByBay[appointment.BayId].Add(
-                ScheduleMapper.ToResponse(appointment, serviceTypes[appointment.ServiceTypeId], technicianSummaries[appointment.TechnicianId], zone));
+            var response = ScheduleMapper.ToResponse(appointment, serviceTypes[appointment.ServiceTypeId], technicianSummaries[appointment.TechnicianId], zone);
+            var (name, vin) = PersonalData.ForCaller(caller, response.CustomerName, response.Vin);
+            appointmentsByBay[appointment.BayId].Add(response with { CustomerName = name, Vin = vin });
         }
 
         return Response(

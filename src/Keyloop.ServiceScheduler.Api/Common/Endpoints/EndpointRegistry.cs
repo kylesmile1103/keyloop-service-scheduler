@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Common.Options;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
@@ -35,6 +36,7 @@ public static class EndpointRegistry
         GetBookingTriageStatusEndpoint.Map(group);
         TriageBookingEndpoint.Map(group);
         ListAppointmentsEndpoint.Map(group);
+        GetCurrentUserEndpoint.Map(group);
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

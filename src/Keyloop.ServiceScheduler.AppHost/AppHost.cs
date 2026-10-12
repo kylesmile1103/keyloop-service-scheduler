@@ -61,6 +61,24 @@ var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
     .WithHttpHealthCheck("/health", endpointName: "http") // readiness does not depend on trusting a local development certificate
     .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
 
+// Run-mode identity is a local convenience and needs no Access settings or generated secrets.
+if (builder.ExecutionContext.IsRunMode)
+{
+    api.WithEnvironment("Auth__Mode", "Development")
+        .WithEnvironment("Auth__Development__Email", builder.Configuration["Parameters:auth-development-email"] ?? "admin@keyloop.test");
+    var roles = (builder.Configuration["Parameters:auth-development-roles"] ?? "Admin").Split(',', StringSplitOptions.TrimEntries);
+    for (var i = 0; i < roles.Length; i++)
+    {
+        api.WithEnvironment($"Auth__Development__Roles__{i}", roles[i]);
+    }
+}
+else
+{
+    api.WithEnvironment("Auth__Mode", "CloudflareAccess")
+        .WithEnvironment("Auth__TeamDomain", builder.AddParameter("access-team-domain"))
+        .WithEnvironment("Auth__Audience__0", builder.AddParameter("access-audience"));
+}
+
 // Optional developer-owned secrets. No generated default, no prompt and no credential persistence for triage.
 if (builder.ExecutionContext.IsRunMode &&
     !string.IsNullOrWhiteSpace(builder.Configuration["Parameters:cloudflare-account-id"]) &&

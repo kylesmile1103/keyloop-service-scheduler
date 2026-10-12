@@ -12,6 +12,22 @@ namespace Keyloop.ServiceScheduler.AspireTests;
 public sealed class AppHostModelTests
 {
     [Theory]
+    [InlineData(null, "admin@keyloop.test", "Admin")]
+    [InlineData("Viewer", "reviewer@keyloop.test", "Viewer")]
+    [InlineData("", "reviewer@keyloop.test", "")]
+    public async Task Run_mode_supplies_Development_identity_with_optional_overrides(string? roles, string email, string expectedRole)
+    {
+        var arguments = roles is null ? Array.Empty<string>()
+            : new[] { $"--Parameters:auth-development-email={email}", $"--Parameters:auth-development-roles={roles}" };
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(arguments, TestContext.Current.CancellationToken);
+        var api = builder.Resources.OfType<ProjectResource>().Single(r => r.Name == "api");
+        var environment = await EnvironmentAsync(builder, api, TestContext.Current.CancellationToken);
+        environment["Auth__Mode"].ShouldBe("Development");
+        environment["Auth__Development__Email"].ShouldBe(email);
+        environment["Auth__Development__Roles__0"].ShouldBe(expectedRole);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Triage_parameters_are_optional_and_only_wired_when_both_are_supplied(bool enabled)
@@ -143,6 +159,8 @@ public sealed class AppHostModelTests
     {
         ["API_IMAGE"] = "keyloop-scheduler-api:model-test",
         ["WEB_IMAGE"] = "keyloop-scheduler-web:model-test",
+        ["ACCESS_TEAM_DOMAIN"] = "https://model.cloudflareaccess.com",
+        ["ACCESS_AUDIENCE"] = "model-audience",
         ["POSTGRES_PASSWORD"] = "model-test-password",
     };
 

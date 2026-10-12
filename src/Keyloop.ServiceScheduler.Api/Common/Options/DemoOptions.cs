@@ -11,7 +11,7 @@ public sealed class DemoOptions : IValidatableObject
 {
     public const string SectionName = "Demo";
 
-    /// <summary>The shortest <see cref="ReseedKey"/> accepted: the key is all that guards the reseed route.</summary>
+    /// <summary>The shortest <see cref="ReseedKey"/> accepted: Admin authorization and this key guard the reseed route.</summary>
     public const int MinimumReseedKeyLength = 16;
 
     /// <summary>

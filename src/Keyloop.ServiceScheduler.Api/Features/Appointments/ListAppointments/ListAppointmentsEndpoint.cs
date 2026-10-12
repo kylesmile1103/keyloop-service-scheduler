@@ -50,8 +50,8 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
     /// 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
     /// union, for example by supplying both <c>status=Confirmed</c> and <c>status=Completed</c>. Ordered by start UTC, then id for equal starts.
     /// Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
-    /// hour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables
-    /// role-based full values. Registration plates remain visible. Returns an empty array when there are no matches.
+    /// hour. Callers without an API role receive customer initials and only the last six VIN characters.
+    /// Callers with Admin, ServiceAdvisor or Viewer receive full names and VINs. Registration plates remain visible. Returns an empty array when there are no matches.
     /// </remarks>
     /// <param name="query">The route and query parameters below, validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose appointments are read (the seeded Reading dealership in the example).</param>

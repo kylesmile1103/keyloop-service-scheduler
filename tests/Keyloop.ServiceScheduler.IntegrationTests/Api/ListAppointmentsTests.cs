@@ -18,6 +18,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         _factory = new SchedulerApiFactory(pg.ConnectionString, TestData.Clock());
         await _factory.ResetAsync();
         _client = _factory.CreateClient();
+        _client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
     }
 
     public async ValueTask DisposeAsync()

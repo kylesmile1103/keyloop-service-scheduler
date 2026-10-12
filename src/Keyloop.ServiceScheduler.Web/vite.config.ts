@@ -59,7 +59,7 @@ export function inlineAsset(file: string): boolean | undefined {
 }
 
 function apiProxy(target: string): Record<string, ProxyOptions> {
-  return Object.fromEntries(["/api", "/openapi", "/scalar"].map((prefix) => [prefix, { target, changeOrigin: true }]))
+  return Object.fromEntries(["/api", "/auth", "/openapi", "/scalar"].map((prefix) => [prefix, { target, changeOrigin: true }]))
 }
 
 // https://vite.dev/config/

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using FluentValidation;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Health;
@@ -77,6 +78,7 @@ builder.Services.AddSingleton<NotificationBacklogMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NotificationBacklogMonitor>());
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSchedulerAuthentication(builder.Environment);
 builder.Services.AddSingleton(sp =>
 {
     var scheduling = sp.GetRequiredService<IOptions<SchedulingOptions>>().Value;
@@ -183,7 +185,7 @@ catch (Exception ex)
 var apiReference = !app.Environment.IsProduction();
 var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 var security = app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value;
-app.Logger.ApiStarting(app.Environment.EnvironmentName, database.MigrateOnStartup, database.SeedDemoData, apiReference ? "on" : "off", "anonymous (authentication is deferred)");
+app.Logger.ApiStarting(app.Environment.EnvironmentName, database.MigrateOnStartup, database.SeedDemoData, apiReference ? "on" : "off", app.Services.GetRequiredService<IOptions<AuthOptions>>().Value.Mode.ToString());
 
 // First, so that everything after it sees the client's address and scheme rather than the ingress's.
 if (security.ForwardedHeaders.Enabled)
@@ -204,7 +206,9 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("SystemTe
 
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseCors();
+app.UseAuthentication();
 app.UseRateLimiter();
+app.UseAuthorization();
 app.UseMiddleware<CurrentActorMiddleware>();
 
 app.MapDefaultEndpoints();
@@ -218,6 +222,7 @@ if (apiReference)
         .ExpandAllTags());
 }
 
+AuthUrls.MapLogin(app);
 app.MapSchedulerEndpoints();
 
 if (!BuildTimeOpenApi.IsActive)

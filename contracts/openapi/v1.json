@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Keyloop Unified Service Scheduler API",
-    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).",
+    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\nPublic reads are anonymous. Names and VINs are masked unless the caller has an API role. Writes require Admin or\nServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me` discovers the caller.\n\n- **401** - sign-in required (`unauthenticated`, with `loginUrl`).\n- **403** - the caller has no permitted role (`forbidden`).\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).",
     "version": "v1"
   },
   "paths": {
@@ -75,7 +75,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/dealerships/{dealershipId}/service-types": {
@@ -176,7 +185,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/dealerships/{dealershipId}/availability": {
@@ -316,7 +334,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/dealerships/{dealershipId}/appointments": {
@@ -425,6 +452,44 @@
               }
             }
           },
+          "401": {
+            "description": "Sign-in required (`unauthenticated`, with `loginUrl`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's role does not permit this operation (`forbidden`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No dealership or no service type has this id (`not-found`, with `resource` = `dealership` or `service-type` and the `id`).",
             "headers": {
@@ -526,14 +591,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       },
       "get": {
         "tags": [
           "Appointments"
         ],
         "summary": "List appointments for a local date range",
-        "description": "Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most\n62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a\nunion, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.\nOpening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back\nhour. Customer names are initials and VINs contain only their last six characters for every caller until Task 27 enables\nrole-based full values. Registration plates remain visible. Returns an empty array when there are no matches.",
+        "description": "Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most\n62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a\nunion, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.\nOpening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back\nhour. Callers without an API role receive customer initials and only the last six VIN characters.\nCallers with Admin, ServiceAdvisor or Viewer receive full names and VINs. Registration plates remain visible. Returns an empty array when there are no matches.",
         "operationId": "ListAppointments",
         "parameters": [
           {
@@ -690,7 +763,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/appointments/{appointmentId}": {
@@ -744,6 +826,44 @@
               }
             }
           },
+          "401": {
+            "description": "Sign-in required (`unauthenticated`, with `loginUrl`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's role does not permit this operation (`forbidden`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No appointment has this id (`not-found`, with `resource` = `appointment` and the `id`).",
             "headers": {
@@ -788,7 +908,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/appointments/{appointmentId}/cancel": {
@@ -849,6 +977,44 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppointmentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required (`unauthenticated`, with `loginUrl`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's role does not permit this operation (`forbidden`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -935,7 +1101,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/dealerships/{dealershipId}/schedule": {
@@ -944,7 +1118,7 @@
           "Schedule"
         ],
         "summary": "Get the workshop schedule for a date",
-        "description": "The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and\nevery technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold\nstay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and\nin progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no\n`operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).\nAny well-formed date can be read, past or future. The answer is a snapshot; booking checks again.",
+        "description": "The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and\nevery technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold\nstay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and\nin progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no\n`operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).\nCallers without an API role receive customer initials and the last six VIN characters; Admin, ServiceAdvisor and Viewer receive full values. Registration stays visible.\nAny well-formed date can be read, past or future. The answer is a snapshot; booking checks again.",
         "operationId": "GetWorkshopSchedule",
         "parameters": [
           {
@@ -1064,7 +1238,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/booking-triage": {
@@ -1133,7 +1316,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     },
     "/api/v1/dealerships/{dealershipId}/booking-triage": {
@@ -1194,6 +1386,44 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TriageBookingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required (`unauthenticated`, with `loginUrl`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's role does not permit this operation (`forbidden`).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1286,7 +1516,93 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Get the current caller and sign-in/out URLs",
+        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
+        "operationId": "GetCurrentUser",
+        "parameters": [
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (`rate-limited`, with `Retry-After`).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          { },
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
       }
     }
   },
@@ -1748,6 +2064,47 @@
         ],
         "type": "string"
       },
+      "CurrentUserResponse": {
+        "required": [
+          "authenticated",
+          "email",
+          "displayName",
+          "roles",
+          "loginUrl",
+          "logoutUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "loginUrl": {
+            "type": "string"
+          },
+          "logoutUrl": {
+            "type": "string"
+          }
+        },
+        "description": "The caller's verified identity and API roles. URLs are same-origin Access navigation targets."
+      },
       "CustomerRequest": {
         "required": [
           "name",
@@ -1949,6 +2306,10 @@
           "traceId": {
             "type": "string",
             "description": "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs."
+          },
+          "loginUrl": {
+            "type": "string",
+            "description": "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL."
           }
         }
       },
@@ -2022,6 +2383,10 @@
           "traceId": {
             "type": "string",
             "description": "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it when reporting a problem: it finds the request's trace and logs."
+          },
+          "loginUrl": {
+            "type": "string",
+            "description": "Present on 401 unauthenticated problems: same-origin Access login path with an encoded local returnTo. Navigate the browser to this URL."
           }
         }
       },
@@ -2449,6 +2814,20 @@
         },
         "description": "The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.\nA projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again."
       }
+    },
+    "securitySchemes": {
+      "CloudflareAccess": {
+        "type": "apiKey",
+        "description": "Access application JWT, validated for RS256 signature, team issuer, configured AUD and lifetime. Forwarded by Access on protected paths; never accepts unsigned edge identity or token role claims.",
+        "name": "Cf-Access-Jwt-Assertion",
+        "in": "header"
+      },
+      "AccessCookie": {
+        "type": "apiKey",
+        "description": "Hostname-scoped Access application JWT from /auth/login (Cookie Path Attribute disabled). Validated by the API on public paths. Browser sends it automatically; header takes precedence.",
+        "name": "CF_Authorization",
+        "in": "cookie"
+      }
     }
   },
   "tags": [
@@ -2467,6 +2846,10 @@
     {
       "name": "Appointments",
       "description": "Book, read and cancel appointments."
+    },
+    {
+      "name": "Identity",
+      "description": "The current caller, API roles and hosted Access navigation URLs."
     },
     {
       "name": "Schedule",

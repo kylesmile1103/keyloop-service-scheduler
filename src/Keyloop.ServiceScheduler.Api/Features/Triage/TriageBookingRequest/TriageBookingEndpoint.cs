@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using System.ComponentModel;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
 using Keyloop.ServiceScheduler.Api.Common.Http;
@@ -14,6 +15,9 @@ public sealed class TriageBookingEndpoint : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder app) => app.MapPost("/dealerships/{dealershipId:guid}/booking-triage", HandleAsync)
         .WithName("TriageBookingRequest").WithTags(ApiTags.Catalog)
+            .RequireAuthorization(SchedulerAuthentication.BookingsWrite)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
         .RequireRateLimiting(SchedulerRateLimiting.TriagePolicy)
         .AddEndpointFilter<TriageTelemetryFilter>()
         .AddEndpointFilter<ValidationFilter<TriageBookingRequest>>()
@@ -31,6 +35,8 @@ public sealed class TriageBookingEndpoint : IEndpoint
     /// <response code="200">Model, recommendation, service confidence, up to three candidates and an optional local date.</response>
     /// <response code="400">Description is missing, blank or over the limit (validation-error).</response>
     /// <response code="404">No dealership has this id (not-found).</response>
+    /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
+    /// <response code="403">The caller's role does not permit this operation (<c>forbidden</c>).</response>
     /// <response code="429">Too many triage requests from this client (rate-limited, with Retry-After).</response>
     /// <response code="503">Suggestions are disabled or the upstream is unavailable or invalid (triage-unavailable); use manual service selection. Retry-After is preserved when supplied upstream.</response>
     internal static async Task<Ok<TriageBookingResponse>> HandleAsync(Guid dealershipId,

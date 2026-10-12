@@ -30,6 +30,18 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task Api_starts_with_the_default_Development_Admin_without_auth_parameters()
+    {
+        using var http = appHost.App.CreateHttpClient("api", "http");
+        using var response = await http.GetAsync("/api/v1/me", Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        body.RootElement.GetProperty("authenticated").GetBoolean().ShouldBeTrue();
+        body.RootElement.GetProperty("email").GetString().ShouldBe("admin@keyloop.test");
+        body.RootElement.GetProperty("roles").EnumerateArray().Select(role => role.GetString()).ShouldBe(["Admin"]);
+    }
+
+    [Fact]
     public async Task Api_is_healthy_on_the_composed_database_and_serves_the_seeded_dealerships()
     {
         using var http = appHost.App.CreateHttpClient("api", "http");

@@ -243,9 +243,11 @@ The environment model comes from [ARCHITECTURE §10](docs/ARCHITECTURE.md#10-env
 
 The shared production/UAT global rate limit is 300/min/IP. Every environment uses problems with `traceId`, without a developer exception page or exposed exception details. Production's runtime OpenAPI/Scalar mapping is disabled by `Program.cs`; the committed contract is the build artifact, and any internal ingress publication is deployment work.
 
-Options come from `appsettings.json`, environment-specific files, Development user secrets and environment variables. Aspire injects `ConnectionStrings__schedulerdb` and telemetry settings. `[OptionsValidator]` and generated binding validate at startup before database work. Key settings are `Scheduling`, `Database:MigrateOnStartup`, `Database:SeedDemoData`, `Security:AllowedOrigins` and `Security:ForwardedHeaders`. UAT/Production deliberately enable forwarded headers with empty trusted-peer lists and refuse startup until the platform supplies `KnownProxies` or `KnownNetworks`; do not inherit broad private-network trust by accident.
+Options come from `appsettings.json`, environment-specific files, Development user secrets and environment variables. Aspire injects `ConnectionStrings__schedulerdb` and telemetry settings. `[OptionsValidator]` and generated binding validate at startup before database work. Key settings include `Auth:Mode`, `Auth:TeamDomain`, indexed `Auth:Audience`, external `Auth:Roles:{Admin,ServiceAdvisor,Viewer}`, and `Scheduling`, `Database:MigrateOnStartup`, `Database:SeedDemoData`, `Security:AllowedOrigins` and `Security:ForwardedHeaders`. UAT/Production deliberately enable forwarded headers with empty trusted-peer lists and refuse startup until the platform supplies `KnownProxies` or `KnownNetworks`; do not inherit broad private-network trust by accident.
 
-The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. Enforce audit-table and appointment-delete restrictions in the actual role grants. Authentication/authorization is deferred behind an explicit seam (ADR-010); the current harness is anonymous. Startup diagnostics were hardened by Task 18a to report members/indexes and safe path/type descriptions, with no raw configuration values.
+The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. Enforce audit-table and appointment-delete restrictions in the actual role grants. Authentication/authorization now uses Cloudflare Access and API roles ([ADR-027](docs/ADR-027.md)). Public reads mask customer names and VINs; booking/cancellation/triage require Admin or ServiceAdvisor, appointment details require any API role, and reseed requires Admin plus its key. Development defaults to `admin@keyloop.test` / Admin; Task 27b adds the frontend sign-in controls. Startup diagnostics were hardened by Task 18a to report members/indexes and safe path/type descriptions, with no raw configuration values.
+
+Development identity is switchable through optional AppHost arguments `--Parameters:auth-development-email=advisor@keyloop.test` and `--Parameters:auth-development-roles=ServiceAdvisor` (comma-separated for multiple roles; an empty string selects anonymous). No auth parameters or Access account are needed for the default run. `Auth:Mode=Development` fails outside Development; `None` is SystemTest-only and grants no write access. `GET /api/v1/me` discovers the current identity, roles and `/auth/login?returnTo=%2F` / `/cdn-cgi/access/logout` URLs. Navigate to the hosted Access flow; do not build a password form or store JWTs in browser storage. See the [operator checklist](deploy/cloudflare/README.md#access-login-and-api-roles-task-27) before deployment.
 
 ### Publish a local Demo bundle
 
@@ -258,6 +260,8 @@ aspire publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compo
 docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:demo .
 docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:demo src/Keyloop.ServiceScheduler.Web
 export API_IMAGE=keyloop-scheduler-api:demo WEB_IMAGE=keyloop-scheduler-web:demo
+# Supply the approved Access issuer and application AUD outside this repository.
+export ACCESS_TEAM_DOMAIN=https://YOUR-TEAM.cloudflareaccess.com ACCESS_AUDIENCE=YOUR-APPLICATION-AUD
 export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 # POSTGRES_USER can stay empty: Compose defaults it to scheduler.
 docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml \
@@ -276,10 +280,10 @@ curl -fsS "$WEB_BASE/scalar/v1" -o /dev/null
 docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml \
   -p keyloop-demo down --volumes --remove-orphans
 docker image rm keyloop-scheduler-api:demo keyloop-scheduler-web:demo
-unset API_IMAGE WEB_IMAGE POSTGRES_PASSWORD WEB_BASE
+unset API_IMAGE WEB_IMAGE POSTGRES_PASSWORD WEB_BASE ACCESS_TEAM_DOMAIN ACCESS_AUDIENCE
 ```
 
-The required manual inputs are `API_IMAGE`, `WEB_IMAGE` and `POSTGRES_PASSWORD`. Aspire emits `WEB_IMAGE` from the web Dockerfile and injects nginx's `API_UPSTREAM` from the API HTTP endpoint, rendered as `http://api:8080`. Web publishes a dynamic host port targeting 8080 and proxies `/api`, `/openapi` and `/scalar` with their URI unchanged. It serves the static app with CSP, frame protection, `nosniff`, referrer and permissions policies, and COOP. Browser dashboard credentials are excluded from production builds.
+The required manual inputs are `API_IMAGE`, `WEB_IMAGE`, `POSTGRES_PASSWORD`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUDIENCE`. Demo validates Access configuration and has no Development bypass. Anonymous local Compose viewing works; authenticated use additionally needs an Access-compatible ingress and externally supplied role membership. Aspire emits `WEB_IMAGE` from the web Dockerfile and injects nginx's `API_UPSTREAM` from the API HTTP endpoint, rendered as `http://api:8080`. Web publishes a dynamic host port targeting 8080 and proxies `/api`, `/auth`, `/openapi` and `/scalar` with their URI unchanged. It serves the static app with CSP, frame protection, `nosniff`, referrer and permissions policies, and COOP. Browser dashboard credentials are excluded from production builds.
 
 Demo creates `schedulerdb` on an empty data directory, migrates and seeds, and serves Scalar over plain HTTP. Its API trusts only `172.30.14.0/24`, matching the generated Compose network. The API stays unpublished because that trusted subnet includes the host-port bridge gateway; nginx supplies the trusted last forwarding hop. Never use or remove `keyloop-scheduler-pgdata` for verification. UAT/Production still require configured ingress trust and a separately generated EF migration bundle. Public deployment remains `TODO(deployment)`.
 

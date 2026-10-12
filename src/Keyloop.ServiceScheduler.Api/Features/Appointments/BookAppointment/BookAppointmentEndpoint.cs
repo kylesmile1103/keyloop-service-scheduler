@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Common.Authentication;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using Keyloop.ServiceScheduler.Api.Common.Endpoints;
@@ -22,6 +23,9 @@ public sealed class BookAppointmentEndpoint : IEndpoint
         app.MapPost("/dealerships/{dealershipId:guid}/appointments", HandleAsync)
             .WithName("BookAppointment")
             .WithTags(ApiTags.Appointments)
+            .RequireAuthorization(SchedulerAuthentication.BookingsWrite)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .AddEndpointFilter<BookingValidationTelemetryFilter>() // outermost: sees every validation-error, from the body or the header
             .AddEndpointFilter<ValidationFilter<BookAppointmentRequest>>()
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
@@ -64,6 +68,8 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// <response code="409">The slot is taken: every qualified bay or technician is busy (<c>slot-unavailable</c>), or the database's overlap backstop fired (<c>slot-conflict</c>, with <c>conflictingResource</c>); both carry <c>suggestedSlots</c>, the nearest bookable starts that day.</response>
     /// <response code="413">The request body exceeds the 64 KiB limit (framework RFC 9110 problem).</response>
     /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, or <c>idempotency-key-reuse</c>.</response>
+    /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
+    /// <response code="403">The caller's role does not permit this operation (<c>forbidden</c>).</response>
     /// <response code="429">Too many bookings from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
     internal static async Task<Results<Created<AppointmentResponse>, ValidationProblem>> HandleAsync(
         Guid dealershipId,
