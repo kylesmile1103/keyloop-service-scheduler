@@ -28,18 +28,21 @@ public static class TriageImageValidator
         {
             throw new TriageInputException("base64", "Each image must contain 1 byte to 4 MiB.");
         }
-        var dimensions = contentType switch
-        {
-            "image/png" => Png(bytes),
-            "image/jpeg" => Jpeg(bytes),
-            "image/webp" => Webp(bytes),
-            _ => (0L, 0L),
-        };
-        if (dimensions.Item1 <= 0 || dimensions.Item2 <= 0 || dimensions.Item1 > TriageImageLimits.MaxPixels / dimensions.Item2)
+        var (width, height) = Dimensions(contentType, bytes);
+        if (width <= 0 || height <= 0 || width > TriageImageLimits.MaxPixels / height)
         {
             throw new TriageInputException("base64", "The file must match its image type and contain at most 16 megapixels.");
         }
     }
+
+    /// <summary>Header dimensions when the bytes carry the claimed type's signature; (0, 0) otherwise.</summary>
+    internal static (long Width, long Height) Dimensions(string contentType, ReadOnlySpan<byte> bytes) => contentType switch
+    {
+        "image/png" => Png(bytes),
+        "image/jpeg" => Jpeg(bytes),
+        "image/webp" => Webp(bytes),
+        _ => (0L, 0L),
+    };
 
     private static (long, long) Png(ReadOnlySpan<byte> b) =>
         b.Length >= 33 && b[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) &&
@@ -48,7 +51,9 @@ public static class TriageImageValidator
 
     private static (long, long) Jpeg(ReadOnlySpan<byte> b)
     {
-        if (b.Length < 4 || b[0] != 255 || b[1] != 216 || b[^2] != 255 || b[^1] != 217)
+        // No end-of-image check: phone formats (Samsung SEFT, Motion Photo video) append data after EOI. The walk below already
+        // requires SOI and a well-formed segment chain up to a frame header that bounds the dimensions.
+        if (b.Length < 4 || b[0] != 255 || b[1] != 216)
         {
             return (0, 0);
         }
