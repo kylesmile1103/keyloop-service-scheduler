@@ -134,7 +134,7 @@
       "kind"
     ],
     "source": "notifications",
-    "evidence": "Task 19 brief G2; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
+    "evidence": "Integrated notification backlog gauge; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "scheduler.notifications.oldest_pending_age",
@@ -142,7 +142,7 @@
     "unit": "s",
     "labels": [],
     "source": "notifications",
-    "evidence": "Task 19 brief G2, superseding the plan's outbox_oldest_pending_age spelling; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
+    "evidence": "Integrated oldest-pending gauge; non-generic ObservableGauge in src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
   {
     "instrument": "http.server.request.duration",
