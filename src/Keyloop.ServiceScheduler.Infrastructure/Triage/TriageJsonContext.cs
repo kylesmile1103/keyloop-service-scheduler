@@ -25,4 +25,4 @@ internal sealed record ClefEnvelope(ClefResult? Result, Dictionary<string, ClefA
 internal sealed record ClefResult(Dictionary<string, ClefAnswer>? Answers, ClefUsage? Usage, string? State, ClefResult? Result);
 public sealed record ClefAnswer(string? Type, string? Choice, double? Confidence, Dictionary<string, double>? Probabilities);
 internal sealed record ClefUsage(int? InputTokens);
-public sealed record ClefEvaluation(ClefAnswer Service, ClefAnswer PreferredDate, int? InputTokens);
+public sealed record ClefEvaluation(ClefAnswer Service, ClefAnswer PreferredDate, ClefAnswer UncoveredIssue, int? InputTokens);

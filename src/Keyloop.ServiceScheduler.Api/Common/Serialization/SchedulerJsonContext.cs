@@ -102,6 +102,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
+[JsonSerializable(typeof(TriageUncoveredIssue))]
 [JsonSerializable(typeof(UploadBookingTriageImageRequest))]
 [JsonSerializable(typeof(UploadBookingTriageImageResponse))]
 // The date-range appointments read (shared summaries and status are registered above) and the current caller.

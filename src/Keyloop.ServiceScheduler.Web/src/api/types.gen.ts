@@ -352,7 +352,7 @@ export type CancelAppointmentRequest = {
     reason: string;
 };
 
-export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle';
+export type Certification = 'GeneralService' | 'Brakes' | 'HighVoltageElectrical' | 'Diagnostics' | 'MotTester' | 'WheelAlignment' | 'AirConditioning' | 'HeavyVehicle' | 'DamageAssessment';
 
 /**
  * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
@@ -814,10 +814,11 @@ export type TriageBookingResponse = {
      */
     serviceConfidence: number;
     /**
-     * At most three bookable candidates above the configured probability floor, most likely first.
+     * At most three bookable candidates meeting the absolute and relative probability floors, most likely first.
      */
     services: Array<TriageServiceCandidate>;
     preferredDate: null | TriagePreferredDate;
+    uncoveredIssue: null | TriageUncoveredIssue;
 };
 
 /**
@@ -835,6 +836,33 @@ export type TriagePreferredDate = {
 export type TriageServiceCandidate = {
     serviceType: ServiceTypeSummary;
     probability: number;
+};
+
+/**
+ * Closed UI-copy keys for problems outside the most likely service. One appointment covers one service.
+ */
+export type TriageUncoveredCategory = 'ACCIDENT_OR_BODY_DAMAGE' | 'LIGHTS_OR_ELECTRICAL_ACCESSORY' | 'AIR_CONDITIONING' | 'TYRES_OR_WHEELS' | 'GLASS' | 'OTHER';
+
+/**
+ * A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null.
+ */
+export type TriageUncoveredIssue = {
+    /**
+     * Closed UI-copy key for the additional issue.
+     */
+    category: TriageUncoveredCategory;
+    /**
+     * The category's probability in Clef's answer.
+     */
+    probability: number;
+    /**
+     * Clef's confidence in this answer, compared with the uncovered-issue threshold.
+     */
+    confidence: number;
+    /**
+     * The service type the issue is outside: Clef's most likely service, which need not be the first candidate a person picks. Null when Clef chose none of the bookable services, so the issue is outside the whole catalogue. Show the notice while this service is selected (or whenever it is null), not for another candidate.
+     */
+    outsideServiceTypeId: null | string;
 };
 
 /**
@@ -1511,7 +1539,7 @@ export type TriageBookingRequestError = TriageBookingRequestErrors[keyof TriageB
 
 export type TriageBookingRequestResponses = {
     /**
-     * Model, recommendation, service confidence, up to three candidates and an optional local date.
+     * Model, recommendation, service confidence, up to three candidates, an optional local date and an optional uncovered issue with a closed category.
      */
     200: TriageBookingResponse;
 };

@@ -1,11 +1,14 @@
-import { useQuery } from "@tanstack/react-query"
+import { type QueryClient, useQuery } from "@tanstack/react-query"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import {
+  cachedIdentity,
+  cachedWriter,
   type Capabilities,
   capabilitiesOf,
   currentUserQuery,
+  currentUserQueryKey,
   type IdentitySource,
   identityKey,
   identitySource,
@@ -92,7 +95,7 @@ export type WriteAccess =
   | { state: "sign-in" }
   | { state: "denied"; reason: string }
 
-export function writeAccessOf(current: CurrentUser): WriteAccess {
+export function writeAccessOf(current: Pick<CurrentUser, "status" | "authenticated" | "canWrite" | "roles">): WriteAccess {
   if (current.status === "loading") return { state: "checking" }
   if (!current.authenticated) return { state: "sign-in" }
   if (current.canWrite) return { state: "allowed" }
@@ -101,6 +104,32 @@ export function writeAccessOf(current: CurrentUser): WriteAccess {
 
 export function useWriteAccess(): WriteAccess {
   return writeAccessOf(useCurrentUser())
+}
+
+/**
+ * `writeAccessOf` for the `/me` the cache holds at this moment, for a decision taken when a control is pressed rather than
+ * when the page was drawn: a press can land after `/me` changed (signed out in another tab, a role removed, another
+ * account, a failed re-read) but before React has rendered the change, and the page's own `WriteAccess` is then the
+ * previous caller's. `allowed` exactly when the cache names a writer (`cachedWriter`), the account the booking dialog's
+ * writes are then bound to (`useWriteMutation`), so a press opens the dialog exactly when a booking entered in it can be
+ * sent. Otherwise the same reading of the cache (`cachedIdentity`: the last answer only while its last read succeeded)
+ * says why: a read that failed, or is being read again after failing, counts as signed out, as `useCurrentUser` counts
+ * it; nothing read yet is `checking`; a role that cannot book is `denied` with its reason.
+ */
+export function cachedWriteAccess(queryClient: QueryClient): WriteAccess {
+  if (cachedWriter(queryClient) !== null) return { state: "allowed" }
+  const user = cachedIdentity(queryClient)
+  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
+  // TanStack puts a query without data back to `pending` while it is read again, so a failure shows only in its count.
+  const failed =
+    !user && state !== undefined && (state.status === "error" || state.fetchFailureCount > 0 || (state.data === undefined && state.errorUpdateCount > 0))
+  return writeAccessOf({
+    status: user ? "ready" : failed ? "failed" : "loading",
+    authenticated: user?.authenticated === true,
+    roles: user?.authenticated ? knownRoles(user.roles) : [],
+    // Decided above: no writer is named, so whatever this identity is, it may not book now.
+    canWrite: false,
+  })
 }
 
 /**

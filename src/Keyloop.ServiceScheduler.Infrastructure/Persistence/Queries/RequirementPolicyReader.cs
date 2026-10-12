@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 
-/// <summary>Reads exactly the latest policy version before booking acquires any lock. An unconfigured dealership uses the closed default v1.</summary>
+/// <summary>Reads exactly the latest policy version before booking acquires any lock. An unconfigured dealership uses the closed default v2.</summary>
 public sealed class RequirementPolicyReader(SchedulerDbContext db)
 {
     public async Task<IReadOnlyList<RequirementRule>> ReadAsync(Guid dealershipId, CancellationToken ct)

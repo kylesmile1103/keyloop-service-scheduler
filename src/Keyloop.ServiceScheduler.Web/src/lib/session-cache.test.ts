@@ -13,6 +13,9 @@ import {
   listAppointmentsQueryKey,
 } from "@/api/@tanstack/react-query.gen"
 import type { GetAvailabilityData, ListAppointmentsData } from "@/api/types.gen"
+import { calendarRange } from "@/app/calendar/lib/calendar"
+import { overviewWindow } from "@/app/overview/lib/overview"
+import { rangeReadOptions } from "@/lib/appointment-range"
 import { createQueryClient } from "@/lib/query-client"
 import {
   bindWrite,
@@ -34,6 +37,12 @@ const keys = {
   triageStatus: getBookingTriageStatusQueryKey(),
   schedule: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } }),
   range: listAppointmentsQueryKey({ path: { dealershipId }, query: { from: "2026-10-13", to: "2026-10-19" } as ListAppointmentsData["query"] }),
+  // The Overview's read, built as the page builds it (Task 28b).
+  overview: rangeReadOptions(dealershipId, overviewWindow("2026-10-13").from, overviewWindow("2026-10-13").to).queryKey,
+  // The Calendar's month, built as the page builds it.
+  calendar: rangeReadOptions(dealershipId, calendarRange("month", "2026-10-13").from, calendarRange("month", "2026-10-13").to).queryKey,
+  // The Calendar's week, its default view.
+  calendarWeek: rangeReadOptions(dealershipId, calendarRange("week", "2026-10-13").from, calendarRange("week", "2026-10-13").to).queryKey,
   availability: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } as GetAvailabilityData["query"] }),
   // Task 31b: the environment's switches stay; availability read for a vehicle (its profile in the key) goes like any other.
   features: getFeaturesQueryKey(),
@@ -78,14 +87,11 @@ describe("which reads may hold another caller's data", () => {
     const holds = (key: readonly unknown[]) => holdsCallerData(queryClient.getQueryCache().find({ queryKey: key, exact: true })!)
 
     expect([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus, keys.features].map(holds)).toEqual([false, false, false, false, false])
-    expect([keys.schedule, keys.range, keys.availability, keys.vehicleAvailability, keys.details, keys.refine].map(holds)).toEqual([
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-    ])
+    expect(
+      [keys.schedule, keys.range, keys.overview, keys.calendar, keys.calendarWeek, keys.availability, keys.vehicleAvailability, keys.details, keys.refine].map(
+        holds,
+      ),
+    ).toEqual([true, true, true, true, true, true, true, true, true])
   })
 })
 
@@ -121,6 +127,21 @@ describe("clearing what the previous caller read", () => {
     // The view sees the reset (loading), and nothing is read until refetchCallerData asks.
     expect(results.at(-1)).toBeUndefined()
     expect(reads).toBe(0)
+    stop()
+  })
+
+  it("clears the Overview's and the Calendar's range reads as the pages build them: reset while shown, removed otherwise", () => {
+    const queryClient = seeded()
+    // The Overview on screen; the Calendar's week and month read earlier and no longer shown.
+    const observer = new QueryObserver(queryClient, { queryKey: keys.overview, queryFn: () => personal, staleTime: Infinity })
+    const stop = observer.subscribe(() => {})
+
+    clearCallerData(queryClient)
+
+    const cache = queryClient.getQueryCache()
+    expect(cache.find({ queryKey: keys.overview, exact: true })?.state.data).toBeUndefined()
+    expect([keys.calendarWeek, keys.calendar].map((key) => cache.find({ queryKey: key, exact: true }))).toEqual([undefined, undefined])
+    expect(JSON.stringify(cache.getAll().map((query) => query.state.data))).not.toContain("Sophie Turner")
     stop()
   })
 

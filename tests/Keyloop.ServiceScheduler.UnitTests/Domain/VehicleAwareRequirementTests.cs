@@ -33,6 +33,15 @@ public sealed class VehicleAwareRequirementTests
         { Powertrain.FullHybrid, VehicleClass.Car, "MOT-TEST", false, 1, "MotTesting", "MotTester", "hv-awareness" },
         { Powertrain.PluginHybrid, VehicleClass.LightCommercial, "AIRCON-REGAS", false, 3, "AirConditioning", "AirConditioning", "hv-aircon" },
         { Powertrain.FuelCell, VehicleClass.Car, "FULL-SERVICE", false, 2, "StandardLift", "GeneralService", "hv-routine" },
+        { Powertrain.Ice, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 0, "StandardLift", "DamageAssessment", "" },
+        { Powertrain.Unknown, VehicleClass.Unknown, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.MildHybrid, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.FullHybrid, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.PluginHybrid, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.BatteryElectric, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.FuelCell, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift", "DamageAssessment", "hv-post-collision" },
+        { Powertrain.Unknown, VehicleClass.Heavy, "ACCIDENT-DAMAGE-ASSESSMENT", false, 3, "StandardLift,HeavyDutyLift", "DamageAssessment,HeavyVehicle", "hv-post-collision,heavy-vehicle" },
+        { Powertrain.Unknown, VehicleClass.Car, "ACCIDENT-DAMAGE-ASSESSMENT", true, 4, "StandardLift,EvHighVoltage", "DamageAssessment", "hv-post-collision,hv-live-diagnosis" },
         // Live HV work is explicit: level 4 and an EV bay whatever the declared powertrain, added after every other rule.
         { Powertrain.Ice, VehicleClass.Car, "INTERIM-SERVICE", true, 4, "StandardLift,EvHighVoltage", "GeneralService", "hv-live-diagnosis" },
         { Powertrain.FuelCell, VehicleClass.Car, "DIAG-FAULT-FINDING", true, 4, "Diagnostics,EvHighVoltage", "Diagnostics", "hv-routine,hv-live-diagnosis" },
@@ -53,7 +62,7 @@ public sealed class VehicleAwareRequirementTests
         requirements.BayCapabilities.ShouldBe(Parse<BayCapability>(bays), ignoreOrder: true);
         requirements.Certifications.ShouldBe(Parse<Certification>(certifications), ignoreOrder: true);
         requirements.FiredRules.ShouldBe(Split(firedRules));
-        requirements.PolicyVersion.ShouldBe(1);
+        requirements.PolicyVersion.ShouldBe(2);
     }
 
     [Fact]

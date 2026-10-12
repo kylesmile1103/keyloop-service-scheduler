@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished,
 
 import type { CurrentUserResponse } from "@/api/types.gen"
 import { client } from "@/lib/api-client"
+import { rangeReadsOf } from "@/lib/appointment-range"
 import { currentUserQueryKey } from "@/lib/session"
 import { clearCallerData } from "@/lib/session-cache"
 import { bookedFrom, mockBoardApi } from "@/test/board-api"
@@ -11,7 +12,7 @@ import { reading } from "@/test/dealerships"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
-import { interimServiceType } from "@/test/schedules"
+import { availabilityOn, interimServiceType } from "@/test/schedules"
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
 import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
@@ -25,9 +26,14 @@ import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 // queued from a request interceptor on that client, so it lands while the client awaits its interceptors: after the write
 // has started (and passed the check at its start), before the client calls fetch. Each test checks that it did land
 // there: the client had built the request, and no request of that kind had reached fetch yet.
+//
+// The Overview and the Calendar (Task 28b) write through the board's booking dialog and details sheet, so their rows are the
+// same writes started from those pages: Book appointment and an upcoming row's sheet on the Overview, a day's New
+// appointment and a chip's sheet on the Calendar. Every row also checks the range reads those pages show: a write stopped
+// before its request left marks none of them stale, and a booking or cancellation whose answer is used marks them all.
 
 beforeAll(async () => {
-  await import("@/app/dispatch/page")
+  await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])
 })
 
 beforeEach(() => {
@@ -42,6 +48,8 @@ afterEach(() => {
 })
 
 const board = `/dispatch?dealership=${reading.id}`
+const overview = `/overview?dealership=${reading.id}`
+const calendar = `/calendar?dealership=${reading.id}`
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed"
 const imageId = "550e8400-e29b-41d4-a716-446655440000"
 
@@ -144,9 +152,21 @@ function changeWhilePreparing(api: { requests: Request[] }, queryClient: QueryCl
   return at
 }
 
-async function openBooking() {
-  fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+/** Opens the booking dialog from a page's Book action (the board's and the Overview's Book appointment, a Calendar day's New appointment). */
+async function openBooking(action = "Book appointment") {
+  const control = await screen.findByRole("button", { name: action })
+  await waitFor(() => expect(control).not.toHaveAttribute("aria-disabled", "true"))
+  fireEvent.click(control)
   return screen.findByRole("dialog", { name: "Book appointment" })
+}
+
+/** Opens Sophie Turner's Interim Service from `row` (a Calendar chip, an upcoming row) and types a reason, ready to cancel. */
+async function cancelFrom(row: () => Promise<HTMLElement>) {
+  fireEvent.click(await row())
+  const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+  await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
+  fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: reason } })
+  return () => fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 }
 
 /** Step 1 by hand (Interim Service at 10:15), then step 2's customer and vehicle. */
@@ -170,6 +190,10 @@ const photo = (name: string) => new File([new Uint8Array([137, 80, 78, 71])], na
  */
 interface WritePath {
   name: string
+  /** The page the write is made from: the board unless given. */
+  page?: string
+  /** The time the page is opened at, when not Tuesday 09:30 (the Overview lists upcoming work from 07:30). */
+  now?: string
   path: string
   nth: number
   /** Answers the first attempt with a failure, so the second is the one under test (Try again, a suggested start). */
@@ -274,6 +298,62 @@ const writePaths: WritePath[] = [
     answered: () => screen.findByText("Appointment cancelled"),
   },
   {
+    name: "Book appointment on the Overview",
+    page: overview,
+    now: "2026-10-13T06:30:00Z",
+    path: "/appointments",
+    nth: 1,
+    open: async () => {
+      await screen.findByRole("region", { name: "Bookings per day" })
+      const dialog = await openBooking()
+      await enterBooking(dialog)
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    },
+    carries: bookingDetails,
+    answered: () => screen.findByText("Booked"),
+  },
+  {
+    name: "Cancel appointment from an upcoming row on the Overview",
+    page: overview,
+    now: "2026-10-13T06:30:00Z",
+    path: "/cancel",
+    nth: 1,
+    open: () =>
+      cancelFrom(async () =>
+        within(await screen.findByRole("region", { name: "Upcoming appointments" })).findByRole("button", {
+          name: "Today, Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed",
+        })
+      ),
+    carries: [reason],
+    answered: () => screen.findByText("Appointment cancelled"),
+  },
+  {
+    name: "New appointment on a Calendar day",
+    page: calendar,
+    path: "/appointments",
+    nth: 1,
+    open: async () => {
+      const dialog = await openBooking("New appointment on Thursday 15 October")
+      await enterBooking(dialog)
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Book" }))
+    },
+    carries: bookingDetails,
+    answered: () => screen.findByText("Booked"),
+  },
+  {
+    name: "Cancel appointment from a chip on the Calendar",
+    page: calendar,
+    path: "/cancel",
+    nth: 1,
+    open: () =>
+      cancelFrom(async () => {
+        const tuesday = (await screen.findByRole("heading", { level: 3, name: "Tuesday 13 October, today, dispatch board" })).closest("li")!
+        return within(tuesday).findByRole("button", { name: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed" })
+      }),
+    carries: [reason],
+    answered: () => screen.findByText("Appointment cancelled"),
+  },
+  {
     name: "Suggest a service",
     path: "/booking-triage",
     nth: 1,
@@ -345,6 +425,7 @@ function boardApi(session: Session, write: WritePath) {
   return mockBoardApi({
     me: () => (session.meFails ? problemResponse(500, { type: "about:blank", title: "Internal Server Error", status: 500 }) : session.me),
     serviceTypes: () => [interimServiceType, brakesServiceType],
+    availability: (_, __, date) => availabilityOn(date),
     triageStatus: () => triageEnabled,
     features: () => (write.vehicleAware ? vehicleAwareOn : vehicleAwareOff),
     book: (_, body) => {
@@ -362,6 +443,15 @@ function boardApi(session: Session, write: WritePath) {
   })
 }
 
+/** Opens the write's page as it is made from there, at its time. */
+function renderPage(write: WritePath) {
+  if (write.now) vi.setSystemTime(new Date(write.now))
+  return renderBoard(write.page ?? board)
+}
+
+/** Whether the write's answer, once used, marks the dealership's range reads stale (a booking or a cancellation does). */
+const marksRanges = (write: WritePath) => write.path === "/appointments" || write.path === "/cancel"
+
 describe.each(writePaths)("$name, while the generated client prepares its request", (write) => {
   it.each<Change>([
     becomes("signs out", anonymous),
@@ -371,10 +461,11 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
   ])("sends nothing when who is signed in $name, and keeps nothing of it", async (change) => {
     const session: Session = { me: admin, meFails: false }
     const api = boardApi(session, write)
-    const { queryClient } = renderBoard(board)
+    const { queryClient } = renderPage(write)
     const press = await write.open()
 
     const at = changeWhilePreparing(api, queryClient, session, write.path, write.nth, change)
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     press()
     await settle()
 
@@ -392,13 +483,15 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
     for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)
+    // A write stopped before its request left has no answer: no range read is marked stale for it.
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: rangeReadsOf(reading.id) })
   })
 
   if (write.later) {
     it("is not sent when the same email changes to another role after the write's first request left", async () => {
       const session: Session = { me: admin, meFails: false }
       const api = boardApi(session, write)
-      const { queryClient } = renderBoard(board)
+      const { queryClient } = renderPage(write)
       const press = await write.open()
 
       const at = changeWhilePreparing(api, queryClient, session, write.path, write.nth, becomes("same email", sameEmailAdvisor))
@@ -417,16 +510,20 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
     it("is still sent, once, and its answer used, when the same email changes to another role that may write", async () => {
       const session: Session = { me: admin, meFails: false }
       const api = boardApi(session, write)
-      const { queryClient } = renderBoard(board)
+      const { queryClient } = renderPage(write)
       const press = await write.open()
 
       const at = changeWhilePreparing(api, queryClient, session, write.path, write.nth, becomes("same email", sameEmailAdvisor))
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries")
       press()
 
       expect(await write.answered()).toBeInTheDocument()
       await settle()
       expect(at.reachedFetch).toBe(at.before + write.nth - 1)
       expect(posts(api.requests, write.path)).toHaveLength(at.before + (write.path === "/booking-triage/images" ? write.photos! : 1))
+      // The answer is the caller's: a booking or a cancellation marks every range read of the dealership stale.
+      if (marksRanges(write)) expect(invalidate).toHaveBeenCalledWith({ queryKey: rangeReadsOf(reading.id) })
+      else expect(invalidate).not.toHaveBeenCalledWith({ queryKey: rangeReadsOf(reading.id) })
     })
   }
 })

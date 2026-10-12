@@ -52,7 +52,7 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
                 new StringContent(json.ToJsonString(), Encoding.UTF8, "application/json"), Ct);
             response.StatusCode.ShouldBe(HttpStatusCode.Created, service.Code + await response.Content.ReadAsStringAsync(Ct));
             var booked = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
-            booked.Allocation.ShouldNotBeNull().PolicyVersion.ShouldBe(1);
+            booked.Allocation.ShouldNotBeNull().PolicyVersion.ShouldBe(2);
             await _factory.WithDbAsync(async db =>
             {
                 var row = await db.Appointments.SingleAsync(a => a.Id == booked.Id, Ct);
@@ -536,7 +536,7 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         await _factory.WithDbAsync(async db =>
         {
             var original = await db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site).ToListAsync(Ct);
-            db.RequirementRules.AddRange(original.Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 2,
+            db.RequirementRules.AddRange(original.Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 3,
                 MinimumHvLevel = r.Code == "hv-routine" ? 3 : r.MinimumHvLevel }));
             await db.SaveChangesAsync(Ct);
         });
@@ -548,15 +548,15 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         var booked = await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);
         var decision = booked.Allocation.ShouldNotBeNull();
-        decision.PolicyVersion.ShouldBe(2);
+        decision.PolicyVersion.ShouldBe(3);
         decision.MinimumHvLevel.ShouldBe(3);
         decision.PreferredTechnicianId.ShouldBe(request.PreferredTechnicianId);
         decision.Reasons.ShouldContain("preferred-technician:minimum-hv-level");
         booked.Technician.Id.ShouldBe(ReferenceDataSeed.TechnicianId("T-1002"));
         await _factory.WithDbAsync(async db =>
         {
-            var versionTwo = await db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site && r.PolicyVersion == 2).ToListAsync(Ct);
-            db.RequirementRules.AddRange(versionTwo.Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 3,
+            var versionTwo = await db.RequirementRules.AsNoTracking().Where(r => r.DealershipId == site && r.PolicyVersion == 3).ToListAsync(Ct);
+            db.RequirementRules.AddRange(versionTwo.Select(r => r with { Id = Guid.NewGuid(), PolicyVersion = 4,
                 MinimumHvLevel = r.Code == "hv-routine" ? 4 : r.MinimumHvLevel }));
             await db.SaveChangesAsync(Ct);
         });

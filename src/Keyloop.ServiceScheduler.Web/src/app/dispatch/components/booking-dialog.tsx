@@ -52,6 +52,7 @@ import { useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-cur
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
+import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
 import { cachedVehicleAware, featureSwitchesQuery, useVehicleAware, vehicleAwareRefused } from "@/lib/feature-switches"
 import { featureLabel } from "@/lib/features"
@@ -65,7 +66,7 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
-import { cachedIdentity } from "@/lib/session"
+import { cachedIdentityKey } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
 import {
@@ -351,7 +352,7 @@ function BookingFlow({
     mutationFn: (variables: ResolveVariables, write, context) => generatedResolve.mutationFn!({ ...variables, fetch: write.fetch() }, context),
     // Kept for the caller its request left as (the cache's, when the answer is used: `useWriteMutation` throws away an answer
     // whose caller changed after it left).
-    onSuccess: (profile, variables) => setResolved({ identity: cachedIdentity(queryClient), vin: variables.body.vin ?? "", profile }),
+    onSuccess: (profile, variables) => setResolved({ identity: cachedIdentityKey(queryClient), vin: variables.body.vin ?? "", profile }),
     onError: (error) => {
       const problem = parseProblem(error)
       if (problem && problemSlug(problem) === "validation-error") {
@@ -459,6 +460,8 @@ function BookingFlow({
       void queryClient.invalidateQueries({
         queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: day } as GetAvailabilityData["query"] }),
       })
+      // Every range read of the dealership (the Overview's fortnight either side of today, the Calendar's week or month).
+      void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
       onBooked(appointment, explanation)
       if (layout === "sheet") setBooked(appointment)
       else onClose()

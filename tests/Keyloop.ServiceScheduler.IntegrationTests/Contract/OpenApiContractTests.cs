@@ -56,6 +56,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         SchedulerJsonContext.Default.UploadBookingTriageImageResponse,
         SchedulerJsonContext.Default.TriageServiceCandidate,
         SchedulerJsonContext.Default.TriagePreferredDate,
+        SchedulerJsonContext.Default.TriageUncoveredIssue,
         SchedulerJsonContext.Default.AppointmentListItemResponse,
         SchedulerJsonContext.Default.VehicleProfile,
         SchedulerJsonContext.Default.ProfileProvenance,

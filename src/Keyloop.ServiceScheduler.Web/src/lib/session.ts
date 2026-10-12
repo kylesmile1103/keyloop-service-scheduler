@@ -155,25 +155,34 @@ export function identityAnswered(state: { status: string; fetchFailureCount: num
 }
 
 /**
+ * The `/me` answer the cache holds at this moment, for a decision taken outside rendering: only while its last read
+ * succeeded (`identityAnswered`), else nobody. The one reading of the cached identity that `cachedCapabilities`,
+ * `cachedWriter` and a press's `cachedWriteAccess` share, so what a press opens and what a write then sends cannot disagree.
+ */
+export function cachedIdentity(queryClient: QueryClient): CurrentUserResponse | undefined {
+  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
+  return identityAnswered(state) ? state?.data : undefined
+}
+
+/**
  * What the cached `/me` allows at this moment, for a decision taken outside rendering: a read's `enabled` when it would
  * run, a write as it is sent. Nothing unless its last read succeeded (`identityAnswered`), as `useCurrentUser` decides.
  */
 export function cachedCapabilities(queryClient: QueryClient): Capabilities {
-  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
-  return capabilitiesOf(identityAnswered(state) ? state?.data : undefined)
+  return capabilitiesOf(cachedIdentity(queryClient))
 }
 
 /** The writer the cached `/me` names at this moment (`writerOf`), for a write as it is sent: nobody unless its last read succeeded. */
 export function cachedWriter(queryClient: QueryClient): string | null {
-  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
-  return writerOf(identityAnswered(state) ? state?.data : undefined)
+  return writerOf(cachedIdentity(queryClient))
 }
 
 /**
  * Who the cached `/me` names at this moment (`identityKey`), for something kept outside the query cache as it arrives (a
- * write's answer kept by a view): `failed` unless its last read succeeded, as `useCurrentUser` names it.
+ * write's answer kept by a view): `failed` unless its last read succeeded (the same reading, `cachedIdentity`), as
+ * `useCurrentUser` names it.
  */
-export function cachedIdentity(queryClient: QueryClient): string {
-  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
-  return identityAnswered(state) && state?.data ? identityKey(state.data) : "failed"
+export function cachedIdentityKey(queryClient: QueryClient): string {
+  const user = cachedIdentity(queryClient)
+  return user ? identityKey(user) : "failed"
 }

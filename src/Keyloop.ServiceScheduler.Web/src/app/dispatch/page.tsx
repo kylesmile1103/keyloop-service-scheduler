@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, RotateCw } from "lucide-react"
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react"
 
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
-import { useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
+import { cachedWriteAccess, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
@@ -179,9 +179,12 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
     setSelection({ appointment, dealershipId: dealership.id, open: true, identity: currentUser.identity })
   }
 
+  const queryClient = useQueryClient()
+  // Decided as it is pressed, from the cached `/me` (a press can land before the board has drawn a change of identity).
   const openBooking = () => {
-    if (access.state === "allowed") setBooking((previous) => ({ session: previous.session + 1, open: true }))
-    else if (access.state === "sign-in") setSignInPrompt(true)
+    const now = cachedWriteAccess(queryClient)
+    if (now.state === "allowed") setBooking((previous) => ({ session: previous.session + 1, open: true }))
+    else if (now.state === "sign-in") setSignInPrompt(true)
   }
 
   /** Shows a booking on the board: its day, then its block or card, scrolled into view with the booked halo. */

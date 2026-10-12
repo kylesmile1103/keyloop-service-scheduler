@@ -198,7 +198,7 @@ export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(opt
 });
 
 /**
- * Suggest bookable services and an optional preferred date from an intake description
+ * Suggest bookable services, an optional preferred date and a closed uncovered-issue category from an intake description
  *
  * A person must confirm a suggestion before asking for availability and booking. No description is stored.
  */

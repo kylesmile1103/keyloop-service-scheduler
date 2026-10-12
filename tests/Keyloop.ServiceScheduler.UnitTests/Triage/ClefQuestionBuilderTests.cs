@@ -35,6 +35,11 @@ public sealed class ClefQuestionBuilderTests
         service.Criteria[Brakes.Code]!["typical_symptoms"]!.ToJsonString().ShouldContain("squeal");
         service.Criteria[Brakes.Code]!["not_for"].ShouldNotBeNull();
         service.Instructions["vehicle_hint"]!.GetValue<string>().ShouldContain("electric vehicle");
+        request.Questions.Keys.ShouldBe(["service", "preferred_date", "uncovered_issue"]);
+        var uncovered = request.Questions["uncovered_issue"];
+        uncovered.Type.ShouldBe("choice");
+        uncovered.Criteria.Select(c => c.Key).ShouldBe(["NONE", "ACCIDENT_OR_BODY_DAMAGE", "LIGHTS_OR_ELECTRICAL_ACCESSORY", "AIR_CONDITIONING", "TYRES_OR_WHEELS", "GLASS", "OTHER"]);
+        uncovered.Instructions["question"]!.GetValue<string>().ShouldContain("most likely service");
     }
 
     [Theory]

@@ -11,8 +11,10 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
@@ -279,6 +281,65 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         (await CompetenceAsync(chloe)).ShouldBe((1, new DateOnly(2027, 1, 31), true), "a confirmed level is kept");
         (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == amelia, Ct))).BrandSpecialisms.ShouldBe(["VOLKSWAGEN"]);
         (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == hans, Ct))).BrandSpecialisms.ShouldBe(["BMW"]);
+    }
+
+    [Fact]
+    public async Task Reseed_restores_only_the_named_seeded_damage_certifications_and_keeps_confirmed_levels()
+    {
+        var eva = ReferenceDataSeed.TechnicianId("T-1005");
+        var hans = ReferenceDataSeed.TechnicianId("M-2002");
+        await _factory.WithDbAsync(async db =>
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE technicians SET certifications = array_remove(certifications, 'DamageAssessment') WHERE id IN ({eva}, {hans});
+                UPDATE technicians SET hv_level = 1, hv_level_confirmed = true, hv_level_valid_until = '2027-01-31' WHERE id = {eva};
+                """, Ct);
+            await ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct);
+        });
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == eva, Ct)))
+            .Certifications.ShouldNotContain(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment);
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await _factory.WithDbAsync(async db =>
+        {
+            var technicians = await db.Technicians.AsNoTracking().ToListAsync(Ct);
+            technicians.Where(t => t.Certifications.Contains(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment))
+                .Select(t => t.Id).ShouldBe([eva, hans], ignoreOrder: true);
+            var restored = technicians.Single(t => t.Id == eva);
+            restored.Certifications.ShouldBe([Keyloop.ServiceScheduler.Domain.Resources.Certification.GeneralService,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.AirConditioning, Keyloop.ServiceScheduler.Domain.Resources.Certification.Diagnostics,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment], ignoreOrder: true);
+        });
+        (await CompetenceAsync(eva)).ShouldBe((1, new DateOnly(2027, 1, 31), true));
+    }
+
+    /// <summary>
+    /// The reseed logs <c>1107</c> after its transaction commits, from what the committed attempt published: a first attempt whose commit
+    /// fails rolls back and logs nothing, and the retry logs each version once.
+    /// </summary>
+    [Fact]
+    public async Task Reseed_logs_each_published_policy_once_after_commit_and_nothing_for_a_rolled_back_attempt()
+    {
+        var probe = new PolicyPublicationProbe(pg.ConnectionString);
+        var loss = new CommitAcknowledgementLoss { BeforeCommit = true };
+        await using var host = Demo(seedDemoData: true, key: Key, builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<ILoggerProvider>(probe);
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss)); // inert until armed
+        }));
+        using var client = host.CreateClient();
+        await _factory.WithDbAsync(db => PolicyPublicationProbe.RevertToBeforeTask32aAsync(db, Ct));
+
+        loss.Arm(); // the reseed transaction's first commit is the next commit in this host
+        using var response = await ReseedAsync(client, Key);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        loss.Fired.ShouldBe(1);
+        probe.Lines.Select(line => (line.DealershipId, line.Version, line.Previous, line.Committed)).ShouldBe([
+            (ReferenceDataSeed.ReadingDealershipId, 2, 1, true),
+            (ReferenceDataSeed.MunichDealershipId, 2, 1, true),
+        ], ignoreOrder: true);
+        (await _factory.WithDbAsync(db => db.RequirementRules.AsNoTracking().CountAsync(r => r.PolicyVersion == 2, Ct))).ShouldBe(14);
     }
 
     private Task<(int Level, DateOnly? ValidUntil, bool Confirmed)> CompetenceAsync(Guid technicianId) =>

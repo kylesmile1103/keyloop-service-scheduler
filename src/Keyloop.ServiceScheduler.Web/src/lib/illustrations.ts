@@ -1,5 +1,7 @@
 import bookingSuccess from "@/assets/illustrations/booking-success.webp"
 import closedDay from "@/assets/illustrations/closed-day.webp"
+import dashboardInsights from "@/assets/illustrations/dashboard-insights.webp"
+import emptyCalendar from "@/assets/illustrations/empty-calendar.webp"
 import emptySchedule from "@/assets/illustrations/empty-schedule.webp"
 import emptyTechnicians from "@/assets/illustrations/empty-technicians.webp"
 import errorConnection from "@/assets/illustrations/error-connection.webp"
@@ -33,6 +35,9 @@ export const illustrations = {
   "photo-evidence": photoEvidence,
   // The sign-in prompt before a booking or a change (Task 27b).
   "sign-in-to-book": signInToBook,
+  // The Overview with nothing booked around today, and a calendar week or month with nothing booked (Task 28b).
+  "dashboard-insights": dashboardInsights,
+  "empty-calendar": emptyCalendar,
 } as const
 
 export type Illustration = keyof typeof illustrations
@@ -56,4 +61,6 @@ export const illustrationAlt: Record<Illustration, string> = {
   "empty-technicians": "Tool pegboard beside an open, empty technician locker.",
   "photo-evidence": "Phone camera framing an amber warning triangle on a generic vehicle dashboard.",
   "sign-in-to-book": "Calendar booking card beside a car key.",
+  "dashboard-insights": "Workshop bay silhouette with rising blue bars and a simple gauge.",
+  "empty-calendar": "Week-view calendar with open slots and a small generic car icon.",
 }
