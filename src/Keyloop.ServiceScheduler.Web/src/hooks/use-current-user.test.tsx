@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it } from "vitest"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
-import { detailsAccessOf, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
+import { cachedWriteAccess, detailsAccessOf, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { createQueryClient } from "@/lib/query-client"
 import { cachedCapabilities, capabilitiesOf, currentUserQueryKey, NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
@@ -158,5 +158,79 @@ describe("the current user", () => {
 
     await waitFor(() => expect(result.current.canWrite).toBe(true))
     expect(meRequests(api.requests)).toHaveLength(2)
+  })
+})
+
+describe("the write access the cache holds now (cachedWriteAccess, for a press)", () => {
+  it("is nothing yet while /me has not answered", () => {
+    mockApi(() => new Promise<Response>(() => {}))
+    const { queryClient } = renderCurrentUser()
+
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "checking" })
+  })
+
+  it.each<[string, CurrentUserResponse]>([
+    ["anonymous", anonymous],
+    ["a signed-in account without a role", noRole],
+    ["a Viewer", viewer],
+    ["a Service advisor", serviceAdvisor],
+    ["an Admin", admin],
+  ])("decides for %s as the page does", async (_, me) => {
+    mockApi(() => jsonResponse(me))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+
+    expect(cachedWriteAccess(queryClient)).toEqual(writeAccessOf(result.current))
+  })
+
+  it("follows the cache before the page has drawn it", async () => {
+    mockApi(() => jsonResponse(admin))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+
+    act(() => {
+      queryClient.setQueryData(currentUserQueryKey(), viewer)
+      // The render still says Admin; the cache already says Viewer.
+      expect(writeAccessOf(result.current)).toEqual({ state: "allowed" })
+      expect(cachedWriteAccess(queryClient)).toEqual({ state: "denied", reason: READ_ONLY_REASON })
+    })
+  })
+
+  it("counts a failed re-read as signed out though the earlier answer is cached, and while Try again reads it again", async () => {
+    let failing = false
+    mockApi(() => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : jsonResponse(admin)))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+
+    failing = true
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await waitFor(() => expect(result.current.status).toBe("failed"))
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "sign-in" })
+
+    failing = false
+    act(() => result.current.refetch())
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "sign-in" })
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "allowed" })
+  })
+
+  it("counts a first read that failed as signed out, also while Try again reads it again with nothing cached", async () => {
+    let failing = true
+    mockApi(() => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : jsonResponse(serviceAdvisor)))
+    const { result, queryClient } = renderCurrentUser()
+    await waitFor(() => expect(result.current.status).toBe("failed"))
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "sign-in" })
+
+    failing = false
+    act(() => result.current.refetch())
+    // TanStack has put the query back to pending, with no error; the page still shows the failure, and so does the cache.
+    expect(queryClient.getQueryState(currentUserQueryKey())?.status).toBe("pending")
+    expect(writeAccessOf(result.current)).toEqual({ state: "sign-in" })
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "sign-in" })
+    await waitFor(() => expect(result.current.status).toBe("ready"))
+    expect(cachedWriteAccess(queryClient)).toEqual({ state: "allowed" })
   })
 })

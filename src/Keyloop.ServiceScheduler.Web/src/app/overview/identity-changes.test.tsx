@@ -14,6 +14,7 @@ import {
   expectNothingPersonal,
   maskedItem,
   maskedSchedule,
+  pressBeforeTheChangeIsDrawn,
   recordDialogs,
   refocus,
 } from "@/test/identity-change"
@@ -247,6 +248,56 @@ describe("a write from the Overview, checked as it is sent", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(posts(api.requests, "/cancel")).toHaveLength(0)
+  })
+})
+
+describe("Book appointment, decided from the cached /me as it is pressed", () => {
+  it("asks a caller who has just signed out to sign in, though the page still showed a caller who could book", async () => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(overview)
+    const book = await screen.findByRole("button", { name: "Book appointment" })
+    await waitFor(() => expect(book).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = anonymous
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, book)).toBe(true)
+
+    expect(await screen.findByRole("dialog", { name: "Sign in to book" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
+  })
+
+  it("opens nothing for a caller who has just become a Viewer, and the page then names the reason", async () => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(overview)
+    const book = await screen.findByRole("button", { name: "Book appointment" })
+    await waitFor(() => expect(book).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = viewer
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, book)).toBe(true)
+
+    expect(await screen.findByText(READ_ONLY_REASON)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Book appointment" })).toHaveAttribute("aria-disabled", "true")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
+  })
+
+  it("asks to sign in, saying the check failed, when /me has just failed to be read again", async () => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(overview)
+    const book = await screen.findByRole("button", { name: "Book appointment" })
+    await waitFor(() => expect(book).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = "unreadable"
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, book)).toBe(true)
+
+    const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
+    expect(within(prompt).getByText(IDENTITY_CHECK_FAILED)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
   })
 })
 

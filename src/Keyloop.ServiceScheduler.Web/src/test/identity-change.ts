@@ -1,8 +1,9 @@
 import { focusManager, type QueryClient } from "@tanstack/react-query"
-import { act } from "@testing-library/react"
+import { act, fireEvent } from "@testing-library/react"
 import { expect } from "vitest"
 
 import type { AppointmentListItemResponse, WorkshopScheduleResponse } from "@/api/types.gen"
+import { currentUserQueryKey } from "@/lib/session"
 
 /**
  * What the pages' identity tests share (ARCHITECTURE §15): who is signed in changes while a view is open, and nothing read
@@ -15,6 +16,21 @@ export function refocus() {
     focusManager.setFocused(false)
     focusManager.setFocused(true)
   })
+}
+
+/**
+ * Reads `/me` again (answered as the test's API now answers it) and presses `control` in the same task, before React has
+ * drawn the new answer (TanStack tells the views on a zero timeout): the press that lands after the identity changed but
+ * before the page shows it. Returns whether the control still looked usable (not `aria-disabled`) when it was pressed.
+ */
+export async function pressBeforeTheChangeIsDrawn(queryClient: QueryClient, control: HTMLElement): Promise<boolean> {
+  let usable = false
+  await act(async () => {
+    await queryClient.refetchQueries({ queryKey: currentUserQueryKey() })
+    usable = control.isConnected && control.getAttribute("aria-disabled") !== "true"
+    fireEvent.click(control)
+  })
+  return usable
 }
 
 /** A deferred answer: the request is held until the test lets it through. */

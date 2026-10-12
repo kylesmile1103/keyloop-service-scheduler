@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ReactNode, useId, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -7,7 +7,7 @@ import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
 import { SignInPrompt } from "@/components/auth/sign-in-prompt"
 import { WriteReason } from "@/components/auth/write-reason"
 import { toast } from "@/components/ui/toast"
-import { useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
+import { cachedWriteAccess, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { formatDay } from "@/lib/calendar-date"
 import { firstOpenDate } from "@/lib/opening-hours"
 import { DATE_PARAM, DEALERSHIP_PARAM } from "@/lib/workshop-params"
@@ -33,7 +33,10 @@ export interface BookState {
 export interface BookAction {
   access: WriteAccess
   bookState: BookState
-  /** Opens the booking dialog on a day (`yyyy-MM-dd`; today without one), or the sign-in prompt for a visitor. */
+  /**
+   * Opens the booking dialog on a day (`yyyy-MM-dd`; today without one), or the sign-in prompt for a visitor, as the cached
+   * `/me` decides when it is called (`cachedWriteAccess`), not as the page was last drawn; nothing for any other account.
+   */
   open: (day?: string) => void
   /** The reason every Book action of the page names, on screen; `null` unless the account's role cannot book. */
   reason: ReactNode
@@ -46,10 +49,13 @@ export interface BookAction {
  * days): the board's own booking dialog, structure untouched, opened on a chosen day, and the board's role rules (UI_DESIGN
  * 11.20). An Admin or Service advisor gets the dialog; a visitor who is not signed in gets the sign-in prompt before
  * anything is typed, and nothing is sent; any other account sees every Book action unavailable, with the reason on screen
- * and named by each. A booking's toast, and the phone's success state, lead to the board on the booked day.
+ * and named by each. Which of these a press gets is decided as it happens, from the cached `/me`: a press that lands after
+ * the identity changed but before the page has drawn the change opens nothing the new caller may not use. A booking's
+ * toast, and the phone's success state, lead to the board on the booked day.
  */
 export function useBookAction({ dealership, today, fullScreen }: BookActionOptions): BookAction {
   const access = writeAccessOf(useCurrentUser())
+  const queryClient = useQueryClient()
   const reasonId = useId()
   const navigate = useNavigate()
   // A new session per opening, so every booking starts from a clean form and a new idempotency key.
@@ -64,11 +70,13 @@ export function useBookAction({ dealership, today, fullScreen }: BookActionOptio
   })
 
   const open = (day?: string) => {
-    if (access.state === "allowed") {
+    // The caller now, not the one this render was for (the role's reason, if any, is drawn with the new answer).
+    const now = cachedWriteAccess(queryClient)
+    if (now.state === "allowed") {
       // A past day or a closed one cannot be booked: the dialog starts on the next day the dealership opens.
       const initialDate = firstOpenDate(dealership, day && day >= today ? day : today)
       setBooking((previous) => ({ session: previous.session + 1, open: true, initialDate }))
-    } else if (access.state === "sign-in") setSignInPrompt(true)
+    } else if (now.state === "sign-in") setSignInPrompt(true)
   }
 
   const viewOnBoard = (appointment: AppointmentResponse) => {

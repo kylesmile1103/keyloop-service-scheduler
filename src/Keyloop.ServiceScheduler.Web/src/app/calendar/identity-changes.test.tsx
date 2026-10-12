@@ -14,6 +14,7 @@ import {
   expectNothingPersonal,
   maskedItem,
   maskedSchedule,
+  pressBeforeTheChangeIsDrawn,
   recordDialogs,
   refocus,
 } from "@/test/identity-change"
@@ -265,6 +266,58 @@ describe("a write from the Calendar, checked as it is sent", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(posts(api.requests, "/cancel")).toHaveLength(0)
+  })
+})
+
+describe("New appointment, decided from the cached /me as it is pressed", () => {
+  const controls = ["New appointment", "New appointment on Thursday 15 October"]
+
+  it.each(controls)("%s asks a caller who has just signed out to sign in, though the page still showed a caller who could book", async (name) => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(calendar)
+    const control = await screen.findByRole("button", { name })
+    await waitFor(() => expect(control).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = anonymous
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, control)).toBe(true)
+
+    expect(await screen.findByRole("dialog", { name: "Sign in to book" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
+  })
+
+  it.each(controls)("%s opens nothing for a caller who has just become a Viewer, and the page then names the reason", async (name) => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(calendar)
+    const control = await screen.findByRole("button", { name })
+    await waitFor(() => expect(control).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = viewer
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, control)).toBe(true)
+
+    expect(await screen.findByText(READ_ONLY_REASON)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name })).toHaveAttribute("aria-disabled", "true"))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
+  })
+
+  it.each(controls)("%s asks to sign in, saying the check failed, when /me has just failed to be read again", async (name) => {
+    let me: Caller = admin
+    const { requests } = mockApiAs(() => me)
+    const { queryClient } = renderBoard(calendar)
+    const control = await screen.findByRole("button", { name })
+    await waitFor(() => expect(control).not.toHaveAttribute("aria-disabled", "true"))
+
+    me = "unreadable"
+    expect(await pressBeforeTheChangeIsDrawn(queryClient, control)).toBe(true)
+
+    const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
+    expect(within(prompt).getByText(IDENTITY_CHECK_FAILED)).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
+    expect(writes(requests)).toHaveLength(0)
   })
 })
 
