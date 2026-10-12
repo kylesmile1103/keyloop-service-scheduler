@@ -340,3 +340,11 @@ export function vehicleNeeds(vehicle: Pick<AvailabilityVehicle, "powertrain" | "
   if (vehicle.vehicleClass === "Heavy") needs.push("a heavy-duty lift and a technician certified for heavy vehicles")
   return needs
 }
+
+/**
+ * Who declared the vehicle, for people: the API records the audit actor (`user:` and the verified email, `anonymous:` and
+ * an address, or `system`), so a signed-in declarer reads as their email; anything else is shown as recorded.
+ */
+export function declarerName(declaredBy: string): string {
+  return declaredBy.startsWith("user:") ? declaredBy.slice("user:".length) : declaredBy
+}

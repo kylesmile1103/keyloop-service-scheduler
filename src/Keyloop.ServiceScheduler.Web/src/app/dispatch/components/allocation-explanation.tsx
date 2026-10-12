@@ -5,7 +5,7 @@ import type { AllocationDecision, AppointmentResponse, ServiceTypeResponse } fro
 import { HvLevelBadge } from "@/components/hv-level"
 import { ProvenanceChip } from "@/components/provenance-chip"
 import { cn } from "@/lib/utils"
-import { hvLevelOf, knownManufacturer, LIVE_DIAGNOSIS_RULE, powertrainLabels, vehicleClassLabels } from "@/lib/vehicle-aware"
+import { declarerName, hvLevelOf, knownManufacturer, LIVE_DIAGNOSIS_RULE, powertrainLabels, vehicleClassLabels } from "@/lib/vehicle-aware"
 
 import { explainBooking, type Roster } from "../lib/allocation"
 import { TwoPersonWarning } from "./vehicle-step"
@@ -102,7 +102,7 @@ export function AllocationExplanationView({ appointment, allocation, service, ro
           </dl>
           {profile.provenance.declaredBy && (
             <p className="text-xs text-pretty text-muted-foreground">
-              {`Declared by ${profile.provenance.declaredBy}`}
+              {`Declared by ${declarerName(profile.provenance.declaredBy)}`}
               {profile.provenance.declarationReason ? `: “${profile.provenance.declarationReason}”` : ""}
             </p>
           )}

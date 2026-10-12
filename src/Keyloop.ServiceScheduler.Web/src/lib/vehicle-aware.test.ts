@@ -201,3 +201,11 @@ describe("the vehicle-aware availability inputs", () => {
     expect(liveDiagnosisApplies(undefined, "Unknown")).toBe(false)
   })
 })
+
+describe("who declared the vehicle", () => {
+  it("reads the audit actor of a signed-in declarer as their email, and anything else as recorded", async () => {
+    const { declarerName } = await import("@/lib/vehicle-aware")
+    expect(declarerName("user:advisor@keyloop.test")).toBe("advisor@keyloop.test")
+    expect(declarerName("system")).toBe("system")
+  })
+})

@@ -676,7 +676,8 @@ describe("the allocation, explained in the details sheet", () => {
           powertrain: "Declared" as const,
           manufacturer: "VinDecoded" as const,
           vehicleClass: "Declared" as const,
-          declaredBy: "advisor@keyloop.test",
+          // The audit actor, as the API records it.
+          declaredBy: "user:advisor@keyloop.test",
           declarationReason: "Hybrid badge on the tailgate",
         },
       },
