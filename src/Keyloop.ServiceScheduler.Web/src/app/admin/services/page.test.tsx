@@ -5,7 +5,7 @@ import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { munichCatalogue, readingCatalogue } from "@/test/catalogue"
 import { munich, reading } from "@/test/dealerships"
 import { renderBoard, viewportOf } from "@/test/render-board"
-import { bodyRows, columnTexts, figure, headers, openFilter } from "@/test/resource-list"
+import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 
 // The Services page (Task 29): the service catalogue as a read-only list on Refine core, with what each needs and
 // whether this dealership can book it.
@@ -66,7 +66,7 @@ describe("services list", () => {
 
     const list = await table()
     const row = (name: string) => bodyRows(list)[columnTexts(list, "Service").indexOf(name)]
-    expect(figure("Bookable here")).toHaveTextContent("5 of 10")
+    expect(figureValue("Bookable here")).toBe("5 of 10")
     expect(figure("Bookable here")).toHaveTextContent("5 need what this dealership lacks")
     expect(within(row("MOT Test")).getByText("Missing: MOT testing, MOT tester.")).toBeInTheDocument()
     expect(within(row("Diagnostic Fault Finding")).getByText("Missing: Diagnostics.")).toBeInTheDocument()
@@ -80,23 +80,44 @@ describe("services list", () => {
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
     await table()
-    expect(figure("Services")).toHaveTextContent("10")
-    expect(figure("Bookable here")).toHaveTextContent("10 of 10")
+    expect(figureValue("Services")).toBe("10")
+    expect(figureValue("Bookable here")).toBe("10 of 10")
     expect(figure("Bookable here")).toHaveTextContent("Every service can be booked")
-    expect(figure("Booked today")).toHaveTextContent("6")
+    expect(figureValue("Booked today")).toBe("6")
     expect(figure("Booked today")).toHaveTextContent("Across 6 services")
-    expect(figure("Durations")).toHaveTextContent("45–180 min")
+    expect(figureValue("Durations")).toBe("45–180 min")
   })
 
-  it("says an empty catalogue is empty, not that every service can be booked", async () => {
+  it("says an empty catalogue is empty on an open day: nothing booked, not that every service can be booked", async () => {
     mockBoardApi({ serviceTypes: () => [] })
     renderBoard(`/resources/services?dealership=${reading.id}`)
 
     expect(await screen.findByRole("heading", { name: "No services yet" })).toBeInTheDocument()
-    expect(figure("Services")).toHaveTextContent("0In the catalogue")
-    expect(figure("Bookable here")).toHaveTextContent("0 of 0No services yet")
+    expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
+    expect(figureValue("Services")).toBe("0")
+    expect(figure("Services")).toHaveTextContent("In the catalogue")
+    expect(figureValue("Bookable here")).toBe("0 of 0")
+    expect(figure("Bookable here")).toHaveTextContent("No services yet")
+    // Nothing booked on an open day is a count of 0, not a missing figure: only a closed day has none.
+    expect(figureValue("Booked today")).toBe("0")
+    expect(within(figure("Booked today")).queryByText("No figure")).not.toBeInTheDocument()
     expect(figure("Booked today")).toHaveTextContent("Nothing booked")
     expect(screen.queryByText("Every service can be booked")).not.toBeInTheDocument()
+    expect(screen.queryByText(/closed/i)).not.toBeInTheDocument()
+  })
+
+  it("keeps the catalogue on a closed day and has no booked figure", async () => {
+    vi.setSystemTime(new Date("2026-10-18T09:00:00Z"))
+    mockBoardApi(catalogues)
+    renderBoard(`/resources/services?dealership=${reading.id}`)
+
+    const list = await table()
+    expect(bodyRows(list)).toHaveLength(10)
+    expect(screen.getByText("Closed today (Europe/London).")).toBeInTheDocument()
+    expect(figureValue("Services")).toBe("10")
+    expect(figureValue("Booked today")).toBe("–No figure")
+    expect(within(figure("Booked today")).getByText("No figure")).toBeInTheDocument()
+    expect(figure("Booked today")).toHaveTextContent("Closed today")
   })
 
   it("finds a service by name or code, and filters by what it needs and whether it is bookable", async () => {

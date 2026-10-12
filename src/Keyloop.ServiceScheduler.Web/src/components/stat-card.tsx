@@ -37,7 +37,7 @@ export function StatCard({ label, icon: Icon, tile = "rounded-chip bg-secondary 
     <Card size="sm" role="group" aria-labelledby={labelId} aria-busy={loading || undefined} className="shadow-xs">
       <CardHeader>
         <CardDescription id={labelId}>{label}</CardDescription>
-        <div className="font-heading text-2xl font-bold tracking-tight tabular-nums md:text-3xl">
+        <div data-slot="stat-card-value" className="font-heading text-2xl font-bold tracking-tight tabular-nums md:text-3xl">
           {loading ? (
             <Skeleton className="my-1 h-7 w-12" />
           ) : value === NO_FIGURE ? (

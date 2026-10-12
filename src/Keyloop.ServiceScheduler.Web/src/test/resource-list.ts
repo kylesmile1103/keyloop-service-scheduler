@@ -18,6 +18,16 @@ export function figure(label: string): HTMLElement {
   return screen.getByRole("group", { name: label })
 }
 
+/**
+ * The figure a card shows, alone and exact (`"0"`, `"5 of 10"`), where `figure(label)` matches text anywhere in the card.
+ * A card with no figure reads `"–No figure"`.
+ */
+export function figureValue(label: string): string {
+  const value = figure(label).querySelector('[data-slot="stat-card-value"]')
+  if (!value) throw new Error(`no value in the "${label}" figure`)
+  return value.textContent?.trim() ?? ""
+}
+
 /** Opens a faceted filter's popover from the toolbar. */
 export async function openFilter(title: string): Promise<HTMLElement> {
   fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${title} filter(,|$)`) }))
