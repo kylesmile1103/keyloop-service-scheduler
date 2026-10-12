@@ -74,7 +74,7 @@ export default function DispatchPage() {
                   level={2}
                   title="No dealerships yet"
                   action={
-                    <Button type="button" onClick={retry} disabled={dealerships.isFetching}>
+                    <Button type="button" onClick={retry} disabled={dealerships.isFetching} focusableWhenDisabled>
                       <RotateCw aria-hidden="true" className={cn(dealerships.isFetching && "animate-spin")} />
                       Check again
                     </Button>

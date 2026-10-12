@@ -372,7 +372,15 @@ function BookingFlow({ dealership, schedule, initialDate, today, layout, onBooke
               Next
             </Button>
           ) : (
-            <Button key="book" type="submit" disabled={book.isPending || waiting > 0} aria-busy={book.isPending || undefined}>
+            // Focusable while it waits (booking, or a rate limit's wait): it was just pressed, and focus must stay in the dialog.
+            // Base UI also turns a press, or Enter in a field, into nothing meanwhile.
+            <Button
+              key="book"
+              type="submit"
+              disabled={book.isPending || waiting > 0}
+              focusableWhenDisabled
+              aria-busy={book.isPending || undefined}
+            >
               {book.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
               {book.isPending ? "Booking…" : waiting > 0 ? `Book (in ${waiting} s)` : "Book"}
             </Button>

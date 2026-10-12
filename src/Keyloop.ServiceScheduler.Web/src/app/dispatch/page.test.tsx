@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { getDealershipsQueryKey } from "@/api/@tanstack/react-query.gen"
 import { defaultSchedule, mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
+import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard, search } from "@/test/render-board"
 
@@ -245,7 +246,9 @@ describe("dispatch board: dealership", () => {
   })
 
   it("explains an empty list and checks again on request", async () => {
-    const api = mockBoardApi({ dealerships: () => [] })
+    let answer: () => void = () => {}
+    let held: Promise<void> | null = null
+    const api = mockBoardApi({ dealerships: async () => (await held, []) })
     const { router } = renderBoard()
 
     expect(await screen.findByRole("heading", { level: 2, name: "No dealerships yet" })).toBeInTheDocument()
@@ -254,9 +257,18 @@ describe("dispatch board: dealership", () => {
     expect(search(router)).toEqual({})
 
     const before = api.requests.length
-    fireEvent.click(screen.getByRole("button", { name: "Check again" }))
+    held = new Promise<void>((resolve) => (answer = resolve))
+    const checkAgain = screen.getByRole("button", { name: "Check again" })
+    checkAgain.focus()
+    fireEvent.click(checkAgain)
 
     await waitFor(() => expect(api.requests).toHaveLength(before + 1))
+    // While it checks, and once the list is still empty, the keyboard user stays on Check again.
+    await waitFor(() => expectUnavailableButFocusable(checkAgain))
+    expect(checkAgain).toHaveFocus()
+    answer()
+    await waitFor(() => expectAvailable(checkAgain))
+    expect(checkAgain).toHaveFocus()
   })
 
   it("shows the API's explanation and trace id when loading fails, and loads the list on retry", async () => {

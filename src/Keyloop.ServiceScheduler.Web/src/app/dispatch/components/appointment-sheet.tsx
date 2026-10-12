@@ -346,6 +346,8 @@ function CancelForm({ appointment, status, timeZone, onCancelled, onConflict }: 
             type="submit"
             variant="destructive"
             disabled={cancel.isPending}
+            // Focus stays on it while it cancels, and on it after a failure.
+            focusableWhenDisabled
             className="self-stretch sm:self-end max-md:h-11"
           >
             {cancel.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}

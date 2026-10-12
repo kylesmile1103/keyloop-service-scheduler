@@ -87,6 +87,8 @@ export function ProblemAlert({
                 size="sm"
                 onClick={onRetry}
                 disabled={retrying || retryDisabled}
+                // It disables itself while the retry is out: focus stays on it, ready for another try if that one fails.
+                focusableWhenDisabled
                 className="text-foreground"
               >
                 <RotateCw aria-hidden="true" className={cn(retrying && "animate-spin")} />

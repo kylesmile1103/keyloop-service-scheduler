@@ -6,6 +6,7 @@ import { formatDay } from "@/app/dispatch/lib/calendar-date"
 import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { jsonResponse, problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
 import { bays, interimAvailability, interimServiceType, readingTuesday, technicians } from "@/test/schedules"
@@ -444,7 +445,34 @@ describe("booking an appointment", () => {
     const alert = await within(scope).findByRole("alert")
     expect(alert).toHaveAttribute("data-tone", "info")
     expect(within(alert).getByText(/^Too many requests - try again in \d s$/)).toBeInTheDocument()
-    expect(within(scope).getByRole("button", { name: /^Book \(in \d s\)$/ })).toBeDisabled()
+    // Book waits too, and stays focusable meanwhile: it was just pressed, and keyboard focus must not fall out of the dialog.
+    expectUnavailableButFocusable(within(scope).getByRole("button", { name: /^Book \(in \d s\)$/ }))
+  })
+
+  it("keeps keyboard focus on Book while it books and after a refusal, and sends nothing on a second press", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    const api = mockBoardApi({ book: async () => (await held, problemResponse(409, slotUnavailable)) })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    const book = within(scope).getByRole("button", { name: "Book" })
+
+    book.focus()
+    fireEvent.click(book)
+
+    await waitFor(() => expect(book).toHaveAccessibleName("Booking…"))
+    expect(book).toHaveFocus()
+    expectUnavailableButFocusable(book)
+    fireEvent.click(book)
+    expect(bookingRequests(api.requests)).toHaveLength(1)
+
+    answer()
+    await within(scope).findByRole("alert")
+    expect(book).toHaveAccessibleName("Book")
+    expect(book).toHaveFocus()
+    expectAvailable(book)
   })
 
   it("starts the next booking with a new idempotency key", async () => {

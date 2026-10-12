@@ -67,7 +67,15 @@ interface Target {
  * 0), with latency and every answer listed with its copyable trace id. The tiles follow the template's section cards.
  */
 export function StressPanel({ dealership, date, today, compact, onWinner }: StressPanelProps) {
-  const ids = { heading: useId(), requests: useId(), requestsError: useId(), service: useId(), start: useId() }
+  const ids = {
+    heading: useId(),
+    requests: useId(),
+    requestsError: useId(),
+    service: useId(),
+    start: useId(),
+    past: useId(),
+    reason: useId(),
+  }
   const queryClient = useQueryClient()
   const [requests, setRequests] = useState(String(DEFAULT_REQUESTS))
   const [serviceTypeId, setServiceTypeId] = useState("")
@@ -97,6 +105,16 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
   const validCount = Number.isInteger(n) && n >= MIN_REQUESTS && n <= MAX_REQUESTS
   const past = date < today
   const ready = validCount && Boolean(service) && Boolean(startUtc) && !past && !running
+  // Why Fire cannot fire yet, said next to it unless the screen already says it above (the request count, a past day).
+  const reason =
+    running || past || !validCount
+      ? null
+      : !service
+        ? "Choose a service and a free start first."
+        : !startUtc
+          ? "Choose a free start first."
+          : null
+  const unavailableBecause = running ? undefined : past ? ids.past : !validCount ? ids.requestsError : reason ? ids.reason : undefined
 
   async function fire() {
     if (!service || !ready || !target) return
@@ -213,7 +231,7 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
             <span className="font-normal text-muted-foreground">{" · a start with 1 bay and 1 tech free shows the proof best"}</span>
           </span>
           {past ? (
-            <p className="rounded-chip border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+            <p id={ids.past} className="rounded-chip border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
               Past days take no bookings: choose today or a later day on the board.
             </p>
           ) : (
@@ -228,11 +246,27 @@ export function StressPanel({ dealership, date, today, compact, onWinner }: Stre
           )}
         </div>
 
-        <div>
-          <Button type="button" variant="signal" onClick={() => void fire()} disabled={!ready} aria-busy={running || undefined}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {/* Fire disables itself for its own run, and the run spends its start, so it stays so until the next one is chosen.
+              A disabled button loses keyboard focus to the top of the page; this one keeps it (Base UI sets aria-disabled
+              instead and ignores presses), says why it cannot fire, and the run's status line announces the result. */}
+          <Button
+            type="button"
+            variant="signal"
+            onClick={() => void fire()}
+            disabled={!ready}
+            focusableWhenDisabled
+            aria-busy={running || undefined}
+            aria-describedby={unavailableBecause}
+          >
             {running ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Zap aria-hidden="true" />}
             {running ? "Firing…" : validCount ? `Fire ${n} parallel bookings` : "Fire parallel bookings"}
           </Button>
+          {reason && (
+            <p id={ids.reason} className="text-sm text-muted-foreground">
+              {reason}
+            </p>
+          )}
         </div>
 
         {shownRun && <RunResults run={shownRun} compact={compact} />}

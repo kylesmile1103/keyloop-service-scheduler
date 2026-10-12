@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { AvailabilityResponse } from "@/api/types.gen"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
+import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
 import { boardHeading, pointerClick, renderBoard, search } from "@/test/render-board"
 import {
@@ -179,7 +180,7 @@ describe("dispatch board: day, lanes and refresh", () => {
     const api = mockBoardApi()
     const { router } = renderBoard(readingBoard)
     await lane("Bay 1 - Standard")
-    expect(screen.getByRole("button", { name: "Today" })).toBeDisabled()
+    expectUnavailableButFocusable(screen.getByRole("button", { name: "Today" }))
 
     fireEvent.click(screen.getByRole("button", { name: "Next day" }))
     await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id, date: "2026-10-14" }))
@@ -195,6 +196,24 @@ describe("dispatch board: day, lanes and refresh", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Today" }))
     await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id }))
+  })
+
+  it("keeps keyboard focus on Today once it has brought the board back to today", async () => {
+    mockBoardApi()
+    const { router } = renderBoard(`${readingBoard}&date=2026-10-15`)
+    await lane("Bay 1 - Standard")
+    const today = screen.getByRole("button", { name: "Today" })
+    expectAvailable(today)
+
+    today.focus()
+    fireEvent.click(today)
+
+    await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id }))
+    // Today has done its job and cannot act again, but the keyboard user is still on it, not at the top of the page.
+    expect(today).toHaveFocus()
+    expectUnavailableButFocusable(today)
+    fireEvent.click(today)
+    expect(router.state.location.search).toBe(`?dealership=${reading.id}`)
   })
 
   it("picks a date from the calendar", async () => {
@@ -264,13 +283,20 @@ describe("dispatch board: day, lanes and refresh", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Lanes, 6 of 6 shown" }))
     const filter = await screen.findByRole("dialog", { name: "Lanes" })
+    const showAll = within(filter).getByRole("button", { name: "Show all" })
+    expectUnavailableButFocusable(showAll)
     fireEvent.click(within(filter).getByRole("checkbox", { name: "Bay 3 - Heavy duty" }))
 
     await waitFor(() => expect(screen.queryByRole("group", { name: /^Bay 3/ })).not.toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Lanes, 5 of 6 shown" })).toBeInTheDocument()
 
-    fireEvent.click(within(filter).getByRole("button", { name: "Show all" }))
+    expectAvailable(showAll)
+    showAll.focus()
+    fireEvent.click(showAll)
     expect(await lane("Bay 3 - Heavy duty")).toBeInTheDocument()
+    // Nothing is left to show, and the keyboard user is still in the filter, on Show all.
+    expect(showAll).toHaveFocus()
+    expectUnavailableButFocusable(showAll)
   })
 
   it("refreshes the board and its next free slot every 5 seconds while auto-refresh is on", async () => {
@@ -511,6 +537,32 @@ describe("dispatch board: details and cancellation", () => {
     await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
     await waitFor(() => expect(requestsTo(api.requests, record).length).toBeGreaterThan(recordsBefore))
     expect(screen.getByRole("dialog", { name: "Interim Service" })).toBeInTheDocument()
+  })
+
+  it("keeps keyboard focus on Cancel appointment while it cancels and after a failure", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    const api = mockBoardApi({ cancel: async () => (await held, new Response("", { status: 502, statusText: "Bad Gateway" })) })
+    renderBoard(readingBoard)
+    const sheet = await openInterim()
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
+    const cancel = within(sheet).getByRole("button", { name: "Cancel appointment" })
+
+    cancel.focus()
+    fireEvent.click(cancel)
+
+    await waitFor(() => expect(cancel).toHaveAccessibleName("Cancelling…"))
+    expect(cancel).toHaveFocus()
+    expectUnavailableButFocusable(cancel)
+    // A second press while the first is out sends nothing.
+    fireEvent.click(cancel)
+    expect(requestsTo(api.requests, "/cancel")).toHaveLength(1)
+
+    answer()
+    await within(sheet).findByRole("alert")
+    expect(cancel).toHaveAccessibleName("Cancel appointment")
+    expect(cancel).toHaveFocus()
+    expectAvailable(cancel)
   })
 
   it("shows a failed cancellation as an error", async () => {

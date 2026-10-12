@@ -88,7 +88,15 @@ export function DateNavigator({ date, today, onDateChange, dealership, className
       <Button type="button" variant="outline" size="icon" className={touchIcon} aria-label="Next day" onClick={() => go(shiftDate(date, 1))}>
         <ChevronRight aria-hidden="true" />
       </Button>
-      <Button type="button" variant="ghost" className={touch} disabled={date === today} onClick={() => onDateChange(null)}>
+      {/* Focusable once it has done its job: pressed, it disables itself, which would drop keyboard focus. */}
+      <Button
+        type="button"
+        variant="ghost"
+        className={touch}
+        disabled={date === today}
+        focusableWhenDisabled
+        onClick={() => onDateChange(null)}
+      >
         Today
       </Button>
     </div>

@@ -50,6 +50,8 @@ export function LaneFilterList({ lanes, mode, hidden, onHiddenChange }: LaneFilt
         size="sm"
         className="self-start max-md:h-11 pointer-coarse:h-11"
         disabled={!anyHidden}
+        // Pressed, it disables itself; focus stays on it, inside the filter.
+        focusableWhenDisabled
         onClick={() => onHiddenChange(new Set())}
       >
         Show all

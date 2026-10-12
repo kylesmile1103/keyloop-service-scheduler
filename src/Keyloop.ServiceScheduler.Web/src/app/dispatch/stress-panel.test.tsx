@@ -5,6 +5,7 @@ import type { AvailabilityResponse, BookAppointmentRequest, WorkshopScheduleResp
 import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
+import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
 import { interimAvailability, readingTuesday } from "@/test/schedules"
@@ -102,6 +103,17 @@ async function pick1015(scope: HTMLElement) {
 const bookings = (requests: readonly Request[]) =>
   requests.filter((request) => request.method === "POST" && new URL(request.url).pathname.endsWith("/appointments"))
 
+/** Fire cannot fire, says why, and stays focusable. */
+function expectCannotFire(fire: HTMLElement, because: string) {
+  expectUnavailableButFocusable(fire)
+  expect(fire).toHaveAccessibleDescription(because)
+}
+
+function expectCanFire(fire: HTMLElement) {
+  expectAvailable(fire)
+  expect(fire).not.toHaveAccessibleDescription()
+}
+
 describe("concurrency stress panel", () => {
   it("fires N bookings at one slot at once, tallies 1 booked and N-1 taken with 0 server errors, and refreshes the board", async () => {
     const api = contendedApi()
@@ -171,7 +183,7 @@ describe("concurrency stress panel", () => {
     await waitFor(() => expect(search(router).date).toBe("2026-10-14"))
     // Wednesday's chips, none chosen, and nothing to fire at until one is.
     await waitFor(() => expect(within(scope).getByRole("radio", { name: /^10:15/ })).toHaveAttribute("aria-checked", "false"))
-    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeDisabled()
+    expectCannotFire(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }), "Choose a free start first.")
     // The count and the service stay: they do not depend on the day.
     expect(within(scope).getByRole("spinbutton", { name: "Requests" })).toHaveValue(3)
     expect(within(scope).getByRole("combobox", { name: "Service" })).toHaveTextContent("Interim Service")
@@ -203,7 +215,7 @@ describe("concurrency stress panel", () => {
 
     await screen.findByRole("heading", { level: 2, name: munich.name })
     expect(service).toHaveTextContent("Choose a service")
-    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeDisabled()
+    expectCannotFire(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }), "Choose a service and a free start first.")
   })
 
   it("keeps the last run's results with the day it ran on", async () => {
@@ -239,8 +251,46 @@ describe("concurrency stress panel", () => {
     answer()
 
     // The run spent Tuesday's start, not the one chosen on Wednesday since.
-    await waitFor(() => expect(within(scope).getByRole("button", { name: "Fire 2 parallel bookings" })).toBeEnabled())
+    await waitFor(() => expectCanFire(within(scope).getByRole("button", { name: "Fire 2 parallel bookings" })))
     expect(within(scope).getByRole("radio", { name: /^10:15/ })).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("keeps keyboard focus on Fire through the run and after it, and a press while it cannot fire sends nothing", async () => {
+    let answer: () => void = () => {}
+    const held = new Promise<void>((resolve) => (answer = resolve))
+    const api = mockBoardApi({
+      availability: (_, __, date) => availabilityOn(date),
+      book: async (_, body) => (await held, bookedFrom(body)),
+    })
+    renderBoard(readingBoard)
+    const scope = await panel()
+    await aimAtInterim1015(scope, "2")
+    const fire = within(scope).getByRole("button", { name: "Fire 2 parallel bookings" })
+    fire.focus()
+    fireEvent.click(fire)
+
+    // While the run is out: the same button, still holding focus, unavailable without the `disabled` attribute.
+    await waitFor(() => expect(fire).toHaveAccessibleName("Firing…"))
+    expect(fire).toHaveFocus()
+    expectUnavailableButFocusable(fire)
+    expect(fire).toHaveAttribute("aria-busy", "true")
+    fireEvent.click(fire)
+    expect(bookings(api.requests)).toHaveLength(2)
+
+    answer()
+    await within(scope).findByText(/^2 requests answered/)
+
+    // The run spent its start, so Fire waits for the next one, and the keyboard user is still on it.
+    expect(fire).toHaveAccessibleName("Fire 2 parallel bookings")
+    expect(fire).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
+    expectCannotFire(fire, "Choose a free start first.")
+    fireEvent.click(fire)
+    fireEvent.keyDown(fire, { key: "Enter" })
+    expect(bookings(api.requests)).toHaveLength(2)
+
+    await pick1015(scope)
+    expectCanFire(fire)
   })
 
   it("takes no bookings on a past day", async () => {
@@ -252,7 +302,10 @@ describe("concurrency stress panel", () => {
 
     expect(await within(scope).findByText("Past days take no bookings: choose today or a later day on the board.")).toBeInTheDocument()
     expect(within(scope).queryByRole("radio")).not.toBeInTheDocument()
-    expect(within(scope).getByRole("button", { name: "Fire 30 parallel bookings" })).toBeDisabled()
+    expectCannotFire(
+      within(scope).getByRole("button", { name: "Fire 30 parallel bookings" }),
+      "Past days take no bookings: choose today or a later day on the board."
+    )
   })
 
   it("says in the screen's words which days take bookings when the board is past the booking horizon", async () => {
@@ -291,7 +344,7 @@ describe("concurrency stress panel", () => {
     expect(within(alert).getByText("The concurrency test stopped")).toBeInTheDocument()
     expect(within(scope).queryByRole("button", { name: "Firing…" })).not.toBeInTheDocument()
     await pick1015(scope)
-    expect(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" })).toBeEnabled()
+    expectCanFire(within(scope).getByRole("button", { name: "Fire 3 parallel bookings" }))
   })
 
   it("keeps the number of requests within 2 to 50", async () => {
@@ -301,7 +354,7 @@ describe("concurrency stress panel", () => {
     fireEvent.change(within(scope).getByRole("spinbutton", { name: "Requests" }), { target: { value: "500" } })
 
     expect(await within(scope).findByText("Choose 2 to 50 requests")).toBeInTheDocument()
-    expect(within(scope).getByRole("button", { name: /^Fire/ })).toBeDisabled()
+    expectCannotFire(within(scope).getByRole("button", { name: /^Fire/ }), "Choose 2 to 50 requests")
   })
 })
 
