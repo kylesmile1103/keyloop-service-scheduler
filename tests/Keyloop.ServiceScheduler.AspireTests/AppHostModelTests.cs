@@ -66,9 +66,9 @@ public sealed class AppHostModelTests
     {
         using var bundle = await PublishedBundle.CreateAsync(TestContext.Current.CancellationToken);
 
-        // Addendum C6's manual start: the generated .env plus API_IMAGE and POSTGRES_PASSWORD. POSTGRES_USER is deliberately not supplied.
+        // The documented manual start: generated .env plus both image inputs and POSTGRES_PASSWORD. POSTGRES_USER stays empty.
         using var compose = await bundle.ResolveAsync(
-            new Dictionary<string, string> { ["API_IMAGE"] = "keyloop-scheduler-api:model-test", ["POSTGRES_PASSWORD"] = "model-test-password" },
+            DocumentedInputs,
             TestContext.Current.CancellationToken);
 
         var services = compose.RootElement.GetProperty("services");
@@ -76,6 +76,34 @@ public sealed class AppHostModelTests
         var api = services.GetProperty("api").GetProperty("environment");
         api.GetProperty("ConnectionStrings__schedulerdb").GetString().ShouldNotBeNull().ShouldContain("Username=scheduler;");
         api.GetProperty("SCHEDULERDB_USERNAME").GetString().ShouldBe("scheduler");
+
+        var web = services.GetProperty("web");
+        web.GetProperty("image").GetString().ShouldBe(DocumentedInputs["WEB_IMAGE"]);
+        var webEnvironment = web.GetProperty("environment");
+        webEnvironment.GetProperty("API_UPSTREAM").GetString().ShouldBe($"http://api:{api.GetProperty("HTTP_PORTS").GetString()}");
+        webEnvironment.GetProperty("PORT").GetString().ShouldBe("8080");
+        web.GetProperty("ports").EnumerateArray().ShouldHaveSingleItem().GetProperty("target").GetInt32().ShouldBe(8080);
+        web.GetProperty("networks").EnumerateObject().Select(n => n.Name).ShouldBe(["aspire"]);
+    }
+
+    [Fact]
+    public async Task Published_web_uses_its_committed_Dockerfile_and_the_api_endpoint_reference()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
+            ["--operation=publish"], timeout.Token);
+        var web = builder.Resources.OfType<ContainerResource>().Single(r => r.Name == "web");
+        var environment = await EnvironmentAsync(builder, web, timeout.Token);
+        var upstream = environment["API_UPSTREAM"].ShouldBeOfType<EndpointReference>();
+        upstream.Resource.Name.ShouldBe("api");
+        upstream.EndpointName.ShouldBe("http");
+        web.Annotations.OfType<EndpointAnnotation>().ShouldHaveSingleItem().TargetPort.ShouldBe(8080);
+
+        var dockerfile = web.Annotations.OfType<DockerfileBuildAnnotation>().Last();
+        var webDirectory = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "../Keyloop.ServiceScheduler.Web"));
+        Path.GetFullPath(dockerfile.ContextPath).ShouldBe(webDirectory);
+        Path.GetFullPath(dockerfile.DockerfilePath, dockerfile.ContextPath).ShouldBe(Path.Combine(webDirectory, "Dockerfile"));
     }
 
     [Fact]
@@ -83,7 +111,7 @@ public sealed class AppHostModelTests
     {
         using var bundle = await PublishedBundle.CreateAsync(TestContext.Current.CancellationToken);
         using var compose = await bundle.ResolveAsync(
-            new Dictionary<string, string> { ["API_IMAGE"] = "keyloop-scheduler-api:model-test", ["POSTGRES_PASSWORD"] = "model-test-password" },
+            DocumentedInputs,
             TestContext.Current.CancellationToken);
 
         // The API's effective Demo settings, merged the way the API merges them.
@@ -106,6 +134,13 @@ public sealed class AppHostModelTests
         apiService.TryGetProperty("ports", out _).ShouldBeFalse();
         apiService.GetProperty("networks").EnumerateObject().Select(n => n.Name).ShouldBe(["aspire"]);
     }
+
+    private static readonly IReadOnlyDictionary<string, string> DocumentedInputs = new Dictionary<string, string>
+    {
+        ["API_IMAGE"] = "keyloop-scheduler-api:model-test",
+        ["WEB_IMAGE"] = "keyloop-scheduler-web:model-test",
+        ["POSTGRES_PASSWORD"] = "model-test-password",
+    };
 
     [Fact]
     public async Task Api_leaves_forwarded_header_trust_to_its_validated_security_options()

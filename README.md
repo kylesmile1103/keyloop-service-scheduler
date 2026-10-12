@@ -4,26 +4,26 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Jev through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. The React intake UI awaits the dispatch-board integration.
 
-**Draft status, `TODO(final-gate)`:** this README describes the intended integrated submission. The CI tooling branch predates the AppHost, cancellation, concurrency-proof and frontend integration. Reviewed work on other branches is identified below; commands that depend on it need a clean-clone rehearsal after integration. Final test totals, coverage, durations, screenshots and deployment results remain pending.
+**Draft status, `TODO(final-gate)`:** the backend and frontend are integrated, including the Aspire web resource and a local Demo Compose rehearsal. The final clean-clone gate, coverage, screenshots, public deployment and CI run results remain pending.
 
 ## Prerequisites
 
 - .NET SDK **10.0.100**, the version in [global.json](global.json), which allows `latestFeature` roll-forward.
 - A Docker runtime for PostgreSQL, Testcontainers and Aspire. On macOS the project uses **Colima**: `colima start --cpu 4 --memory 6 --disk 40`, then `docker info`.
-- **Node 22 and pnpm 12**. The frontend branch pins `pnpm@12.9.1`; CI selects the same major. Check `node --version` and `pnpm --version` before starting.
-- No Aspire workload is required. The AppHost uses NuGet-hosted tooling; the `aspire` CLI is optional for running locally and needed for the planned publish workflow.
+- **Node 22 and pnpm 12.9.1**. The web project's `packageManager` pins the version used by Aspire and CI. Check `node --version` and `pnpm --version` before starting.
+- No Aspire workload is required. The 13.6.1 AppHost uses the CLI bundle, resolved through an installed Aspire CLI or the SDK's DNX download. `dotnet run` remains supported. For matching publish tooling, use `dotnet dnx --yes aspire.cli@13.6.1 -- publish` with the arguments below; the local 13.6.0 CLI also works with this AppHost.
 - `curl`, `jq` and `uuidgen` for the examples below. Trust the development HTTPS certificate with `dotnet dev-certs https --trust` when using the HTTPS profile.
 
 ## Run everything
 
-Run from the repository root after the application branches have been integrated:
+Run from the repository root:
 
 ```bash
 dotnet tool restore
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost
 ```
 
-The AppHost generates and persists the PostgreSQL password in its user secrets, starts PostgreSQL with a named data volume and pgweb, then starts the API after database readiness. Its frontend configuration uses `AddViteApp`, pnpm installation and API service discovery. The API migrates and seeds in Development. See [environments and configuration](#environments-and-configuration) for the deployment differences.
+The AppHost generates and persists the PostgreSQL password in its user secrets, starts PostgreSQL with a named data volume and pgweb, then starts the API after database readiness. Web is always in the model: `AddViteApp` installs dependencies with `pnpm install --frozen-lockfile`, waits for the API, and uses `API_HTTP` discovery for its Vite proxy. The API migrates and seeds in Development. See [environments and configuration](#environments-and-configuration) for the deployment differences.
 
 Open the dashboard URL printed by the AppHost, including its login token. In **Resources**, use the `web` HTTP link for `/dispatch`, the `api` **Scalar API reference** link for `/scalar/v1`, and `pgweb` to inspect the database. Ports come from the running application model; use those links when setting `API_BASE` in the curl examples. Scalar supplies documented examples and an interactive request client. Avoid sharing dashboard tokens or displaying secrets in recordings.
 
@@ -31,9 +31,9 @@ The reference seed defines two dealerships, Reading (`Europe/London`) and Münch
 
 The API resource's **Reseed demo data** command replaces the demo dealerships' appointments and rebuilds the sample week. It is key-protected and excluded from OpenAPI. Its dashboard confirmation describes the data it deletes. Preserve the AppHost's stored database password alongside the persistent volume across restarts.
 
-**`TODO(aspire-wiring)`:** integrate and verify Task 15c's real web resource, proxy discovery, browser telemetry and extended smoke test; Task 14b currently guards the web resource until its directory exists. Apply the subsequent Aspire audit recommendations when available.
+Open **Mailpit inbox** on the `mailpit` resource for local email capture. Aspire injects its SMTP endpoint into the API; seeded `@example.com` customers are suppressed. The Aspire smoke test books with a non-reserved recipient and verifies the captured message. UAT, Production and Demo leave email dispatch off by default.
 
-**`TODO(mailpit)`:** Task 19 is adding transactional email notifications and Mailpit to Aspire. Once integrated, document the actual Mailpit resource link and verify that booking and cancellation notifications appear there. No Mailpit URL or delivered-email claim is available in this draft.
+For an isolated manual check, supply a temporary PostgreSQL password and `--AppHost:UsePersistentResources=false` after `--`; stop the AppHost afterwards. This avoids the developer's database volume and generated password default.
 
 **`TODO(final-gate)`:** record the integrated startup result and add approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports. No screenshot is embedded until that evidence exists.
 
@@ -57,8 +57,8 @@ All regular tests use a stub HttpMessageHandler. The 25-fixture `LiveAi` categor
 The .NET tests use xunit.v3 on **Microsoft.Testing.Platform**. Pass project paths with `--project`; use MTP's `--coverage` option when collecting coverage.
 
 ```bash
-mkdir -p /tmp/kl26
-export TMPDIR=/tmp/kl26
+mkdir -p /tmp/kl15c
+export TMPDIR=/tmp/kl15c
 dotnet restore
 dotnet build -c Release -warnaserror --no-restore
 
@@ -106,7 +106,7 @@ pnpm build
 
 The concurrency test's acceptance criterion is **five rounds of thirty simultaneous requests** for a dealership with one qualified resource pair: exactly **one 201 and twenty-nine 409**, no 5xx, no Error logs, no deadlock or constraint-backstop events, one active appointment and its history row, and no orphan history or idempotency rows. Further cases check distinct slots, measured queueing and independence between dealerships. These are required assertions, not final observed results. The lock-disabled comparison was performed as a scratch mutation probe; there is no product switch for disabling the lock.
 
-Aspire smoke tests live in a separate project because the Aspire testing host needs reflection-based JSON while the API integration process deliberately disables it. **`TODO(ci-smoke)`:** retarget the groundwork workflow's smoke invocation from `IntegrationTests` to `AspireTests`, then verify it actually executes the smoke cases. Task 15c must add the web assertions before calling this a whole-stack proof.
+Aspire smoke tests live in a separate project because the Aspire testing host needs reflection-based JSON while the API integration process deliberately disables it. CI runs `AspireTests` after installing the web dependencies. The fixture waits for both API and web health under one five-minute startup deadline, then checks `/api/v1/dealerships` through web for JSON and the exact seeded names. Cleanup stops within 30 seconds and always disposes; tests use a supplied password, session containers and no persistent mounts, with triage disabled.
 
 The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks and a separate Aspire job. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
 
@@ -227,16 +227,16 @@ Post-commit audit notifications stay in doubt until a read settles the result. I
 
 The environment model comes from [SYSTEM_DESIGN §10](docs/SYSTEM_DESIGN.md#10-environments-and-configuration). Deployment rows describe the specified target posture, not a completed deployment.
 
-| Concern | Development | SystemTest | UAT | Production | Demo, planned compose only |
+| Concern | Development | SystemTest | UAT | Production | Demo, local Compose only |
 |---|---|---|---|---|---|
 | PostgreSQL | Aspire, persistent volume | Testcontainers per session | Managed | Managed, HA | Compose |
 | Migrations | API startup | Test fixture | Pipeline migration bundle | Pipeline migration bundle | API startup |
 | Seed | Reference catalogue and demo week | Test-owned fixtures | Reference data through future DMS sync | None | Reference catalogue and demo week |
 | Scalar/live OpenAPI | On | On | On behind network policy | Runtime mapping off | On |
-| Lead time / horizon | 0 min / 90 days | 0 min / 90 days | 60 min / 90 days | 60 min / 90 days | Validate final configuration |
-| Booking limit | 120/min/IP | Disabled | 30/min/IP | 30/min/IP | Enabled, verify published values |
+| Lead time / horizon | 0 min / 90 days | 0 min / 90 days | 60 min / 90 days | 60 min / 90 days | 60 min / 90 days |
+| Booking limit | 120/min/IP | Disabled | 30/min/IP | 30/min/IP | 30/min/IP |
 | HTTPS / HSTS | Development certificate / off | Off | Ingress TLS / on | Ingress TLS / on | Plain HTTP / off |
-| Telemetry | Aspire OTLP | In-memory test collectors | Platform collector | Platform collector | Verify publish behavior |
+| Telemetry | Aspire OTLP | In-memory test collectors | Platform collector | Platform collector | Compose dashboard for API; browser export off |
 | Secrets | Aspire parameters and user secrets | Testcontainers credentials | Platform secret store | Platform secret store | Deployment inputs |
 
 The shared production/UAT global rate limit is 300/min/IP. Every environment uses problems with `traceId`, without a developer exception page or exposed exception details. Production's runtime OpenAPI/Scalar mapping is disabled by `Program.cs`; the committed contract is the build artifact, and any internal ingress publication is deployment work.
@@ -245,7 +245,41 @@ Options come from `appsettings.json`, environment-specific files, Development us
 
 The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. Enforce audit-table and appointment-delete restrictions in the actual role grants. Authentication/authorization is deferred behind an explicit seam (ADR-010); the current harness is anonymous. Startup diagnostics were hardened by Task 18a to report members/indexes and safe path/type descriptions, with no raw configuration values.
 
-**`TODO(compose)`:** complete `appsettings.Demo.json`, publish-mode environment and forwarded-peer configuration, then verify `aspire publish -o artifacts/compose` and Docker Compose health/catalogue requests through the web container. The groundwork does not provide a verified SDK-free compose bundle.
+### Publish a local Demo bundle
+
+`aspire publish` generates Compose YAML and `.env`; it does not build images, populate secrets or create EF migration bundles. `aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` provides the managed build/deploy pipeline. The manual sequence below uses the committed Dockerfiles and an isolated project. Run it from the repository root with a fresh `keyloop-demo` project name:
+
+```bash
+# Disable persistent mounts for this disposable rehearsal; artifacts/ is git-ignored.
+aspire publish --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose \
+  -- --AppHost:UsePersistentResources=false
+docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:demo .
+docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:demo src/Keyloop.ServiceScheduler.Web
+export API_IMAGE=keyloop-scheduler-api:demo WEB_IMAGE=keyloop-scheduler-web:demo
+export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+# POSTGRES_USER can stay empty: Compose defaults it to scheduler.
+docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml \
+  -p keyloop-demo up -d
+docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml \
+  -p keyloop-demo port web 8080
+
+# Set WEB_BASE to http://localhost:<reported-port>, then wait for the API's migration and seeding.
+export WEB_BASE='http://localhost:<reported-port>'
+curl --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 -fsS \
+  "$WEB_BASE/api/v1/dealerships" | jq .
+curl -fsS -D - "$WEB_BASE/index.html" -o /dev/null
+curl -fsS "$WEB_BASE/scalar/v1" -o /dev/null
+
+# Stop this project, remove its anonymous volumes, and remove only these rehearsal images.
+docker compose --env-file artifacts/compose/.env -f artifacts/compose/docker-compose.yaml \
+  -p keyloop-demo down --volumes --remove-orphans
+docker image rm keyloop-scheduler-api:demo keyloop-scheduler-web:demo
+unset API_IMAGE WEB_IMAGE POSTGRES_PASSWORD WEB_BASE
+```
+
+The required manual inputs are `API_IMAGE`, `WEB_IMAGE` and `POSTGRES_PASSWORD`. Aspire emits `WEB_IMAGE` from the web Dockerfile and injects nginx's `API_UPSTREAM` from the API HTTP endpoint, rendered as `http://api:8080`. Web publishes a dynamic host port targeting 8080 and proxies `/api`, `/openapi` and `/scalar` with their URI unchanged. It serves the static app with CSP, frame protection, `nosniff`, referrer and permissions policies, and COOP. Browser dashboard credentials are excluded from production builds.
+
+Demo creates `schedulerdb` on an empty data directory, migrates and seeds, and serves Scalar over plain HTTP. Its API trusts only `172.30.14.0/24`, matching the generated Compose network. The API stays unpublished because that trusted subnet includes the host-port bridge gateway; nginx supplies the trusted last forwarding hop. Never use or remove `keyloop-scheduler-pgdata` for verification. UAT/Production still require configured ingress trust and a separately generated EF migration bundle. Public deployment remains `TODO(deployment)`.
 
 ## Observability
 
@@ -255,7 +289,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 2. **Traces:** book once, then inspect `scheduler.book_appointment`, `scheduler.acquire_dealership_lock`, `scheduler.compute_availability`, `scheduler.persist_appointment` and Npgsql spans. Look at `booking.outcome` and `lock.wait_ms`.
 3. **Metrics:** compare `scheduler.booking.requests` by outcome, `scheduler.booking.duration` and `scheduler.booking.lock_wait`. The concurrency proof requires `scheduler.booking.deadlocks` and `scheduler.booking.constraint_backstop` to stay zero on its normal path.
 4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected API failures remain Error. EF's failed-commit `TransactionError` also stays Error.
-5. **Browser correlation:** after Task 15c, inspect `ui.book_appointment` and `ui.stress_test`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
+5. **Browser correlation:** inspect `ui.book_appointment` and `ui.stress_test`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
 
 `/alive` is the process probe. Task 18a makes `/health` require connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/SYSTEM_DESIGN.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
 

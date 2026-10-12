@@ -1,6 +1,6 @@
 // The development platform (SYSTEM_DESIGN §8.6, ADR-019, Addendum C): `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (or
 // `aspire run`) generates and keeps the secrets, starts PostgreSQL with a persistent volume and pgweb, the API (which migrates and seeds
-// in Development) behind its health check, and, once it exists, the dispatch board; `aspire publish` turns the same model into Docker
+// in Development) behind its health check, and the dispatch board; `aspire publish` turns the same model into Docker
 // Compose.
 using Aspire.Hosting.Docker.Resources;
 using Aspire.Hosting.Docker.Resources.ServiceNodes;
@@ -137,17 +137,25 @@ else
         .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
 }
 
-// The dispatch board (§C5). The frontend lane removes this guard when it lands src/Keyloop.ServiceScheduler.Web (Task 15).
-if (Directory.Exists(Path.Combine(builder.AppHostDirectory, "../Keyloop.ServiceScheduler.Web")))
+// The dispatch board (SYSTEM_DESIGN §8.6, ADR-019). Discovery and readiness apply in both modes.
+var web = builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
+    .WithPnpm(installArgs: ["--frozen-lockfile"])
+    .WithReference(api)
+    .WaitFor(api)
+    .WithHttpHealthCheck("/")
+    .WithExternalHttpEndpoints();
+
+if (builder.ExecutionContext.IsRunMode)
 {
-    builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
-        .WithPnpm()                                   // an installer child resource runs `pnpm install` before the dev server starts
-        .WithReference(api)                           // API_HTTP / API_HTTPS (and services__api__*): the Vite proxy's target
-        .WaitFor(api)
-        .WithOtlpExporter(OtlpProtocol.HttpProtobuf)  // browsers export over HTTP; vite.config.ts exposes it in development only
-        .WithHttpHealthCheck("/")
-        .WithExternalHttpEndpoints()
-        .PublishAsDockerFile();                       // the app's own Dockerfile (nginx); AddViteApp already prefers it in 13.6.1
+    web.WithOtlpExporter(OtlpProtocol.HttpProtobuf); // dashboard credentials reach the browser only from the dev server
+}
+else
+{
+    // Aspire emits WEB_IMAGE for this Dockerfile. nginx needs the container endpoint URL, and listens on 8080, not Vite's port.
+    // Web publishes the browser port: nginx supplies the last forwarding hop trusted by the internal API (SYSTEM_DESIGN §10).
+    web.WithEnvironment("API_UPSTREAM", api.GetEndpoint("http"))
+        .PublishAsDockerFile(container => container
+            .WithEndpoint("http", endpoint => endpoint.TargetPort = 8080));
 }
 
 builder.Build().Run();

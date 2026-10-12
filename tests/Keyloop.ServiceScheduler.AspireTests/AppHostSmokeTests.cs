@@ -10,7 +10,7 @@ namespace Keyloop.ServiceScheduler.AspireTests;
 
 /// <summary>
 /// The composed application (Addendum C §C7, SYSTEM_DESIGN §14.3, ADR-013): the AppHost itself, booted by Aspire.Hosting.Testing, with
-/// PostgreSQL from its parameters, the API migrating and seeding in Development behind its health check, the dashboard's Scalar link
+/// PostgreSQL from its parameters, the API migrating and seeding in Development behind its health check, web proxy discovery, the dashboard's Scalar link
 /// and the <em>Reseed demo data</em> command. Category <c>Aspire</c>: it needs Docker and takes about half a minute; CI runs it in its
 /// own step. Only one AppHost may run on a machine at a time. It lives in this project rather than the integration tests because
 /// Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016).
@@ -41,6 +41,20 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         using var dealerships = JsonDocument.Parse(body);
         dealerships.RootElement.EnumerateArray().Select(d => d.GetProperty("name").GetString())
             .ShouldBe(["Keyloop Autohaus München", "Keyloop Motors Reading"], "the two seeded dealerships, by name");
+    }
+
+    [Fact]
+    public async Task Web_proxies_the_seeded_dealerships_as_JSON_through_api_discovery()
+    {
+        using var http = appHost.App.CreateHttpClient("web", "http");
+        using var response = await http.GetAsync("/api/v1/dealerships", Ct);
+
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
+        response.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/json");
+        using var dealerships = JsonDocument.Parse(body);
+        dealerships.RootElement.EnumerateArray().Select(d => d.GetProperty("name").GetString())
+            .ShouldBe(["Keyloop Autohaus München", "Keyloop Motors Reading"], "the web proxy must reach the seeded API, not serve the SPA");
     }
 
     [Fact]
@@ -212,7 +226,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
             var ct = timeout.Token;
             var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
             var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
-                [$"--Parameters:postgres-password={password}"], ct);
+                [$"--Parameters:postgres-password={password}", "--Parameters:cloudflare-account-id=", "--Parameters:cloudflare-ai-token="], ct);
             try
             {
                 foreach (var container in builder.Resources.OfType<ContainerResource>().ToList())
@@ -227,6 +241,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
                 App = await builder.BuildAsync(ct);
                 await App.StartAsync(ct);
                 await App.ResourceNotifications.WaitForResourceHealthyAsync("api", ct);
+                await App.ResourceNotifications.WaitForResourceHealthyAsync("web", ct);
             }
             catch (Exception startupFailure)
             {
