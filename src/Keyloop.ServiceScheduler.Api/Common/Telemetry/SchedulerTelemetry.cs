@@ -56,7 +56,10 @@ public static class SchedulerTelemetry
     /// <summary>Tags: <c>kind</c>. The row's age at each send attempt, on the business clock.</summary>
     public static readonly Histogram<double> NotificationOutboxAge = Meter.CreateHistogram<double>("scheduler.notifications.outbox_age", "s");
 
-    /// <summary>Tags: <c>kind</c>, <c>reason</c> (<c>ReservedDomain</c>; Task 20 adds the configurable policy's reasons). Never sent.</summary>
+    /// <summary>
+    /// Tags: <c>kind</c>, <c>reason</c> (<c>ReservedDomain</c>; Task 20 adds the configurable policy's reasons). Never sent. Counted once a
+    /// row staged Suppressed has committed (DomainEventInterceptor), or when the dispatcher suppresses a Pending row at claim.
+    /// </summary>
     public static readonly Counter<long> NotificationsSuppressed = Meter.CreateCounter<long>("scheduler.notifications.suppressed", "{notification}");
 
     /// <summary>

@@ -8,6 +8,7 @@ using Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Notifications;
@@ -28,7 +29,7 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Booking_writes_exactly_one_outbox_row_with_the_history_and_rollback_writes_none()
     {
-        var appointment = _workshop.Book(TestData.LondonTime(9));
+        var appointment = _workshop.Book(TestData.LondonTime(9), email: TestData.DeliverableEmail());
         await _factory.WithDbAsync(async db =>
         {
             db.Appointments.Add(appointment);
@@ -38,7 +39,7 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         var row = (await RowsAsync()).ShouldHaveSingleItem();
         row.AppointmentId.ShouldBe(appointment.Id);
         row.Kind.ShouldBe(NotificationKind.BookingConfirmation);
-        row.Recipient.ShouldBe("customer1@example.com");
+        row.Recipient.ShouldBe(TestData.DeliverableEmail());
         row.Status.ShouldBe(NotificationStatus.Pending);
         // A snapshot of the aggregate, rendered at dispatch: ids and times, the registration and only the VIN's last four characters.
         row.ReadSnapshot().ShouldBe(new NotificationSnapshot(appointment.Id, _workshop.Dealership.Id, _workshop.Interim.Id,
@@ -193,6 +194,62 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_staged_suppression_is_counted_and_logged_only_once_its_transaction_has_committed()
+    {
+        // Like the domain events: a rolled-back staging counts nothing, a caller's transaction counts at its commit, an implicit one at
+        // once, and an in-doubt commit only when the caller settles it as committed (SYSTEM_DESIGN §5.6, §7.3).
+        using var metrics = new MetricsCollector();
+        var logger = new CapturingLogger<DomainEventInterceptor>();
+        long Suppressed() => metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain"));
+
+        await using (var db = NewContext(logger))
+        {
+            await using (var rolledBack = await db.Database.BeginTransactionAsync(Ct))
+            {
+                db.Add(_workshop.Book(TestData.LondonTime(9)));
+                await db.SaveChangesAsync(Ct);
+                await rolledBack.RollbackAsync(Ct);
+            }
+            Suppressed().ShouldBe(0, "rolled back");
+            db.ChangeTracker.Clear();
+
+            await using (var committed = await db.Database.BeginTransactionAsync(Ct))
+            {
+                db.Add(_workshop.Book(TestData.LondonTime(10)));
+                await db.SaveChangesAsync(Ct);
+                Suppressed().ShouldBe(0, "not before the commit");
+                await committed.CommitAsync(Ct);
+            }
+            Suppressed().ShouldBe(1);
+
+            db.Add(_workshop.Book(TestData.LondonTime(11)));
+            await db.SaveChangesAsync(Ct);
+            Suppressed().ShouldBe(2, "an implicit transaction has committed when SaveChanges returns");
+        }
+
+        var loss = new CommitAcknowledgementLoss();
+        var interceptor = new DomainEventInterceptor(new CurrentActor(), [], logger);
+        await using (var db = new SchedulerDbContext(new DbContextOptionsBuilder<SchedulerDbContext>().UseNpgsql(pg.ConnectionString)
+            .UseSnakeCaseNamingConvention().AddInterceptors(loss, interceptor).Options))
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(Ct);
+            db.Add(_workshop.Book(TestData.LondonTime(12)));
+            await db.SaveChangesAsync(Ct);
+            loss.Arm();
+            await Should.ThrowAsync<Npgsql.NpgsqlException>(() => tx.CommitAsync(Ct));
+        }
+        Suppressed().ShouldBe(2, "in doubt until the caller settles it");
+        await interceptor.ResolveInDoubtCommitAsync(committed: true, Ct);
+        Suppressed().ShouldBe(3);
+        await interceptor.ResolveInDoubtCommitAsync(committed: true, Ct);
+        Suppressed().ShouldBe(3, "settled once");
+
+        (await RowsAsync()).Where(e => e.Status == NotificationStatus.Suppressed).Count().ShouldBe(3);
+        logger.Entries.Count(e => e.EventId.Id == 1305).ShouldBe(3);
+        logger.Entries.ShouldAllBe(e => e.EventId.Id == 1305 && !e.Message.Contains('@'));
+    }
+
+    [Fact]
     public async Task Duplicate_kind_is_deferred_until_commit_but_cannot_be_committed()
     {
         await _factory.WithDbAsync(async db =>
@@ -249,6 +306,8 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private Task<List<NotificationOutboxEntry>> RowsAsync() => _factory.WithDbAsync(db => db.NotificationOutbox.AsNoTracking().ToListAsync(Ct));
-    private SchedulerDbContext NewContext(params IInterceptor[] extra) => new(new DbContextOptionsBuilder<SchedulerDbContext>().UseNpgsql(pg.ConnectionString)
-        .UseSnakeCaseNamingConvention().AddInterceptors([.. extra, new DomainEventInterceptor(new CurrentActor(), [], NullLogger<DomainEventInterceptor>.Instance)]).Options);
+    private SchedulerDbContext NewContext(params IInterceptor[] extra) => NewContext(NullLogger<DomainEventInterceptor>.Instance, extra);
+    private SchedulerDbContext NewContext(ILogger<DomainEventInterceptor> logger, params IInterceptor[] extra) => new(new DbContextOptionsBuilder<SchedulerDbContext>()
+        .UseNpgsql(pg.ConnectionString).UseSnakeCaseNamingConvention()
+        .AddInterceptors([.. extra, new DomainEventInterceptor(new CurrentActor(), [], logger)]).Options);
 }

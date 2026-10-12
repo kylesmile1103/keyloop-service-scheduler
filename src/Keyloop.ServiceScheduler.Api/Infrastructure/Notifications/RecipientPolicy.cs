@@ -7,7 +7,8 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 /// to, so seeded and test data (every demo customer is <c>@example.com</c>) never produce real email, bounces or billable sends.
 /// Reserved: <c>example.com</c>, <c>example.net</c>, <c>example.org</c> and their subdomains, and anything under the <c>example</c>,
 /// <c>test</c>, <c>invalid</c> and <c>localhost</c> top-level names (RFC 2606, RFC 6761), case-insensitively. Configurable modes and
-/// daily caps are Task 20's.
+/// daily caps are Task 20's. Applied when a row is staged (inside the booking or cancel's SaveChanges, so it must never throw) and again
+/// at claim for a Pending row that predates that rule.
 /// </summary>
 public static class RecipientPolicy
 {

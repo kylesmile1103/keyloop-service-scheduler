@@ -9,8 +9,9 @@ namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 /// 1005 DomainEventObserverFailed, 1010 AppointmentCancelled; 1100 MigrationsApplied, 1101 SeedCompleted, 1102 ApiStarting,
 /// 1103 StartupValidationFailed, 1104 StartupConfigurationFailed (both written by StartupFailureLog), 1105 DemoDataReseeded, 1106 DemoReseedRefused;
 /// 1200 UnhandledException; 1300 NotificationSent, 1301 NotificationRetried, 1302 NotificationFailed, 1303 NotificationDispatchCycleFailed,
-/// 1304 NotificationClaimLost, 1305 NotificationSuppressed (all written by NotificationDispatcher). Never log customer PII: ids, fixed
-/// categories and the masked VIN only, never an email address, masked or not (SYSTEM_DESIGN §11.1).
+/// 1304 NotificationClaimLost (written by NotificationDispatcher), 1305 NotificationSuppressed (written by DomainEventInterceptor once a row
+/// staged Suppressed has committed, or by NotificationDispatcher when it suppresses a Pending row at claim). Never log customer PII: ids,
+/// fixed categories and the masked VIN only, never an email address, masked or not (SYSTEM_DESIGN §11.1).
 /// </summary>
 internal static partial class SchedulerLog
 {

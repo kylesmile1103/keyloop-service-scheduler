@@ -12,7 +12,8 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Persistence.Interceptors;
 /// <summary>
 /// Turns the domain events of saved aggregates into <c>appointment_history</c> and <c>notification_outbox</c> rows inside the same SaveChanges (so the audit row
 /// commits or rolls back with the change), and tells <see cref="IDomainEventObserver"/>s about the events only after the
-/// transaction has committed (SYSTEM_DESIGN §5.6).
+/// transaction has committed (SYSTEM_DESIGN §5.6). Outbox rows that the recipient policy suppressed when they were staged are counted
+/// and logged (1305) at the same moment, so a suppression is reported once and only for a committed change.
 /// </summary>
 /// <remarks>
 /// One instance per DbContext (both are scoped). When SaveChanges runs in its own transaction, observers are notified as soon as it
@@ -38,11 +39,11 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     private readonly IDomainEventObserver[] _observers = observers?.ToArray() ?? throw new ArgumentNullException(nameof(observers));
     private readonly ILogger<DomainEventInterceptor> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-    // Events saved inside an explicit transaction that has not committed yet.
-    private readonly List<IDomainEvent> _awaitingCommit = [];
+    // Saved inside an explicit transaction that has not committed yet.
+    private readonly AfterCommit _awaitingCommit = new();
 
-    // Events whose explicit transaction's commit reported a failure: committed or not, the caller has to find out.
-    private readonly List<IDomainEvent> _inDoubt = [];
+    // Saved inside an explicit transaction whose commit reported a failure: committed or not, the caller has to find out.
+    private readonly AfterCommit _inDoubt = new();
 
     // The SaveChanges in flight: its aggregates, their events and the history and outbox rows staged for them.
     private Staged? _staged;
@@ -53,16 +54,15 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     /// </summary>
     public async Task ResolveInDoubtCommitAsync(bool committed, CancellationToken cancellationToken)
     {
-        if (_inDoubt.Count == 0)
+        if (_inDoubt.IsEmpty)
         {
             return;
         }
 
-        IDomainEvent[] events = [.. _inDoubt];
-        _inDoubt.Clear();
+        var report = _inDoubt.Take();
         if (committed)
         {
-            await NotifyAsync(events, cancellationToken);
+            await NotifyAsync(report, cancellationToken);
         }
     }
 
@@ -164,12 +164,11 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     // A failed commit may have committed on the server; any other failed transaction operation (a rollback, a savepoint) did not commit.
     private void OnTransactionFailed(TransactionErrorEventData eventData)
     {
+        var report = _awaitingCommit.Take();
         if (string.Equals(eventData.Action, CommitAction, StringComparison.Ordinal))
         {
-            _inDoubt.AddRange(_awaitingCommit);
+            _inDoubt.Add(report);
         }
-
-        _awaitingCommit.Clear();
     }
 
     private void Stage(DbContext? context)
@@ -200,10 +199,19 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
         _staged = new Staged(aggregates, events, entries, notifications, InCallerTransaction: context.Database.CurrentTransaction is not null);
     }
 
+    /// <summary>The events and suppressed outbox rows of a save, to report once the save's transaction has committed.</summary>
+    private static AfterCommit Report(Staged staged)
+    {
+        var report = new AfterCommit();
+        report.Add(staged.Events, staged.Notifications.Where(n => n.Status == NotificationStatus.Suppressed));
+        return report;
+    }
+
     /// <summary>
     /// The booking confirmation and cancellation emails, staged in the same SaveChanges, never by an after-commit observer (ADR-020).
     /// In-memory work on the aggregate only: no lookup and no rendering, so staging can neither fail the booking or cancel nor add a
     /// round trip to the booking's critical section; the dispatcher renders at send time. Fresh outbox ids add no contended resource (ADR-003).
+    /// A reserved-domain recipient's row is created Suppressed (the fixed recipient policy, a pure function), so it never becomes backlog.
     /// </summary>
     private static List<NotificationOutboxEntry> Notifications(List<AggregateRoot> aggregates)
     {
@@ -229,8 +237,8 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
         return notifications;
     }
 
-    /// <summary>The saved events if they are committed now; null when there are none or they await an explicit transaction's commit.</summary>
-    private IDomainEvent[]? Complete()
+    /// <summary>What the save reports if it is committed now; null when there is nothing or it awaits an explicit transaction's commit.</summary>
+    private AfterCommit? Complete()
     {
         var staged = _staged;
         _staged = null;
@@ -246,11 +254,11 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
 
         if (staged.InCallerTransaction)
         {
-            _awaitingCommit.AddRange(staged.Events);
+            _awaitingCommit.Add(Report(staged));
             return null;
         }
 
-        return [.. staged.Events];
+        return Report(staged);
     }
 
     private void Discard(DbContext? context)
@@ -273,37 +281,92 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
         }
     }
 
-    private IDomainEvent[]? TakeAwaitingCommit()
+    private AfterCommit? TakeAwaitingCommit() => _awaitingCommit.IsEmpty ? null : _awaitingCommit.Take();
+
+    private async Task NotifyAsync(AfterCommit committed, CancellationToken cancellationToken)
     {
-        if (_awaitingCommit.Count == 0)
+        var eventTypes = string.Join(", ", committed.Events.Select(e => e.EventType).Distinct());
+
+        // Each step is isolated, so one failure neither reaches the caller nor silences the steps after it.
+        try
         {
-            return null;
+            RecordSuppressed(committed.Suppressed);
+        }
+#pragma warning disable CA1031 // Deliberately broad: nothing reported after the commit may surface to the caller.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.DomainEventObserverFailed(ex, nameof(SchedulerTelemetry.NotificationsSuppressed), eventTypes);
         }
 
-        IDomainEvent[] committed = [.. _awaitingCommit];
-        _awaitingCommit.Clear();
-        return committed;
-    }
-
-    private async Task NotifyAsync(IReadOnlyList<IDomainEvent> committed, CancellationToken cancellationToken)
-    {
-        // Each observer is isolated, so one failure neither reaches the caller nor silences the observers after it.
         foreach (var observer in _observers)
         {
             try
             {
-                await observer.OnCommittedAsync(committed, cancellationToken);
+                await observer.OnCommittedAsync(committed.Events, cancellationToken);
             }
 #pragma warning disable CA1031 // Deliberately broad: nothing an observer throws after the commit may surface to the caller.
             catch (Exception ex)
 #pragma warning restore CA1031
             {
-                _logger.DomainEventObserverFailed(ex, observer.GetType().Name, string.Join(", ", committed.Select(e => e.EventType).Distinct()));
+                _logger.DomainEventObserverFailed(ex, observer.GetType().Name, eventTypes);
             }
+        }
+    }
+
+    /// <summary>
+    /// Counts and logs (1305) the committed rows the recipient policy suppressed when they were staged; the dispatcher does the same for a
+    /// row it suppresses at claim. The outbox id, appointment id, kind and fixed reason only, never the address (SYSTEM_DESIGN §11.1).
+    /// </summary>
+    private void RecordSuppressed(IReadOnlyList<NotificationOutboxEntry> suppressed)
+    {
+        foreach (var row in suppressed)
+        {
+            var kind = row.Kind.ToString();
+            var reason = row.LastFailure!; // Suppress always records the reason
+            SchedulerTelemetry.NotificationsSuppressed.Add(
+                1, new KeyValuePair<string, object?>("kind", kind), new KeyValuePair<string, object?>("reason", reason));
+            _logger.NotificationSuppressed(row.Id, row.AppointmentId, kind, reason);
         }
     }
 
     private sealed record Staged(
         List<AggregateRoot> Aggregates, List<IDomainEvent> Events, List<AppointmentHistoryEntry> Entries,
         List<NotificationOutboxEntry> Notifications, bool InCallerTransaction);
+
+    /// <summary>What saved changes report once committed: their events to the observers, and their suppressed outbox rows.</summary>
+    private sealed class AfterCommit
+    {
+        private readonly List<IDomainEvent> _events = [];
+        private readonly List<NotificationOutboxEntry> _suppressed = [];
+
+        public IReadOnlyList<IDomainEvent> Events => _events;
+
+        public IReadOnlyList<NotificationOutboxEntry> Suppressed => _suppressed;
+
+        public bool IsEmpty => _events.Count == 0 && _suppressed.Count == 0;
+
+        public void Add(IEnumerable<IDomainEvent> events, IEnumerable<NotificationOutboxEntry> suppressed)
+        {
+            _events.AddRange(events);
+            _suppressed.AddRange(suppressed);
+        }
+
+        public void Add(AfterCommit other) => Add(other._events, other._suppressed);
+
+        public void Clear()
+        {
+            _events.Clear();
+            _suppressed.Clear();
+        }
+
+        /// <summary>Moves the contents into a new instance, leaving this one empty.</summary>
+        public AfterCommit Take()
+        {
+            var taken = new AfterCommit();
+            taken.Add(this);
+            Clear();
+            return taken;
+        }
+    }
 }

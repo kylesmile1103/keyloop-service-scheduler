@@ -9,8 +9,9 @@ namespace Keyloop.ServiceScheduler.Api.Infrastructure.Notifications;
 
 /// <summary>
 /// At-least-once delivery (SYSTEM_DESIGN §8.9). Claims commit before network I/O; expiring leases recover crashes and claim tokens fence
-/// stale acknowledgements. Rows on reserved domains are suppressed at claim time, and an email is rendered only here, so neither a
-/// recipient nor a template problem can reach the booking or cancel that wrote the row.
+/// stale acknowledgements. Rows on reserved domains are staged Suppressed and never claimed; the claim re-applies that rule to a Pending
+/// row that predates it or was written outside the application. An email is rendered only here, so neither a recipient nor a template
+/// problem can reach the booking or cancel that wrote the row.
 /// </summary>
 /// <remarks>
 /// Wake strategy: drain once at start, then sleep until the first of a commit nudge (<see cref="NotificationSignal"/>), the earliest
@@ -119,6 +120,7 @@ public sealed class NotificationDispatcher(IServiceScopeFactory scopes, IEmailSe
                 """).ToListAsync(ct);
             foreach (var row in rows)
             {
+                // Staging already suppresses reserved domains (NotificationOutboxEntry.Create); this catches a row from before that rule.
                 if (RecipientPolicy.IsReservedDomain(row.Recipient))
                 {
                     row.Suppress(NotificationOutcomes.ReservedDomain);

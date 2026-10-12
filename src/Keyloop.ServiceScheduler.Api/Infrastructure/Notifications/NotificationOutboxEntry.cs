@@ -39,7 +39,11 @@ public sealed class NotificationOutboxEntry
     /// <summary>A fixed <see cref="NotificationOutcomes"/> category: the last failure, or why the row was suppressed.</summary>
     public string? LastFailure { get; private set; }
 
-    /// <summary>Staged inside the booking or cancel's SaveChanges: in-memory work only, so it cannot fail or slow the change.</summary>
+    /// <summary>
+    /// Staged inside the booking or cancel's SaveChanges: in-memory work only, so it cannot fail or slow the change. The fixed recipient
+    /// policy is applied here: a row for a reserved domain is staged <see cref="NotificationStatus.Suppressed"/>, never Pending, so it is
+    /// neither claimed nor counted as backlog, whether or not dispatch is enabled (SYSTEM_DESIGN §8.9, §12.3).
+    /// </summary>
     public static NotificationOutboxEntry Create(NotificationKind kind, string recipient, NotificationSnapshot snapshot, DateTime occurredAtUtc)
     {
         ArgumentNullException.ThrowIfNull(recipient);
@@ -48,12 +52,17 @@ public sealed class NotificationOutboxEntry
         {
             throw new ArgumentException("An outbox timestamp must be UTC.", nameof(occurredAtUtc));
         }
-        return new NotificationOutboxEntry
+        var entry = new NotificationOutboxEntry
         {
             Id = Guid.CreateVersion7(new DateTimeOffset(occurredAtUtc, TimeSpan.Zero)), AppointmentId = snapshot.AppointmentId, Kind = kind,
             Recipient = recipient, Payload = JsonSerializer.Serialize(snapshot, SchedulerJsonContext.Default.NotificationSnapshot),
             CreatedAt = occurredAtUtc, NextAttemptAt = occurredAtUtc,
         };
+        if (RecipientPolicy.IsReservedDomain(recipient))
+        {
+            entry.Suppress(NotificationOutcomes.ReservedDomain);
+        }
+        return entry;
     }
 
     public NotificationSnapshot ReadSnapshot() =>

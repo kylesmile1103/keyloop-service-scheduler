@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -23,15 +24,20 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     private TestData.Workshop _workshop = null!;
     private readonly CapturingEmailSender _sender = new();
     private readonly CapturingLogger<NotificationDispatcher> _logger = new();
+    private readonly CapturingLoggerProvider _logs = new();
     private readonly NotificationOptions _options = new() { Enabled = true, Provider = NotificationProvider.Smtp, MaxAttempts = 3, BatchSize = 2 };
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     public async ValueTask InitializeAsync()
     {
-        _factory = new SchedulerApiFactory(pg.ConnectionString, TestData.Clock());
+        _factory = new SchedulerApiFactory(pg.ConnectionString, TestData.Clock(), _logs);
         await _factory.ResetAsync();
         _workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
     }
-    public async ValueTask DisposeAsync() => await _factory.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        _logs.Dispose();
+    }
     private NotificationDispatcher Dispatcher() => new(_factory.Services.GetRequiredService<IServiceScopeFactory>(), _sender,
         new NotificationSignal(), Options.Create(_options), _factory.Clock, _logger);
     private async Task BookAsync(int hour = 9, string? email = null, DateTime? bookedAtUtc = null) => await _factory.WithDbAsync(async db =>
@@ -86,27 +92,52 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [InlineData("Customer.One@Mail.EXAMPLE.org")]
     [InlineData("someone@workshop.test")]
     [InlineData("someone@localhost")]
-    public async Task Reserved_domains_are_suppressed_at_claim_and_never_sent(string email)
+    public async Task Reserved_domains_are_suppressed_when_staged_and_never_sent(string email)
     {
+        // The fixed recipient policy decides when the row is staged, so it holds with dispatch disabled (this SystemTest host) and such a
+        // row is never backlog. The suppression is counted and logged once, when its transaction commits, without the address.
+        using var metrics = new MetricsCollector();
         await BookAsync(9, email);
         await BookAsync(10);
-        using var metrics = new MetricsCollector();
-        using var dispatcher = Dispatcher();
-        (await dispatcher.DispatchOnceAsync(Ct)).ShouldBe(2);
-        _sender.Messages.ShouldHaveSingleItem().Recipient.ShouldBe(TestData.DeliverableEmail());
         var suppressed = await _factory.WithDbAsync(db => db.NotificationOutbox.AsNoTracking().SingleAsync(e => e.Recipient == email, Ct));
-        suppressed.Status.ShouldBe(NotificationStatus.Suppressed);
-        suppressed.LastFailure.ShouldBe("ReservedDomain");
-        suppressed.Attempts.ShouldBe(0, "no send was attempted");
-        suppressed.ClaimToken.ShouldBeNull();
+        (suppressed.Status, suppressed.LastFailure).ShouldBe((NotificationStatus.Suppressed, "ReservedDomain"));
+        (suppressed.Attempts, suppressed.ClaimToken).ShouldBe((0, (Guid?)null), "no lease and no attempt");
+        metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain")).ShouldBe(1);
+        metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("kind", "BookingConfirmation")).ShouldBe(1);
+        var entry = _logs.Entries.Where(e => e.EventId.Id == 1305).ShouldHaveSingleItem();
+        entry.Category.ShouldBe(typeof(DomainEventInterceptor).FullName);
+        entry.Message.ShouldContain(suppressed.Id.ToString());
+        entry.Message.ShouldContain("ReservedDomain");
+        entry.Message.ShouldNotContain("@");
+
+        using var dispatcher = Dispatcher();
+        (await dispatcher.DispatchOnceAsync(Ct)).ShouldBe(1, "only the deliverable row is claimed");
+        _sender.Messages.ShouldHaveSingleItem().Recipient.ShouldBe(TestData.DeliverableEmail());
         _factory.Clock.Advance(TimeSpan.FromDays(10));
         (await dispatcher.DispatchOnceAsync(Ct)).ShouldBe(0, "a suppressed row is terminal");
         _sender.Messages.Count.ShouldBe(1);
-        metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain")).ShouldBe(1);
+        metrics.Sum("scheduler.notifications.suppressed").ShouldBe(1, "counted once, when its transaction committed");
         metrics.Sum("scheduler.notifications.failed").ShouldBe(0, "suppression is policy, not a delivery failure");
-        var entry = _logger.Entries.Single(e => e.EventId.Id == 1305);
-        entry.Message.ShouldContain("ReservedDomain");
-        entry.Message.ShouldNotContain("@");
+        _logger.Entries.ShouldNotContain(e => e.EventId.Id == 1305);
+    }
+
+    [Fact]
+    public async Task A_pending_row_on_a_reserved_domain_is_still_suppressed_at_claim()
+    {
+        // A Pending row on a reserved domain can only predate the staging rule or come from outside the application; the claim applies
+        // the same policy before any lease or send.
+        await BookAsync(9);
+        await _factory.WithDbAsync(db => db.NotificationOutbox.ExecuteUpdateAsync(set => set.SetProperty(e => e.Recipient, "late@example.com"), Ct));
+        using var metrics = new MetricsCollector();
+        using var dispatcher = Dispatcher();
+
+        (await dispatcher.DispatchOnceAsync(Ct)).ShouldBe(1);
+
+        _sender.Messages.ShouldBeEmpty();
+        var row = await RowAsync();
+        (row.Status, row.LastFailure, row.Attempts, row.ClaimToken).ShouldBe((NotificationStatus.Suppressed, "ReservedDomain", 0, (Guid?)null));
+        metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain")).ShouldBe(1);
+        _logger.Entries.Single(e => e.EventId.Id == 1305).Message.ShouldNotContain("@");
     }
 
     [Fact]
@@ -434,7 +465,7 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     public async Task Seeded_demo_bookings_never_reach_the_sender()
     {
         // DemoAppointmentSeeder books every demo customer at @example.com through the aggregate, so every seed, week top-up and reseed
-        // stages confirmations (proposal 2.6). The reserved-domain rule ends each one without a send.
+        // stages confirmations (proposal 2.6). The reserved-domain rule ends each one, when it is staged, without a send.
         await _factory.ResetAsync();
         var seeded = await _factory.WithDbAsync(async db =>
         {
@@ -484,6 +515,44 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
         latestPending["BookingConfirmation"].ShouldBe(2, "the Sent and Suppressed rows are not backlog");
         latestPending["Cancellation"].ShouldBe(0);
         metrics.Of("scheduler.notifications.oldest_pending_age").Last().Value.ShouldBe(90, "the oldest Pending row's age, not an older terminal row's (150 s)");
+    }
+
+    [Fact]
+    public async Task Demo_seeding_with_dispatch_disabled_reports_no_false_backlog()
+    {
+        // Demo (the published Compose bundle) migrates and seeds at startup with dispatch off. Every seeded customer is @example.com, so
+        // every staged email is Suppressed at once: the backlog gauges, and the oldest_pending_age alert (SYSTEM_DESIGN §12.3), see no
+        // backlog that would never drain. Each suppression is still counted and logged once.
+        var connectionString = await pg.CreateEmptyDatabaseAsync("demo_notification_backlog", Ct);
+        using var logs = new CapturingLoggerProvider();
+        using var metrics = new MetricsCollector();
+        await using var demo = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+            .UseEnvironment("Demo")
+            .UseSetting("ConnectionStrings:schedulerdb", connectionString)
+            .ConfigureServices(services => services.AddSingleton<TimeProvider>(TestData.Clock()).AddSingleton<ILoggerProvider>(logs)));
+        using var client = demo.CreateClient();
+        (await client.GetAsync("/health", Ct)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        demo.Services.GetRequiredService<IOptions<NotificationOptions>>().Value.Enabled.ShouldBeFalse("Demo inherits dispatch off");
+
+        List<NotificationOutboxEntry> rows;
+        using (var scope = demo.Services.CreateScope())
+        {
+            rows = await scope.ServiceProvider.GetRequiredService<SchedulerDbContext>().NotificationOutbox.AsNoTracking().ToListAsync(Ct);
+        }
+        rows.ShouldNotBeEmpty("the demo week is seeded through the aggregate, so its confirmations are staged");
+        rows.ShouldAllBe(e => e.Status == NotificationStatus.Suppressed && e.LastFailure == "ReservedDomain" && e.Attempts == 0);
+        metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain")).ShouldBe(rows.Count);
+        logs.Entries.Where(e => e.EventId.Id == 1305).Select(e => e.Message).ShouldAllBe(message => !message.Contains('@'));
+        logs.Entries.Count(e => e.EventId.Id == 1305).ShouldBe(rows.Count);
+
+        await EventuallyAsync(() =>
+        {
+            metrics.Observe();
+            return Task.FromResult(metrics.Of("scheduler.notifications.outbox_pending").Count > 0 ? metrics : null);
+        });
+        var latestPending = metrics.Of("scheduler.notifications.outbox_pending").GroupBy(m => m.Tag("kind")).ToDictionary(g => g.Key!, g => g.Last().Value);
+        latestPending.ShouldBe(new Dictionary<object, double> { ["BookingConfirmation"] = 0, ["Cancellation"] = 0 }, ignoreOrder: true);
+        metrics.Of("scheduler.notifications.oldest_pending_age").Last().Value.ShouldBe(0, "no Pending row: nothing to alert on");
     }
 
     private WebApplicationFactory<Program> EnabledHost() => _factory.WithWebHostBuilder(builder => builder
