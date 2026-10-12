@@ -409,7 +409,8 @@ export function VehicleFacts({ form, lookup, onLookUp, decoded, useDecoded, onUs
     <div
       data-slot="vehicle-facts"
       aria-live="polite"
-      className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 text-sm sm:col-span-6"
+      // A hairline as well as the fill: in the dark theme the muted fill alone barely parts from the dialog's surface.
+      className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm sm:col-span-6"
     >
       <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
         <dt className="text-muted-foreground">Manufacturer</dt>
@@ -473,7 +474,7 @@ export function VehicleFacts({ form, lookup, onLookUp, decoded, useDecoded, onUs
                 placeholder="For example BMW"
                 aria-invalid={fieldState.invalid || undefined}
                 aria-describedby={[fieldState.error ? ids.error : null, conflict ? ids.conflict : ids.hint].filter(Boolean).join(" ")}
-                className="max-w-64 bg-background font-mono tracking-wide uppercase"
+                className="max-w-64 bg-background font-mono tracking-wide uppercase placeholder:font-sans placeholder:tracking-normal placeholder:normal-case"
               />
               {!fieldState.error && !conflict && (
                 <p id={ids.hint} className="text-xs text-muted-foreground">
