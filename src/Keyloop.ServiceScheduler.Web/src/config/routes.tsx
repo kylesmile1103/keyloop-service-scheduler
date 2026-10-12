@@ -22,6 +22,7 @@ export const routes: RouteObject[] = [
   // Workshop
   { path: "/overview", lazy: page(() => import("@/app/overview/page")) },
   { path: "/dispatch", lazy: page(() => import("@/app/dispatch/page")) },
+  { path: "/calendar", lazy: page(() => import("@/app/calendar/page")) },
   { path: "/appointments", lazy: page(() => import("@/app/appointments/page")) },
   // Resources, the admin area: its layout mounts Refine core, so only this subtree loads it (ADR-030, ADR-031)
   {

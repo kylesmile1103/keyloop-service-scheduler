@@ -118,6 +118,17 @@ const ADOPTED: Record<string, readonly string[]> = {
   "src/app/overview/components/upcoming-appointments.tsx": ["src/app/dashboard-2/components/recent-transactions.tsx"],
   "src/app/overview/components/quick-actions.tsx": ["src/app/dashboard-2/components/quick-actions.tsx"],
 
+  // Calendar (calendar app)
+  "src/app/calendar/page.tsx": ["src/app/calendar/page.tsx", "src/app/calendar/components/calendar.tsx"],
+  "src/app/calendar/components/calendar-toolbar.tsx": [
+    "src/app/calendar/components/calendar-main.tsx",
+    "src/app/calendar/components/calendar-sidebar.tsx",
+  ],
+  "src/app/calendar/components/week-view.tsx": ["src/app/calendar/components/calendar-main.tsx"],
+  "src/app/calendar/components/month-view.tsx": ["src/app/calendar/components/calendar-main.tsx"],
+  "src/app/calendar/components/calendar-agenda.tsx": ["src/app/calendar/components/calendar-main.tsx"],
+  "src/app/calendar/components/day-parts.tsx": ["src/app/calendar/components/calendar-main.tsx"],
+
   // Appointments list (tasks app's data table, users app's stat cards)
   "src/app/appointments/components/appointments-table.tsx": ["src/app/tasks/components/data-table.tsx"],
   "src/app/appointments/components/columns.tsx": ["src/app/tasks/components/columns.tsx"],

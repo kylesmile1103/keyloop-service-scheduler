@@ -6,6 +6,7 @@ import * as React from "react"
 import {
   ArrowUpRight,
   BookOpenText,
+  CalendarDays,
   CalendarRange,
   ClipboardList,
   LayoutDashboard,
@@ -42,6 +43,13 @@ const data = {
           title: "Dispatch board",
           url: "/dispatch",
           icon: CalendarRange,
+          carry: WORKSHOP_PARAMS,
+        },
+        {
+          // A week or month around the workshop pages' day: the link carries the dealership and that day.
+          title: "Calendar",
+          url: "/calendar",
+          icon: CalendarDays,
           carry: WORKSHOP_PARAMS,
         },
         {

@@ -71,7 +71,7 @@ describe("app shell", () => {
     // The board and the list show one dealership's day, so their links carry the dealership (and the day, when it is not
     // today); the Overview is always today, so its link carries the dealership only.
     const workshop = screen.getByRole("navigation", { name: "Workshop" })
-    expect(within(workshop).getAllByRole("link").map((link) => link.textContent)).toEqual(["Overview", "Dispatch board", "Appointments"])
+    expect(within(workshop).getAllByRole("link").map((link) => link.textContent)).toEqual(["Overview", "Dispatch board", "Calendar", "Appointments"])
     const board = within(workshop).getByRole("link", { name: "Dispatch board" })
     const appointments = within(workshop).getByRole("link", { name: "Appointments" })
     await waitFor(() => expect(board).toHaveAttribute("href", `/dispatch?dealership=${reading.id}`))
