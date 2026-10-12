@@ -54,7 +54,7 @@ export KEYLOOP_OWNER_CONN="Host=$NEON_HOST;Port=5432;Database=keyloop_scheduler;
 unset KEYLOOP_OWNER_CONN
 ```
 
-Expected: five `Applying migration '...'` lines and `Done.` A second run applies nothing.
+Expected: six `Applying migration '...'` lines and `Done.` on an empty database; on a database that already has the first five (a deployment made before Task 30a), only `20261012204715_AdminEditing`. A second run applies nothing. Apply it before an image built from a later commit serves traffic: the API runs with `Database__MigrateOnStartup=false`.
 
 5. **REQUIRES USER CONFIRMATION:** create the runtime role **with SQL**. A role created in the Neon Console, CLI or API joins `neon_superuser` and is not DML-only; `runtime-role.sql` refuses such a role. If `scheduler_app` already exists from the Console, delete it there first. Generate its password into a variable and the clipboard, paste it at both hidden `\password` prompts, then clear the clipboard:
 
@@ -74,7 +74,7 @@ pbcopy < /dev/null
 psql "$KEYLOOP_OWNER_URI" -v ON_ERROR_STOP=1 -f deploy/neon/runtime-role.sql
 ```
 
-Expected: `NOTICE: scheduler_app: DML on 10 application tables, read-only migration history, no DDL`, then `COMMIT`.
+Expected: `NOTICE: scheduler_app: DML on 12 application tables, read-only migration history, no DDL`, then `COMMIT`.
 
 7. Check from the runtime role's side, with the password still in `KL_APP_PW`, that it can read but cannot change the schema:
 
@@ -83,7 +83,7 @@ PGPASSWORD="$KL_APP_PW" psql "postgresql://scheduler_app@$NEON_HOST/keyloop_sche
   -c 'SELECT count(*) FROM "__EFMigrationsHistory"' -c 'CREATE TABLE public.ddl_probe (id int)'
 ```
 
-Expected: `5`, then `ERROR: permission denied for schema public`.
+Expected: `6`, then `ERROR: permission denied for schema public`.
 
 8. Keep `KL_APP_PW` and `NEON_HOST` for step 2.3, then: `unset PGPASSWORD NEON_OWNER_PW KEYLOOP_OWNER_URI NEON_OWNER`.
 
