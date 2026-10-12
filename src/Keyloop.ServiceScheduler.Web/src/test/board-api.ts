@@ -5,6 +5,8 @@ import type {
   BookingTriageStatusResponse,
   CurrentUserResponse,
   DealershipResponse,
+  FeatureSwitchesResponse,
+  ResolveVehicleProfileRequest,
   ScheduledAppointmentResponse,
   ServiceTypeResponse,
   TriageBookingRequest,
@@ -12,6 +14,7 @@ import type {
   WorkshopScheduleResponse,
   UploadBookingTriageImageRequest,
   UploadBookingTriageImageResponse,
+  VehicleProfile,
 } from "@/api/types.gen"
 import { shiftDate } from "@/lib/calendar-date"
 import { munich, reading } from "@/test/dealerships"
@@ -28,6 +31,7 @@ import {
   technicians,
 } from "@/test/schedules"
 import { triageDisabled, triageUnavailable } from "@/test/triage"
+import { decodedVolkswagen, undecoded, vehicleAwareOff } from "@/test/vehicle"
 
 type Answer<T> = T | Response | Promise<T | Response>
 
@@ -50,6 +54,10 @@ export interface BoardApiOptions {
   /** POST an intake description for suggestions. By default: 503 `triage-unavailable`, as the API answers when they are off. */
   triage?: (dealershipId: string, body: TriageBookingRequest) => Answer<TriageBookingResponse>
   uploadTriageImage?: (dealershipId: string, body: UploadBookingTriageImageRequest) => Answer<UploadBookingTriageImageResponse>
+  /** `GET /features`, the environment's switches. By default: vehicle-aware requirements off, as every environment but Development and Demo. */
+  features?: () => Answer<FeatureSwitchesResponse>
+  /** POST a VIN to resolve. By default: Volkswagen for a WVW VIN, the manufacturer not known for any other. */
+  resolveVehicle?: (body: ResolveVehicleProfileRequest) => Answer<VehicleProfile>
 }
 
 /** British Summer Time, as the fixtures' October dates are: a UTC instant as `yyyy-MM-ddTHH:mm+01:00`. */
@@ -212,6 +220,12 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
     if (path === "/api/v1/me") return answer(options.me?.() ?? serviceAdvisor)
     if (path === "/api/v1/dealerships") return answer(options.dealerships?.() ?? [reading, munich])
     if (path === "/api/v1/booking-triage") return answer(options.triageStatus?.() ?? triageDisabled)
+    if (path === "/api/v1/features") return answer(options.features?.() ?? vehicleAwareOff)
+    if (path === "/api/v1/vehicle-profiles/resolve" && request.method === "POST") {
+      const body = (await request.clone().json()) as ResolveVehicleProfileRequest
+      if (options.resolveVehicle) return answer(options.resolveVehicle(body))
+      return jsonResponse(body.vin?.toUpperCase().startsWith("WVW") ? decodedVolkswagen : undecoded)
+    }
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage\/images$/.exec(path)) && request.method === "POST") {
       const body = (await request.clone().json()) as UploadBookingTriageImageRequest
       return answer(options.uploadTriageImage?.(match[1], body) ?? problemResponse(503, triageUnavailable))

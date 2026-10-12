@@ -2,8 +2,8 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronRight } from "lucide-react"
-import { type ReactNode, useEffect, useRef } from "react"
+import { CarFront, ChevronRight, Info } from "lucide-react"
+import { type ReactNode, useEffect, useRef, useState } from "react"
 
 import { getAvailabilityOptions } from "@/api/@tanstack/react-query.gen"
 import type { AvailabilityResponse, AvailabilitySlotResponse, ServiceTypeResponse } from "@/api/types.gen"
@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { formatDay } from "@/lib/calendar-date"
-import { fieldErrors, parseProblem } from "@/lib/problem-details"
+import { formatLocalTime } from "@/lib/local-time"
+import { fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
+import { type AvailabilityVehicle, availabilityVehicleQuery, vehicleNeeds, vehicleQueryPhrase } from "@/lib/vehicle-aware"
 
 import { localTime } from "../lib/appointment-text"
 
@@ -55,19 +57,62 @@ interface AvailabilityChipsProps {
    * the service and the day, and a start is the next thing to choose.
    */
   focusRequest?: number
+  /**
+   * The vehicle the starts are counted for, with vehicle-aware requirements on (ADR-029): its powertrain, class,
+   * manufacturer and live-diagnosis flag go to `GET /availability`, never its VIN, registration or declaration reason.
+   */
+  vehicle?: AvailabilityVehicle
+  /** The API refused the vehicle parameters (`422 vehicle-aware-requirements-disabled`): the switch the app read is stale. */
+  onVehicleRefused?: () => void
 }
+
+/** A vehicle's parameters as one comparable value, to tell when they changed. */
+const vehicleKey = (vehicle: AvailabilityVehicle | undefined) => (vehicle ? JSON.stringify(availabilityVehicleQuery(vehicle)) : "")
 
 /**
  * The free start times of a service on a day (`GET /availability`) as a radio group of chips, grouped Morning and Afternoon,
  * each with its local time and remaining capacity. Arrow keys move between chips, Space chooses, Tab enters and leaves the
  * group. Only bookable starts are drawn; a day without one says why and offers the next day.
  */
-export function AvailabilityChips({ dealershipId, focusRequest = 0, ...view }: AvailabilityChipsProps) {
-  const { serviceType, date } = view
-  const availabilityOptions = getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: serviceType?.id ?? "", date } })
+export function AvailabilityChips({ dealershipId, focusRequest = 0, vehicle, onVehicleRefused, ...view }: AvailabilityChipsProps) {
+  const { serviceType, date, value, onValueChange } = view
+  const availabilityOptions = getAvailabilityOptions({
+    path: { dealershipId },
+    query: { serviceTypeId: serviceType?.id ?? "", date, ...(vehicle ? availabilityVehicleQuery(vehicle) : {}) },
+  })
   const availability = useQuery({ ...availabilityOptions, enabled: Boolean(serviceType) })
   // Kept while Try again looks again, so the alert and its focused button stay in the dialog until the answer.
   const failure = useQueryFailure(availability, availabilityOptions.queryKey)
+  const refused = failure !== null && problemSlug(parseProblem(failure) ?? {}) === "vehicle-aware-requirements-disabled"
+
+  // A server that takes no vehicle parameters now: the dialog drops them, and the starts are read again without them.
+  useEffect(() => {
+    if (refused) onVehicleRefused?.()
+  }, [refused, onVehicleRefused])
+
+  // When the vehicle changes, the starts are read again for it, and the area says how the count changed, and that the
+  // chosen start went if this vehicle cannot have it. Measured against the last answer for the same service and day.
+  const signature = vehicleKey(vehicle)
+  const count = availability.data?.slots.length
+  const [shown, setShown] = useState<{ service: string; date: string; signature: string; count: number } | null>(null)
+  const [change, setChange] = useState<{ from: number; to: number; lostStart: string | null } | null>(null)
+  if (serviceType && count !== undefined && (shown?.service !== serviceType.id || shown.date !== date || shown.signature !== signature || shown.count !== count)) {
+    const sameDay = shown?.service === serviceType.id && shown.date === date
+    if (sameDay && shown.signature !== signature) {
+      const lost = value !== "" && !availability.data!.slots.some((slot) => slot.startUtc === value) ? value : null
+      setChange({ from: shown.count, to: count, lostStart: lost })
+    } else setChange(null)
+    setShown({ service: serviceType.id, date, signature, count })
+  }
+  // The chosen start this vehicle cannot have is cleared once, so Next asks for another.
+  const lostStart = change?.lostStart ?? null
+  const cleared = useRef<string | null>(null)
+  useEffect(() => {
+    if (lostStart === null || cleared.current === lostStart) return
+    cleared.current = lostStart
+    onValueChange("")
+  }, [lostStart, onValueChange])
+  const timeZone = availability.data?.timeZoneId
 
   const area = useRef<HTMLDivElement>(null)
   const handled = useRef(0)
@@ -86,10 +131,33 @@ export function AvailabilityChips({ dealershipId, focusRequest = 0, ...view }: A
 
   return (
     <div ref={area} className="contents">
+      {vehicle && serviceType && (
+        <div className="flex flex-col gap-1">
+          <p className="flex items-start gap-1.5 text-xs text-pretty text-muted-foreground">
+            <CarFront aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+            <span>{`Counted for ${vehicleQueryPhrase(vehicle)}.`}</span>
+          </p>
+          {/* Announced as it changes: why the counts are not what they were a moment ago. */}
+          <p role="status" className="empty:hidden">
+            {change && (
+              <span className="flex items-start gap-1.5 rounded-lg bg-info-subtle px-2.5 py-1.5 text-xs text-pretty text-foreground">
+                <Info aria-hidden="true" className="mt-px size-3.5 shrink-0 text-info" />
+                <span>
+                  {`Updated for this vehicle: ${change.to === 0 ? "no start" : plural(change.to, "start")} free, was ${change.from}.`}
+                  {change.lostStart &&
+                    value === "" &&
+                    ` The start you chose${timeZone ? `, ${formatLocalTime(change.lostStart, timeZone)},` : ""} isn’t free for it: choose another.`}
+                </span>
+              </span>
+            )}
+          </p>
+        </div>
+      )}
       <AvailabilityView
         {...view}
+        vehicle={vehicle}
         data={availability.data}
-        failure={failure}
+        failure={refused ? null : failure}
         retrying={availability.isFetching}
         onRetry={() => void availability.refetch()}
       />
@@ -97,7 +165,7 @@ export function AvailabilityChips({ dealershipId, focusRequest = 0, ...view }: A
   )
 }
 
-interface AvailabilityViewProps extends Omit<AvailabilityChipsProps, "dealershipId" | "focusRequest"> {
+interface AvailabilityViewProps extends Omit<AvailabilityChipsProps, "dealershipId" | "focusRequest" | "onVehicleRefused"> {
   data: AvailabilityResponse | undefined
   failure: unknown
   retrying: boolean
@@ -115,6 +183,7 @@ function AvailabilityView({
   invalid = false,
   nextDate,
   onDateChange,
+  vehicle,
   data,
   failure,
   retrying,
@@ -152,16 +221,21 @@ function AvailabilityView({
   const { slots, unavailableReason } = data
   if (slots.length === 0) {
     const day = formatDay(date, "long").replace(/ \d{4}$/, "")
+    // With a vehicle, "no qualified resources" can be the vehicle's doing (an HV level, a heavy lift, live working): the
+    // answer does not say which need failed, so the area names what the vehicle adds, as a gap in the workshop.
+    const vehicleGap = vehicle && unavailableReason === "no-qualified-resources" ? vehicleNeeds(vehicle) : []
     const reason =
       unavailableReason === "closed"
         ? `The workshop is closed on ${day}.`
         : unavailableReason === "no-qualified-resources"
-          ? `This dealership has no bay and technician that can do ${serviceType.name}.`
+          ? vehicleGap.length > 0
+            ? `No bay and technician here can do ${serviceType.name} for this vehicle.`
+            : `This dealership has no bay and technician that can do ${serviceType.name}.`
           : `Every bay and technician that can do it is booked on ${day}.`
     return (
       <IllustratedState
         illustration="no-availability"
-        title={`No free slot for ${serviceType.name}`}
+        title={vehicleGap.length > 0 ? `No qualified bay and technician for ${serviceType.name}` : `No free slot for ${serviceType.name}`}
         className="py-4"
         action={
           nextDate &&
@@ -175,6 +249,15 @@ function AvailabilityView({
         }
       >
         <p>{reason}</p>
+        {vehicleGap.length > 0 && (
+          <>
+            <p className="text-pretty">{`It needs ${vehicleGap.join(", and ")}.`}</p>
+            <p className="text-pretty">
+              That is a gap in the workshop’s training or equipment, not a fault in this booking. Change the vehicle details above if
+              they are not right.
+            </p>
+          </>
+        )}
       </IllustratedState>
     )
   }

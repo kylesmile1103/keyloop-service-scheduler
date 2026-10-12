@@ -168,3 +168,12 @@ export function cachedWriter(queryClient: QueryClient): string | null {
   const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
   return writerOf(identityAnswered(state) ? state?.data : undefined)
 }
+
+/**
+ * Who the cached `/me` names at this moment (`identityKey`), for something kept outside the query cache as it arrives (a
+ * write's answer kept by a view): `failed` unless its last read succeeded, as `useCurrentUser` names it.
+ */
+export function cachedIdentity(queryClient: QueryClient): string {
+  const state = queryClient.getQueryState<CurrentUserResponse>(currentUserQueryKey())
+  return identityAnswered(state) && state?.data ? identityKey(state.data) : "failed"
+}

@@ -7,6 +7,7 @@ import {
   getAppointmentOptions,
   getAppointmentQueryKey,
   getAvailabilityQueryKey,
+  getServiceTypesOptions,
   getWorkshopScheduleQueryKey,
 } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, GetAvailabilityData } from "@/api/types.gen"
@@ -26,14 +27,17 @@ import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, 
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { formatDay, todayIn } from "@/lib/calendar-date"
+import { useVehicleAware } from "@/lib/feature-switches"
 import { formatLocalTime } from "@/lib/local-time"
 import { cachedCapabilities } from "@/lib/session"
 import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
+import type { Roster } from "../lib/allocation"
 import { timeRange } from "../lib/appointment-text"
 import type { BoardAppointment } from "../lib/schedule"
 import { canCancel, statusMeta } from "../lib/status"
+import { AllocationExplanationView } from "./allocation-explanation"
 import { PlateChip } from "./appointment-block"
 import { StatusBadge } from "./status-badge"
 
@@ -59,6 +63,8 @@ interface AppointmentSheetProps {
    * opened to cancel (the appointments list's Cancel action). An appointment that cannot be cancelled opens on its title.
    */
   initialFocus?: "title" | "reason"
+  /** The day's bays and technicians (the view's schedule), so the allocation's explanation names a preference not followed. */
+  roster?: Roster
 }
 
 /**
@@ -82,6 +88,7 @@ export function AppointmentSheet({
   returnFocus,
   onCancelled,
   initialFocus = "title",
+  roster,
 }: AppointmentSheetProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
   const reasonRef = useRef<HTMLTextAreaElement>(null)
@@ -118,6 +125,7 @@ export function AppointmentSheet({
             timeZone={timeZone}
             titleRef={titleRef}
             reasonRef={reasonRef}
+            roster={roster}
             onDone={() => {
               onCancelled?.()
               onOpenChange(false)
@@ -144,10 +152,11 @@ interface SheetBodyProps {
   timeZone: string
   titleRef: RefObject<HTMLHeadingElement | null>
   reasonRef: RefObject<HTMLTextAreaElement | null>
+  roster: Roster | undefined
   onDone: () => void
 }
 
-function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, reasonRef, onDone }: SheetBodyProps) {
+function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titleRef, reasonRef, roster, onDone }: SheetBodyProps) {
   const queryClient = useQueryClient()
   const current = useCurrentUser()
   const detailsAccess = detailsAccessOf(current)
@@ -171,6 +180,11 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
   const detailsFailure = useQueryFailure(details, detailsOptions.queryKey)
   const record: AppointmentResponse | undefined = details.data
   const status = record?.status ?? appointment.status
+  // Why this technician and bay (ADR-029), with vehicle-aware requirements on: from the role-protected record only, so a
+  // visitor never sees it; the service's needs come from the catalogue the board already read (caller-independent).
+  const vehicleAware = useVehicleAware()
+  const catalogue = useQuery({ ...getServiceTypesOptions({ path: { dealershipId } }), enabled: vehicleAware && Boolean(record?.allocation) })
+  const service = catalogue.data?.find((candidate) => candidate.id === appointment.serviceType.id)
   const { icon: StatusIcon, classes } = statusMeta[status]
   const day = appointment.startLocal.slice(0, 10)
 
@@ -263,6 +277,16 @@ function SheetBody({ appointment, open, side, dealershipId, date, timeZone, titl
             </span>
           </Row>
         </dl>
+        {vehicleAware && record?.allocation && (
+          <AllocationExplanationView
+            appointment={record}
+            allocation={record.allocation}
+            service={service}
+            roster={roster}
+            showProfile
+            className="mt-4"
+          />
+        )}
         <RecordAccess access={detailsAccess} />
         {detailsFailure !== null && (
           <ProblemAlert
