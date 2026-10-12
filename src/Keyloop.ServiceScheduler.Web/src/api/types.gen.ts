@@ -844,7 +844,7 @@ export type TriageServiceCandidate = {
 export type TriageUncoveredCategory = 'ACCIDENT_OR_BODY_DAMAGE' | 'LIGHTS_OR_ELECTRICAL_ACCESSORY' | 'AIR_CONDITIONING' | 'TYRES_OR_WHEELS' | 'GLASS' | 'OTHER';
 
 /**
- * A validated closed category, with confidence distinct from its probability. NONE and below-threshold answers return null.
+ * A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null.
  */
 export type TriageUncoveredIssue = {
     /**

@@ -8,7 +8,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Triage.TriageBookingRequest;
 /// <param name="ServiceConfidence">Clef's service confidence, distinct from a candidate's probability.</param>
 /// <param name="Services">At most three bookable candidates meeting the absolute and relative probability floors, most likely first.</param>
 /// <param name="PreferredDate">Confidently selected local date, including a closed day, or null.</param>
-/// <param name="UncoveredIssue">A confidently selected additional issue outside the most likely service, or null. Render the category with fixed client copy, never model text, and only while the service it names is the one selected.</param>
+/// <param name="UncoveredIssue">A confidently selected additional issue outside the most likely service, or null (none named, below the confidence threshold, or a category inside the chosen service's own scope). Render the category with fixed client copy, never model text, and only while the service it names is the one selected.</param>
 public sealed record TriageBookingResponse(string Model, string Recommendation, double ServiceConfidence,
     IReadOnlyList<TriageServiceCandidate> Services, TriagePreferredDate? PreferredDate, TriageUncoveredIssue? UncoveredIssue);
 
@@ -17,7 +17,7 @@ public sealed record TriageServiceCandidate(ServiceTypeSummary ServiceType, doub
 /// <summary>A concrete date in the dealership's zone. Availability still decides whether it has slots.</summary>
 public sealed record TriagePreferredDate(DateOnly Date, double Probability, double Confidence);
 
-/// <summary>A validated closed category, with confidence distinct from its probability. NONE and below-threshold answers return null.</summary>
+/// <summary>A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null.</summary>
 /// <param name="Category">Closed UI-copy key for the additional issue.</param>
 /// <param name="Probability">The category's probability in Clef's answer.</param>
 /// <param name="Confidence">Clef's confidence in this answer, compared with the uncovered-issue threshold.</param>

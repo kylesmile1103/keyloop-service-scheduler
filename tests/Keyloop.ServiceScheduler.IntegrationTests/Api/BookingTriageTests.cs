@@ -492,6 +492,48 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         issue.GetProperty("outsideServiceTypeId").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
+    // Fixture 43 of the 2026-10-13 live run: the accident assessment at confidence 0.409 with ACCIDENT_OR_BODY_DAMAGE at 0.84. The
+    // category is inside the chosen service's scope, so no notice is returned, and telemetry counts it as NONE without any text.
+    [Fact]
+    public async Task A_category_inside_the_chosen_services_scope_is_null_and_counted_as_NONE()
+    {
+        const string prose = "private-model-explanation-4312345678";
+        using var metrics = new MetricsCollector();
+        var spans = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == SchedulerTelemetry.Name,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = spans.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var stub = new StubTriageHandler
+        {
+            ServiceChoice = "ACCIDENT-DAMAGE-ASSESSMENT", Confidence = 0.409, UncoveredChoice = "ACCIDENT_OR_BODY_DAMAGE",
+            UncoveredConfidence = 0.84, ModelFreeText = prose,
+        };
+        await using var host = Enabled(stub);
+        using var client = host.CreateClient();
+        using var response = await PostAsync(client, "Dented bumper after a collision");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        json.ShouldNotContain(prose);
+        using var body = JsonDocument.Parse(json);
+        body.RootElement.GetProperty("recommendation").GetString().ShouldBe("confirm");
+        body.RootElement.GetProperty("services").EnumerateArray().ShouldHaveSingleItem()
+            .GetProperty("serviceType").GetProperty("code").GetString().ShouldBe("ACCIDENT-DAMAGE-ASSESSMENT");
+        body.RootElement.GetProperty("uncoveredIssue").ValueKind.ShouldBe(JsonValueKind.Null);
+        metrics.Of("scheduler.triage.requests").ShouldHaveSingleItem().Tag("uncovered_category").ShouldBe("NONE");
+        metrics.Of("scheduler.triage.duration").ShouldHaveSingleItem().Tag("uncovered_category").ShouldBe("NONE");
+        spans.Single(a => a.OperationName == "scheduler.triage").GetTagItem("triage.uncovered_category").ShouldBe("NONE");
+        foreach (var span in spans)
+        {
+            foreach (var tag in span.TagObjects) { (tag.Value?.ToString() ?? "").ShouldNotContain(prose); }
+        }
+        AssertNoDescriptionInLogs(prose);
+        stub.Calls.ShouldBe(1);
+    }
+
     [Fact]
     public async Task Retries_429_once_after_a_short_hint_and_then_succeeds()
     {

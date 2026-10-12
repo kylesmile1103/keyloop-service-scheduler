@@ -25,7 +25,10 @@ internal static class TriageResponseMapper
             ? new TriagePreferredDate(DateOnly.ParseExact(date.Choice!, "yyyy-MM-dd", CultureInfo.InvariantCulture),
                 date.Probabilities![date.Choice!], date.Confidence!.Value) : null;
         var uncovered = evaluation.UncoveredIssue;
+        // A category inside the scope of the service Clef chose would tell the person to book separately what that service looks at
+        // (UncoveredIssueScope); NONE_OF_THESE is no service, so it never suppresses.
         var issue = uncovered.Choice != ClefQuestionBuilder.NoUncoveredIssue && uncovered.Confidence >= options.UncoveredIssueThreshold
+            && !UncoveredIssueScope.Covers(service.Choice!, uncovered.Choice!)
             ? new TriageUncoveredIssue(Category(uncovered.Choice!), uncovered.Probabilities![uncovered.Choice!], uncovered.Confidence!.Value,
                 OutsideServiceTypeId(service.Choice!, services))
             : null;
