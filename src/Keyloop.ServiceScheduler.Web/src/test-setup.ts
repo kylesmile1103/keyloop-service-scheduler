@@ -1,9 +1,15 @@
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup } from "@testing-library/react"
+import { cleanup, configure } from "@testing-library/react"
 import { afterEach } from "vitest"
 
 import { matchesWidth } from "@/test/media-query"
+
+// How long findBy* and waitFor wait for something to appear. Testing Library's 1 s default suits a quiet machine; with the
+// suite on every core (or beside another build) a lazy page's first compile or a dialog's render can take longer, and the
+// review of Task 31b saw 12 such timeouts in 9 files that all passed serialized. A wait for something that never comes still
+// fails, two seconds later. Vitest's per-test limit (vitest.config.ts) stays well above it.
+configure({ asyncUtilTimeout: 3000 })
 
 afterEach(() => {
   cleanup()
