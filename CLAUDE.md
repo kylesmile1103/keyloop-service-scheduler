@@ -33,8 +33,8 @@ dotnet build -warnaserror
 # tests
 dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests                               # pure domain, no Docker
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "Category!=LiveAi" # Testcontainers PostgreSQL 17
-dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~ConcurrentBookingTests"   # 30-way contention proof: exactly 8 cases (5 rounds + 3 variants)
-# (the broader "FullyQualifiedName~Concurrency" selects 12: the same 8 plus 4 xmin, concurrent-cancel and problem-shape tests, since the match ignores case)
+dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~ConcurrentBookingTests"   # 30-way contention proof: exactly 10 cases (5 rounds + 3 legacy variants + HV contention + mixed powertrains)
+# (the broader "FullyQualifiedName~Concurrency" selects 14: the same 10 plus 4 xmin, concurrent-cancel and problem-shape tests, since the match ignores case)
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~BookAppointmentTests.Books_and_returns_201"  # single test
 dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests                         # whole-stack smoke (Category=Aspire): boots the AppHost; one AppHost per machine at a time
 

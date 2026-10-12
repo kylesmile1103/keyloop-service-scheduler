@@ -1,4 +1,6 @@
 using System.Globalization;
+using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
+using Microsoft.AspNetCore.Hosting;
 using System.Net;
 using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
@@ -115,6 +117,63 @@ public sealed class ConcurrentBookingTests(PostgresFixture pg) : IAsyncLifetime
 
         ShouldHaveCleanLogs(confirmed: 1, rejected: Contenders - 1);
         await ShouldHaveExactlyTheWinnerInTheDatabaseAsync(dealershipId, winner);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Vehicle_aware_HV_and_mixed_powertrain_rounds_keep_exactly_one_winner(bool mixed)
+    {
+        var site = TestData.NewDealership("Vehicle contention");
+        var bay = TestData.NewBay(site.Id, "Standard", BayCapability.StandardLift);
+        var technician = TestData.NewTechnician(site.Id, "HV trained", "HV", Certification.GeneralService);
+        technician.SetCompetence(2, TestData.BookingDay, confirmed: false);
+        var unqualified = TestData.NewTechnician(site.Id, "A unqualified preferred technician", "ICE", Certification.GeneralService);
+        var service = TestData.NewServiceType("INTERIM-SERVICE", 60, [BayCapability.StandardLift], [Certification.GeneralService]);
+        await _factory.WithDbAsync(async db =>
+        {
+            db.AddRange(site, bay, technician, service);
+            if (!mixed)
+            {
+                db.Add(unqualified);
+            }
+            await db.SaveChangesAsync(Ct);
+        });
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        _client.Dispose();
+        _client = host.CreateClient();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var contenders = Enumerable.Range(1, Contenders).Select(async contender =>
+        {
+            var powertrain = mixed ? (contender % 3) switch { 0 => Powertrain.Ice, 1 => Powertrain.BatteryElectric, _ => Powertrain.Unknown } : Powertrain.BatteryElectric;
+            var request = Request(service.Id, Ten, contender);
+            request = request with
+            {
+                PreferredTechnicianId = mixed ? null : unqualified.Id,
+                Vehicle = request.Vehicle with { Profile = powertrain == Powertrain.Unknown ? null : new VehicleProfileRequest(powertrain, DeclarationReason: "Verified at intake") },
+            };
+            await gate.Task;
+            return await BookAsync(site.Id, contender, request, IdempotencyKeyFor(mixed ? "mixed" : "hv", contender));
+        }).ToArray();
+        gate.SetResult();
+        var outcomes = await Task.WhenAll(contenders);
+        Diagnose(mixed ? "mixed powertrains" : "HV contention", outcomes, site.Id);
+        var winner = await ShouldHaveExactlyOneWinnerAsync(outcomes, site.Id, bay.Id, technician.Id, Ten, "vehicle aware");
+        var decision = winner.Appointment!.Allocation.ShouldNotBeNull();
+        decision.MinimumHvLevel.ShouldBe(mixed && winner.Contender % 3 == 0 ? 0 : 2);
+        if (!mixed)
+        {
+            decision.Reasons.ShouldContain("preferred-technician:minimum-hv-level");
+        }
+        ShouldHaveNoDeadlockOrBackstop();
+        _metrics.Sum("scheduler.allocation.below_hv_minimum").ShouldBe(0);
+        _metrics.Sum("scheduler.allocation.decided_by").ShouldBe(1);
+        Outcomes(site.Id).ShouldBe(new Dictionary<string, long> { ["confirmed"] = 1, ["slot_unavailable"] = Contenders - 1 }, ignoreOrder: true);
+        var waits = LockWaits(site.Id);
+        waits.Count.ShouldBe(Contenders);
+        waits.ShouldAllBe(wait => wait > 0);
+        ShouldHaveCleanLogs(confirmed: 1, rejected: Contenders - 1);
+        await ShouldHaveExactlyTheWinnerInTheDatabaseAsync(site.Id, winner);
     }
 
     [Fact]

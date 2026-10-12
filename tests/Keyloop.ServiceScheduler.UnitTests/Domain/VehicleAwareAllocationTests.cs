@@ -18,6 +18,7 @@ public sealed class VehicleAwareAllocationTests
     public void Generated_allocations_satisfy_requirements_and_resolution_is_order_stable(int seed)
     {
         var random = new Random(seed);
+        var allocations = 0;
         for (var trial = 0; trial < 500; trial++)
         {
             var profile = VehicleProfile.Unknown with { Powertrain = (Powertrain)random.Next(7), VehicleClass = (VehicleClass)random.Next(4) };
@@ -52,6 +53,7 @@ public sealed class VehicleAwareAllocationTests
             var result = AllocationPolicy.Allocate(bays, technicians, requirements, Day, new HashSet<Guid>(), new HashSet<Guid>(), new Dictionary<Guid, int>(), null, null);
             if (result is not null)
             {
+                allocations++;
                 result.Bay.Satisfies(requirements).ShouldBeTrue($"seed {seed}, trial {trial}");
                 result.Technician.Satisfies(requirements, Day).ShouldBeTrue($"seed {seed}, trial {trial}");
                 var reversed = AllocationPolicy.Allocate(bays.Reverse().ToArray(), technicians.Reverse().ToArray(), requirements, Day,
@@ -61,6 +63,7 @@ public sealed class VehicleAwareAllocationTests
                 reversed.Decision.Reasons.ShouldBe(result.Decision.Reasons);
             }
         }
+        allocations.ShouldBeGreaterThan(0, $"seed {seed} must exercise feasible allocations");
     }
 
     [Fact]
@@ -88,7 +91,7 @@ public sealed class VehicleAwareAllocationTests
     }
 
     public static TheoryData<int, int, AllocationCriterion> GoldenCases => new(
-        Enumerable.Range(0, 40).Select(i => new TheoryDataRow<int, int, AllocationCriterion>(i, i % 8 == 0 ? 11 : 10,
+        Enumerable.Range(0, 40).Select(i => new TheoryDataRow<int, int, AllocationCriterion>(i, i % 8 is 0 or 3 ? 11 : 10,
             (i % 8) switch
             {
                 0 => AllocationCriterion.PreferredResource,
@@ -107,10 +110,10 @@ public sealed class VehicleAwareAllocationTests
         var hv = scenario / 8;
         var requirements = new JobRequirements(new HashSet<BayCapability> { BayCapability.StandardLift }, new HashSet<Certification> { Certification.Brakes }, hv, 1, []);
         var bay = ServiceBay.Create(Id(1), Site, "Bay", [BayCapability.StandardLift]);
-        var first = Technician.Create(Id(10), Site, kind == 4 ? "Same" : "A", "A", [Certification.Brakes], hvLevel: hv, hvLevelConfirmed: true);
-        var second = Technician.Create(Id(11), Site, kind == 4 ? "Same" : "B", "B",
-            kind == 1 ? [Certification.Brakes, Certification.Diagnostics] : [Certification.Brakes],
-            hvLevel: hv, hvLevelValidUntil: kind == 7 ? Day.AddDays(-1) : null, hvLevelConfirmed: true, isActive: kind != 6);
+        var first = Technician.Create(Id(kind == 3 ? 11 : 10), Site, kind == 4 ? "Same" : kind is 1 or 2 ? "Z" : "A", "A", [Certification.Brakes], hvLevel: hv, hvLevelConfirmed: true);
+        var second = Technician.Create(Id(kind == 3 ? 10 : 11), Site, kind == 4 ? "Same" : kind is 1 or 2 ? "A" : "B", "B",
+            kind == 1 && hv == 4 ? [Certification.Brakes, Certification.Diagnostics] : [Certification.Brakes],
+            hvLevel: kind == 1 && hv < 4 ? hv + 1 : hv, hvLevelValidUntil: kind == 7 ? Day.AddDays(-1) : null, hvLevelConfirmed: true, isActive: kind != 6);
         var busy = kind == 5 ? new HashSet<Guid> { second.Id } : new HashSet<Guid>();
         // At level zero expiry has no effect; a busy second still exercises the single-candidate criterion.
         if (kind == 7 && hv == 0)
