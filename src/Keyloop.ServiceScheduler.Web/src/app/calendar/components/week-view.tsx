@@ -41,7 +41,8 @@ export function WeekView({ days, byDay, dealership, today, selectedId, onSelect,
           // A container: a narrow column (a tablet's week) keeps its heading to the day and its chips to the start time.
           <li key={date} className="@container/day flex min-w-0 flex-col bg-card">
             <div className="flex min-h-11 items-center justify-between gap-1 border-b px-1.5 py-1.5 @[9rem]/day:px-2">
-              <h3 className="min-w-0 text-sm font-medium">
+              {/* Focusable by script only: "+N more" in the month moves focus here once the week is on screen. */}
+              <h3 data-day-heading={date} tabIndex={-1} className="min-w-0 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <DayLink date={date} today={today} dealershipId={dealership.id}>
                   <span className={cn("text-muted-foreground", date === today && "font-semibold text-foreground")}>{formatDay(date, "short").slice(0, 3)}</span>
                   <DayNumber date={date} today={today} />

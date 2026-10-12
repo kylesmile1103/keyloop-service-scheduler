@@ -66,7 +66,7 @@ export function CalendarToolbar({ dealershipSelect, view, title, titleId, showsT
     </TabsList>
   )
   const heading = (
-    <h2 id={titleId} className="font-heading text-lg font-semibold tabular-nums" aria-live="polite">
+    <h2 id={titleId} tabIndex={-1} className="rounded-sm font-heading text-lg font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-live="polite">
       {title}
     </h2>
   )

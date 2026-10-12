@@ -6,9 +6,10 @@ import { NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
 import { mockBoardApi, rangeFromSchedules, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
+import { deferred } from "@/test/identity-change"
 import { anonymous, noRole, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
-import { phoneViewport, renderBoard, search } from "@/test/render-board"
+import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
 import { appointments } from "@/test/schedules"
 
 // The Calendar (Task 28b): one dealership's appointments by week or month from one range read, on the dealership's own
@@ -202,6 +203,73 @@ describe("the month", () => {
     const wednesday = await day("Wednesday 14 October, dispatch board")
     expect(within(wednesday).getAllByRole("button", { name: /, Confirmed$/ })).toHaveLength(3)
     expect(within(wednesday).queryByRole("button", { name: /more on/ })).not.toBeInTheDocument()
+  })
+})
+
+describe("+N more and focus", () => {
+  const wednesdayHeading = () => screen.findByRole("heading", { level: 3, name: "Wednesday 14 October, dispatch board" })
+  const more = "4 more on Wednesday 14 October: show the week"
+
+  it.each(["the keyboard", "a mouse"])("moves focus from +N more, used with %s, to that day's heading once its week has loaded", async (how) => {
+    const week = deferred<AppointmentListItemResponse[]>()
+    mockBoardApi({ range: (id, from, to) => (from === "2026-10-12" ? week.promise : rangeFromSchedules(id, from, to)) })
+    renderBoard(`${calendar}&view=month`)
+    const button = within(await day("Wednesday 14 October, dispatch board")).getByRole("button", { name: more })
+
+    if (how === "the keyboard") {
+      // Enter on a focused button is its click.
+      button.focus()
+      fireEvent.keyDown(button, { key: "Enter" })
+      fireEvent.click(button)
+    } else pointerClick(button)
+
+    expect(await title("12–18 October 2026")).toBeInTheDocument()
+    // The month, and the button with it, are gone; the week is still loading.
+    expect(button).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument()
+
+    week.release(rangeFromSchedules(reading.id, "2026-10-12", "2026-10-18"))
+
+    const heading = await wednesdayHeading()
+    await waitFor(() => expect(heading).toHaveFocus())
+    // The day's own controls and appointments follow it in the tab order.
+    const column = heading.closest("li")!
+    expect(heading.compareDocumentPosition(within(column).getAllByRole("button", { name: /, Confirmed$/ })[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("moves focus at once when the week is already read", async () => {
+    mockBoardApi()
+    const { router } = renderBoard(`${calendar}&date=2026-10-14`)
+    expect(await wednesdayHeading()).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: "Month" }))
+    const button = within(await day("Wednesday 14 October, dispatch board")).getByRole("button", { name: more })
+
+    button.focus()
+    fireEvent.click(button)
+
+    await waitFor(async () => expect(await wednesdayHeading()).toHaveFocus())
+    expect(search(router)).toEqual({ dealership: reading.id, date: "2026-10-14" })
+  })
+
+  it("leaves focus alone when the week is left before it has loaded", async () => {
+    const week = deferred<AppointmentListItemResponse[]>()
+    mockBoardApi({ range: (id, from, to) => (from === "2026-10-12" ? week.promise : rangeFromSchedules(id, from, to)) })
+    renderBoard(`${calendar}&view=month`)
+    fireEvent.click(within(await day("Wednesday 14 October, dispatch board")).getByRole("button", { name: more }))
+    expect(await title("12–18 October 2026")).toBeInTheDocument()
+
+    const next = screen.getByRole("button", { name: "Next week" })
+    next.focus()
+    fireEvent.click(next)
+    expect(await title("19–25 October 2026")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }))
+    expect(await title("12–18 October 2026")).toBeInTheDocument()
+    screen.getByRole("button", { name: "Previous week" }).focus()
+    week.release(rangeFromSchedules(reading.id, "2026-10-12", "2026-10-18"))
+
+    expect(await wednesdayHeading()).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.getByRole("button", { name: "Previous week" })).toHaveFocus()
   })
 })
 

@@ -3,7 +3,7 @@
 // README's licence section).
 import { useQuery } from "@tanstack/react-query"
 import { Plus, RotateCw } from "lucide-react"
-import { type ReactNode, useId, useMemo, useRef, useState } from "react"
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import { getDealershipsOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentListItemResponse, DealershipResponse } from "@/api/types.gen"
@@ -147,6 +147,24 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
   const failure = useQueryFailure(read, rangeOptions.queryKey)
   const byDay = useMemo(() => byLocalDate(read.data ? onCalendar(read.data) : []), [read.data])
 
+  // "+N more" leaves the month for the day's week, and the button that had focus goes with the month: once that week is
+  // on screen, the day's heading takes focus (the range's title if the day is not drawn), so the keyboard carries on from
+  // the day. Stepping or switching the view meanwhile drops it.
+  const focusOnWeek = useRef<string | null>(null)
+  const section = useRef<HTMLElement>(null)
+  const weekSettled = view === "week" && (read.data !== undefined || failure !== null)
+  useEffect(() => {
+    const day = focusOnWeek.current
+    if (day === null || !weekSettled || anchor !== day) return
+    focusOnWeek.current = null
+    const heading = section.current?.querySelector<HTMLElement>(`[data-day-heading="${day}"]`)
+    ;(heading ?? document.getElementById(titleId))?.focus()
+  }, [weekSettled, anchor, titleId])
+  const showWeekOf = (date: string) => {
+    focusOnWeek.current = date
+    show({ view: "week", anchor: date })
+  }
+
   const days = calendarDays(range)
   // A phone's month lists the month's own days; the grid's leading and trailing days belong to the months either side.
   const listed = phone && view === "month" ? days.filter((date) => inMonth(date, anchor)) : days
@@ -170,15 +188,28 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
   }
 
   return (
-    <Tabs value={view} onValueChange={(next: CalendarView) => setView(next)} className="gap-4 md:gap-5">
+    <Tabs
+      value={view}
+      onValueChange={(next: CalendarView) => {
+        focusOnWeek.current = null
+        setView(next)
+      }}
+      className="gap-4 md:gap-5"
+    >
       <CalendarToolbar
         dealershipSelect={dealershipSelect}
         view={view}
         title={rangeTitle(view, anchor)}
         titleId={titleId}
         showsToday={showsToday}
-        onStep={(step) => setAnchor(shiftAnchor(view, anchor, step))}
-        onToday={() => setAnchor(null)}
+        onStep={(step) => {
+          focusOnWeek.current = null
+          setAnchor(shiftAnchor(view, anchor, step))
+        }}
+        onToday={() => {
+          focusOnWeek.current = null
+          setAnchor(null)
+        }}
         onNew={phone ? undefined : () => book.open(anchor)}
         bookState={book.bookState}
         phone={phone}
@@ -189,7 +220,7 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
         // Out of the tab order: the panel holds the focusable days and appointments, as the board's lane panels do.
         <TabsContent key={panel} value={panel} tabIndex={-1}>
           {view === panel && (
-            <section aria-labelledby={titleId} aria-busy={read.isPending || undefined} className={cn((!phone || !read.data || empty) && "overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/10")}>
+            <section ref={section} aria-labelledby={titleId} aria-busy={read.isPending || undefined} className={cn((!phone || !read.data || empty) && "overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/10")}>
               {!read.data && failure !== null ? (
                 <FailedState title="Couldn’t load the appointments" error={failure} onRetry={() => void read.refetch()} retrying={read.isFetching} level={3} />
               ) : !read.data ? (
@@ -206,7 +237,7 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
               ) : view === "week" ? (
                 <WeekView {...daysProps} />
               ) : (
-                <MonthView {...daysProps} anchor={anchor} onShowWeek={(date) => show({ view: "week", anchor: date })} />
+                <MonthView {...daysProps} anchor={anchor} onShowWeek={showWeekOf} />
               )}
             </section>
           )}
