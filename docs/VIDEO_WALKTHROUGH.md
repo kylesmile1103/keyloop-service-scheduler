@@ -98,9 +98,11 @@ and HeyAPI-generated types, SDK calls and TanStack Query options. Show CI's
 
 ### 2:45–4:45 - Implementation highlights
 
-Use editor **Go to File** to open, in order:
+Use editor **Go to File** to open, in order. The files span the three API
+assemblies (ADR-025): pure Domain, Infrastructure persistence and the Api host
+with its complete vertical slices.
 
-1. `src/Keyloop.ServiceScheduler.Api/Infrastructure/Persistence/Migrations/20261011120048_InitialCreate.cs`;
+1. `src/Keyloop.ServiceScheduler.Infrastructure/Persistence/Migrations/20261011120048_InitialCreate.cs`;
    search `ex_appointments_bay_no_overlap`, then
    `ex_appointments_technician_no_overlap`. Explain `tstzrange`, `&&`, and the
    partial constraints excluding cancelled appointments.
@@ -109,7 +111,7 @@ Use editor **Go to File** to open, in order:
    `VerifyCommittedAsync`. Walk READ COMMITTED → dealership advisory lock →
    availability recheck → insert + audit → commit. Explain the stable appointment
    id and commit verification protecting retries after a lost acknowledgement.
-3. `src/Keyloop.ServiceScheduler.Api/Domain/Scheduling/AvailabilityCalculator.cs`;
+3. `src/Keyloop.ServiceScheduler.Domain/Scheduling/AvailabilityCalculator.cs`;
    show full-duration intersections of free qualified resources, then mention
    dealership-local operating hours converted to UTC and deterministic allocation.
 4. `src/Keyloop.ServiceScheduler.Api/Common/Problems/ProblemTypes.cs`;

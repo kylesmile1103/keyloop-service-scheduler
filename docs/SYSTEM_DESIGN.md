@@ -1043,7 +1043,7 @@ Direction added on 2026-10-11 (stakeholder request): prefer build-time source ge
 |---------|------------------|------------------------|-------|
 | Request dispatch (minimal APIs) | **Request Delegate Generator** (`EnableRequestDelegateGenerator`) | No | Endpoint delegates are compiled at build time; a non-interceptable endpoint is a build error under warnings-as-errors. |
 | Endpoint discovery | Explicit `EndpointRegistry` (one line per slice) | No | Replaces assembly scanning for `IEndpoint` implementers. |
-| JSON (requests, responses, idempotency bodies, audit payloads) | **System.Text.Json source generation** (`SchedulerJsonContext`, `UseStringEnumConverter`), `JsonSerializerIsReflectionEnabledByDefault=false` | No | Any type missing from the context fails fast and is caught by the integration suite. |
+| JSON (requests, responses, idempotency bodies, audit payloads, notification snapshots) | **System.Text.Json source generation**: Api `SchedulerJsonContext` (HTTP DTOs, problem extensions, idempotency bodies) and Infrastructure `PersistenceJsonContext` (audit payloads, notification snapshots), both with `UseStringEnumConverter`; `JsonSerializerIsReflectionEnabledByDefault=false` in both assemblies | No | Any type missing from its context fails fast and is caught by the integration suite. |
 | Object mapping | **Mapperly** (`Riok.Mapperly`, build-time generator, `RequiredMappingStrategy.Target`) | No | Unmapped target members are build errors. |
 | Mediator / handler pipeline | None (ADR-001) | No | Nothing to replace; endpoints call handlers directly. |
 | Configuration binding | **Configuration binding source generator** (`EnableConfigurationBindingGenerator`) | No | `BindConfiguration` calls are intercepted at build time. |
