@@ -45,15 +45,15 @@ export type AppointmentListItemResponse = {
      */
     technician: ResourceSummary;
     /**
-     * Masked customer initials, one upper-case initial per whitespace-separated name part, for example `ALS`. All callers receive initials until Task 27 enables role-based full values.
+     * The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith.
      */
     customerName: string;
     /**
-     * Masked VIN: its last six characters only, for example `123456`. All callers receive this suffix until Task 27 enables role-based full values.
+     * The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example `***********123456`.
      */
     vin: string;
     /**
-     * The vehicle's registration plate, upper case.
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives `****` and its last three letters or digits, for example `****CDE` for AB12 CDE, or `*******` for a plate with fewer than six.
      */
     registration: string;
 };
@@ -510,15 +510,15 @@ export type ScheduledAppointmentResponse = {
      */
     technician: ResourceSummary;
     /**
-     * The vehicle's 17-character VIN, upper case.
+     * The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example `***********123456`.
      */
     vin: string;
     /**
-     * The vehicle's registration plate, upper case.
+     * The vehicle's registration plate, upper case, for callers with an API role; every other caller receives `****` and its last three letters or digits, for example `****CDE` for AB12 CDE, or `*******` for a plate with fewer than six.
      */
     registration: string;
     /**
-     * The customer's full name.
+     * The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith.
      */
     customerName: string;
 };
@@ -902,7 +902,7 @@ export type ListAppointmentsError = ListAppointmentsErrors[keyof ListAppointment
 
 export type ListAppointmentsResponses = {
     /**
-     * An array of appointments ordered by start, with service, bay and technician summaries, masked customer initials and VIN suffixes; empty when there are no matches.
+     * An array of appointments ordered by start, then id, with service, bay and technician summaries and the customer name, VIN and registration (masked for callers without an API role); empty when there are no matches.
      */
     200: Array<AppointmentListItemResponse>;
 };
