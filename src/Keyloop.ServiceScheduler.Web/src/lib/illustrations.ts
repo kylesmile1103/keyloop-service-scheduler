@@ -7,6 +7,7 @@ import forbidden from "@/assets/illustrations/forbidden.webp"
 import maintenance from "@/assets/illustrations/maintenance.webp"
 import noAvailability from "@/assets/illustrations/no-availability.webp"
 import notFound from "@/assets/illustrations/not-found.webp"
+import photoEvidence from "@/assets/illustrations/photo-evidence.webp"
 import serverError from "@/assets/illustrations/server-error.webp"
 import unauthorized from "@/assets/illustrations/unauthorized.webp"
 
@@ -21,13 +22,14 @@ export const illustrations = {
   "no-availability": noAvailability,
   "error-connection": errorConnection,
   "booking-success": bookingSuccess,
-  // Wave 2: each error page's own picture and the empty roster.
+  // Wave 2: each error page's own picture, the empty roster and the triage photo field.
   unauthorized,
   forbidden,
   "server-error": serverError,
   maintenance,
   "not-found": notFound,
   "empty-technicians": emptyTechnicians,
+  "photo-evidence": photoEvidence,
 } as const
 
 export type Illustration = keyof typeof illustrations
@@ -49,4 +51,5 @@ export const illustrationAlt: Record<Illustration, string> = {
   maintenance: "Silver hatchback raised on a two-post lift beside cones and a progress indicator.",
   "not-found": "Directional road sign pointing toward a short road closed by a barrier.",
   "empty-technicians": "Tool pegboard beside an open, empty technician locker.",
+  "photo-evidence": "Phone camera framing an amber warning triangle on a generic vehicle dashboard.",
 }

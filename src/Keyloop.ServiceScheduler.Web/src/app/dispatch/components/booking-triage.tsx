@@ -13,13 +13,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDay, weekdayOf } from "@/lib/calendar-date"
 import { featureList } from "@/lib/features"
+import { illustrationAlt, illustrations } from "@/lib/illustrations"
 import { openingHoursOn } from "@/lib/opening-hours"
 import { parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
-
-/** Said wherever suggestions are offered (Task 26): who makes them, and that a person checks them. */
 
 interface BookingTriageProps {
   triage: BookingTriage
@@ -66,6 +65,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
   }
 
   const describedBy = [ids.help, ids.count, descriptionError ? ids.error : null].filter(Boolean).join(" ")
+  const noPhotos = triage.photos.length === 0
 
   return (
     <section aria-label="Suggest a service from the issue" className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:p-4">
@@ -102,17 +102,45 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
       {triage.imagesEnabled && (
         <Field className="gap-1.5" data-invalid={triage.imageError ? true : undefined}>
           <FieldLabel htmlFor={ids.photos}>Photos or paperwork (optional)</FieldLabel>
-          <input
-            id={ids.photos}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            disabled={pending}
-            aria-invalid={triage.imageError ? true : undefined}
-            aria-describedby={`${ids.photoHelp}${triage.imageError ? ` ${ids.photoError}` : ""}`}
-            className="w-full text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm"
-            onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
-          />
+          {/*
+            Before the first photo, the field says what is worth photographing, beside the picture of it (UI_DESIGN 12.1).
+            The file input keeps its place in this wrapper either way, so the element the file picker returns focus to is
+            never replaced when the photos arrive.
+          */}
+          <div
+            className={cn(
+              noPhotos &&
+                "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 rounded-lg border border-dashed border-input p-3"
+            )}
+          >
+            {noPhotos && (
+              <img
+                src={illustrations["photo-evidence"]}
+                alt={illustrationAlt["photo-evidence"]}
+                width={1200}
+                height={900}
+                draggable={false}
+                className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
+              />
+            )}
+            {noPhotos && (
+              <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
+            )}
+            <input
+              id={ids.photos}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              disabled={pending}
+              aria-invalid={triage.imageError ? true : undefined}
+              aria-describedby={`${ids.photoHelp}${triage.imageError ? ` ${ids.photoError}` : ""}`}
+              className={cn(
+                "w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:text-foreground",
+                noPhotos && "col-span-2 sm:col-span-1"
+              )}
+              onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
+            />
+          </div>
           <p id={ids.photoHelp} className="text-xs text-muted-foreground">
             Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
           </p>
