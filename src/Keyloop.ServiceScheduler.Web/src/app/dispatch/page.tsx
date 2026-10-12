@@ -13,16 +13,14 @@ import { BaseLayout } from "@/components/layouts/base-layout"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { toast } from "@/components/ui/toast"
 import { cachedWriteAccess, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useSelectedDealership } from "@/hooks/use-selected-dealership"
-import { formatDay, todayIn } from "@/lib/calendar-date"
+import { todayIn } from "@/lib/calendar-date"
 import { firstOpenDate } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
-import type { AllocationExplanation } from "@/lib/vehicle-aware"
 
 import { AppointmentSheet } from "./components/appointment-sheet"
 import { BoardPlaceholder } from "./components/board-placeholder"
@@ -31,8 +29,8 @@ import { DispatchToolbar } from "./components/dispatch-toolbar"
 import { KpiStrip } from "./components/kpi-strip"
 import { ScheduleBoard } from "./components/schedule-board"
 import { useBoardParams } from "./hooks/use-board-params"
-import { whyNotLines } from "./lib/allocation"
-import { localTime } from "./lib/appointment-text"
+import { useBookedToast } from "./hooks/use-booked-toast"
+import type { BookedExplanation } from "./lib/allocation"
 import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
 
 /** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
@@ -195,44 +193,13 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
     setBooking((previous) => ({ ...previous, open: false }))
   }
 
-  // A toast that explains an allocation names technicians' levels (private, role-only data): it closes when who is
-  // signed in changes, like the details sheet.
-  const explainedToast = useRef<{ id: string; identity: string } | null>(null)
-  useEffect(() => {
-    const shown = explainedToast.current
-    if (shown && shown.identity !== currentUser.identity) {
-      toast.close(shown.id)
-      explainedToast.current = null
-    }
-  }, [currentUser.identity])
-
-  const onBooked = (appointment: AppointmentResponse, explanation?: AllocationExplanation | null) => {
+  // The toast every page that books ends with on a wide screen; an explained one closes when who is signed in changes.
+  const showBooked = useBookedToast(today)
+  const onBooked = (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => {
     highlight(appointment.id, false)
     // On a phone the sheet ends on its own success state; wide screens get the toast (UI_DESIGN 11.15).
     if (agenda) return
-    const day = appointment.startLocal.slice(0, 10)
-    const when = `${localTime(appointment.startLocal)}${day === today ? "" : ` on ${formatDay(day, "short")}`}`
-    const summary = `${appointment.serviceType.name} at ${when} · ${appointment.bay.name} · ${appointment.technician.name}`
-    const whyNot = explanation && appointment.allocation ? whyNotLines(appointment.allocation, schedule.data) : []
-    const id = toast.add({
-      type: "success",
-      title: "Booked",
-      // With vehicle-aware requirements on, why this technician and why not the one asked for (ADR-029 §4), for longer.
-      description: explanation ? (
-        <span className="flex flex-col gap-1.5">
-          <span>{summary}</span>
-          <span className="text-foreground">{explanation.technician}</span>
-          {whyNot.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-        </span>
-      ) : (
-        summary
-      ),
-      ...(explanation ? { timeout: 12_000, data: { stacked: true } } : {}),
-      actionProps: { children: "View on board", onClick: () => viewOnBoard(appointment) },
-    })
-    if (explanation) explainedToast.current = { id, identity: currentUser.identity }
+    showBooked(appointment, explanation, () => viewOnBoard(appointment))
   }
 
   const bookButton = (

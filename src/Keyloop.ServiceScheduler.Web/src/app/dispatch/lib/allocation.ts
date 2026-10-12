@@ -23,13 +23,16 @@ export function whyNotLines(allocation: AllocationDecision, roster: Roster | und
   )
 }
 
+/** A booking's allocation, explained: the sentences for the technician and the bay, and why a preference was not followed. */
+export type BookedExplanation = AllocationExplanation & { whyNot: string[] }
+
 /** A booking's allocation, explained: the sentence for the technician and the bay, and why a preference was not followed. */
 export function explainBooking(
   appointment: AppointmentResponse,
   allocation: AllocationDecision,
   service: Pick<ServiceTypeResponse, "requiredCertifications" | "requiredBayCapabilities"> | undefined,
   roster: Roster | undefined
-): AllocationExplanation & { whyNot: string[] } {
+): BookedExplanation {
   return {
     ...explainAllocation({
       allocation,

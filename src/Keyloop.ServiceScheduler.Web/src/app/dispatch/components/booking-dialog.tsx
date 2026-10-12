@@ -69,16 +69,10 @@ import {
 import { cachedIdentityKey } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
-import {
-  type AllocationExplanation,
-  type AvailabilityVehicle,
-  explainAllocation,
-  knownManufacturer,
-  liveDiagnosisApplies,
-  manufacturerCode,
-} from "@/lib/vehicle-aware"
+import { type AvailabilityVehicle, knownManufacturer, liveDiagnosisApplies, manufacturerCode } from "@/lib/vehicle-aware"
 
 import { bookingTriageStatusQuery, useBookingTriage } from "../hooks/use-booking-triage"
+import { type BookedExplanation, explainBooking } from "../lib/allocation"
 import { localTime } from "../lib/appointment-text"
 import {
   bookingSchemaFor,
@@ -119,9 +113,10 @@ export interface BookingDialogProps {
   fullScreen: boolean
   /**
    * A booking was made (the board refreshes and highlights it; on wide screens the dialog has closed), with its allocation
-   * explained when vehicle-aware requirements are on and the answer carries one.
+   * explained when vehicle-aware requirements are on and the answer carries one: the sentences, and why a preference was
+   * not followed, named from `schedule`.
    */
-  onBooked: (appointment: AppointmentResponse, explanation?: AllocationExplanation | null) => void
+  onBooked: (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => void
   /** The success state's "View on board" (phones). */
   onViewOnBoard: (appointment: AppointmentResponse) => void
 }
@@ -443,16 +438,11 @@ function BookingFlow({
     onDiscarded: () => setAnswerDiscarded(true),
     onSuccess: (appointment) => {
       idempotencyKey.current = crypto.randomUUID()
-      // The allocation, explained, while the switch is on and the answer carries one (a vehicle-aware booking).
+      // The allocation, explained, while the switch is on and the answer carries one (a vehicle-aware booking); a preference
+      // not followed is named from the roster the dialog offered it from.
       const explanation =
         cachedVehicleAware(queryClient) && appointment.allocation
-          ? explainAllocation({
-              allocation: appointment.allocation,
-              technician: appointment.technician.name,
-              bay: appointment.bay.name,
-              service: serviceFor(appointment.serviceType.id),
-              profile: appointment.vehicle.profile,
-            })
+          ? explainBooking(appointment, appointment.allocation, serviceFor(appointment.serviceType.id), schedule)
           : null
       const day = appointment.startLocal.slice(0, 10)
       void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: day } }) })

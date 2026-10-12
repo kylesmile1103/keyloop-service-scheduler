@@ -188,7 +188,7 @@ function ToastList() {
   return toasts.map((toastItem) => {
     const stacked = isStacked(toastItem.data)
     return (
-      <Toast key={toastItem.id} toast={toastItem}>
+      <Toast key={toastItem.id} toast={toastItem} data-stacked={stacked ? "" : undefined}>
         <ToastContent className={cn(stacked && "flex-wrap items-start *:data-[slot=toast-icon]:mt-0.5")}>
           <ToastIcon type={toastItem.type} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
