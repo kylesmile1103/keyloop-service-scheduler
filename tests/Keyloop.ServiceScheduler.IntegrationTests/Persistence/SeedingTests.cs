@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
@@ -7,6 +8,7 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
@@ -186,6 +188,73 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<SchedulerDbContext>();
         (await db.Dealerships.CountAsync(Ct)).ShouldBe(2);
         (await db.Appointments.CountAsync(Ct)).ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Two_instances_starting_together_upgrade_once_and_both_start()
+    {
+        var logs = new CapturingLoggerProvider();
+        await using var parent = new SchedulerApiFactory(pg.ConnectionString, _factory.Clock, logs);
+        await using var instance = parent.WithWebHostBuilder(builder => builder
+            .UseSetting("Database:MigrateOnStartup", "false").UseSetting("Database:SeedDemoData", "true"));
+        _ = instance.Services; // its own startup seeds a fresh v2 database and the demo week
+
+        // Turn it back into a database seeded before Task 32a: policy v1 without hv-post-collision and no damage assessment service.
+        await _factory.WithDbAsync(async db =>
+        {
+            await db.RequirementRules.ExecuteDeleteAsync(Ct);
+            foreach (var site in new[] { ReferenceDataSeed.ReadingDealershipId, ReferenceDataSeed.MunichDealershipId })
+            {
+                db.RequirementRules.AddRange(RequirementRule.DefaultPolicy(site).Where(r => r.Code != RequirementRule.PostCollisionRuleCode)
+                    .Select(r => r with { Id = DeterministicGuid.Create($"requirement-rule:{site}:1:{r.Code}"), PolicyVersion = 1 }));
+            }
+            await db.SaveChangesAsync(Ct);
+            await db.ServiceTypes.Where(s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT").ExecuteDeleteAsync(Ct);
+        });
+        var logged = logs.Entries.Count;
+
+        // Hold inserts into requirement_rules (reads still pass) until both startups are waiting, so they really overlap.
+        await using var blocker = new NpgsqlConnection(pg.ConnectionString);
+        await blocker.OpenAsync(Ct);
+        await using var hold = await blocker.BeginTransactionAsync(Ct);
+        await using (var command = new NpgsqlCommand("LOCK TABLE requirement_rules IN SHARE ROW EXCLUSIVE MODE", blocker, hold))
+        {
+            await command.ExecuteNonQueryAsync(Ct);
+        }
+        var first = DatabaseInitializer.InitializeAsync(instance.Services, Ct);
+        var second = DatabaseInitializer.InitializeAsync(instance.Services, Ct);
+        await WaitForLockWaitersAsync(pg.ConnectionString, 2);
+        await hold.CommitAsync(Ct);
+        await Task.WhenAll(first, second);
+
+        await _factory.WithDbAsync(async db =>
+        {
+            (await db.ServiceTypes.CountAsync(Ct)).ShouldBe(11);
+            var versions = await db.RequirementRules.AsNoTracking().GroupBy(r => r.PolicyVersion).Select(g => new { g.Key, Count = g.Count() })
+                .OrderBy(g => g.Key).ToListAsync(Ct);
+            versions.Select(v => (v.Key, v.Count)).ShouldBe([(1, 12), (2, 14)]);
+        });
+        logs.Entries.Skip(logged).Count(e => e.EventId.Id == 1107).ShouldBe(2); // one publication per dealership, by one instance
+    }
+
+    /// <summary>Polls from its own connection: inside a transaction PostgreSQL would keep returning one activity snapshot.</summary>
+    private static async Task WaitForLockWaitersAsync(string connectionString, int expected)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(Ct);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            await using var command = new NpgsqlCommand(
+                "SELECT count(*)::int FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'", connection);
+            var waiting = (int)(await command.ExecuteScalarAsync(Ct))!;
+            if (waiting >= expected)
+            {
+                return;
+            }
+            DateTime.UtcNow.ShouldBeLessThan(deadline, $"only {waiting} of {expected} sessions reached a lock wait");
+            await Task.Delay(50, Ct);
+        }
     }
 
     private Task<(int Dealerships, int Bays, int Technicians, int ServiceTypes, int HoursRows)> CountsAsync() =>

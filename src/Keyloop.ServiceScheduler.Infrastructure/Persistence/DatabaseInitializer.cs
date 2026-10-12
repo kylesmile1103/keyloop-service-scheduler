@@ -1,3 +1,4 @@
+using System.Data;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 using Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -9,8 +10,9 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
 /// Startup database work, gated per environment by <see cref="DatabaseOptions"/> (ARCHITECTURE §10): migrations when
-/// <c>MigrateOnStartup</c>; the reference catalogue and the demo week when <c>SeedDemoData</c>. UAT and Production set neither
-/// (migration bundles; no seed data), and SystemTest migrates but leaves seeding to the tests.
+/// <c>MigrateOnStartup</c>; the reference catalogue and the demo week when <c>SeedDemoData</c>, in one transaction under the
+/// <see cref="SeedingLock"/>. UAT and Production set neither (migration bundles; no seed data), and SystemTest migrates but leaves
+/// seeding to the tests.
 /// </summary>
 public static class DatabaseInitializer
 {
@@ -53,8 +55,20 @@ public static class DatabaseInitializer
         if (options.SeedDemoData)
         {
             var clock = provider.GetRequiredService<TimeProvider>();
-            logger.SeedCompleted("reference-data", await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, ct));
-            logger.SeedCompleted("demo-appointments", await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, ct));
+            // Instances that start together queue on the seeding lock: one seeds, and each later one then finds nothing to add instead
+            // of failing its startup on a duplicate key. Both seeders are idempotent, so a retried attempt is safe.
+            var (reference, appointments) = await db.Database.CreateExecutionStrategy().ExecuteAsync(async token =>
+            {
+                db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+                await SeedingLock.AcquireAsync(db, token);
+                var reference = await ReferenceDataSeed.EnsureSeededAsync(db, clock, logger, token);
+                var appointments = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, token);
+                await transaction.CommitAsync(token);
+                return (reference, appointments);
+            }, ct);
+            logger.SeedCompleted("reference-data", reference);
+            logger.SeedCompleted("demo-appointments", appointments);
         }
     }
 }

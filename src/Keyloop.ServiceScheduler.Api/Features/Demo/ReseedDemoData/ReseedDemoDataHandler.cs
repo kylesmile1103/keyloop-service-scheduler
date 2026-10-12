@@ -18,10 +18,11 @@ namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The transaction runs at <c>READ COMMITTED</c> and first takes both demo dealerships' locks (<see cref="DealershipLock"/>), in a fixed
-/// order: a booking in flight finishes before anything is deleted, and a booking that arrives meanwhile waits and then sees the new
-/// week. This cannot deadlock with bookings, which hold one dealership's lock and never wait for another (ADR-003), nor with another
-/// reseed, which takes the locks in the same order.
+/// The transaction runs at <c>READ COMMITTED</c> and, before it writes anything, takes the <see cref="SeedingLock"/> and then both demo
+/// dealerships' locks (<see cref="DealershipLock"/>), always in that order: startup seeding on another instance finishes first, a
+/// booking in flight finishes before anything is deleted, and a booking that arrives meanwhile waits and then sees the new week. This
+/// cannot deadlock with bookings, which hold one dealership's lock and never wait for another (ADR-003), with startup seeding, which
+/// takes only the seeding lock, nor with another reseed, which takes the locks in the same order.
 /// </para>
 /// <para>
 /// It runs under the retrying execution strategy without commit verification: the demo week's ids are deterministic, so a run repeated
@@ -67,6 +68,7 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
         // A retried run starts from nothing: whatever the failed run tracked or staged is gone with its transaction.
         db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        await SeedingLock.AcquireAsync(db, ct);
         foreach (var dealershipId in DemoDealerships)
         {
             await DealershipLock.AcquireAsync(db, dealershipId, ct);
