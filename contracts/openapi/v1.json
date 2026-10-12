@@ -3309,7 +3309,7 @@
               "null",
               "integer"
             ],
-            "description": "Vehicle-aware competence level 0..4; absent when the flag is off.",
+            "description": "Vehicle-aware competence level 0..4; absent when the flag is off or the caller has no API role (the four competence fields are employee data).",
             "format": "int32"
           },
           "hvLevelValidUntil": {

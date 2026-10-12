@@ -33,10 +33,14 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
         var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == query.DealershipId, ct)
             ?? throw new NotFoundException(ProblemResources.Dealership, query.DealershipId);
 
+        // A named technician's HV level, expiry and confirmation are employee data: shown with the vehicle-aware flag on, and only to a
+        // caller with an API role, the audience PersonalData uses for customer data.
+        var competence = options.Value.VehicleAwareRequirements && SchedulerRoles.CanReadPersonalData(caller);
+
         if (dealership.ResolveOperatingWindow(date) is not { } window)
         {
             var (bays, technicians) = await reader.ReadResourcesAsync(dealership.Id, ct);
-            return Response(dealership, date, operatingWindow: null, [.. bays.Select(b => ScheduleMapper.ToResponse(b, []))], [.. technicians.Select(t => ScheduleMapper.ToResponse(t, options.Value.VehicleAwareRequirements))]);
+            return Response(dealership, date, operatingWindow: null, [.. bays.Select(b => ScheduleMapper.ToResponse(b, []))], [.. technicians.Select(t => ScheduleMapper.ToResponse(t, competence))]);
         }
 
         // Every status is read, then cancelled appointments are dropped: the board shows what happened as well as what is booked.
@@ -61,7 +65,7 @@ public sealed class GetWorkshopScheduleHandler(SchedulerDbContext db, DaySchedul
             date,
             ScheduleMapper.ToResponse(window, zone),
             [.. day.Bays.Select(b => ScheduleMapper.ToResponse(b, appointmentsByBay[b.Id]))],
-            [.. day.Technicians.Select(t => ScheduleMapper.ToResponse(t, options.Value.VehicleAwareRequirements))]);
+            [.. day.Technicians.Select(t => ScheduleMapper.ToResponse(t, competence))]);
     }
 
     /// <summary>The services the appointments reference (the catalogue is global; only those referenced are read).</summary>

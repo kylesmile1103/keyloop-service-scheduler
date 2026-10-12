@@ -47,7 +47,7 @@ public sealed record BayScheduleResponse(
 /// <param name="EmployeeNumber">The dealership's employee number for the technician, unique within the dealership.</param>
 /// <param name="Certifications">What the technician is certified to perform, in the enumeration's declared order.</param>
 /// <param name="IsActive">False when the technician takes no new bookings; appointments made before still name them.</param>
-/// <param name="HvLevel">Vehicle-aware competence level 0..4; absent when the flag is off.</param>
+/// <param name="HvLevel">Vehicle-aware competence level 0..4; absent when the flag is off or the caller has no API role (the four competence fields are employee data).</param>
 /// <param name="HvLevelValidUntil">Inclusive local-date expiry; omitted when unlimited or the flag is off.</param>
 /// <param name="HvLevelConfirmed">False includes migrated levels, which still count.</param>
 /// <param name="BrandSpecialisms">Normalized OEM codes; data only in Phase 1.</param>

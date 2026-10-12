@@ -32,6 +32,7 @@ public static partial class ScheduleMapper
 
     public static TechnicianResponse ToResponse(Technician technician) => MapTechnician(technician, null, null, null, null);
 
+    /// <summary>A technician of the board, with the vehicle-aware competence fields only when <paramref name="vehicleAware"/> (the flag is on and the caller has a role).</summary>
     public static TechnicianResponse ToResponse(Technician technician, bool vehicleAware) => MapTechnician(technician,
         vehicleAware ? technician.HvLevel : null,
         vehicleAware ? technician.HvLevelValidUntil : null,

@@ -756,7 +756,7 @@ export type TechnicianResponse = {
      */
     isActive: boolean;
     /**
-     * Vehicle-aware competence level 0..4; absent when the flag is off.
+     * Vehicle-aware competence level 0..4; absent when the flag is off or the caller has no API role (the four competence fields are employee data).
      */
     hvLevel?: null | number;
     /**

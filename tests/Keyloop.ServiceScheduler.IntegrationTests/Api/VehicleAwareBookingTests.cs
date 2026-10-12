@@ -427,6 +427,43 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
     }
 
+    /// <summary>
+    /// A named technician's HV level, its expiry and whether HR confirmed it are employee data: the public board shows them only to a
+    /// caller with an API role, the same audience as the customer data (ADR-027).
+    /// </summary>
+    [Theory]
+    [InlineData("Anonymous", false)]
+    [InlineData("Unknown", false)]
+    [InlineData("Viewer", true)]
+    [InlineData("ServiceAdvisor", true)]
+    [InlineData("Admin", true)]
+    public async Task Schedule_competence_is_visible_only_to_callers_with_a_role(string role, bool visible)
+    {
+        using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, role);
+
+        foreach (var date in new[] { "2026-10-13", "2026-10-18" }) // an open day and a closed Sunday, which lists the roster alone
+        {
+            using var schedule = JsonDocument.Parse(await client.GetStringAsync(
+                $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/schedule?date={date}", Ct));
+            var amelia = schedule.RootElement.GetProperty("technicians").EnumerateArray()
+                .Single(t => t.GetProperty("employeeNumber").GetString() == "T-1001");
+            foreach (var field in new[] { "hvLevel", "hvLevelValidUntil", "hvLevelConfirmed", "brandSpecialisms" })
+            {
+                amelia.TryGetProperty(field, out _).ShouldBe(visible, $"{role} {date} {field}");
+            }
+
+            if (visible)
+            {
+                amelia.GetProperty("hvLevel").GetInt32().ShouldBe(2);
+                amelia.GetProperty("hvLevelValidUntil").GetString().ShouldBe("2028-12-31");
+                amelia.GetProperty("hvLevelConfirmed").GetBoolean().ShouldBeTrue();
+            }
+        }
+    }
+
     [Fact]
     public async Task Latest_policy_is_used_and_the_booked_version_survives_a_later_policy_change()
     {
