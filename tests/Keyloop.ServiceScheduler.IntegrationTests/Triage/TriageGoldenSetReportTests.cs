@@ -15,7 +15,7 @@ public sealed class TriageGoldenSetReportTests
     {
         Sample[] samples =
         [
-            Sample(1, [new("BRAKES-PADS-DISCS", "GLASS")], "BRAKES-PADS-DISCS", "GLASS", 0.59, hinted: true),
+            Sample(1, [new("BRAKES-PADS-DISCS", "GLASS")], "BRAKES-PADS-DISCS", "GLASS", 0.49, hinted: true),
             Sample(2, [new("BRAKES-PADS-DISCS")], "BRAKES-PADS-DISCS", "AIR_CONDITIONING", 0.9),
             Sample(3, [new("BRAKES-PADS-DISCS", "ACCIDENT_OR_BODY_DAMAGE")], "BRAKES-PADS-DISCS", "OTHER", 0.9),
         ];
@@ -26,7 +26,9 @@ public sealed class TriageGoldenSetReportTests
         report.ShouldContain("Date choice accuracy (including NO_SPECIFIC_DATE): 3/3.");
         report.ShouldContain("Uncovered given an accepted service: positive 1/2; NONE 0/1.");
         report.ShouldContain("Exposed notices given an accepted service: correct 0/2; false 1; missed 1; wrong category 1.");
+        report.ShouldContain("Thresholds: service 0.50, date 0.60, uncovered 0.50;");
         report.ShouldContain("| 0.40 | 1 | 1 | 0 | 1 |");
+        report.ShouldContain("| 0.50 | 0 | 1 | 1 | 1 |"); // the default: GLASS at 0.49 is below it
         report.ShouldContain("| 0.60 | 0 | 1 | 1 | 1 |");
         report.ShouldContain("| GLASS | 1 | 0 | 0 | 0 | 0 | 0 | 0 |"); // suppressed GLASS is NONE in the exposed matrix
         report.ShouldContain("Input tokens: 300; usage missing in 0/3 requests.");

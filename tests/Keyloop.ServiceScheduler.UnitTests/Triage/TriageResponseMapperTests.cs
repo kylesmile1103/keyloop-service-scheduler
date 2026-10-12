@@ -101,10 +101,11 @@ public sealed class TriageResponseMapperTests
 
     [Theory]
     [InlineData("NONE", 1, false)]
-    // Default 0.60: on Clef's measured scale the two correct concrete dates scored 0.63 and 0.73.
-    [InlineData("GLASS", 0.59999, false)]
-    [InlineData("GLASS", 0.6, true)]
-    [InlineData("GLASS", 0.63, true)]
+    // Default 0.50 (live golden set, 2026-10-13): the lowest correct notices scored 0.538 and 0.547, the only false one 0.416.
+    [InlineData("GLASS", 0.49999, false)]
+    [InlineData("GLASS", 0.5, true)]
+    [InlineData("GLASS", 0.538, true)]
+    [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.416, false)]
     [InlineData("ACCIDENT_OR_BODY_DAMAGE", 0.8, true)]
     [InlineData("LIGHTS_OR_ELECTRICAL_ACCESSORY", 0.8, true)]
     [InlineData("AIR_CONDITIONING", 0.8, true)]
