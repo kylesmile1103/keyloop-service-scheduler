@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getDealerships, getServiceTypes, getWorkshopSchedule, type Options } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse } from '../types.gen';
+import { bookAppointment, cancelAppointment, getAppointment, getAvailability, getBookingTriageStatus, getDealerships, getServiceTypes, getWorkshopSchedule, type Options, triageBookingRequest } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -198,3 +198,42 @@ export const getWorkshopScheduleOptions = (options: Options<GetWorkshopScheduleD
     },
     queryKey: getWorkshopScheduleQueryKey(options)
 });
+
+export const getBookingTriageStatusQueryKey = (options?: Options<GetBookingTriageStatusData>) => createQueryKey('getBookingTriageStatus', options);
+
+/**
+ * Discover whether booking intake suggestions are enabled
+ *
+ * Use the feature flag and description limit to display the optional intake control.
+ */
+export const getBookingTriageStatusOptions = (options?: Options<GetBookingTriageStatusData>) => queryOptions<GetBookingTriageStatusResponse, GetBookingTriageStatusError, GetBookingTriageStatusResponse, ReturnType<typeof getBookingTriageStatusQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getBookingTriageStatus({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getBookingTriageStatusQueryKey(options)
+});
+
+/**
+ * Suggest bookable services and an optional preferred date from an intake description
+ *
+ * A person must confirm a suggestion before asking for availability and booking. No description is stored.
+ */
+export const triageBookingRequestMutation = (options?: Partial<Options<TriageBookingRequestData>>): UseMutationOptions<TriageBookingRequestResponse, TriageBookingRequestError, Options<TriageBookingRequestData>> => {
+    const mutationOptions: UseMutationOptions<TriageBookingRequestResponse, TriageBookingRequestError, Options<TriageBookingRequestData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await triageBookingRequest({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};

@@ -205,6 +205,28 @@ export type BookAppointmentRequest = {
 };
 
 /**
+ * Feature discovery for the booking dialog. Disabled triage leaves manual booking available.
+ */
+export type BookingTriageStatusResponse = {
+    /**
+     * Whether service suggestions are enabled on this API.
+     */
+    enabled: boolean;
+    /**
+     * Configured model identifier.
+     */
+    model: string;
+    /**
+     * Provider display attribution.
+     */
+    provider: string;
+    /**
+     * Maximum trimmed description length.
+     */
+    maxDescriptionLength: number;
+};
+
+/**
  * The body of `POST /appointments/{appointmentId}/cancel`.
  */
 export type CancelAppointmentRequest = {
@@ -511,6 +533,56 @@ export type TechnicianResponse = {
 };
 
 /**
+ * A customer's untrusted booking intake description, never stored or logged.
+ */
+export type TriageBookingRequest = {
+    /**
+     * The issue and optional preferred date, 1 to the configured maximum (500 by default) characters after trimming.
+     */
+    description: string;
+};
+
+/**
+ * Service suggestions for human confirmation. This operation never books an appointment.
+ */
+export type TriageBookingResponse = {
+    /**
+     * Configured model identifier.
+     */
+    model: string;
+    /**
+     * suggest, confirm or no-match. Always require a person's confirmation.
+     */
+    recommendation: string;
+    /**
+     * Jev's service confidence, distinct from a candidate's probability.
+     */
+    serviceConfidence: number;
+    /**
+     * At most three bookable candidates above the configured probability floor, most likely first.
+     */
+    services: Array<TriageServiceCandidate>;
+    preferredDate: null | TriagePreferredDate;
+};
+
+/**
+ * A concrete date in the dealership's zone. Availability still decides whether it has slots.
+ */
+export type TriagePreferredDate = {
+    date: string;
+    probability: number;
+    confidence: number;
+};
+
+/**
+ * A candidate from the dealership's bookable catalogue.
+ */
+export type TriageServiceCandidate = {
+    serviceType: ServiceTypeSummary;
+    probability: number;
+};
+
+/**
  * The vehicle to be serviced.
  */
 export type VehicleRequest = {
@@ -584,6 +656,12 @@ export type WorkshopScheduleResponse = {
 
 export type GetDealershipsData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/dealerships';
@@ -609,6 +687,12 @@ export type GetDealershipsResponse = GetDealershipsResponses[keyof GetDealership
 
 export type GetServiceTypesData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path: {
         /**
          * The dealership whose active bays and technicians decide `bookable`.
@@ -643,6 +727,12 @@ export type GetServiceTypesResponse = GetServiceTypesResponses[keyof GetServiceT
 
 export type GetAvailabilityData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path: {
         /**
          * The dealership whose bays, technicians and opening hours are used (the example is the seeded Reading dealership).
@@ -698,6 +788,10 @@ export type BookAppointmentData = {
          * Optional; makes retries safe. 1 to 64 characters of letters, digits, '-' and '_' (a UUID works). The same key with the same body within 24 hours of a successful booking replays its 201 (with Idempotent-Replayed: true) and books nothing; the same key with a different body is a 422 idempotency-key-reuse. Failed bookings are not stored, so they can be retried with the same key.
          */
         'Idempotency-Key'?: string;
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
     };
     path: {
         /**
@@ -745,6 +839,12 @@ export type BookAppointmentResponse = BookAppointmentResponses[keyof BookAppoint
 
 export type GetAppointmentData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path: {
         /**
          * The appointment's id, as returned by the booking (its `id`, or the last segment of its `Location`).
@@ -782,6 +882,12 @@ export type CancelAppointmentData = {
      * The cancellation: why the appointment is cancelled.
      */
     body: CancelAppointmentRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path: {
         /**
          * The appointment to cancel.
@@ -824,6 +930,12 @@ export type CancelAppointmentResponse = CancelAppointmentResponses[keyof CancelA
 
 export type GetWorkshopScheduleData = {
     body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
     path: {
         /**
          * The dealership whose board is read (the example is the seeded Reading dealership).
@@ -864,3 +976,85 @@ export type GetWorkshopScheduleResponses = {
 };
 
 export type GetWorkshopScheduleResponse = GetWorkshopScheduleResponses[keyof GetWorkshopScheduleResponses];
+
+export type GetBookingTriageStatusData = {
+    body?: never;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/booking-triage';
+};
+
+export type GetBookingTriageStatusErrors = {
+    /**
+     * Too many requests from this client (rate-limited, with Retry-After).
+     */
+    429: ProblemDetails;
+};
+
+export type GetBookingTriageStatusError = GetBookingTriageStatusErrors[keyof GetBookingTriageStatusErrors];
+
+export type GetBookingTriageStatusResponses = {
+    /**
+     * Feature flag, configured model, provider attribution and description limit.
+     */
+    200: BookingTriageStatusResponse;
+};
+
+export type GetBookingTriageStatusResponse = GetBookingTriageStatusResponses[keyof GetBookingTriageStatusResponses];
+
+export type TriageBookingRequestData = {
+    /**
+     * The booking intake: the customer's issue and optional preferred date, as untrusted text.
+     */
+    body: TriageBookingRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * Dealership whose active resources and local dates bound the choices.
+         */
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/booking-triage';
+};
+
+export type TriageBookingRequestErrors = {
+    /**
+     * Description is missing, blank or over the limit (validation-error).
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * No dealership has this id (not-found).
+     */
+    404: ProblemDetails;
+    /**
+     * Too many triage requests from this client (rate-limited, with Retry-After).
+     */
+    429: ProblemDetails;
+    /**
+     * Suggestions are disabled or the upstream is unavailable or invalid (triage-unavailable); use manual service selection. Retry-After is preserved when supplied upstream.
+     */
+    503: ProblemDetails;
+};
+
+export type TriageBookingRequestError = TriageBookingRequestErrors[keyof TriageBookingRequestErrors];
+
+export type TriageBookingRequestResponses = {
+    /**
+     * Model, recommendation, service confidence, up to three candidates and an optional local date.
+     */
+    200: TriageBookingResponse;
+};
+
+export type TriageBookingRequestResponse = TriageBookingRequestResponses[keyof TriageBookingRequestResponses];

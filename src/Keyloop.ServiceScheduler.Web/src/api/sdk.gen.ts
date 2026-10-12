@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -102,3 +102,24 @@ export const cancelAppointment = <ThrowOnError extends boolean = false>(options:
  * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
  */
 export const getWorkshopSchedule = <ThrowOnError extends boolean = false>(options: Options<GetWorkshopScheduleData, ThrowOnError>): RequestResult<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError> => (options.client ?? client).get<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError>({ url: '/api/v1/dealerships/{dealershipId}/schedule', ...options });
+
+/**
+ * Discover whether booking intake suggestions are enabled
+ *
+ * Use the feature flag and description limit to display the optional intake control.
+ */
+export const getBookingTriageStatus = <ThrowOnError extends boolean = false>(options?: Options<GetBookingTriageStatusData, ThrowOnError>): RequestResult<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetBookingTriageStatusResponses, GetBookingTriageStatusErrors, ThrowOnError>({ url: '/api/v1/booking-triage', ...options });
+
+/**
+ * Suggest bookable services and an optional preferred date from an intake description
+ *
+ * A person must confirm a suggestion before asking for availability and booking. No description is stored.
+ */
+export const triageBookingRequest = <ThrowOnError extends boolean = false>(options: Options<TriageBookingRequestData, ThrowOnError>): RequestResult<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError> => (options.client ?? client).post<TriageBookingRequestResponses, TriageBookingRequestErrors, ThrowOnError>({
+    url: '/api/v1/dealerships/{dealershipId}/booking-triage',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
