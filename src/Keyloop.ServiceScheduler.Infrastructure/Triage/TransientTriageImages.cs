@@ -6,17 +6,22 @@ public sealed class TransientTriageImages(TimeProvider clock)
     private readonly object _gate = new();
     private readonly Dictionary<(Guid Dealership, Guid Image), StoredTriageImage> _images = [];
 
-    public void Put(Guid dealership, Guid id, StoredTriageImage image)
+    public const long CapacityBytes = 64 * 1024 * 1024;
+
+    /// <summary>False when the unexpired images already held leave no room for this one.</summary>
+    public bool TryPut(Guid dealership, Guid id, StoredTriageImage image)
     {
+        ArgumentNullException.ThrowIfNull(image);
         lock (_gate)
         {
             Prune();
-            if (_images.Values.Sum(value => (long)value.Bytes.Length) + image.Bytes.Length > 64 * 1024 * 1024)
+            if (_images.Values.Sum(value => (long)value.Bytes.Length) + image.Bytes.Length > CapacityBytes)
             {
-                throw new TriageUnavailableException("image-capacity");
+                return false;
             }
 
             _images[(dealership, id)] = image;
+            return true;
         }
     }
 

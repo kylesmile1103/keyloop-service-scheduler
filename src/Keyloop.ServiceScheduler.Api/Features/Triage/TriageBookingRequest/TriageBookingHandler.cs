@@ -26,27 +26,8 @@ public sealed class TriageBookingHandler(SchedulerDbContext db, ServiceCatalogue
         var input = ClefQuestionBuilder.Build(connection.Value.Model, request.Description, services, dealership, clock, scheduling.Value.BookingHorizonDays);
         if (request.ImageIds is { Length: > 0 } ids)
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            deadline.CancelAfter(TimeSpan.FromSeconds(8));
-            var media = new List<ClefImage>();
-            var total = 0;
-            try
-            {
-                foreach (var id in ids)
-                {
-                    var image = await images.GetAsync(dealershipId, id, deadline.Token)
-                        ?? throw new TriageInputException("imageIds", "An image is missing or expired. Upload the photos again.");
-                    total += image.Bytes.Length;
-                    if (total > TriageImageLimits.MaxTotalImageBytes)
-                    {
-                        throw new TriageInputException("imageIds", "Photos must total at most 8 MiB.");
-                    }
-                    media.Add(new(image.ContentType, Convert.ToBase64String(image.Bytes)));
-                }
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            { throw new TriageUnavailableException("image-storage"); }
-            input = input with { Images = [.. media] };
+            var media = await images.ReadForEvaluationAsync(dealershipId, ids, ct);
+            input = input with { Images = [.. media.Select(image => new ClefImage(image.ContentType, Convert.ToBase64String(image.Bytes)))] };
         }
         var answer = await client.EvaluateAsync(input, ct);
         Activity.Current?.SetTag("triage.input_tokens", answer.InputTokens);

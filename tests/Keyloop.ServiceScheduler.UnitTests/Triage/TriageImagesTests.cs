@@ -71,7 +71,7 @@ public sealed class TriageImagesTests
         var dealership = Guid.NewGuid();
         var id = Guid.NewGuid();
         var image = new StoredTriageImage("image/png", Convert.FromBase64String(Png), clock.GetUtcNow().AddHours(1));
-        store.Put(dealership, id, image);
+        store.TryPut(dealership, id, image).ShouldBeTrue();
         store.Get(dealership, id).ShouldBe(image);
         store.Get(Guid.NewGuid(), id).ShouldBeNull();
         clock.Advance(TimeSpan.FromHours(1));

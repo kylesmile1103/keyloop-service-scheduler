@@ -244,7 +244,8 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(1);
     }
 
-    private WebApplicationFactory<Program> Enabled(StubTriageHandler stub, TimeSpan? timeout = null, int? permits = null) =>
+    private WebApplicationFactory<Program> Enabled(StubTriageHandler stub, TimeSpan? timeout = null, int? permits = null,
+        StubTriageMediaRelay? relay = null) =>
         _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
             services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace)
@@ -255,9 +256,21 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
                 o.AccountId = "00000000000000000000000000000000";
                 o.ApiToken = "test-token";
                 o.BaseUrl = "https://triage.test/client/v4";
-                o.Timeout = timeout ?? TimeSpan.FromSeconds(4);
+                if (timeout is { } deadline)
+                {
+                    o.Timeout = deadline;
+                }
+
+                if (relay is not null)
+                {
+                    o.ImageStoreUrl = "http://triage-media.internal";
+                }
             });
             services.AddHttpClient<CloudflareTriageClient>().ConfigurePrimaryHttpMessageHandler(() => stub);
+            if (relay is not null)
+            {
+                services.AddHttpClient<TriageImageStore>().ConfigurePrimaryHttpMessageHandler(() => relay);
+            }
             if (permits is { } count)
             {
                 services.PostConfigure<SecurityOptions>(o =>
@@ -531,11 +544,78 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(0);
     }
 
-    private static async Task<Guid> UploadPhotoAsync(HttpClient client, string data = Photo)
+    // The production configuration (Triage:ImageStoreUrl=http://triage-media.internal) through the whole API. The relay accepts any
+    // key, so only the key the API builds keeps one dealership's photos away from another's.
+    [Fact]
+    public async Task Private_relay_keys_uploads_by_dealership_and_Clef_receives_only_the_embedded_bytes()
     {
-        using var response = await client.PostAsync($"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/booking-triage/images",
+        using var stub = new StubTriageHandler();
+        using var relay = new StubTriageMediaRelay();
+        await using var host = Enabled(stub, relay: relay);
+        using var client = host.CreateClient();
+        var id = await UploadPhotoAsync(client);
+        var put = relay.Requests.ShouldHaveSingleItem();
+        put.Method.ShouldBe(HttpMethod.Put);
+        put.Uri.ShouldBe(new Uri($"http://triage-media.internal/triage/{ReferenceDataSeed.ReadingDealershipId:N}/{id:N}"));
+        put.ContentType.ShouldBe("image/png");
+        put.Expires.ShouldBe(_factory.Clock.GetUtcNow().Add(TriageImageLimits.Lifetime).ToUnixTimeSeconds()
+            .ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        using var evaluated = await PostImagesAsync(client, [id]);
+        evaluated.StatusCode.ShouldBe(HttpStatusCode.OK);
+        relay.Requests[^1].Method.ShouldBe(HttpMethod.Get);
+        relay.Requests[^1].Uri.ShouldBe(put.Uri);
+        stub.Body!["images"]!.AsArray().ShouldHaveSingleItem()!["base64"]!.GetValue<string>().ShouldBe(Photo);
+        stub.Body.ToJsonString().ShouldNotContain(id.ToString("N"));
+
+        using var otherDealership = await PostImagesAsync(client, [id], ReferenceDataSeed.MunichDealershipId);
+        await otherDealership.ShouldBeValidationErrorAsync(["imageIds"], TestContext.Current.CancellationToken);
+        relay.Requests[^1].Uri.AbsolutePath.ShouldBe($"/triage/{ReferenceDataSeed.MunichDealershipId:N}/{id:N}");
+
+        _factory.Clock.Advance(TriageImageLimits.Lifetime);
+        using var expired = await PostImagesAsync(client, [id]);
+        await expired.ShouldBeValidationErrorAsync(["imageIds"], TestContext.Current.CancellationToken);
+        stub.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Private_relay_failure_is_503_with_one_safe_logged_reason()
+    {
+        using var stub = new StubTriageHandler();
+        using var relay = new StubTriageMediaRelay { Status = HttpStatusCode.ServiceUnavailable };
+        await using var host = Enabled(stub, relay: relay);
+        using var client = host.CreateClient();
+        using var response = await UploadAsync(client, ReferenceDataSeed.ReadingDealershipId);
+        await UnavailableAsync(response);
+        var log = _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
+        log.State.ShouldContain(p => p.Key == "Reason" && Equals(p.Value, "image-storage"));
+        // Service discovery may name the relay host at Trace level; no entry may carry an object key (dealership and image id).
+        _logs.Entries.Where(e => e.Message.Contains("/triage/", StringComparison.Ordinal) ||
+            e.State.Any(p => (p.Value?.ToString() ?? "").Contains("/triage/", StringComparison.Ordinal))).ShouldBeEmpty();
+        stub.Calls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Upload_for_an_unknown_dealership_is_404_and_stores_nothing()
+    {
+        using var stub = new StubTriageHandler();
+        using var relay = new StubTriageMediaRelay();
+        await using var host = Enabled(stub, relay: relay);
+        using var client = host.CreateClient();
+        using var response = await UploadAsync(client, Guid.NewGuid());
+        await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, "not-found", TestContext.Current.CancellationToken);
+        relay.Requests.ShouldBeEmpty();
+        stub.Calls.ShouldBe(0);
+    }
+
+    private static Task<HttpResponseMessage> UploadAsync(HttpClient client, Guid dealership, string data = Photo) =>
+        client.PostAsync($"/api/v1/dealerships/{dealership}/booking-triage/images",
             new StringContent(new JsonObject { ["contentType"] = "image/png", ["base64"] = data }.ToJsonString(), Encoding.UTF8, "application/json"),
             TestContext.Current.CancellationToken);
+
+    private static async Task<Guid> UploadPhotoAsync(HttpClient client, string data = Photo)
+    {
+        using var response = await UploadAsync(client, ReferenceDataSeed.ReadingDealershipId, data);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         response.Headers.CacheControl!.NoStore.ShouldBeTrue();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
