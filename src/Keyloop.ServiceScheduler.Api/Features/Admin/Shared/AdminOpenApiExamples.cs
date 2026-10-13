@@ -30,7 +30,7 @@ internal static class AdminOpenApiExamples
             BoundItems(schema, "rules", 32);
             schema.Examples = [JsonSerializer.SerializeToNode(new PolicyWriteRequest([new RequirementRuleInput("hv-routine", 20,
                 RequirementCondition.ServicePowertrain, [Powertrain.BatteryElectric, Powertrain.Unknown], ["INTERIM-SERVICE"], null,
-                3, [], [])], true, new(2026, 10, 13)), SchedulerJsonContext.Default.PolicyWriteRequest)!];
+                3, [], [])], true, new(2026, 10, 13), "m5DRYZCKSyA5da5skJuTSF_RVIixPSgOogqXtCFWtCg"), SchedulerJsonContext.Default.PolicyWriteRequest)!];
         }
         return Task.CompletedTask;
     }

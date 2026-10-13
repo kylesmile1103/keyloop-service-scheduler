@@ -4048,7 +4048,7 @@
           }
         ],
         "requestBody": {
-          "description": "Typed replacement policy, dry-run flag and local preview date.",
+          "description": "Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication.",
           "content": {
             "application/json": {
               "schema": {
@@ -4231,6 +4231,25 @@
           },
           "428": {
             "description": "If-Match required, precondition-required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The confirmed preview is out of date, policy-preview-outdated; run the preview again.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -5746,25 +5765,34 @@
           "saved",
           "policy",
           "previewDate",
-          "changes"
+          "changes",
+          "previewToken"
         ],
         "type": "object",
         "properties": {
           "saved": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True when the policy was published; false for a dry run."
           },
           "policy": {
+            "description": "Normalized proposed or published policy, in deterministic rule order.",
             "$ref": "#/components/schemas/AdminPolicyResponse"
           },
           "previewDate": {
             "type": "string",
+            "description": "Local date used for competence expiry.",
             "format": "date"
           },
           "changes": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PolicyBookabilityChange"
-            }
+            },
+            "description": "Changes to roster bookability, excluding busy time."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Deterministic base64url SHA-256 of the dealership, current policy version, proposed rules, date and bookability changes. Send it to publish this preview."
           }
         },
         "description": "A preview or committed policy. An empty changes array means roster bookability did not change."
@@ -5791,7 +5819,8 @@
               }
             ],
             "dryRun": true,
-            "previewDate": "2026-10-13"
+            "previewDate": "2026-10-13",
+            "previewToken": "m5DRYZCKSyA5da5skJuTSF_RVIixPSgOogqXtCFWtCg"
           }
         ],
         "required": [
@@ -5817,9 +5846,16 @@
             "type": "string",
             "description": "Required local date for qualification expiry in the preview.",
             "format": "date"
+          },
+          "previewToken": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Token from the preview the Admin confirmed. Required for publication; ignored for a dry run."
           }
         },
-        "description": "Replace a dealership's whole policy. DryRun previews without saving; a subsequent save rechecks If-Match."
+        "description": "Replace a dealership's whole policy. DryRun previews without saving; publication rechecks If-Match and the confirmed preview."
       },
       "Powertrain": {
         "enum": [

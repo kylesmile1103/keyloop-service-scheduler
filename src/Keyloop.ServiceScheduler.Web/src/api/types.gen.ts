@@ -657,14 +657,30 @@ export type PolicyBookabilityChange = {
  * A preview or committed policy. An empty changes array means roster bookability did not change.
  */
 export type PolicyEditResponse = {
+    /**
+     * True when the policy was published; false for a dry run.
+     */
     saved: boolean;
+    /**
+     * Normalized proposed or published policy, in deterministic rule order.
+     */
     policy: AdminPolicyResponse;
+    /**
+     * Local date used for competence expiry.
+     */
     previewDate: string;
+    /**
+     * Changes to roster bookability, excluding busy time.
+     */
     changes: Array<PolicyBookabilityChange>;
+    /**
+     * Deterministic base64url SHA-256 of the dealership, current policy version, proposed rules, date and bookability changes. Send it to publish this preview.
+     */
+    previewToken: string;
 };
 
 /**
- * Replace a dealership's whole policy. DryRun previews without saving; a subsequent save rechecks If-Match.
+ * Replace a dealership's whole policy. DryRun previews without saving; publication rechecks If-Match and the confirmed preview.
  */
 export type PolicyWriteRequest = {
     /**
@@ -679,6 +695,10 @@ export type PolicyWriteRequest = {
      * Required local date for qualification expiry in the preview.
      */
     previewDate: string;
+    /**
+     * Token from the preview the Admin confirmed. Required for publication; ignored for a dry run.
+     */
+    previewToken?: null | string;
 };
 
 /**
@@ -2494,7 +2514,7 @@ export type GetRequirementPolicyResponse = GetRequirementPolicyResponses[keyof G
 
 export type EditRequirementPolicyData = {
     /**
-     * Typed replacement policy, dry-run flag and local preview date.
+     * Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication.
      */
     body: PolicyWriteRequest;
     headers?: {
@@ -2531,6 +2551,10 @@ export type EditRequirementPolicyErrors = {
      * Unknown dealership or resource, not-found.
      */
     404: ProblemDetails;
+    /**
+     * The confirmed preview is out of date, policy-preview-outdated; run the preview again.
+     */
+    409: ProblemDetails;
     /**
      * Stale version, precondition-failed with current and currentETag.
      */

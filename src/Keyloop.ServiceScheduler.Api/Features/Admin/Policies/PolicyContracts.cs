@@ -28,11 +28,13 @@ public sealed record RequirementRuleInput(
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<BayCapability>))] BayCapability[] BayCapabilities,
     [property: Required, JsonConverter(typeof(ExactEnumNameArrayConverter<Certification>))] Certification[] Certifications);
 
-/// <summary>Replace a dealership's whole policy. DryRun previews without saving; a subsequent save rechecks If-Match.</summary>
+/// <summary>Replace a dealership's whole policy. DryRun previews without saving; publication rechecks If-Match and the confirmed preview.</summary>
 /// <param name="Rules">At most 32 typed rules; empty intentionally removes every dealership rule.</param>
 /// <param name="DryRun" example="true">True computes the consequence preview and writes nothing.</param>
 /// <param name="PreviewDate" example="2026-10-13">Required local date for qualification expiry in the preview.</param>
-public sealed record PolicyWriteRequest([property: Required] RequirementRuleInput[] Rules, [property: JsonRequired] bool DryRun, DateOnly PreviewDate);
+/// <param name="PreviewToken">Token from the preview the Admin confirmed. Required for publication; ignored for a dry run.</param>
+public sealed record PolicyWriteRequest([property: Required] RequirementRuleInput[] Rules, [property: JsonRequired] bool DryRun,
+    DateOnly PreviewDate, string? PreviewToken = null);
 
 /// <summary>Immutable policy state. ETag is quoted policy-{version}; old versions are retained.</summary>
 public sealed record AdminPolicyResponse(Guid DealershipId, int Version, IReadOnlyList<RequirementRuleInput> Rules);
@@ -42,4 +44,10 @@ public sealed record PolicyBookabilityChange(Guid ServiceTypeId, string ServiceC
     bool NeedsLiveDiagnosis, bool WasBookable, bool IsBookable);
 
 /// <summary>A preview or committed policy. An empty changes array means roster bookability did not change.</summary>
-public sealed record PolicyEditResponse(bool Saved, AdminPolicyResponse Policy, DateOnly PreviewDate, IReadOnlyList<PolicyBookabilityChange> Changes);
+/// <param name="Saved">True when the policy was published; false for a dry run.</param>
+/// <param name="Policy">Normalized proposed or published policy, in deterministic rule order.</param>
+/// <param name="PreviewDate">Local date used for competence expiry.</param>
+/// <param name="Changes">Changes to roster bookability, excluding busy time.</param>
+/// <param name="PreviewToken">Deterministic base64url SHA-256 of the dealership, current policy version, proposed rules, date and bookability changes. Send it to publish this preview.</param>
+public sealed record PolicyEditResponse(bool Saved, AdminPolicyResponse Policy, DateOnly PreviewDate,
+    IReadOnlyList<PolicyBookabilityChange> Changes, [property: Required] string PreviewToken);

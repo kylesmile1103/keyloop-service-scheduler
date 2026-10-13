@@ -35,3 +35,7 @@ public sealed class SlotConflictException(string conflictingResource, IReadOnlyL
 
 /// <summary>422 <c>idempotency-key-reuse</c>: the same <c>Idempotency-Key</c> arrived with a different request body.</summary>
 public sealed class IdempotencyKeyReuseException() : Exception("The Idempotency-Key was already used with a different request.");
+
+/// <summary>409 <c>policy-preview-outdated</c>: publication no longer matches the preview the Admin confirmed.</summary>
+public sealed class PolicyPreviewOutdatedException()
+    : Exception("The roster or date consequences changed since the preview. Run the preview again before publishing.");

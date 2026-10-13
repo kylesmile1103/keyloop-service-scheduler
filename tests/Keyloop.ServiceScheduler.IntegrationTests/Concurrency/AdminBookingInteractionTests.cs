@@ -103,6 +103,7 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         using var admin = host.CreateClient();
         using var read = await admin.GetAsync(PolicyPath, Ct);
         var policy = Publication(JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!, rule: 1, minimumHvLevel: 4);
+        await ConfirmPreviewAsync(admin, policy, read.Headers.ETag!.ToString());
         pause.Arm();
         var booking = bookingClient.PostJsonAsync($"/api/v1/dealerships/{Site}/appointments", Request(10), SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
         try
@@ -133,6 +134,7 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         using var read = await admin.GetAsync(PolicyPath, Ct);
         // hv-awareness (wheel alignment and MOT) only: interim service still needs level 2.
         var policy = Publication(JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!, rule: 0, minimumHvLevel: 2);
+        await ConfirmPreviewAsync(admin, policy, read.Headers.ETag!.ToString());
         pause.Arm();
         var booking = bookingClient.PostJsonAsync($"/api/v1/dealerships/{Site}/appointments", Request(10), SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
         try
@@ -163,6 +165,7 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         using var admin = host.CreateClient();
         using var read = await admin.GetAsync(PolicyPath, Ct);
         var policy = Publication(JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!, rule: 1, minimumHvLevel: 4);
+        await ConfirmPreviewAsync(admin, policy, read.Headers.ETag!.ToString());
         pause.Arm();
         var booking = bookingClient.PostJsonAsync($"/api/v1/dealerships/{Site}/appointments", Request(10), SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
         Task<HttpResponseMessage>? publication = null;
@@ -217,6 +220,15 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         using var message = new HttpRequestMessage(HttpMethod.Put, path) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
         message.Headers.TryAddWithoutValidation("If-Match", etag);
         return await client.SendAsync(message, Ct);
+    }
+
+    private static async Task ConfirmPreviewAsync(HttpClient client, JsonNode policy, string etag)
+    {
+        var preview = policy.DeepClone();
+        preview["dryRun"] = true;
+        using var response = await PutAsync(client, PolicyPath, preview, etag);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        policy["previewToken"] = JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["previewToken"]!.GetValue<string>();
     }
 
     /// <summary>
