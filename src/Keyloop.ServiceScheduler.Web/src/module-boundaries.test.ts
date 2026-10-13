@@ -22,6 +22,11 @@ describe("module boundary between the workshop pages and the admin area", () => 
     ["src/app/admin/components/resource-table.tsx", "../../appointments/components/columns"],
     ["src/app/admin/layout.tsx", "@/app/calendar/page"],
     ["src/app/admin/layout.tsx", "@/app/overview/page"],
+    // Task 30b's editing, policy and history pages share code with the board only through components, hooks and lib.
+    ["src/app/admin/technicians/technician-form.tsx", "@/app/dispatch/components/appointment-sheet"],
+    ["src/app/admin/components/upcoming-work.tsx", "../../calendar/lib/calendar"],
+    ["src/app/admin/policy/page.tsx", "@/app/dispatch/lib/allocation"],
+    ["src/app/admin/history/page.tsx", "@/app/appointments/lib/appointments"],
   ])("refuses %s importing %s", async (file, specifier) => {
     expect(await boundaryErrors(file, specifier)).toEqual([expect.stringContaining("The admin area may not import a workshop page")])
   })
@@ -33,6 +38,8 @@ describe("module boundary between the workshop pages and the admin area", () => 
     ["src/app/appointments/lib/appointments.ts", "../../admin/technicians/page"],
     ["src/app/calendar/page.tsx", "@/app/admin/layout"],
     ["src/app/overview/page.tsx", "../admin/lib/resources"],
+    ["src/app/dispatch/components/appointment-block.tsx", "@/app/admin/lib/changes"],
+    ["src/app/dispatch/page.tsx", "@/app/admin/policy/rule-words"],
   ])("refuses %s importing %s", async (file, specifier) => {
     expect(await boundaryErrors(file, specifier)).toEqual([expect.stringContaining("The workshop pages may not import the admin area")])
   })
@@ -47,6 +54,10 @@ describe("module boundary between the workshop pages and the admin area", () => 
     ["src/app/dispatch/page.tsx", "@/components/capability-badges"],
     ["src/app/appointments/page.tsx", "@/app/dispatch/lib/status"],
     ["src/config/routes.tsx", "@/app/admin/layout"],
+    // The competence warnings both areas show live in lib and components.
+    ["src/app/dispatch/components/appointment-sheet.tsx", "@/components/competence-warning"],
+    ["src/app/admin/components/upcoming-work.tsx", "@/lib/appointment-range"],
+    ["src/app/dispatch/page.tsx", "@/lib/competence-warnings"],
   ])("lets %s import %s", async (file, specifier) => {
     expect(await boundaryErrors(file, specifier)).toEqual([])
   })
