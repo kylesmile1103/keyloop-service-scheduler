@@ -6,6 +6,9 @@
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\deploy\neon\runtime-role.sql" Link="Fixtures\runtime-role.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\deploy\neon\verify-runtime-role.sql" Link="Fixtures\verify-runtime-role.sql" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Keyloop.ServiceScheduler.UnitTests\Triage\Fixtures\plain-3x2.png" Link="Fixtures\triage-plain-3x2.png" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />

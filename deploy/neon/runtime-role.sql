@@ -9,10 +9,12 @@
 -- roles created in the Console, CLI or API become members of neon_superuser, which is not a DML-only role; the checks below refuse
 -- such a role. This script never creates a role or handles a password, and it is safe to run again after every migration bundle.
 --
--- It grants exactly: USAGE on schema public; SELECT, INSERT, UPDATE and DELETE on the application tables; SELECT only on the EF
--- migration history (the readiness check reads it, nothing at runtime writes it); USAGE on sequences; and default privileges so
--- tables and sequences that later migrations create (as this owner) receive the same DML grants. No DDL, TRUNCATE, REFERENCES or
--- TRIGGER privilege, no ownership and no role membership. Transaction-scoped advisory locks need no grant (PUBLIC may execute them).
+-- Explicit grants follow the runtime write paths, including Production's SeedDemoData=true demo override.
+-- Appointment and Admin audits, policy rules and version markers are append-only. Appointments cannot be deleted.
+-- Only idempotency keys need DELETE (expiry replacement). The Development-only destructive reseed uses the dev/owner role.
+-- All keys are application-generated UUIDs (or the client's idempotency string); no runtime sequence privilege is needed.
+-- Future tables/sequences receive no automatic grants: each migration must review this matrix and its verification.
+-- Transaction-scoped advisory locks need no grant (PUBLIC may execute them).
 
 \set ON_ERROR_STOP on
 
@@ -44,57 +46,35 @@ BEGIN
 END
 $$;
 
+-- Undo the old blanket grants as well as any direct excess privilege before rebuilding the matrix.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM scheduler_app;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM scheduler_app;
+REVOKE ALL PRIVILEGES ON SCHEMA public FROM scheduler_app;
 GRANT USAGE ON SCHEMA public TO scheduler_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO scheduler_app;
-REVOKE INSERT, UPDATE, DELETE ON public."__EFMigrationsHistory" FROM scheduler_app;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO scheduler_app;
 
--- Objects that future migration bundles create as this owner.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO scheduler_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO scheduler_app;
+-- Public reads, booking snapshots, policy resolution, triage catalogue reads and startup seeding.
+GRANT SELECT, INSERT ON public.dealerships, public.dealership_operating_hours, public.service_types TO scheduler_app;
+-- Admin resource creation, edits, activity changes and HV confirmation (plus fresh startup seeds).
+GRANT SELECT, INSERT, UPDATE ON public.service_bays, public.technicians TO scheduler_app;
+-- Booking and cancellation. History and outbox staging share the appointment transaction.
+GRANT SELECT, INSERT, UPDATE ON public.appointments TO scheduler_app;
+GRANT SELECT, INSERT ON public.appointment_history, public.admin_changes TO scheduler_app;
+-- Optional response memoisation and expired-key replacement; no in-place mutation.
+GRANT SELECT, INSERT, DELETE ON public.idempotency_keys TO scheduler_app;
+-- Claim, lease, retry, suppression, token-fenced acknowledgement and dead-letter state.
+GRANT SELECT, INSERT, UPDATE ON public.notification_outbox TO scheduler_app;
+-- Immutable publications, default-policy preservation and additive startup policy upgrades.
+GRANT SELECT, INSERT ON public.requirement_rules, public.requirement_policy_versions TO scheduler_app;
+GRANT SELECT ON public."__EFMigrationsHistory" TO scheduler_app;
 
--- Verify the result before committing: DML everywhere it is needed, and no way to change the schema. Privileges are checked by
--- relation OID, so no name is resolved outside schema public.
-DO $$
-DECLARE
-  missing text;
-BEGIN
-  SELECT string_agg(c.relname, ', ') INTO missing
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relname <> '__EFMigrationsHistory'
-    AND NOT (has_table_privilege('scheduler_app', c.oid, 'SELECT') AND has_table_privilege('scheduler_app', c.oid, 'INSERT')
-         AND has_table_privilege('scheduler_app', c.oid, 'UPDATE') AND has_table_privilege('scheduler_app', c.oid, 'DELETE'));
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'scheduler_app lacks DML on: %', missing;
-  END IF;
-  IF NOT has_table_privilege('scheduler_app', 'public."__EFMigrationsHistory"', 'SELECT')
-     OR has_table_privilege('scheduler_app', 'public."__EFMigrationsHistory"', 'INSERT')
-     OR has_table_privilege('scheduler_app', 'public."__EFMigrationsHistory"', 'UPDATE')
-     OR has_table_privilege('scheduler_app', 'public."__EFMigrationsHistory"', 'DELETE') THEN
-    RAISE EXCEPTION 'scheduler_app must read, and only read, the migration history';
-  END IF;
-  SELECT string_agg(c.relname, ', ') INTO missing
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-    AND (has_table_privilege('scheduler_app', c.oid, 'TRUNCATE') OR has_table_privilege('scheduler_app', c.oid, 'REFERENCES')
-      OR has_table_privilege('scheduler_app', c.oid, 'TRIGGER'));
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'scheduler_app has TRUNCATE, REFERENCES or TRIGGER on: %', missing;
-  END IF;
-  IF has_schema_privilege('scheduler_app', 'public', 'CREATE') THEN
-    RAISE EXCEPTION 'scheduler_app can CREATE in schema public (probably through PUBLIC). As the owner run: REVOKE CREATE ON SCHEMA public FROM PUBLIC';
-  END IF;
-  IF has_database_privilege('scheduler_app', current_database(), 'CREATE') THEN
-    RAISE EXCEPTION 'scheduler_app can CREATE schemas in database %', current_database();
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner WHERE r.rolname = 'scheduler_app')
-     OR EXISTS (SELECT 1 FROM pg_namespace n JOIN pg_roles r ON r.oid = n.nspowner WHERE r.rolname = 'scheduler_app') THEN
-    RAISE EXCEPTION 'scheduler_app owns a relation or schema, so it could alter or drop it';
-  END IF;
-  RAISE NOTICE 'scheduler_app: DML on % application tables, read-only migration history, no DDL',
-    (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relname <> '__EFMigrationsHistory');
-END
-$$;
+-- Remove both global and schema-specific defaults. Schema REVOKE alone cannot undo a global GRANT.
+ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON TABLES FROM scheduler_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON TABLES FROM scheduler_app;
+ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON SEQUENCES FROM scheduler_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON SEQUENCES FROM scheduler_app;
+
+-- psql resolves this relative to the script, so it also works from a different working directory.
+-- Verify in the same transaction; the migration runner also verifies independently after application.
+\ir verify-runtime-role.sql
 
 COMMIT;
