@@ -35,6 +35,7 @@ public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLi
         ["POST /api/v1/dealerships/{dealershipId:guid}/booking-triage/images"] = "BookingsWrite",
         ["GET /api/v1/dealerships/{dealershipId:guid}/appointments"] = Public,
         ["POST /api/v1/vehicle-profiles/resolve"] = "BookingsWrite",
+        ["POST /api/v1/dealerships/{dealershipId:guid}/customer-lookups"] = "BookingsWrite",
         ["GET /api/v1/me"] = Public,
         ["GET /api/v1/features"] = Public,
         ["GET /api/v1/dealerships/{dealershipId:guid}/technicians"] = "Admin",

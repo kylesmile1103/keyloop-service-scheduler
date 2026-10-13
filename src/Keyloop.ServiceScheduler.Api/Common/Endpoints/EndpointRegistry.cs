@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Features.Customers.FindReturningCustomers;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
 using Keyloop.ServiceScheduler.Api.Features.Admin.History;
@@ -58,6 +59,7 @@ public static class EndpointRegistry
         GetRequirementPolicyEndpoint.Map(group);
         EditRequirementPolicyEndpoint.Map(group);
         GetAdminHistoryEndpoint.Map(group);
+        FindReturningCustomersEndpoint.Map(group);
 
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).

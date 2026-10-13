@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Customers.FindReturningCustomers;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
 using Keyloop.ServiceScheduler.Api.Features.Admin.History;
@@ -114,6 +115,11 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(IReadOnlyList<AppointmentListItemResponse>))]
 [JsonSerializable(typeof(CurrentUserResponse))]
 [JsonSerializable(typeof(FeatureSwitchesResponse))]
+[JsonSerializable(typeof(FindReturningCustomersRequest))]
+[JsonSerializable(typeof(ReturningCustomerResponse))]
+[JsonSerializable(typeof(ReturningCustomerDetails))]
+[JsonSerializable(typeof(ReturningVehicleDetails))]
+[JsonSerializable(typeof(IReadOnlyList<ReturningCustomerResponse>))]
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
 [JsonSerializable(typeof(TechnicianWriteRequest))]
 [JsonSerializable(typeof(BayWriteRequest))]
