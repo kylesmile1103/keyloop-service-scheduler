@@ -426,7 +426,8 @@ describe("HV levels and deactivation, as an Admin", () => {
     const { server } = setup(benUnconfirmed)
 
     const note = await screen.findByRole("region", { name: "HV levels to review" })
-    server.editedElsewhere.technician(ben.id, { hvLevel: 2, name: "Benjamin Okafor" })
+    // A rename that moves Ben to the end of the name-sorted list: rows are keyed by record, so his row keeps its element.
+    server.editedElsewhere.technician(ben.id, { hvLevel: 2, name: "Zach Okafor" })
     within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
     fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
     const dialog = await screen.findByRole("dialog", { name: "Ben Okafor's record changed" })
@@ -434,8 +435,37 @@ describe("HV levels and deactivation, as an Admin", () => {
 
     expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole("region", { name: "HV levels to review" })).not.toBeInTheDocument())
-    // The row is the same element under its new name: focus is on its actions, never the page.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for Benjamin Okafor" })).toHaveFocus())
+    // The row is the same element under its new name and place: focus is on its actions, never another technician's.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for Zach Okafor" })).toHaveFocus())
+    expect(bodyRows(await table()).at(-1)).toHaveTextContent("Zach Okafor")
+  })
+
+  it("returns focus by record after two conflicts in a row, on Cancel and on confirming", async () => {
+    const { server } = setup(benUnconfirmed)
+
+    const note = await screen.findByRole("region", { name: "HV levels to review" })
+    server.editedElsewhere.technician(ben.id, { hvLevel: 2, name: "Zach Okafor" })
+    within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
+    fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
+    let dialog = await screen.findByRole("dialog", { name: "Ben Okafor's record changed" })
+    server.editedElsewhere.technician(ben.id, { hvLevel: 1, name: "Zachary Okafor" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm HV 2" }))
+    // The second conflict: the dialog shows the level as it is now again.
+    dialog = await screen.findByRole("dialog", { name: /record changed$/ })
+    await within(dialog).findByRole("button", { name: "Confirm HV 1" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+
+    // Cancel: back to Ben's own Confirm button, found by record whatever the dialog last called him.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await waitFor(() => expect((document.activeElement as HTMLElement).dataset.recordId).toBe(ben.id))
+    expect(within(note).getByRole("button", { name: /^Confirm .*'s level$/ })).toHaveFocus()
+
+    fireEvent.click(document.activeElement as HTMLElement)
+    dialog = await screen.findByRole("dialog", { name: /record changed$/ })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm HV 1" }))
+    expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("region", { name: "HV levels to review" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for Zachary Okafor" })).toHaveFocus())
   })
 
   it("moves focus to the search field when a search hides the technician whose level was just confirmed", async () => {

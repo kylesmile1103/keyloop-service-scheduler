@@ -114,10 +114,7 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
     dealership,
     onDone: (record) => {
       // The confirmed level's button leaves the review note once the list is read again: focus moves on first.
-      if (byLabel("HV levels to review")?.contains(document.activeElement)) {
-        const listed = rows.find((row) => row.id === record.id)?.name
-        pastConfirmed(listed && listed !== record.name ? [listed, record.name] : [record.name])?.focus()
-      }
+      if (byLabel("HV levels to review")?.contains(document.activeElement)) pastConfirmed(record.id)?.focus()
       return saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`)
     },
   })
@@ -136,6 +133,8 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
   const table = useTable({
     features: dataTableFeatures,
     data: rows,
+    // Rows keyed by record, not position: a re-sorted row (a rename) keeps its element, and with it any focus inside.
+    getRowId: (row) => row.id,
     columns,
     initialState: { sorting: [{ id: "name", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
     state: { columnVisibility: columnVisibility.state },

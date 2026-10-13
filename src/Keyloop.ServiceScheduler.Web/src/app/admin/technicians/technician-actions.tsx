@@ -22,5 +22,5 @@ export function TechnicianRowActions({ row, vehicleAware, historyHref, onEdit, o
       ? { label: "Deactivate", icon: PowerOff, destructive: true, onSelect: (trigger: HTMLElement) => onActivity(row, trigger) }
       : { label: "Reactivate", icon: Power, onSelect: (trigger: HTMLElement) => onActivity(row, trigger) },
   ]
-  return <RowActions name={row.name} actions={actions} historyHref={historyHref} />
+  return <RowActions id={row.id} name={row.name} actions={actions} historyHref={historyHref} />
 }

@@ -18,5 +18,5 @@ export function BayRowActions({ row, historyHref, onEdit, onActivity }: BayRowAc
       ? { label: "Take out of service", icon: PowerOff, destructive: true, onSelect: (trigger: HTMLElement) => onActivity(row, trigger) }
       : { label: "Return to service", icon: Power, onSelect: (trigger: HTMLElement) => onActivity(row, trigger) },
   ]
-  return <RowActions name={row.name} actions={actions} historyHref={historyHref} />
+  return <RowActions id={row.id} name={row.name} actions={actions} historyHref={historyHref} />
 }

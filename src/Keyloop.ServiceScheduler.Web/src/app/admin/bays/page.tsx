@@ -95,6 +95,8 @@ function BayList({ dealership, today, phone }: ResourceScope) {
   const table = useTable({
     features: dataTableFeatures,
     data: rows,
+    // Rows keyed by record, not position: a re-sorted row (a rename) keeps its element, and with it any focus inside.
+    getRowId: (row) => row.id,
     columns: bayColumns,
     initialState: { sorting: [{ id: "name", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
     state: { columnVisibility },

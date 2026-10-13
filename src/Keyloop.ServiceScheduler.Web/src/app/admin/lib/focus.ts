@@ -52,19 +52,23 @@ export function byLabel(label: string, scope: ParentNode = document): HTMLElemen
   return [...scope.querySelectorAll<HTMLElement>("[aria-label]")].find((element) => element.getAttribute("aria-label") === label) ?? null
 }
 
+/** A technician's Confirm button in the HV review note, by record (another Admin may rename them meanwhile). */
+export function confirmButtonFor(id: string): HTMLElement | null {
+  return byLabel("HV levels to review")?.querySelector<HTMLElement>(`button[data-record-id="${id}"]`) ?? null
+}
+
 /**
  * Where focus goes once a technician's level is confirmed, so the button (and the review note, with the last level) can go:
  * the next level to review, else that technician's row actions, else (a search or filter hides the row) the list's search
- * field, else Add technician. `names` are every name the technician is shown under (the list's, and the saved record's
- * after a rename by another Admin): the row keeps its element when the list is read again, so either label finds it.
+ * field, else Add technician. All by record id: a rename (and the re-sort it brings) can come between; rows are keyed by
+ * record, so the row actions keep their element.
  */
-export function pastConfirmed(names: readonly string[]): HTMLElement | null {
-  const own = new Set(names.map((name) => `Confirm ${name}'s level`))
+export function pastConfirmed(id: string): HTMLElement | null {
   const note = byLabel("HV levels to review")
-  const next = note ? [...note.querySelectorAll<HTMLButtonElement>("button")].find((button) => !own.has(button.textContent ?? "")) : undefined
+  const next = note ? [...note.querySelectorAll<HTMLElement>("button[data-record-id]")].find((button) => button.dataset.recordId !== id) : undefined
   return (
     next ??
-    names.map((name) => byLabel(`Actions for ${name}`)).find((element) => element !== null) ??
+    document.querySelector<HTMLElement>(`[data-row-actions][data-record-id="${id}"]`) ??
     document.querySelector<HTMLElement>('input[type="search"]') ??
     [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Add technician") ??
     null

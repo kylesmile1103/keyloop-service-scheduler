@@ -195,6 +195,8 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const table = useTable({
     features: dataTableFeatures,
     data: rows,
+    // Rows keyed by record, not position: a re-sorted row (a rename) keeps its element, and with it any focus inside.
+    getRowId: (row) => row.id,
     columns: appointmentColumns,
     initialState: { sorting: [{ id: "time", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
     state: { columnVisibility: columnVisibility.state },

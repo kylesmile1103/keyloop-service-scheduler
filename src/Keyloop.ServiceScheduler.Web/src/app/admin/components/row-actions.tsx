@@ -25,13 +25,23 @@ export interface RowAction {
  * named for the resource ("Actions for Ben Okafor", 44 px on touch), the actions, then a separator and the resource's
  * change history (a router link).
  */
-export function RowActions({ name, actions, historyHref }: { name: string; actions: readonly RowAction[]; historyHref: string }) {
+export function RowActions({ id, name, actions, historyHref }: { id: string; name: string; actions: readonly RowAction[]; historyHref: string }) {
   const trigger = useRef<HTMLButtonElement>(null)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button ref={trigger} type="button" variant="ghost" size="icon-sm" aria-label={`Actions for ${name}`} className="cursor-pointer data-popup-open:bg-muted" />
+          <Button
+            ref={trigger}
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Actions for ${name}`}
+            // Found by record, not name, by the focus hand-offs (a rename can come between).
+            data-row-actions=""
+            data-record-id={id}
+            className="cursor-pointer data-popup-open:bg-muted"
+          />
         }
       >
         <MoreHorizontal aria-hidden="true" />

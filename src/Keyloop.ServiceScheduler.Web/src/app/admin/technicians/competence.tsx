@@ -132,6 +132,7 @@ export function UnconfirmedLevelsNote({ levels, onConfirm, pending = new Set() }
                   disabled={pending.has(level.id)}
                   focusableWhenDisabled
                   onClick={() => onConfirm(level.id)}
+                  data-record-id={level.id}
                   className="cursor-pointer bg-card"
                 >
                   {pending.has(level.id) ? (
