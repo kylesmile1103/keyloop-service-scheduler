@@ -1,6 +1,6 @@
 # First deployment runbook: core profile
 
-This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last on afterwards. The database is Neon Free PostgreSQL 17 in London. [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
+This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last on afterwards. The database is Neon Free PostgreSQL 17 in Frankfurt (AWS `eu-central-1`). [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
 
 Every step marked **REQUIRES USER CONFIRMATION** changes the Cloudflare or Neon account. Run it only after the stakeholder has confirmed that step. Everything else is local. This file names no account, identifier, email address or secret: `<...>` marks a value you supply, and the role lists stay outside the repository.
 
@@ -27,7 +27,7 @@ Use `--dry-run` on a `cf` command first whenever it offers one. If your login se
 
 ## 1. Neon: database, migrations and the runtime role
 
-1. **REQUIRES USER CONFIRMATION (stakeholder):** the Neon Free project on PostgreSQL 17 in AWS London (`eu-west-2`), the database `keyloop_scheduler` owned by the owner role, and compute fixed at 0.25 CU (autoscaling minimum and maximum both 0.25). Scale to zero stays on.
+1. **REQUIRES USER CONFIRMATION (stakeholder):** the Neon Free project on PostgreSQL 17 in AWS Frankfurt (`eu-central-1`; London `eu-west-2` was planned but not offered, so pick the nearest EU region Neon offers), the database `keyloop_scheduler` owned by the owner role, and compute fixed at 0.25 CU (autoscaling minimum and maximum both 0.25). Scale to zero stays on.
 
 2. Enter the connection parts (hidden where secret):
 

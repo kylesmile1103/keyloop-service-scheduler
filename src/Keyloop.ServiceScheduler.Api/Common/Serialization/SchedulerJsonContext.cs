@@ -125,6 +125,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(PolicyWriteRequest))]
 [JsonSerializable(typeof(AdminPolicyResponse))]
 [JsonSerializable(typeof(PolicyEditResponse))]
+[JsonSerializable(typeof(PolicyPreviewTokenInput))]
 [JsonSerializable(typeof(CompetenceWarningResponse))]
 [JsonSerializable(typeof(AdminHistoryResponse))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

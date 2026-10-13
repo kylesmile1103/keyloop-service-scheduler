@@ -15,6 +15,7 @@ public sealed class EditRequirementPolicyEndpoint : IEndpoint
             .AdminWrite("EditRequirementPolicy", edit: true)
             .AddEndpointFilter<ValidationFilter<PolicyWriteRequest>>()
             .Produces<PolicyEditResponse>(200)
+            .ProducesProblem(409)
             .WithResponseHeader(200, "ETag", "Current policy version. A dry-run returns the unchanged version tag.");
 
     /// <summary>Preview or publish the next requirement policy</summary>
@@ -24,10 +25,11 @@ public sealed class EditRequirementPolicyEndpoint : IEndpoint
     /// <response code="404">Unknown dealership or resource, not-found.</response>
     /// <response code="429">Rate limited; retry after Retry-After seconds.</response>
     /// <response code="400">Invalid fields, validation-error with errors keyed by JSON path.</response>
+    /// <response code="409">The confirmed preview is out of date, policy-preview-outdated; run the preview again.</response>
     /// <response code="413">Body exceeds the 64 KiB limit.</response>
     /// <response code="412">Stale version, precondition-failed with current and currentETag.</response>
     /// <response code="428">If-Match required, precondition-required.</response>
-    internal static async Task<Ok<PolicyEditResponse>> HandleAsync(Guid dealershipId, [Description("Typed replacement policy, dry-run flag and local preview date.")] PolicyWriteRequest request, [FromHeader(Name = "If-Match"), Description("Exactly one quoted policy version ETag from GetRequirementPolicy.")] string? ifMatch, [FromServices] AdminPolicyHandler handler, HttpContext http, CancellationToken ct)
+    internal static async Task<Ok<PolicyEditResponse>> HandleAsync(Guid dealershipId, [Description("Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication.")] PolicyWriteRequest request, [FromHeader(Name = "If-Match"), Description("Exactly one quoted policy version ETag from GetRequirementPolicy.")] string? ifMatch, [FromServices] AdminPolicyHandler handler, HttpContext http, CancellationToken ct)
     {
         var response = await handler.WriteAsync(dealershipId, request, ifMatch, ct);
         AdminEndpointConventions.ETag(http, AdminPreconditions.PolicyTag(response.Saved ? response.Policy.Version : response.Policy.Version - 1));

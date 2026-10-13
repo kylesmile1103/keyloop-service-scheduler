@@ -66,6 +66,14 @@ public sealed class AdminCompetenceWarningTests(PostgresFixture pg) : IAsyncLife
 
         async Task<HttpResponseMessage> Put(string path, JsonNode body, string etag)
         {
+            if (path == policyPath && !body["dryRun"]!.GetValue<bool>())
+            {
+                var preview = body.DeepClone();
+                preview["dryRun"] = true;
+                using var response = await Put(path, preview, etag);
+                response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+                body["previewToken"] = JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["previewToken"]!.GetValue<string>();
+            }
             using var message = new HttpRequestMessage(HttpMethod.Put, path) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
             message.Headers.TryAddWithoutValidation("If-Match", etag);
             return await client.SendAsync(message, Ct);

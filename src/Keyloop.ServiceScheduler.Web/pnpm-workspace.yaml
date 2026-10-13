@@ -1,0 +1,11 @@
+# Dev-tool security settings for `pnpm audit`.
+# js-yaml comes in only through the HeyAPI generator's schema parser, which accepts any 4.x; 4.3.2 fixes
+# GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj and GHSA-2883-xcg3-v3hh.
+overrides:
+  js-yaml@>=4.0.0 <4.3.2: ^4.3.2
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3 (stack exhaustion on deeply nested brace patterns) has no patched release. It is reached only
+    # through the shadcn package's CLI globbing (fast-glob > micromatch), which runs on a developer's command line;
+    # the app imports nothing from it but shadcn/tailwind.css, and no build step runs the CLI.
+    - GHSA-vfj7-8cjw-p6xm

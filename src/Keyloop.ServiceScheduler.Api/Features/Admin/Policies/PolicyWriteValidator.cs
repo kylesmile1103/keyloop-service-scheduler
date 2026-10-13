@@ -11,6 +11,8 @@ public sealed class PolicyWriteValidator : AbstractValidator<PolicyWriteRequest>
     public PolicyWriteValidator()
     {
         RuleFor(r => r.PreviewDate).NotEqual(default(DateOnly));
+        RuleFor(r => r.PreviewToken).NotEmpty().When(r => !r.DryRun)
+            .WithMessage("Publish needs the previewToken of the preview you confirmed.");
         RuleFor(r => r.Rules).NotNull().Must(v => v is not null && v.Length <= 32
             && v.All(r => r is not null) && v.Select(r => r.Code).Distinct(StringComparer.Ordinal).Count() == v.Length);
         RuleFor(r => r.Rules).Must(WithinSnapshotBound).WithMessage("The policy exceeds the bounded audit snapshot size.");

@@ -239,6 +239,20 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     private static IEnumerable<string> Strings(JsonNode? values) => values.ShouldNotBeNull().AsArray().Select(v => v!.GetValue<string>());
 
     [Fact]
+    public async Task Policy_preview_token_is_optional_nullable_on_writes_and_required_on_responses()
+    {
+        var document = await ServedAsync();
+        var schemas = document["components"]!["schemas"]!;
+        var request = schemas["PolicyWriteRequest"]!;
+        Required(request).ShouldNotContain("previewToken");
+        Strings(request["properties"]!["previewToken"]!["type"]).ShouldBe(["null", "string"], ignoreOrder: true);
+        var response = schemas["PolicyEditResponse"]!;
+        Required(response).ShouldContain("previewToken");
+        Text(response["properties"]!["previewToken"]!["type"]).ShouldBe("string");
+        Text(request["examples"]![0]!["previewToken"]).ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public async Task Every_error_response_is_a_problem_document_with_a_trace_id()
     {
         var document = await ServedAsync();
@@ -322,6 +336,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "404"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "429"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "400"),
+                ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "409"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "413"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "412"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "428"),
@@ -432,7 +447,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("EditTechnician", "Complete technician state. Existing appointments are preserved."),
             ("CreateBay", "Complete bay state. Existing appointments are preserved."),
             ("EditBay", "Complete bay state. Existing appointments are preserved."),
-            ("EditRequirementPolicy", "Typed replacement policy, dry-run flag and local preview date."),
+            ("EditRequirementPolicy", "Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication."),
         ]);
     }
 

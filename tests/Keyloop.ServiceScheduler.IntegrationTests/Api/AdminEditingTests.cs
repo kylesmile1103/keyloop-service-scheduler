@@ -108,6 +108,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         using var unchanged = await _client.GetAsync(Site + "/requirement-policy", Ct);
         unchanged.Headers.ETag!.ToString().ShouldBe(read.Headers.ETag!.ToString());
         body["dryRun"] = false;
+        body["previewToken"] = previewBody["previewToken"]!.GetValue<string>();
         using var save = await Send(HttpMethod.Put, Site + "/requirement-policy", body.ToJsonString(), read.Headers.ETag!.ToString());
         save.StatusCode.ShouldBe(HttpStatusCode.OK, await save.Content.ReadAsStringAsync(Ct));
         var saved = JsonNode.Parse(await save.Content.ReadAsStringAsync(Ct))!;
@@ -254,8 +255,9 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Empty_policy_is_versioned_and_startup_does_not_restore_removed_rules()
     {
         using var read = await _client.GetAsync(Site + "/requirement-policy", Ct);
-        using var saved = await Send(HttpMethod.Put, Site + "/requirement-policy",
-            "{\"rules\":[],\"dryRun\":false,\"previewDate\":\"2026-10-13\"}", read.Headers.ETag!.ToString());
+        var publication = JsonNode.Parse("{\"rules\":[],\"dryRun\":false,\"previewDate\":\"2026-10-13\"}")!;
+        await ConfirmPreviewAsync(_client, publication, read.Headers.ETag!.ToString());
+        using var saved = await Send(HttpMethod.Put, Site + "/requirement-policy", publication.ToJsonString(), read.Headers.ETag!.ToString());
         saved.StatusCode.ShouldBe(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync(Ct));
         await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
         using var current = await _client.GetAsync(Site + "/requirement-policy", Ct);
@@ -295,7 +297,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!;
         body["rules"]![0]![field] = JsonNode.Parse(value);
         body["previewDate"] = "2026-10-13";
-        body["dryRun"] ??= JsonValue.Create(false);
+        body["dryRun"] = true;
         using var response = await Send(HttpMethod.Put, Site + "/requirement-policy", body.ToJsonString(), read.Headers.ETag!.ToString());
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync(Ct));
         JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["errors"].ShouldNotBeNull();
@@ -308,6 +310,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!;
         body["previewDate"] = "2026-10-13";
         body["dryRun"] ??= JsonValue.Create(false);
+        await ConfirmPreviewAsync(_client, body, read.Headers.ETag!.ToString());
         using var missing = await Send(HttpMethod.Put, Site + "/requirement-policy", body.ToJsonString());
         ((int)missing.StatusCode).ShouldBe(428);
         var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => Send(HttpMethod.Put, Site + "/requirement-policy", body.ToJsonString(), read.Headers.ETag!.ToString())));
@@ -365,6 +368,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
             body["previewDate"] = "2026-10-13";
             body["dryRun"] = false;
             body["rules"]![0]!["minimumHvLevel"] = 3;
+            await ConfirmPreviewAsync(client, body, read.Headers.ETag!.ToString());
         }
         else { body["name"] = "Retry resource"; }
         fault.Arm();
@@ -460,6 +464,15 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         if (json is not null) { request.Content = new StringContent(json, Encoding.UTF8, "application/json"); }
         if (etag is not null) { request.Headers.TryAddWithoutValidation("If-Match", etag); }
         return await client.SendAsync(request, ct);
+    }
+
+    private static async Task ConfirmPreviewAsync(HttpClient client, JsonNode body, string etag)
+    {
+        var preview = body.DeepClone();
+        preview["dryRun"] = true;
+        using var response = await SendAsync(client, HttpMethod.Put, Site + "/requirement-policy", preview.ToJsonString(), etag, Ct);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        body["previewToken"] = JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["previewToken"]!.GetValue<string>();
     }
 
     private async Task<HttpResponseMessage> Send(HttpMethod method, string path, string? json, string? etag = null)

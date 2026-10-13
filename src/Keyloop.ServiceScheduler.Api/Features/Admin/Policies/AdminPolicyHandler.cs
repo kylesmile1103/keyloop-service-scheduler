@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Shared;
@@ -34,7 +35,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             {
                 var saved = JsonSerializer.Deserialize(completed.After, SchedulerJsonContext.Default.AdminPolicyResponse)!;
                 await transaction.RollbackAsync(ct);
-                return pendingResult ?? new PolicyEditResponse(true, saved, request.PreviewDate, []);
+                return pendingResult ?? new PolicyEditResponse(true, saved, request.PreviewDate, [], request.PreviewToken!);
             }
             var current = await GetAsync(dealershipId, ct);
             AdminPreconditions.Check(ifMatch, AdminPreconditions.PolicyTag(current.Version), current);
@@ -48,8 +49,13 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
                 }
             }
             var next = checked(current.Version + 1);
-            var nextRules = Rules(dealershipId, next, request.Rules);
+            var normalizedRules = PolicyPreviewToken.NormalizeRules(request.Rules);
+            var nextRules = Rules(dealershipId, next, normalizedRules);
             var oldRules = Rules(dealershipId, current.Version, current.Rules);
+            // Take the existing publication lock before reading consequences, so a wait behind a booking cannot age the snapshot.
+            // A dry-run never takes it. Resource edits take no advisory lock; their read-to-commit window is documented in ADR-029.
+            // No resource row is updated, and a booking never takes the seeding lock, so the order stays cycle-free.
+            if (!request.DryRun) { await DealershipLock.AcquireAsync(db, dealershipId, ct); }
             var roster = await new DayScheduleReader(db).ReadResourcesAsync(dealershipId, ct);
             var changes = new List<PolicyBookabilityChange>();
             foreach (var service in services)
@@ -71,16 +77,18 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
                     }
                 }
             }
-            var policy = new AdminPolicyResponse(dealershipId, next, request.Rules.OrderBy(r => r.Order).ThenBy(r => r.Code, StringComparer.Ordinal).ToArray());
+            var policy = new AdminPolicyResponse(dealershipId, next, normalizedRules);
+            var previewToken = PolicyPreviewToken.Compute(dealershipId, current.Version, policy.Rules, request.PreviewDate, changes);
             if (request.DryRun)
             {
                 await transaction.RollbackAsync(ct);
-                return new PolicyEditResponse(false, policy, request.PreviewDate, changes);
+                return new PolicyEditResponse(false, policy, request.PreviewDate, changes, previewToken);
             }
-            // A save commits under the dealership lock (ADR-029 Task 30a amendment): a booking holding it finishes under the version it
-            // resolved first, and a booking that resolved the old version but waits for it re-resolves under its lock. A dry-run never
-            // takes it. No resource row is updated, and a booking never takes the seeding lock, so no cycle can form.
-            await DealershipLock.AcquireAsync(db, dealershipId, ct);
+            if (!string.Equals(previewToken, request.PreviewToken, StringComparison.Ordinal))
+            {
+                await transaction.RollbackAsync(ct);
+                throw new PolicyPreviewOutdatedException();
+            }
             // Retain the effective default even on a previously unconfigured site, for older appointments and audit.
             if (!await db.RequirementRules.AnyAsync(r => r.DealershipId == dealershipId, ct)
                 && !await db.RequirementPolicyVersions.AnyAsync(r => r.DealershipId == dealershipId, ct))
@@ -92,7 +100,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             db.AdminChanges.Add(resources.Change(changeId, dealershipId, AdminVocabulary.Policy, dealershipId, AdminVocabulary.Publish,
                 JsonSerializer.Serialize(current, SchedulerJsonContext.Default.AdminPolicyResponse),
                 JsonSerializer.Serialize(policy, SchedulerJsonContext.Default.AdminPolicyResponse)));
-            pendingResult = new PolicyEditResponse(true, policy, request.PreviewDate, changes);
+            pendingResult = new PolicyEditResponse(true, policy, request.PreviewDate, changes, previewToken);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             return pendingResult;

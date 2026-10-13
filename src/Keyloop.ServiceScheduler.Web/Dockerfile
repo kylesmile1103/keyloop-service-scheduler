@@ -8,7 +8,7 @@ WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # pnpm at the version pinned by package.json "packageManager"
 RUN corepack enable
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 # Type-check and bundle. The generated API client is committed (CI checks drift) and the OpenAPI contract lives outside
