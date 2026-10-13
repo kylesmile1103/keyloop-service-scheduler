@@ -22,7 +22,10 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
     /// <remarks>
     /// The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician
     /// certifications each requires. <c>bookable</c> is computed for this dealership: at least one active bay and one active
-    /// technician qualify. Whether a slot is free on a given day is a separate question for the availability route.
+    /// technician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies
+    /// under the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable
+    /// when an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;
+    /// catalogue eligibility ignores busy time, opening hours and the booking window.
     /// </remarks>
     /// <param name="dealershipId">The dealership whose active bays and technicians decide <c>bookable</c>.</param>
     /// <param name="handler">Reads the catalogue and the dealership's resources.</param>
