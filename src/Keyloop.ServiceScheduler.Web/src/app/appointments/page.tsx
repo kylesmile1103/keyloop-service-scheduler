@@ -6,6 +6,8 @@ import { Link, useLocation } from "react-router-dom"
 
 import { getDealershipsOptions, getServiceTypesOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
+import { useListParams } from "./lib/use-list-params"
+
 import { AppointmentSheet } from "@/app/dispatch/components/appointment-sheet"
 import { DateNavigator } from "@/app/dispatch/components/date-navigator"
 import { useBoardParams } from "@/app/dispatch/hooks/use-board-params"
@@ -191,6 +193,7 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const facets = useMemo<Facet[]>(() => FACETS.map((facet) => ({ ...facet, options: options[facet.id] })), [options])
 
   const columnVisibility = useColumnVisibility()
+  const listParams = useListParams()
 
   const table = useTable({
     features: dataTableFeatures,
@@ -199,7 +202,9 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
     getRowId: (row) => row.id,
     columns: appointmentColumns,
     initialState: { sorting: [{ id: "time", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
-    state: { columnVisibility: columnVisibility.state },
+    state: { columnVisibility: columnVisibility.state, globalFilter: listParams.globalFilter, columnFilters: listParams.columnFilters },
+    onGlobalFilterChange: listParams.onGlobalFilterChange,
+    onColumnFiltersChange: listParams.onColumnFiltersChange,
     onColumnVisibilityChange: columnVisibility.onChange,
     globalFilterFn: searchFilter,
     getColumnCanGlobalFilter: canSearchColumn,
