@@ -364,6 +364,36 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-5">
+        {conflict && base && (
+          <ConflictPanel
+            ref={conflictRef}
+            title={`Someone else changed ${base.name}`}
+            rows={conflictRows(technicianFields, technicianWrite(base), technicianWrite(conflict.current), conflict.mine)}
+            actions={
+              <>
+                <Button type="button" onClick={reapply} className="cursor-pointer">
+                  Reapply my changes
+                </Button>
+                <Button type="button" variant="outline" onClick={onDiscarded} className="cursor-pointer">
+                  Discard my changes
+                </Button>
+              </>
+            }
+          >
+            <p>Another Admin saved this technician after you opened it, so nothing of yours was saved.</p>
+            <p className="text-muted-foreground">
+              Reapply puts your changes on top of theirs for you to check and save; discard keeps theirs.
+            </p>
+          </ConflictPanel>
+        )}
+        {showFailure && (
+          <FailureAlert failure={failure} action={`save ${editingName}`} onReload={onReload} retrying={save.isPending} onRetry={submit} />
+        )}
+        {reappliedNote && (
+          <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">
+            Your changes are applied to the latest version. Check them, then save.
+          </p>
+        )}
         <FieldSet className="gap-4">
           <FieldLegend className="font-heading text-base font-semibold">Technician</FieldLegend>
           <Field data-invalid={Boolean(errors.name) || undefined} className="gap-1.5">
@@ -623,41 +653,11 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/30 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        {conflict && base && (
-          <ConflictPanel
-            ref={conflictRef}
-            title={`Someone else changed ${base.name}`}
-            rows={conflictRows(technicianFields, technicianWrite(base), technicianWrite(conflict.current), conflict.mine)}
-            actions={
-              <>
-                <Button type="button" onClick={reapply} className="cursor-pointer">
-                  Reapply my changes
-                </Button>
-                <Button type="button" variant="outline" onClick={onDiscarded} className="cursor-pointer">
-                  Discard my changes
-                </Button>
-              </>
-            }
-          >
-            <p>Another Admin saved this technician after you opened it, so nothing of yours was saved.</p>
-            <p className="text-muted-foreground">
-              Reapply puts your changes on top of theirs for you to check and save; discard keeps theirs.
-            </p>
-          </ConflictPanel>
-        )}
-        {showFailure && (
-          <FailureAlert failure={failure} action={`save ${editingName}`} onReload={onReload} retrying={save.isPending} onRetry={submit} />
-        )}
-        {reappliedNote && (
-          <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">
-            Your changes are applied to the latest version. Check them, then save.
-          </p>
-        )}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onCancel} className="cursor-pointer max-sm:h-11">
             Cancel
           </Button>
-          <Button ref={saveRef} type="submit" disabled={pending} focusableWhenDisabled className="cursor-pointer max-sm:h-11">
+          <Button ref={saveRef} type="submit" disabled={pending || conflict !== null} focusableWhenDisabled className="cursor-pointer max-sm:h-11">
             {pending && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
             {pending ? "Saving…" : editing.mode === "edit" ? "Save changes" : "Add technician"}
           </Button>

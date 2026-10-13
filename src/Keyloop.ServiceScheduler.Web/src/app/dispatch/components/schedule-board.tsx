@@ -268,7 +268,7 @@ export function ScheduleBoard({
       {body}
       {data?.operatingWindow && lanes.length > 0 && (
         <div className="border-t px-4 py-2.5">
-          <StatusLegend />
+          <StatusLegend review={reviewCount > 0} />
         </div>
       )}
     </Card>

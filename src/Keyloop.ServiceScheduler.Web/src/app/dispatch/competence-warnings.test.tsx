@@ -79,6 +79,7 @@ describe("competence warnings on the board", () => {
     const mot = screen.getByRole("button", { name: "MOT Test, Bay 6 - MOT, 11:00 to 11:45, Farid Haddad, Confirmed" })
     expect(within(mot).queryByText("Review")).not.toBeInTheDocument()
     expect(screen.getByText("2 appointments need review: their technician or bay no longer meets what they were booked with.")).toBeInTheDocument()
+    expect(screen.getByRole("list", { name: "Status legend" })).toHaveTextContent("Needs review: its technician or bay no longer qualifies")
   })
 
   it("names every reason in the details sheet, with the people and bay concerned, and moves nothing", async () => {
@@ -111,6 +112,7 @@ describe("competence warnings on the board", () => {
     await screen.findByRole("button", { name: evLabel })
     expect(screen.queryByText(/need review/)).not.toBeInTheDocument()
     expect(screen.queryByText("Review")).not.toBeInTheDocument()
+    expect(screen.getByRole("list", { name: "Status legend" })).not.toHaveTextContent("Needs review")
   })
 
   it("shows none to a visitor even when an answer carried one", async () => {
