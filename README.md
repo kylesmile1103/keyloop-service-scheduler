@@ -169,6 +169,11 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release
 dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests -c Release --no-build \
   --filter "Category=Aspire"
 
+# Browser E2E: starts PostgreSQL, API, Vite and Mailpit; installs Chromium idempotently.
+# One AppHost per machine: if this prints a running host, wait for its owner to stop it.
+ps -axo comm,args | grep -E '^(dotnet|aspire) ' | grep AppHost
+dotnet test --project tests/Keyloop.ServiceScheduler.E2ETests
+
 # Regenerate the committed contract without starting a database.
 bash scripts/export-openapi.sh
 git diff --exit-code contracts/
@@ -197,7 +202,11 @@ The concurrency test's acceptance criterion is **five rounds of thirty simultane
 
 Aspire smoke tests live in a separate project because the Aspire testing host needs reflection-based JSON while the API integration process deliberately disables it. CI runs `AspireTests` after installing the web dependencies. The fixture waits for both API and web health under one five-minute startup deadline, then checks `/api/v1/dealerships` through web for JSON and the exact seeded names. Cleanup stops within 30 seconds and always disposes; tests use a supplied password, session containers and no persistent mounts, with triage disabled.
 
-The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
+Browser E2E tests (`Category=E2E`) use .NET Playwright with Chromium and Aspire.Hosting.Testing. Install Node 22 and pnpm first (on this macOS setup: `source ~/.nvm/nvm.sh && nvm use 22`); the AppHost installs the frozen web dependencies. On a fresh Linux machine set `KEYLOOP_E2E_INSTALL_DEPS=1` to install Chromium's system dependencies too. Two class fixtures serialize an Admin stack and an anonymous stack, using temporary passwords, session containers, no named database volume and disabled triage. Dates come from Reading's operating hours on the real clock. Each test has fresh browser storage and unique booking data. Failed journeys retain trace ZIPs (screenshots, snapshots, sources), screenshots, accessible snapshots, browser logs and video under `TestResults/e2e/`; passing journeys retain result JSON, axe results and the dark-mode page screenshots. Open a failed trace with `pnpm dlx playwright@1.63.0 show-trace <trace.zip>` (no PowerShell). CI caches `~/.cache/ms-playwright` and always uploads the evidence. Do not run this suite concurrently with Aspire smoke tests or a developer AppHost; the fixture waits up to five minutes for a running host and never stops it.
+
+The journeys cover browser booking and conflict recovery, real API 400/422 form feedback, cancellation/history, day/list filters and URL persistence, overview/calendar consistency, vehicle competence, Admin stale edits and policy preview tokens, visitor masking, Mailpit, phone booking, dark-mode persistence and serious/critical axe checks. Appointments currently has a single-day selector, so a date-range list filter has no UI to exercise. The visitor Book action opens a sign-in prompt. Triage needs a model and remains covered by the fake-endpoint integration/component tests.
+
+The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, the E2E job after backend/frontend, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
 
 ## Try it with curl
 
@@ -281,6 +290,7 @@ tests/
   Keyloop.ServiceScheduler.UnitTests/
   Keyloop.ServiceScheduler.IntegrationTests/
   Keyloop.ServiceScheduler.AspireTests/
+  Keyloop.ServiceScheduler.E2ETests/
 contracts/openapi/v1.json     Committed build-time API contract
 docs/                        System design, plans and walkthrough
 scripts/                     Contract export and AOT measurement

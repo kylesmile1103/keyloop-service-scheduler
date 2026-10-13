@@ -38,6 +38,10 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "
 dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests --filter "FullyQualifiedName~BookAppointmentTests.Books_and_returns_201"  # single test
 dotnet test --project tests/Keyloop.ServiceScheduler.AspireTests                         # whole-stack smoke (Category=Aspire): boots the AppHost; one AppHost per machine at a time
 
+dotnet test --project tests/Keyloop.ServiceScheduler.E2ETests                            # Chromium browser journeys (Category=E2E); Docker, Node 22, pnpm; one AppHost at a time
+# E2E installs Chromium without PowerShell; on fresh Linux set KEYLOOP_E2E_INSTALL_DEPS=1.
+# Failed traces/videos and passing axe/dark screenshots: TestResults/e2e/. Use a short TMPDIR as below.
+
 # OpenAPI contract: every `dotnet build` of the API rewrites contracts/openapi/v1.json (build-time generation, no database needed);
 # the script forces a regeneration even when the API assembly is unchanged and prints `git status` for contracts/ - commit the file
 scripts/export-openapi.sh
