@@ -185,6 +185,8 @@ builder.Services.AddOptions<CorsOptions>().Configure<IOptions<SecurityOptions>>(
 }));
 builder.Services.AddSchedulerRateLimiting();
 builder.Services.AddSchedulerForwardedHeaders();
+builder.Services.AddOptions<Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionOptions>()
+    .Configure<IOptions<SecurityOptions>>((options, security) => options.HttpsPort = security.Value.HttpsRedirection.HttpsPort);
 builder.Services.AddSingleton<SecurityHeadersMiddleware>();
 builder.Services.AddSingleton<RequestCorrelationMiddleware>();
 builder.Services.AddScoped<CurrentActorMiddleware>();
@@ -245,6 +247,11 @@ app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("SystemTest") && !app.Environment.IsEnvironment("Demo"))
 {
     app.UseHsts();
+}
+
+// Ingress owns HTTPS in UAT/Production. An explicitly enabled API redirect always has a validated destination port.
+if (security.HttpsRedirection.Enabled)
+{
     app.UseHttpsRedirection();
 }
 
