@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Keyloop Unified Service Scheduler API",
-    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\nPublic reads are anonymous. Customer names, VINs and registrations are masked unless the caller has an API role. Writes\nrequire Admin or ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me`\ndiscovers the caller.\n\n- **401** - sign-in required (`unauthenticated`, with `loginUrl`).\n- **403** - the caller has no permitted role (`forbidden`).\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).",
+    "description": "Books multi-resource workshop appointments: each booking reserves a service bay with the required capabilities and a\ntechnician with the required certifications for the same time slot, and never double-books either, even under concurrent requests.\n\nEvery error is an RFC 9457 problem (`application/problem+json`) with a stable `type` under\n`https://api.keyloop.example/problems/` and a `traceId`. Branch on `type`, not on text:\n\nPublic reads are anonymous. Customer names, VINs and registrations are masked unless the caller has an API role. Writes\nrequire Admin or ServiceAdvisor; appointment details require any API role. Access signs in at `/auth/login`; `/api/v1/me`\ndiscovers the caller. Resource and policy edits, their reads and audit history require Admin.\n\n- **401** - sign-in required (`unauthenticated`, with `loginUrl`).\n- **403** - the caller has no permitted role (`forbidden`).\n- **400** - the request is malformed (`validation-error`).\n- **422** - the request is well-formed but breaks a business rule given current reference data (for example\n  `outside-operating-hours`, `lead-time-not-met`, `no-qualified-resources`).\n- **409** - the request collides with current state (`slot-unavailable`, `slot-conflict`, `invalid-state-transition`,\n  `concurrency-conflict`).\n- **412** - Admin edit used a stale ETag (`precondition-failed`, with `current` and `currentETag`).\n- **428** - Admin edit requires `If-Match` (`precondition-required`).\n- **429** - rate limited (`rate-limited`, with `Retry-After`).\n\nThe full problem catalogue is in `docs/ARCHITECTURE.md`, section 8.7 (API contract).",
     "version": "v1"
   },
   "paths": {
@@ -1403,7 +1403,7 @@
         "tags": [
           "Catalog"
         ],
-        "summary": "Suggest bookable services and an optional preferred date from an intake description",
+        "summary": "Suggest bookable services, an optional preferred date and a closed uncovered-issue category from an intake description",
         "description": "A person must confirm a suggestion before asking for availability and booking. No description is stored.",
         "operationId": "TriageBookingRequest",
         "parameters": [
@@ -1442,7 +1442,7 @@
         },
         "responses": {
           "200": {
-            "description": "Model, recommendation, service confidence, up to three candidates and an optional local date.",
+            "description": "Model, recommendation, service confidence, up to three candidates, an optional local date and an optional uncovered issue with a closed category.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -2134,10 +2134,2583 @@
           }
         ]
       }
+    },
+    "/api/v1/dealerships/{dealershipId}/technicians": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List dealership technicians for administration",
+        "operationId": "ListAdminTechnicians",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminTechnicianResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Create a technician",
+        "operationId": "CreateTechnician",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Complete technician state. Existing appointments are preserved.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechnicianWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created resource; Location points at its Admin read.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "description": "Path of the created technician's Admin read.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTechnicianResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the 64 KiB limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/technicians/{technicianId}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get a technician for editing",
+        "operationId": "GetAdminTechnician",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "technicianId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTechnicianResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Edit a technician",
+        "operationId": "EditTechnician",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "technicianId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Exactly one strong ETag from the resource read, including quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Complete technician state. Existing appointments are preserved.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechnicianWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTechnicianResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the 64 KiB limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale version, precondition-failed with current and currentETag.",
+            "headers": {
+              "ETag": {
+                "description": "Current strong version; also present in currentETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required, precondition-required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Confirm the recorded HV level",
+        "operationId": "ConfirmTechnicianHvLevel",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "technicianId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Exactly one strong ETag from the resource read, including quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTechnicianResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale version, precondition-failed with current and currentETag.",
+            "headers": {
+              "ETag": {
+                "description": "Current strong version; also present in currentETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required, precondition-required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/bays": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List dealership bays for administration",
+        "operationId": "ListAdminBays",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminBayResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Create a service bay",
+        "operationId": "CreateBay",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Complete bay state. Existing appointments are preserved.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created resource; Location points at its Admin read.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Location": {
+                "description": "Path of the created bay's Admin read.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri-reference"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBayResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the 64 KiB limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/bays/{bayId}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get a bay for editing",
+        "operationId": "GetAdminBay",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "bayId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBayResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Edit a service bay",
+        "operationId": "EditBay",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "bayId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Exactly one strong ETag from the resource read, including quotes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Complete bay state. Existing appointments are preserved.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Current Admin representation.",
+            "headers": {
+              "ETag": {
+                "description": "Strong xmin version; echo in If-Match for an edit.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBayResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the 64 KiB limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale version, precondition-failed with current and currentETag.",
+            "headers": {
+              "ETag": {
+                "description": "Current strong version; also present in currentETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required, precondition-required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/requirement-policy": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get the dealership requirement policy",
+        "operationId": "GetRequirementPolicy",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current policy and ordered typed rules.",
+            "headers": {
+              "ETag": {
+                "description": "Current policy version, quoted policy-{version}; send it in If-Match to preview or publish.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPolicyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Preview or publish the next requirement policy",
+        "operationId": "EditRequirementPolicy",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Exactly one quoted policy version ETag from GetRequirementPolicy.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Preview with saved false, or published version with saved true; changes describe roster bookability.",
+            "headers": {
+              "ETag": {
+                "description": "Current policy version. A dry-run returns the unchanged version tag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyEditResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, validation-error with errors keyed by JSON path.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the 64 KiB limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale version, precondition-failed with current and currentETag.",
+            "headers": {
+              "ETag": {
+                "description": "Current strong version; also present in currentETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "If-Match required, precondition-required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The confirmed preview is out of date, policy-preview-outdated; run the preview again.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/dealerships/{dealershipId}/admin-history": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Read Admin change history",
+        "operationId": "GetAdminHistory",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "resourceKind",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "technician",
+                "bay",
+                "policy"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest changes, bounded snapshots and the next offset if there are more.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required, unauthenticated.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required, forbidden.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership or resource, not-found.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; retry after Retry-After seconds.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filters or pagination, validation-error.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminBayResponse": {
+        "required": [
+          "id",
+          "dealershipId",
+          "name",
+          "capabilities",
+          "isActive",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dealershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BayCapability"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        "description": "Full Admin bay representation. Version is PostgreSQL xmin, also returned as a strong ETag."
+      },
+      "AdminHistoryItem": {
+        "required": [
+          "id",
+          "resourceKind",
+          "resourceId",
+          "action",
+          "actor",
+          "atUtc",
+          "before",
+          "after"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resourceKind": {
+            "enum": [
+              "technician",
+              "bay",
+              "policy"
+            ],
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "enum": [
+              "create",
+              "edit",
+              "deactivate",
+              "reactivate",
+              "confirm-hv",
+              "publish"
+            ],
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "atUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TechnicianWriteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/BayWriteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/AdminPolicyResponse"
+              }
+            ],
+            "description": "Previous bounded reference state, null on creation. Shape follows resourceKind."
+          },
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TechnicianWriteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/BayWriteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/AdminPolicyResponse"
+              }
+            ],
+            "description": "Committed bounded reference state. Shape follows resourceKind."
+          }
+        },
+        "description": "Bounded before/after reference snapshots; no visitor text. Resource history survives deactivation."
+      },
+      "AdminHistoryResponse": {
+        "required": [
+          "items",
+          "nextOffset"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminHistoryItem"
+            }
+          },
+          "nextOffset": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        },
+        "description": "Newest first, stable ordering by timestamp and id; use nextOffset until null."
+      },
+      "AdminPolicyResponse": {
+        "required": [
+          "dealershipId",
+          "version",
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "dealershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequirementRuleInput"
+            }
+          }
+        },
+        "description": "Immutable policy state. ETag is quoted policy-{version}; old versions are retained."
+      },
+      "AdminTechnicianResponse": {
+        "required": [
+          "id",
+          "dealershipId",
+          "name",
+          "employeeNumber",
+          "certifications",
+          "isActive",
+          "hvLevel",
+          "hvLevelValidUntil",
+          "hvLevelConfirmed",
+          "brandSpecialisms",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dealershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "employeeNumber": {
+            "type": "string"
+          },
+          "certifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Certification"
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "hvLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hvLevelValidUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "hvLevelConfirmed": {
+            "type": "boolean"
+          },
+          "brandSpecialisms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        "description": "Full Admin resource representation. Version is PostgreSQL xmin, also returned as a strong ETag."
+      },
       "AllocationCriterion": {
         "enum": [
           "OnlyQualifiedResource",
@@ -2391,6 +4964,17 @@
                 "$ref": "#/components/schemas/AllocationDecision"
               }
             ]
+          },
+          "competenceWarning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Read-time review against recorded requirements on the local appointment date. Only `Confirmed`, `CheckedIn` and `InProgress`\nappointments, which still hold their bay and technician, are flagged; `Completed`, `Cancelled` and `NoShow` never are.\nOmitted with the flag off and when nothing needs review. No appointment is rewritten.",
+                "$ref": "#/components/schemas/CompetenceWarningResponse"
+              }
+            ]
           }
         },
         "description": "An appointment: one service for one vehicle, with the bay and the technician reserved for it over the same time slot."
@@ -2554,6 +5138,52 @@
         },
         "description": "A service bay, a lane of the board, with the appointments it hosts that day."
       },
+      "BayWriteRequest": {
+        "examples": [
+          {
+            "name": "Bay - Standard",
+            "capabilities": [
+              "StandardLift"
+            ],
+            "isActive": true
+          }
+        ],
+        "required": [
+          "name",
+          "capabilities",
+          "isActive"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string",
+            "description": "Display name, 1..100 trimmed characters."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "StandardLift",
+                "HeavyDutyLift",
+                "EvHighVoltage",
+                "WheelAlignment",
+                "Diagnostics",
+                "MotTesting",
+                "AirConditioning"
+              ],
+              "type": "string"
+            },
+            "description": "Equipment capabilities; empty is permitted."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Whether this bay accepts new bookings."
+          }
+        },
+        "description": "Complete service-bay state; taking a bay out of service preserves its appointments and history."
+      },
       "BookAppointmentRequest": {
         "required": [
           "serviceTypeId",
@@ -2707,9 +5337,39 @@
           "MotTester",
           "WheelAlignment",
           "AirConditioning",
-          "HeavyVehicle"
+          "HeavyVehicle",
+          "DamageAssessment"
         ],
         "type": "string"
+      },
+      "CompetenceWarningResponse": {
+        "required": [
+          "requiresReview",
+          "reasonCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "requiresReview": {
+            "type": "boolean",
+            "description": "True: staff should review this appointment; clean appointments omit this response."
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "technician-inactive",
+                "technician-certification-removed",
+                "technician-hv-expired",
+                "technician-hv-level-lowered",
+                "bay-inactive",
+                "bay-capability-removed"
+              ],
+              "type": "string"
+            },
+            "description": "Bounded qualification-lapse codes, in stable order; never resource names or visitor text."
+          }
+        },
+        "description": "Read-time review signal against the booking's hard requirements. Never reassigns or rewrites an appointment."
       },
       "CurrentUserResponse": {
         "required": [
@@ -3012,6 +5672,24 @@
               "type": "string"
             },
             "description": "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour."
+          },
+          "currentETag": {
+            "type": "string",
+            "description": "On 412 precondition-failed, the current strong ETag, including quotes. Also sent as the ETag header."
+          },
+          "current": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminTechnicianResponse"
+              },
+              {
+                "$ref": "#/components/schemas/AdminBayResponse"
+              },
+              {
+                "$ref": "#/components/schemas/AdminPolicyResponse"
+              }
+            ],
+            "description": "On 412 precondition-failed, the current Admin resource or policy representation."
           }
         }
       },
@@ -3044,6 +5722,140 @@
           }
         },
         "description": "The dealership's opening hours on the requested date, as UTC instants and as local wall-clock times."
+      },
+      "PolicyBookabilityChange": {
+        "required": [
+          "serviceTypeId",
+          "serviceCode",
+          "powertrain",
+          "vehicleClass",
+          "needsLiveDiagnosis",
+          "wasBookable",
+          "isBookable"
+        ],
+        "type": "object",
+        "properties": {
+          "serviceTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceCode": {
+            "type": "string"
+          },
+          "powertrain": {
+            "$ref": "#/components/schemas/Powertrain"
+          },
+          "vehicleClass": {
+            "$ref": "#/components/schemas/VehicleClass"
+          },
+          "needsLiveDiagnosis": {
+            "type": "boolean"
+          },
+          "wasBookable": {
+            "type": "boolean"
+          },
+          "isBookable": {
+            "type": "boolean"
+          }
+        },
+        "description": "Changed roster bookability by service, powertrain, vehicle class and live-diagnosis mode, on the preview date. Busy time is excluded."
+      },
+      "PolicyEditResponse": {
+        "required": [
+          "saved",
+          "policy",
+          "previewDate",
+          "changes",
+          "previewToken"
+        ],
+        "type": "object",
+        "properties": {
+          "saved": {
+            "type": "boolean",
+            "description": "True when the policy was published; false for a dry run."
+          },
+          "policy": {
+            "description": "Normalized proposed or published policy, in deterministic rule order.",
+            "$ref": "#/components/schemas/AdminPolicyResponse"
+          },
+          "previewDate": {
+            "type": "string",
+            "description": "Local date used for competence expiry.",
+            "format": "date"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyBookabilityChange"
+            },
+            "description": "Changes to roster bookability, excluding busy time."
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Deterministic base64url SHA-256 of the dealership, current policy version, proposed rules, date and bookability changes. Send it to publish this preview."
+          }
+        },
+        "description": "A preview or committed policy. An empty changes array means roster bookability did not change."
+      },
+      "PolicyWriteRequest": {
+        "examples": [
+          {
+            "rules": [
+              {
+                "code": "hv-routine",
+                "order": 20,
+                "condition": "ServicePowertrain",
+                "powertrains": [
+                  "BatteryElectric",
+                  "Unknown"
+                ],
+                "serviceCodes": [
+                  "INTERIM-SERVICE"
+                ],
+                "vehicleClass": null,
+                "minimumHvLevel": 3,
+                "bayCapabilities": [ ],
+                "certifications": [ ]
+              }
+            ],
+            "dryRun": true,
+            "previewDate": "2026-10-13",
+            "previewToken": "m5DRYZCKSyA5da5skJuTSF_RVIixPSgOogqXtCFWtCg"
+          }
+        ],
+        "required": [
+          "rules",
+          "dryRun",
+          "previewDate"
+        ],
+        "type": "object",
+        "properties": {
+          "rules": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequirementRuleInput"
+            },
+            "description": "At most 32 typed rules; empty intentionally removes every dealership rule."
+          },
+          "dryRun": {
+            "type": "boolean",
+            "description": "True computes the consequence preview and writes nothing."
+          },
+          "previewDate": {
+            "type": "string",
+            "description": "Required local date for qualification expiry in the preview.",
+            "format": "date"
+          },
+          "previewToken": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Token from the preview the Admin confirmed. Required for publication; ignored for a dry run."
+          }
+        },
+        "description": "Replace a dealership's whole policy. DryRun previews without saving; publication rechecks If-Match and the confirmed preview."
       },
       "Powertrain": {
         "enum": [
@@ -3136,6 +5948,24 @@
               "type": "string"
             },
             "description": "vehicle-aware-requirements-disabled: the vehicle-aware inputs the request carried, which this deployment cannot honour."
+          },
+          "currentETag": {
+            "type": "string",
+            "description": "On 412 precondition-failed, the current strong ETag, including quotes. Also sent as the ETag header."
+          },
+          "current": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminTechnicianResponse"
+              },
+              {
+                "$ref": "#/components/schemas/AdminBayResponse"
+              },
+              {
+                "$ref": "#/components/schemas/AdminPolicyResponse"
+              }
+            ],
+            "description": "On 412 precondition-failed, the current Admin resource or policy representation."
           }
         }
       },
@@ -3188,6 +6018,124 @@
         ],
         "type": "string",
         "description": "Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases."
+      },
+      "RequirementCondition": {
+        "enum": [
+          "ServicePowertrain",
+          "VehicleClass",
+          "LiveDiagnosis"
+        ],
+        "type": "string"
+      },
+      "RequirementRuleInput": {
+        "required": [
+          "code",
+          "order",
+          "condition",
+          "powertrains",
+          "serviceCodes",
+          "vehicleClass",
+          "minimumHvLevel",
+          "bayCapabilities",
+          "certifications"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 0,
+            "type": "string",
+            "description": "Unique stable slug, at most 64 characters."
+          },
+          "order": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer",
+            "description": "Nonnegative ordering number; code breaks ties.",
+            "format": "int32"
+          },
+          "condition": {
+            "description": "ServicePowertrain, VehicleClass or LiveDiagnosis.",
+            "$ref": "#/components/schemas/RequirementCondition"
+          },
+          "powertrains": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "Ice",
+                "MildHybrid",
+                "FullHybrid",
+                "PluginHybrid",
+                "BatteryElectric",
+                "FuelCell",
+                "Unknown"
+              ],
+              "type": "string"
+            },
+            "description": "Nonempty only for ServicePowertrain. Unknown inherits every concrete HV rule."
+          },
+          "serviceCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Existing global service codes, nonempty only for ServicePowertrain."
+          },
+          "vehicleClass": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Non-null only for VehicleClass; send null explicitly for the other conditions.",
+                "$ref": "#/components/schemas/VehicleClass"
+              }
+            ]
+          },
+          "minimumHvLevel": {
+            "maximum": 4,
+            "minimum": 0,
+            "type": "integer",
+            "description": "Monotone minimum 0..4.",
+            "format": "int32"
+          },
+          "bayCapabilities": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "StandardLift",
+                "HeavyDutyLift",
+                "EvHighVoltage",
+                "WheelAlignment",
+                "Diagnostics",
+                "MotTesting",
+                "AirConditioning"
+              ],
+              "type": "string"
+            },
+            "description": "Additional equipment constraints."
+          },
+          "certifications": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "GeneralService",
+                "Brakes",
+                "HighVoltageElectrical",
+                "Diagnostics",
+                "MotTester",
+                "WheelAlignment",
+                "AirConditioning",
+                "HeavyVehicle",
+                "DamageAssessment"
+              ],
+              "type": "string"
+            },
+            "description": "Additional task qualifications."
+          }
+        },
+        "additionalProperties": false,
+        "description": "One closed typed rule; order and code define deterministic evaluation. No expressions or brand rules."
       },
       "ResolveVehicleProfileRequest": {
         "type": "object",
@@ -3290,6 +6238,17 @@
           "customerName": {
             "type": "string",
             "description": "The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example `ALS` for Alice Louise Smith."
+          },
+          "competenceWarning": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role,\nand only on `Confirmed`, `CheckedIn` and `InProgress` appointments, which still hold their bay and technician; never on\n`Completed` or `NoShow`.",
+                "$ref": "#/components/schemas/CompetenceWarningResponse"
+              }
+            ]
           }
         },
         "description": "An appointment on the board: when it runs, what it is, who works on it, and for which vehicle and customer."
@@ -3445,6 +6404,100 @@
         },
         "description": "A technician on the dealership's roster: a lane of the board when it is viewed by technician."
       },
+      "TechnicianWriteRequest": {
+        "examples": [
+          {
+            "name": "Alex Technician",
+            "employeeNumber": "T-NEW",
+            "certifications": [
+              "GeneralService",
+              "Brakes"
+            ],
+            "isActive": true,
+            "hvLevel": 2,
+            "hvLevelValidUntil": "2028-12-31",
+            "hvLevelConfirmed": true,
+            "brandSpecialisms": [
+              "VOLKSWAGEN"
+            ]
+          }
+        ],
+        "required": [
+          "name",
+          "employeeNumber",
+          "certifications",
+          "isActive",
+          "hvLevel",
+          "hvLevelValidUntil",
+          "hvLevelConfirmed",
+          "brandSpecialisms"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string",
+            "description": "Display name, 1..120 trimmed characters."
+          },
+          "employeeNumber": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string",
+            "description": "Unique within this dealership, 1..32 trimmed characters."
+          },
+          "certifications": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "GeneralService",
+                "Brakes",
+                "HighVoltageElectrical",
+                "Diagnostics",
+                "MotTester",
+                "WheelAlignment",
+                "AirConditioning",
+                "HeavyVehicle",
+                "DamageAssessment"
+              ],
+              "type": "string"
+            },
+            "description": "Task qualifications. Empty is permitted."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "False deactivates without changing existing appointments."
+          },
+          "hvLevel": {
+            "maximum": 4,
+            "minimum": 0,
+            "type": "integer",
+            "description": "HV level, zero to four; unconfirmed levels still count.",
+            "format": "int32"
+          },
+          "hvLevelValidUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Inclusive dealership-local expiry; null means unlimited. Required: send null explicitly.",
+            "format": "date"
+          },
+          "hvLevelConfirmed": {
+            "type": "boolean",
+            "description": "A person's confirmation of the recorded level."
+          },
+          "brandSpecialisms": {
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 16 normalized OEM codes of at most 32 characters, data only."
+          }
+        },
+        "description": "Complete technician state. Names and employee numbers are bounded reference fields, never notes."
+      },
       "TriageBookingRequest": {
         "required": [
           "description"
@@ -3478,7 +6531,8 @@
           "recommendation",
           "serviceConfidence",
           "services",
-          "preferredDate"
+          "preferredDate",
+          "uncoveredIssue"
         ],
         "type": "object",
         "properties": {
@@ -3500,7 +6554,7 @@
             "items": {
               "$ref": "#/components/schemas/TriageServiceCandidate"
             },
-            "description": "At most three bookable candidates above the configured probability floor, most likely first."
+            "description": "At most three bookable candidates meeting the absolute and relative probability floors, most likely first."
           },
           "preferredDate": {
             "oneOf": [
@@ -3510,6 +6564,17 @@
               {
                 "description": "Confidently selected local date, including a closed day, or null.",
                 "$ref": "#/components/schemas/TriagePreferredDate"
+              }
+            ]
+          },
+          "uncoveredIssue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "A confidently selected additional issue outside the most likely service, or null (none named, below the confidence threshold, or a category inside the chosen service's own scope). Render the category with fixed client copy, never model text, and only while the service it names is the one selected.",
+                "$ref": "#/components/schemas/TriageUncoveredIssue"
               }
             ]
           }
@@ -3555,6 +6620,52 @@
           }
         },
         "description": "A candidate from the dealership's bookable catalogue."
+      },
+      "TriageUncoveredCategory": {
+        "enum": [
+          "ACCIDENT_OR_BODY_DAMAGE",
+          "LIGHTS_OR_ELECTRICAL_ACCESSORY",
+          "AIR_CONDITIONING",
+          "TYRES_OR_WHEELS",
+          "GLASS",
+          "OTHER"
+        ],
+        "type": "string",
+        "description": "Closed UI-copy keys for problems outside the most likely service. One appointment covers one service."
+      },
+      "TriageUncoveredIssue": {
+        "required": [
+          "category",
+          "probability",
+          "confidence",
+          "outsideServiceTypeId"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "description": "Closed UI-copy key for the additional issue.",
+            "$ref": "#/components/schemas/TriageUncoveredCategory"
+          },
+          "probability": {
+            "type": "number",
+            "description": "The category's probability in Clef's answer.",
+            "format": "double"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Clef's confidence in this answer, compared with the uncovered-issue threshold.",
+            "format": "double"
+          },
+          "outsideServiceTypeId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The service type the issue is outside: Clef's most likely service, which need not be the first candidate a person picks. Null when Clef chose none of the bookable services, so the issue is outside the whole catalogue. Show the notice while this service is selected (or whenever it is null), not for another candidate.",
+            "format": "uuid"
+          }
+        },
+        "description": "A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null."
       },
       "UploadBookingTriageImageRequest": {
         "required": [
@@ -3886,6 +6997,10 @@
     {
       "name": "Features",
       "description": "Environment-wide switches for client rendering, identical for every caller."
+    },
+    {
+      "name": "Admin",
+      "description": "Admin-only resource editing, typed policy previews and change history."
     }
   ]
 }

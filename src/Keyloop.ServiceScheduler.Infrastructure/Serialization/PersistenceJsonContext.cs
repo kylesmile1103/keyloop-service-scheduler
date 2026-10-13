@@ -10,6 +10,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Serialization;
     DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     UseStringEnumConverter = true,
     WriteIndented = false)]
+[JsonSerializable(typeof(RecordedRequirements))]
 [JsonSerializable(typeof(ProfileProvenance))]
 [JsonSerializable(typeof(AllocationDecision))]
 [JsonSerializable(typeof(AppointmentBooked))]

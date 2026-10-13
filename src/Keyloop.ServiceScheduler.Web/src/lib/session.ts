@@ -31,8 +31,12 @@ export interface Capabilities {
   canWrite: boolean
   /** A booking's contact details and vehicle, and unmasked names, VINs and plates: any role (`AppointmentDetails`). */
   canViewDetails: boolean
-  /** The Resources area: any role; Admin-only editing arrives with Task 30. */
+  /** The Resources area's lists: any role. */
   canOpenResources: boolean
+  /**
+   * Admin: edit technicians, bays and the requirement policy, confirm HV levels, and read the change history (Task 30, the
+   * API's `Admin` policy). A Service advisor or a Viewer sees the lists read-only, with the reason.
+   */
   isAdmin: boolean
 }
 
@@ -55,6 +59,26 @@ export function capabilitiesOf(user: CurrentUserResponse | undefined): Capabilit
  */
 export function writerOf(user: CurrentUserResponse | undefined): string | null {
   return capabilitiesOf(user).canWrite ? (user?.email ?? "").toLowerCase() : null
+}
+
+/**
+ * Which writes a binding is for (`useWriteMutation`, `bindWrite`): `bookings` (book, cancel, suggestions, the VIN look-up:
+ * Admin or Service advisor, `writerOf`) or `admin` (the Resources area's edits, Task 30: Admin only, `adminWriterOf`).
+ */
+export type WriteKind = "bookings" | "admin"
+
+/**
+ * The account whose Admin edits an identity may send: the email (lower case) of an Admin, else `null`. An edit being
+ * entered belongs to it: an Admin and an Admin who is also a Viewer, for the same email, are the same writer; the same email
+ * as a Service advisor is not one (it may book, but not edit).
+ */
+export function adminWriterOf(user: CurrentUserResponse | undefined): string | null {
+  return capabilitiesOf(user).isAdmin ? (user?.email ?? "").toLowerCase() : null
+}
+
+/** The writer of a kind of write for an identity (`writerOf`, `adminWriterOf`). */
+export function writerFor(kind: WriteKind, user: CurrentUserResponse | undefined): string | null {
+  return kind === "admin" ? adminWriterOf(user) : writerOf(user)
 }
 
 /** The name to show for a signed-in user: the token's name, else the email. */
@@ -123,6 +147,14 @@ export function identitySource(): IdentitySource {
 
 /** Why a signed-in user's control cannot change bookings. */
 export const READ_ONLY_REASON = "Your role can view bookings but not change them."
+
+/**
+ * Why a Service advisor's or a Viewer's control in the Resources area cannot change anything (Task 30): what they are
+ * looking at ("technicians", "bays"), and that changing it is the Admin's.
+ */
+export function adminOnlyReason(what: string): string {
+  return `Your role can view ${what} but not change them. Changes are made by a workshop Admin.`
+}
 export const NO_ROLE_REASON =
   "Your account has no workshop role yet, so it can view the board but not change bookings. The workshop administrator assigns roles."
 
@@ -175,4 +207,19 @@ export function cachedCapabilities(queryClient: QueryClient): Capabilities {
 /** The writer the cached `/me` names at this moment (`writerOf`), for a write as it is sent: nobody unless its last read succeeded. */
 export function cachedWriter(queryClient: QueryClient): string | null {
   return writerOf(cachedIdentity(queryClient))
+}
+
+/** The writer of a kind of write the cached `/me` names at this moment (`writerFor`): nobody unless its last read succeeded. */
+export function cachedWriterFor(kind: WriteKind, queryClient: QueryClient): string | null {
+  return writerFor(kind, cachedIdentity(queryClient))
+}
+
+/**
+ * Who the cached `/me` names at this moment (`identityKey`), for something kept outside the query cache as it arrives (a
+ * write's answer kept by a view): `failed` unless its last read succeeded (the same reading, `cachedIdentity`), as
+ * `useCurrentUser` names it.
+ */
+export function cachedIdentityKey(queryClient: QueryClient): string {
+  const user = cachedIdentity(queryClient)
+  return user ? identityKey(user) : "failed"
 }

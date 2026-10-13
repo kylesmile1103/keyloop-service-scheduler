@@ -23,7 +23,8 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
 
     /// <summary>The columns a day view needs. <see cref="Vin"/> is the full VIN; mask it where the audience requires.</summary>
     public sealed record AppointmentRow(
-        Guid Id, Guid BayId, Guid TechnicianId, Guid ServiceTypeId, TimeSlot Slot, AppointmentStatus Status, string Vin, string Registration, string CustomerName);
+        Guid Id, Guid BayId, Guid TechnicianId, Guid ServiceTypeId, TimeSlot Slot, AppointmentStatus Status, string Vin, string Registration, string CustomerName,
+        RecordedRequirements? RecordedRequirements = null, AllocationDecision? Allocation = null, VehicleProfile? Profile = null, bool NeedsLiveDiagnosis = false);
 
     /// <summary>
     /// The dealership-day, or <see langword="null"/> when the dealership does not exist. <paramref name="activeOnly"/> keeps only
@@ -59,12 +60,13 @@ public sealed class DayScheduleReader(SchedulerDbContext db)
                 a.Vehicle.Vin,
                 a.Vehicle.Registration,
                 CustomerName = a.Customer.Name,
+                a.RecordedRequirements, a.AllocationDecision, a.VehicleProfile, a.NeedsLiveDiagnosis,
             })
             .ToListAsync(ct);
 
         var appointments = rows
             .Select(r => new AppointmentRow(
-                r.Id, r.BayId, r.TechnicianId, r.ServiceTypeId, TimeSlot.Create(r.StartUtc, r.EndUtc), r.Status, r.Vin.Value, r.Registration, r.CustomerName))
+                r.Id, r.BayId, r.TechnicianId, r.ServiceTypeId, TimeSlot.Create(r.StartUtc, r.EndUtc), r.Status, r.Vin.Value, r.Registration, r.CustomerName, r.RecordedRequirements, r.AllocationDecision, r.VehicleProfile, r.NeedsLiveDiagnosis))
             .ToList();
         return new DaySnapshot(dealership, bays, technicians, appointments);
     }

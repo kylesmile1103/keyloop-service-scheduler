@@ -13,13 +13,12 @@ import { BaseLayout } from "@/components/layouts/base-layout"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { toast } from "@/components/ui/toast"
 import { cachedWriteAccess, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
 import { useSelectedDealership } from "@/hooks/use-selected-dealership"
-import { formatDay, todayIn } from "@/lib/calendar-date"
+import { todayIn } from "@/lib/calendar-date"
 import { firstOpenDate } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
 
@@ -30,8 +29,9 @@ import { DispatchToolbar } from "./components/dispatch-toolbar"
 import { KpiStrip } from "./components/kpi-strip"
 import { ScheduleBoard } from "./components/schedule-board"
 import { useBoardParams } from "./hooks/use-board-params"
-import { localTime } from "./lib/appointment-text"
-import { type BoardAppointment, buildLanes, type LaneMode } from "./lib/schedule"
+import { useBookedToast } from "./hooks/use-booked-toast"
+import type { BookedExplanation } from "./lib/allocation"
+import { type BoardAppointment, buildLanes, type LaneMode, reviewCount, withVisibleWarnings } from "./lib/schedule"
 
 /** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
 const AUTO_REFRESH_MS = 5000
@@ -163,7 +163,12 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   // A day that never loaded stays failed while it is read again (Try again, a refresh), for the board and the figures alike.
   const scheduleFailure = useQueryFailure(schedule, scheduleOptions.queryKey)
 
-  const allLanes = useMemo(() => (schedule.data ? buildLanes(schedule.data, mode) : []), [schedule.data, mode])
+  // A competence warning (Task 30b) only for a signed-in workshop role, whatever the cache still holds.
+  const canSeeWarnings = currentUser.canViewDetails
+  const allLanes = useMemo(
+    () => (schedule.data ? withVisibleWarnings(buildLanes(schedule.data, mode), canSeeWarnings) : []),
+    [schedule.data, mode, canSeeWarnings]
+  )
   const lanes = allLanes.filter((lane) => !hidden.has(lane.id))
   // The selected booking is the previous caller's snapshot (full name, VIN, plate for a role) once the identity changes or
   // cannot be checked: the sheet closes in the same render, so it never paints for the next caller (ARCHITECTURE §15).
@@ -193,18 +198,13 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
     setBooking((previous) => ({ ...previous, open: false }))
   }
 
-  const onBooked = (appointment: AppointmentResponse) => {
+  // The toast every page that books ends with on a wide screen; an explained one closes when who is signed in changes.
+  const showBooked = useBookedToast(today)
+  const onBooked = (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => {
     highlight(appointment.id, false)
     // On a phone the sheet ends on its own success state; wide screens get the toast (UI_DESIGN 11.15).
     if (agenda) return
-    const day = appointment.startLocal.slice(0, 10)
-    const when = `${localTime(appointment.startLocal)}${day === today ? "" : ` on ${formatDay(day, "short")}`}`
-    toast.add({
-      type: "success",
-      title: "Booked",
-      description: `${appointment.serviceType.name} at ${when} · ${appointment.bay.name} · ${appointment.technician.name}`,
-      actionProps: { children: "View on board", onClick: () => viewOnBoard(appointment) },
-    })
+    showBooked(appointment, explanation, () => viewOnBoard(appointment))
   }
 
   const bookButton = (
@@ -225,6 +225,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       failure={scheduleFailure}
       lanes={lanes}
       laneCount={allLanes.length}
+      reviewCount={reviewCount(allLanes)}
       onShowAllLanes={() => setHidden(new Set())}
       onDateChange={setDate}
       agenda={agenda}

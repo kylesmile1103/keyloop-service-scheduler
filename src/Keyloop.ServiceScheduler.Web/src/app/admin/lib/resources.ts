@@ -1,4 +1,6 @@
 import type {
+  AdminBayResponse,
+  AdminTechnicianResponse,
   BayCapability,
   BayScheduleResponse,
   Certification,
@@ -19,14 +21,19 @@ export interface DayLoad {
   windowMinutes: number | null
 }
 
-/** A technician of the roster, with today's work. */
+/**
+ * A technician of the roster, with today's work. For an Admin (Task 30b) it is the Admin read, with the `version` an edit
+ * is sent against (`If-Match`) and every competence field; for any other role, the schedule's row (no version).
+ */
 export interface TechnicianRecord extends TechnicianResponse {
   today: DayLoad
+  version?: number
 }
 
-/** A service bay, with today's work (the appointments themselves stay on the board). */
+/** A service bay, with today's work (the appointments themselves stay on the board); an Admin's has its `version`. */
 export interface BayRecord extends Omit<BayScheduleResponse, "appointments"> {
   today: DayLoad
+  version?: number
 }
 
 /** Why the dealership cannot book a service, from what its active bays and technicians have. */
@@ -67,6 +74,30 @@ export function technicianRecords(schedule: WorkshopScheduleResponse): Technicia
     ...technician,
     today: dayLoad(schedule, work.filter((appointment) => appointment.technician.id === technician.id)),
   }))
+}
+
+/**
+ * The roster as the Admin reads it (by name, with versions and every competence field), each technician with the work the
+ * day's schedule lists for them (none when the schedule does not list them).
+ */
+export function adminTechnicianRecords(people: readonly AdminTechnicianResponse[], schedule: WorkshopScheduleResponse): TechnicianRecord[] {
+  const work = allAppointments(schedule)
+  return [...people]
+    .sort((a, b) => a.name.localeCompare(b.name, "en-GB"))
+    .map((technician) => ({
+      ...technician,
+      today: dayLoad(schedule, work.filter((appointment) => appointment.technician.id === technician.id)),
+    }))
+}
+
+/** The bays as the Admin reads them, each with the work it holds on the day's schedule. */
+export function adminBayRecords(lanes: readonly AdminBayResponse[], schedule: WorkshopScheduleResponse): BayRecord[] {
+  return [...lanes]
+    .sort((a, b) => a.name.localeCompare(b.name, "en-GB", { numeric: true }))
+    .map((bay) => ({
+      ...bay,
+      today: dayLoad(schedule, schedule.bays.find((candidate) => candidate.id === bay.id)?.appointments ?? []),
+    }))
 }
 
 /** The bays as the schedule lists them (by name, in service or not), each with the work it holds today. */

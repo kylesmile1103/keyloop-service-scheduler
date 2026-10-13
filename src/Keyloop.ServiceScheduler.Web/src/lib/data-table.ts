@@ -95,3 +95,18 @@ export function resetFilters<TData extends RowData>(table: ReactTable<DataTableF
   table.resetColumnFilters(true)
   table.setGlobalFilter("")
 }
+
+/**
+ * Reset from a control the reset takes away (the "nothing matches" state): focus moves first to the list's search field,
+ * the nearest one around the control, which stays, so it is not lost to the page.
+ */
+export function resetFiltersFrom<TData extends RowData>(table: ReactTable<DataTableFeatures, TData>, control: Element): void {
+  for (let node = control.parentElement; node; node = node.parentElement) {
+    const field = node.querySelector<HTMLInputElement>('input[type="search"]')
+    if (field) {
+      field.focus()
+      break
+    }
+  }
+  resetFilters(table)
+}

@@ -100,6 +100,7 @@ describe("serviceRecords", () => {
     const records = serviceRecords(readingCatalogue, readingTuesday)
 
     expect(records.map((record) => [record.code, record.bookedToday])).toEqual([
+      ["ACCIDENT-DAMAGE-ASSESSMENT", 0],
       ["AIRCON-REGAS", 0],
       ["BRAKES-PADS-DISCS", 1],
       ["DIAG-FAULT-FINDING", 0],
@@ -226,8 +227,8 @@ describe("figures", () => {
 
   it("sums the catalogue: bookable here, booked today and the range of durations", () => {
     expect(serviceFigures(serviceRecords(munichCatalogue, munichTuesday))).toEqual({
-      total: 10,
-      bookable: 5,
+      total: 11,
+      bookable: 6,
       bookedToday: 0,
       servicesBookedToday: 0,
       shortestMinutes: 45,

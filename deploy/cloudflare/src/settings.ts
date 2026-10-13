@@ -1,5 +1,5 @@
 import { accessSettings } from "./auth.ts";
-import { emailCaps, recipientAllowlist, triageSettings } from "./container-env.ts";
+import { apiOtlpSettings, emailCaps, recipientAllowlist, triageSettings } from "./container-env.ts";
 import { grafanaTracesUrl } from "./otlp.ts";
 
 // cloudflare.config.ts evaluates this, so a misconfigured deployment fails `cf build` instead of the first cold start,
@@ -36,6 +36,7 @@ export function edgeSettings(source: Source) {
   const emailSendingEnabled = flag(source, "KEYLOOP_EMAIL_SENDING_ENABLED");
   const otlpRelayEnabled = flag(source, "KEYLOOP_OTLP_RELAY_ENABLED");
   const triageEnabled = flag(source, "KEYLOOP_TRIAGE_ENABLED");
+  const vehicleAwareRequirements = flag(source, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS");
   const triageAccountId = setting(source, "KEYLOOP_TRIAGE_ACCOUNT_ID", "");
   const triageGatewayId = setting(source, "KEYLOOP_TRIAGE_GATEWAY_ID", "keyloop-scheduler");
   const triageBucket = setting(source, "KEYLOOP_TRIAGE_BUCKET", "keyloop-scheduler-triage");
@@ -51,6 +52,9 @@ export function edgeSettings(source: Source) {
   if (otlpRelayEnabled === "true" && !grafanaTracesUrl(grafanaOtlpEndpoint)) {
     throw new Error("The OTLP relay needs KEYLOOP_GRAFANA_OTLP_ENDPOINT as https://otlp-gateway-<region>.grafana.net/otlp");
   }
+  const apiOtlpEnabled = flag(source, "KEYLOOP_API_OTLP_ENABLED");
+  const grafanaInstanceId = setting(source, "KEYLOOP_GRAFANA_INSTANCE_ID", "");
+  apiOtlpSettings(apiOtlpEnabled, grafanaOtlpEndpoint, grafanaInstanceId);
   const emailAllowedAddresses = setting(source, "KEYLOOP_EMAIL_ALLOWED_ADDRESSES", "");
   const emailAllowedDomains = setting(source, "KEYLOOP_EMAIL_ALLOWED_DOMAINS", "");
   recipientAllowlist(emailAllowedAddresses, emailAllowedDomains, notificationsEnabled === "true");
@@ -59,7 +63,7 @@ export function edgeSettings(source: Source) {
   return {
     secretsStoreId, apiImage, authTeamDomain, authAudience, authAdmin, authServiceAdvisor, authViewer, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
     emailAllowedAddresses, emailAllowedDomains, emailMaxPerRecipientPerDay: caps.perRecipient, emailMaxPerDay: caps.perDay,
-    otlpRelayEnabled, grafanaOtlpEndpoint,
-    triageEnabled, triageAccountId, triageGatewayId, triageBucket,
+    otlpRelayEnabled, grafanaOtlpEndpoint, apiOtlpEnabled, grafanaInstanceId,
+    triageEnabled, triageAccountId, triageGatewayId, triageBucket, vehicleAwareRequirements,
   };
 }

@@ -171,7 +171,10 @@ dotnet test --project tests/Keyloop.ServiceScheduler.IntegrationTests -c Release
   --no-build --no-restore --filter "FullyQualifiedName~Concurrency"
 ```
 
-Show the assertions in the concurrency test file while it runs. Explain five
+Show the assertions in the concurrency test file (`ConcurrentBookingTests`)
+while it runs; the same filter also runs the xmin and cancel races and the
+Admin in-flight edit cases, so the summary counts more than the ten contention
+cases. Explain five
 independent contention rounds, no orphan rows/deadlocks, 30 distinct slots all
 succeeding, and independent dealerships avoiding shared contention. End on the
 actual summary. If runtime exceeds the segment, use a clearly labelled recording

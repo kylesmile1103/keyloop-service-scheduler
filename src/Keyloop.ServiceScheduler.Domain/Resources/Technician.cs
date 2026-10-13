@@ -37,6 +37,24 @@ public sealed class Technician : Entity
 
     public bool IsActive { get; private set; }
 
+    public uint RowVersion { get; private set; }
+
+    public void Edit(string name, string employeeNumber, IEnumerable<Certification> certifications, bool isActive,
+        int hvLevel, DateOnly? validUntil, bool confirmed, IEnumerable<string> brandSpecialisms)
+    {
+        var validated = Create(Id, DealershipId, name, employeeNumber, certifications, isActive, hvLevel, validUntil, confirmed, brandSpecialisms);
+        Name = validated.Name;
+        EmployeeNumber = validated.EmployeeNumber;
+        Certifications = validated.Certifications;
+        IsActive = validated.IsActive;
+        SetCompetence(validated.HvLevel, validated.HvLevelValidUntil, validated.HvLevelConfirmed, validated.BrandSpecialisms);
+    }
+
+    public void ConfirmHvLevel() => HvLevelConfirmed = true;
+
+    public void GrantCertification(Certification certification) =>
+        Certifications = Guard.DefinedSet(Certifications.Append(certification), nameof(certification));
+
     public int HvLevel { get; private set; }
     public DateOnly? HvLevelValidUntil { get; private set; }
     public bool HvLevelConfirmed { get; private set; }

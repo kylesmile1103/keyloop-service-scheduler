@@ -1,0 +1,19 @@
+{
+  "type": "self_hosted",
+  "name": "Keyloop scheduler sign-in",
+  "domain": "keyloop.kylesmile.me/auth/*",
+  "destinations": [
+    { "type": "public", "uri": "keyloop.kylesmile.me/auth/*" }
+  ],
+  "session_duration": "1h",
+  "allowed_idps": ["__ONE_TIME_PIN_IDP_ID__"],
+  "auto_redirect_to_identity": true,
+  "app_launcher_visible": false,
+  "path_cookie_attribute": false,
+  "http_only_cookie_attribute": true,
+  "same_site_cookie_attribute": "lax",
+  "enable_binding_cookie": false,
+  "policies": [
+    { "id": "__REVIEWERS_POLICY_ID__", "precedence": 1 }
+  ]
+}

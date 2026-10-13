@@ -11,8 +11,10 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
@@ -204,7 +206,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         var served = JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
         var reference = JsonNode.Parse(await withoutRoute.GetStringAsync("/openapi/v1.json", Ct))!;
 
-        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.Contains("admin", StringComparison.Ordinal));
+        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.StartsWith("/api/v1/admin/", StringComparison.Ordinal));
         JsonNode.DeepEquals(served, reference).ShouldBeTrue("the reseed route changed the OpenAPI document");
     }
 
@@ -279,6 +281,113 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         (await CompetenceAsync(chloe)).ShouldBe((1, new DateOnly(2027, 1, 31), true), "a confirmed level is kept");
         (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == amelia, Ct))).BrandSpecialisms.ShouldBe(["VOLKSWAGEN"]);
         (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == hans, Ct))).BrandSpecialisms.ShouldBe(["BMW"]);
+    }
+
+    [Fact]
+    public async Task Reseed_restores_only_the_named_seeded_damage_certifications_and_keeps_confirmed_levels()
+    {
+        var eva = ReferenceDataSeed.TechnicianId("T-1005");
+        var hans = ReferenceDataSeed.TechnicianId("M-2002");
+        await _factory.WithDbAsync(async db =>
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE technicians SET certifications = array_remove(certifications, 'DamageAssessment') WHERE id IN ({eva}, {hans});
+                UPDATE technicians SET hv_level = 1, hv_level_confirmed = true, hv_level_valid_until = '2027-01-31' WHERE id = {eva};
+                """, Ct);
+            await ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct);
+        });
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == eva, Ct)))
+            .Certifications.ShouldNotContain(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment);
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await _factory.WithDbAsync(async db =>
+        {
+            var technicians = await db.Technicians.AsNoTracking().ToListAsync(Ct);
+            technicians.Where(t => t.Certifications.Contains(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment))
+                .Select(t => t.Id).ShouldBe([eva, hans], ignoreOrder: true);
+            var restored = technicians.Single(t => t.Id == eva);
+            restored.Certifications.ShouldBe([Keyloop.ServiceScheduler.Domain.Resources.Certification.GeneralService,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.AirConditioning, Keyloop.ServiceScheduler.Domain.Resources.Certification.Diagnostics,
+                Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment], ignoreOrder: true);
+        });
+        (await CompetenceAsync(eva)).ShouldBe((1, new DateOnly(2027, 1, 31), true));
+    }
+
+    /// <summary>
+    /// Since Task 30a an unconfirmed level or a missing certification can be an Admin's decision, recorded in the audit history. The reseed
+    /// restores only seeded technicians nobody edited through Admin: it never raises a qualification an Admin lowered, so the latest audit
+    /// <c>after</c> still matches the stored technician.
+    /// </summary>
+    [Fact]
+    public async Task Reseed_keeps_competence_and_certifications_an_Admin_edited()
+    {
+        var amelia = ReferenceDataSeed.TechnicianId("T-1001");
+        var ben = ReferenceDataSeed.TechnicianId("T-1002");
+        var eva = ReferenceDataSeed.TechnicianId("T-1005");
+        // Ben looks migrated and nobody edited him, so the reseed still restores his seeded competence.
+        await _factory.WithDbAsync(db => db.Database.ExecuteSqlAsync(
+            $"UPDATE technicians SET hv_level = 3, hv_level_valid_until = NULL, hv_level_confirmed = false WHERE id = {ben}", Ct));
+        await EditTechnicianAsync(amelia, body =>
+        {
+            body["hvLevel"] = 1;
+            body["hvLevelValidUntil"] = null;
+            body["hvLevelConfirmed"] = false;
+        });
+        await EditTechnicianAsync(eva, body => body["certifications"] = new JsonArray([.. body["certifications"]!.AsArray()
+            .Select(c => c!.GetValue<string>()).Where(c => c != "DamageAssessment").Select(c => (JsonNode)JsonValue.Create(c))]));
+
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+
+        (await CompetenceAsync(amelia)).ShouldBe((1, null, false), "an Admin's unconfirmed level is a person's decision");
+        (await CompetenceAsync(ben)).ShouldBe((3, new DateOnly(2028, 12, 31), true));
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == eva, Ct)))
+            .Certifications.ShouldNotContain(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment);
+    }
+
+    private async Task EditTechnicianAsync(Guid technicianId, Action<JsonNode> edit)
+    {
+        var path = $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/technicians/{technicianId}";
+        using var read = await _client.GetAsync(path, Ct);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, await read.Content.ReadAsStringAsync(Ct));
+        var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!;
+        edit(body);
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", read.Headers.ETag!.ToString());
+        using var saved = await _client.SendAsync(request, Ct);
+        saved.StatusCode.ShouldBe(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync(Ct));
+    }
+
+    /// <summary>
+    /// The reseed logs <c>1107</c> after its transaction commits, from what the committed attempt published: a first attempt whose commit
+    /// fails rolls back and logs nothing, and the retry logs each version once.
+    /// </summary>
+    [Fact]
+    public async Task Reseed_logs_each_published_policy_once_after_commit_and_nothing_for_a_rolled_back_attempt()
+    {
+        var probe = new PolicyPublicationProbe(pg.ConnectionString);
+        var loss = new CommitAcknowledgementLoss { BeforeCommit = true };
+        await using var host = Demo(seedDemoData: true, key: Key, builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<ILoggerProvider>(probe);
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss)); // inert until armed
+        }));
+        using var client = host.CreateClient();
+        await _factory.WithDbAsync(db => PolicyPublicationProbe.RevertToBeforeTask32aAsync(db, Ct));
+
+        loss.Arm(); // the reseed transaction's first commit is the next commit in this host
+        using var response = await ReseedAsync(client, Key);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        loss.Fired.ShouldBe(1);
+        probe.Lines.Select(line => (line.DealershipId, line.Version, line.Previous, line.Committed)).ShouldBe([
+            (ReferenceDataSeed.ReadingDealershipId, 2, 1, true),
+            (ReferenceDataSeed.MunichDealershipId, 2, 1, true),
+        ], ignoreOrder: true);
+        (await _factory.WithDbAsync(db => db.RequirementRules.AsNoTracking().CountAsync(r => r.PolicyVersion == 2, Ct))).ShouldBe(14);
     }
 
     private Task<(int Level, DateOnly? ValidUntil, bool Confirmed)> CompetenceAsync(Guid technicianId) =>

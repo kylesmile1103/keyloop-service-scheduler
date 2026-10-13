@@ -1,3 +1,6 @@
+using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
+using Keyloop.ServiceScheduler.Api.Features.Admin.History;
 using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
@@ -43,6 +46,19 @@ public static class EndpointRegistry
         GetCurrentUserEndpoint.Map(group);
         ResolveVehicleProfileEndpoint.Map(group);
         GetFeaturesEndpoint.Map(group);
+        ListAdminTechniciansEndpoint.Map(group);
+        GetAdminTechnicianEndpoint.Map(group);
+        CreateTechnicianEndpoint.Map(group);
+        EditTechnicianEndpoint.Map(group);
+        ConfirmTechnicianHvLevelEndpoint.Map(group);
+        ListAdminBaysEndpoint.Map(group);
+        GetAdminBayEndpoint.Map(group);
+        CreateBayEndpoint.Map(group);
+        EditBayEndpoint.Map(group);
+        GetRequirementPolicyEndpoint.Map(group);
+        EditRequirementPolicyEndpoint.Map(group);
+        GetAdminHistoryEndpoint.Map(group);
+
 
         // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;

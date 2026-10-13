@@ -19,6 +19,7 @@ POLICY = DOMAIN / "Scheduling/AllocationPolicy.cs"
 RESOLVER = DOMAIN / "Scheduling/RequirementResolver.cs"
 TECHNICIAN = DOMAIN / "Resources/Technician.cs"
 BAY = DOMAIN / "Resources/ServiceBay.cs"
+RULES = DOMAIN / "Scheduling/RequirementRule.cs"
 OUT = ROOT / "artifacts/allocation-mutations"
 OUT.mkdir(parents=True, exist_ok=True)
 probes = [
@@ -48,6 +49,10 @@ probes = [
     ("resolver-legacy-explanation", RESOLVER, "legacyComponentWork ? new List<string> { LegacyHvComponentRule } : []", "new List<string>()"),
     ("resolver-order", RESOLVER, "rules.OrderBy(r => r.Order)", "rules.OrderByDescending(r => r.Order)"),
     ("resolver-unknown-inherits", RESOLVER, "|| (powertrain == Powertrain.Unknown && rule.Powertrains.Any(p => p != Powertrain.Ice))", ""),
+    ("post-collision-level", RULES, 'Rule(PostCollisionRuleCode, 45, 3, ["ACCIDENT-DAMAGE-ASSESSMENT"])',
+        'Rule(PostCollisionRuleCode, 45, 2, ["ACCIDENT-DAMAGE-ASSESSMENT"])'),
+    ("post-collision-scope", RULES, 'Rule(PostCollisionRuleCode, 45, 3, ["ACCIDENT-DAMAGE-ASSESSMENT"])',
+        'Rule(PostCollisionRuleCode, 45, 3, ["DIAG-FAULT-FINDING"])'),
     # Qualification predicates.
     ("technician-active", TECHNICIAN, "DateOnly localDate) => IsActive", "DateOnly localDate) => true"),
     ("technician-certifications", TECHNICIAN, "&& requirements.Certifications.IsSubsetOf(Certifications) &&", "&&"),

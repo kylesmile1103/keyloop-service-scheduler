@@ -11,6 +11,7 @@ internal sealed class ServiceBayConfiguration : IEntityTypeConfiguration<Service
     public void Configure(EntityTypeBuilder<ServiceBay> builder)
     {
         builder.ToTable("service_bays");
+        builder.Property(r => r.RowVersion).IsRowVersion();
         builder.HasKey(b => b.Id);
         builder.Property(b => b.Id).ValueGeneratedNever();
         builder.Property(b => b.Name).HasMaxLength(100);

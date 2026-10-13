@@ -19,21 +19,22 @@ internal static class ClefAnswerValidator
 
         var body = run?.Result ?? run;
         var answers = body?.Answers ?? envelope.Answers;
-        if (answers is null || answers.Count != 2 || !answers.TryGetValue("service", out var service) ||
-            !answers.TryGetValue("preferred_date", out var date))
+        if (answers is null || answers.Count != 3 || !answers.TryGetValue("service", out var service) ||
+            !answers.TryGetValue("preferred_date", out var date) || !answers.TryGetValue("uncovered_issue", out var uncovered))
         {
             throw new TriageUnavailableException("invalid-answer");
         }
 
         ValidateChoice(service, request.Questions["service"].Criteria);
         ValidateChoice(date, request.Questions["preferred_date"].Criteria);
+        ValidateChoice(uncovered, request.Questions["uncovered_issue"].Criteria);
         var tokens = (body?.Usage ?? envelope.Usage)?.InputTokens;
         if (tokens < 0)
         {
             throw new TriageUnavailableException("invalid-answer");
         }
 
-        return new(service, date, tokens);
+        return new(service, date, uncovered, tokens);
     }
 
     private static void ValidateChoice(ClefAnswer? answer, JsonObject options)

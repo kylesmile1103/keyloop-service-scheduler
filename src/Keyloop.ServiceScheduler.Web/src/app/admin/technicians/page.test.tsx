@@ -47,8 +47,10 @@ describe("technicians list", () => {
     expect(columnTexts(list, "Booked today")).toEqual(["1 h", "1 h", "2 h 15 min", "2 h", "0 min", "45 min"])
     expect(columnTexts(list, "Status")).toEqual(Array(6).fill("Active"))
     // The certifications are the board's badges, read out once as a list.
-    const [amelia] = bodyRows(list)
+    const [amelia, , , , eva] = bodyRows(list)
     expect(within(amelia).getByText("Certified for: Brakes, MOT tester, General service.")).toBeInTheDocument()
+    // Task 32a's certification, in its own words.
+    expect(within(eva).getByText("Certified for: Diagnostics, Air-con, Damage assessment, General service.")).toBeInTheDocument()
     // One read of today's schedule, in the dealership's own calendar; the day and zone are named.
     expect(requestsTo(requests, "/schedule").map((request) => new URL(request.url).search)).toContain("?date=2026-10-13")
     expect(screen.getByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
@@ -57,12 +59,13 @@ describe("technicians list", () => {
     expect(document.title).toBe("Technicians – Keyloop Service Scheduler")
   })
 
-  it("is read-only: no control adds, edits or removes a technician", async () => {
+  it("is read-only for a Service advisor: Add technician is unavailable with the reason, and no row has actions", async () => {
     mockBoardApi()
     renderBoard(page)
 
     await table()
-    expect(screen.queryByRole("button", { name: /add|new|edit|delete|remove/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add technician" })).toHaveAttribute("aria-disabled", "true")
+    expect(screen.queryByRole("button", { name: /edit|delete|remove|^actions for/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: /name/i })).not.toBeInTheDocument()
   })
 
@@ -102,6 +105,7 @@ describe("technicians list", () => {
     const list = await table()
     const certified = await openFilter("Certified for")
     expect(within(certified).getByRole("checkbox", { name: "MOT tester (2 technicians)" })).toBeInTheDocument()
+    expect(within(certified).getByRole("checkbox", { name: "Damage assessment (1 technician)" })).toBeInTheDocument()
     fireEvent.click(within(certified).getByRole("checkbox", { name: "MOT tester (2 technicians)" }))
     await waitFor(() => expect(columnTexts(list, "Technician")).toEqual(["ACAmelia Clarke", "FHFarid Haddad"]))
     fireEvent.keyDown(certified, { key: "Escape" })

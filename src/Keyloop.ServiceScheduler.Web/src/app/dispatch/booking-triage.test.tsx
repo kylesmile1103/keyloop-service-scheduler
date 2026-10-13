@@ -200,7 +200,8 @@ describe("suggesting a service from the issue", () => {
     const scope = await openDialog()
     await describeAndSuggest(scope, "Can you deliver a pizza?")
 
-    expect(await within(scope).findByText("No service here matches the description. Choose the service yourself below.")).toBeInTheDocument()
+    // What a no-match says and offers is Task 32b's (booking-triage-guidance.test.tsx); here, the manual choice stays open.
+    expect(await within(scope).findByText("The workshop’s bookable services do not cover what you described.")).toBeInTheDocument()
     expect(within(scope).queryByRole("radiogroup", { name: "Suggested services" })).not.toBeInTheDocument()
     expect(within(scope).queryByRole("button", { name: "Use this" })).not.toBeInTheDocument()
 

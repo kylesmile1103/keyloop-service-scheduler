@@ -21,6 +21,7 @@ public static partial class AppointmentMapper
     [MapProperty(nameof(@Appointment.Slot.StartUtc), nameof(AppointmentResponse.StartUtc))]
     [MapProperty(nameof(@Appointment.Slot.EndUtc), nameof(AppointmentResponse.EndUtc))]
     [MapProperty(nameof(Appointment.AllocationDecision), nameof(AppointmentResponse.Allocation))]
+    [MapperIgnoreTarget(nameof(AppointmentResponse.CompetenceWarning))]
     public static partial AppointmentResponse ToResponse(
         Appointment appointment, ServiceTypeSummary serviceType, ResourceSummary bay, ResourceSummary technician, string startLocal, string endLocal);
 

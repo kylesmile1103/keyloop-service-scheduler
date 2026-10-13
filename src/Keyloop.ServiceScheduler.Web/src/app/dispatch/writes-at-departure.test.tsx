@@ -3,17 +3,20 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 
 import type { CurrentUserResponse } from "@/api/types.gen"
+import { routes } from "@/config/routes"
 import { client } from "@/lib/api-client"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { currentUserQueryKey } from "@/lib/session"
 import { clearCallerData } from "@/lib/session-cache"
+import { adminServer } from "@/test/admin-api"
 import { bookedFrom, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
-import { availabilityOn, interimServiceType } from "@/test/schedules"
+import { availabilityOn, bays as bayIds, interimServiceType, technicians as technicianIds } from "@/test/schedules"
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
+import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
 // Review round 3: a write's account is checked at the last moment it can be, inside the fetch the generated client calls
 // for each of the write's requests, once the client's own awaited preparation (its auth parameters, its request
@@ -33,6 +36,9 @@ import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } fro
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])
+  // The Resources area's pages (Task 30b's edits, below), through the routes' own lazy imports.
+  const resources = routes.find((route) => route.path === "/resources")!
+  await Promise.all([resources, ...resources.children!].map((route) => (route.lazy as (() => Promise<unknown>) | undefined)?.()))
 })
 
 beforeEach(() => {
@@ -204,6 +210,8 @@ interface WritePath {
    * caller's).
    */
   later?: true
+  /** Needs vehicle-aware requirements on (the VIN look-up, Task 31b). */
+  vehicleAware?: true
   open: () => Promise<() => void>
   carries: string[]
   answered: () => Promise<unknown>
@@ -265,6 +273,20 @@ const writePaths: WritePath[] = [
     },
     carries: bookingDetails,
     answered: () => screen.findByText("Booked"),
+  },
+  {
+    // Task 31b: the VIN look-up is a BookingsWrite like Book, its VIN in the body only.
+    name: "Look up (the VIN's manufacturer)",
+    path: "/vehicle-profiles/resolve",
+    nth: 1,
+    vehicleAware: true,
+    open: async () => {
+      const dialog = await openBooking()
+      await enterBooking(dialog)
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Look up" }))
+    },
+    carries: [customer.VIN],
+    answered: () => screen.findByText("VOLKSWAGEN"),
   },
   {
     name: "Cancel appointment",
@@ -410,6 +432,7 @@ function boardApi(session: Session, write: WritePath) {
     serviceTypes: () => [interimServiceType, brakesServiceType],
     availability: (_, __, date) => availabilityOn(date),
     triageStatus: () => triageEnabled,
+    features: () => (write.vehicleAware ? vehicleAwareOn : vehicleAwareOff),
     book: (_, body) => {
       books++
       if (books === 1 && write.firstFails === "book-503") return new Response("", { status: 503, statusText: "Service Unavailable" })
@@ -461,6 +484,7 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
     expect(screen.queryAllByText("Booked")).toHaveLength(0)
     expect(screen.queryAllByText("Appointment cancelled")).toHaveLength(0)
     expect(screen.queryByRole("radiogroup", { name: "Suggested services" })).not.toBeInTheDocument()
+    expect(screen.queryAllByText("VOLKSWAGEN")).toHaveLength(0)
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
     for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)
@@ -547,5 +571,247 @@ describe.each([
     for (const outcome of outcomes) expect(outcome).toEqual({ ...outcome, sent: outcome.reachedFetch })
     expect(outcomes.some((outcome) => outcome.reachedFetch === 0)).toBe(true)
     expect(outcomes.some((outcome) => outcome.reachedFetch === 1)).toBe(true)
+  })
+})
+
+// Task 30b: an Admin's edits in the Resources area are writes bound the same way, to an Admin (`writes: "admin"`). Each is
+// checked inside the fetch its request is given, so a change of who is signed in while the generated client prepares the
+// request sends nothing: signed out, a Viewer, `/me` unreadable, another Admin, and also the same email as a Service
+// advisor, which may still book but not edit. The same Admin gaining another role is the same writer.
+
+const technicians = `/resources/technicians?dealership=${reading.id}`
+const bayList = `/resources/bays?dealership=${reading.id}`
+const policyPage = `/resources/policy?dealership=${reading.id}`
+const privateName = "Private Previous Admin Name"
+
+/** Requests of one method to a path that ends with `suffix`. */
+const sent = (requests: readonly Request[], method: string, suffix: string) =>
+  requests.filter((request) => request.method === method && new URL(request.url).pathname.endsWith(suffix))
+
+interface AdminWritePath {
+  name: string
+  page: string
+  method: "POST" | "PUT"
+  path: string
+  /** The server's state for this path (a level nobody confirmed, for Confirm HV level). */
+  server?: Parameters<typeof adminServer>[0]
+  open: () => Promise<() => void>
+  carries: string[]
+  answered: () => Promise<unknown>
+}
+
+async function adminRowAction(name: string, action: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Actions for ${name}` }, { timeout: 10_000 }))
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }))
+}
+
+const adminWritePaths: AdminWritePath[] = [
+  {
+    name: "Save changes to a technician",
+    page: technicians,
+    method: "PUT",
+    path: `/technicians/${technicianIds.ben.id}`,
+    open: async () => {
+      await adminRowAction("Ben Okafor", "Edit")
+      const sheet = await screen.findByRole("dialog", { name: "Edit Ben Okafor" })
+      const name = await within(sheet).findByRole("textbox", { name: "Name" })
+      await waitFor(() => expect(name).toHaveValue("Ben Okafor"))
+      fireEvent.change(name, { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Save changes" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Technician saved"),
+  },
+  {
+    name: "Add technician",
+    page: technicians,
+    method: "POST",
+    path: "/technicians",
+    open: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add technician" }, { timeout: 10_000 }))
+      const sheet = await screen.findByRole("dialog", { name: "Add technician" })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: privateName } })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Employee number" }), { target: { value: "T-7777" } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Add technician" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Technician added"),
+  },
+  {
+    name: "Confirm HV level",
+    page: technicians,
+    method: "POST",
+    path: "/confirm-hv-level",
+    server: { technicians: (records) => records.map((record) => (record.id === technicianIds.ben.id ? { ...record, hvLevelConfirmed: false } : record)) },
+    open: async () => {
+      const note = await screen.findByRole("region", { name: "HV levels to review" }, { timeout: 10_000 })
+      const button = within(note).getByRole("button", { name: "Confirm Ben Okafor's level" })
+      return () => fireEvent.click(button)
+    },
+    carries: [],
+    answered: () => screen.findByText("HV level confirmed"),
+  },
+  {
+    name: "Deactivate a technician",
+    page: technicians,
+    method: "PUT",
+    path: `/technicians/${technicianIds.ben.id}`,
+    open: async () => {
+      await adminRowAction("Ben Okafor", "Deactivate")
+      const dialog = await screen.findByRole("dialog", { name: "Deactivate Ben Okafor?" })
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Technician deactivated"),
+  },
+  {
+    name: "Save changes to a bay",
+    page: bayList,
+    method: "PUT",
+    path: `/bays/${bayIds.ev.id}`,
+    open: async () => {
+      await adminRowAction("Bay 4 - EV", "Edit")
+      const sheet = await screen.findByRole("dialog", { name: "Edit Bay 4 - EV" })
+      const name = await within(sheet).findByRole("textbox", { name: "Name" })
+      await waitFor(() => expect(name).toHaveValue("Bay 4 - EV"))
+      fireEvent.change(name, { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Save changes" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Bay saved"),
+  },
+  {
+    name: "Add bay",
+    page: bayList,
+    method: "POST",
+    path: "/bays",
+    open: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add bay" }, { timeout: 10_000 }))
+      const sheet = await screen.findByRole("dialog", { name: "Add bay" })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Add bay" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Bay added"),
+  },
+  {
+    name: "Take a bay out of service",
+    page: bayList,
+    method: "PUT",
+    path: `/bays/${bayIds.ev.id}`,
+    open: async () => {
+      await adminRowAction("Bay 4 - EV", "Take out of service")
+      const dialog = await screen.findByRole("dialog", { name: "Take Bay 4 - EV out of service?" })
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Take out of service" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Bay taken out of service"),
+  },
+  {
+    name: "Preview changes to the requirement policy",
+    page: policyPage,
+    method: "PUT",
+    path: "/requirement-policy",
+    open: async () => {
+      await raiseRoutineRule()
+      return () => fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+    },
+    carries: [],
+    answered: () => screen.findByRole("region", { name: "What version 3 would change" }),
+  },
+  {
+    name: "Publish the requirement policy",
+    page: policyPage,
+    method: "PUT",
+    path: "/requirement-policy",
+    open: async () => {
+      await raiseRoutineRule()
+      fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+      await screen.findByRole("region", { name: "What version 3 would change" })
+      return () => fireEvent.click(screen.getByRole("button", { name: "Publish version 3" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Policy version 3 published"),
+  },
+]
+
+/** The draft every policy path starts from: the routine rule raised to level 4. */
+async function raiseRoutineRule() {
+  fireEvent.click(await screen.findByRole("button", { name: "Edit hv-routine" }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole("dialog", { name: "Edit rule hv-routine" })
+  fireEvent.click(within(dialog).getByRole("radio", { name: "Level 4, Live working" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save rule" }))
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit rule hv-routine" })).not.toBeInTheDocument())
+}
+
+/**
+ * Changes who is signed in while the generated client prepares the first `method` request to `path` from now on (as
+ * `changeWhilePreparing`, for any method): records how many had reached fetch when the change landed.
+ */
+function changeWhileSending(api: { requests: Request[] }, queryClient: QueryClient, session: Session, method: string, path: string, change: Change) {
+  const at = { before: sent(api.requests, method, path).length, prepared: 0, reachedFetch: -1 }
+  const interceptor = (request: Request) => {
+    if (request.method === method && new URL(request.url).pathname.endsWith(path) && ++at.prepared === 1) {
+      at.reachedFetch = sent(api.requests, method, path).length
+      queueMicrotask(() => change.apply(queryClient, session))
+    }
+    return request
+  }
+  client.interceptors.request.use(interceptor)
+  onTestFinished(() => client.interceptors.request.eject(interceptor))
+  return at
+}
+
+function adminApi(session: Session, write: AdminWritePath) {
+  const me = () => session.me
+  return mockBoardApi({
+    me: () => (session.meFails ? problemResponse(500, { type: "about:blank", title: "Internal Server Error", status: 500 }) : session.me),
+    features: () => vehicleAwareOn,
+    admin: adminServer({ me, ...write.server }),
+  })
+}
+
+/** The same Admin with another role besides: the same writer. */
+const adminAlsoViewer: CurrentUserResponse = { ...admin, roles: ["Admin", "Viewer"] }
+
+describe.each(adminWritePaths)("$name, an Admin's edit, while the generated client prepares its request", (write) => {
+  it.each<Change>([
+    becomes("signs out", anonymous),
+    becomes("becomes a Viewer", viewer),
+    meFails,
+    becomes("is another Admin", otherAdmin),
+    becomes("is the same email as a Service advisor, who may book but not edit", sameEmailAdvisor),
+  ])("sends nothing when who is signed in $name, and keeps nothing of it", async (change) => {
+    const session: Session = { me: admin, meFails: false }
+    const api = adminApi(session, write)
+    const { queryClient } = renderBoard(write.page)
+    const press = await write.open()
+
+    const at = changeWhileSending(api, queryClient, session, write.method, write.path, change)
+    press()
+    await settle()
+
+    expect(at.prepared).toBe(1)
+    expect(at.reachedFetch).toBe(at.before)
+    expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before)
+    expect(screen.queryAllByText(/^(Technician|Bay) (saved|added|deactivated|taken out of service)$|^HV level confirmed$|^Policy version \d+ published$/)).toHaveLength(0)
+    expect(screen.queryByRole("region", { name: /^What version \d+ would change$/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+    for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)
+  })
+
+  it("is still sent, once, and its answer used, when the same Admin gains another role", async () => {
+    const session: Session = { me: admin, meFails: false }
+    const api = adminApi(session, write)
+    const { queryClient } = renderBoard(write.page)
+    const press = await write.open()
+
+    const at = changeWhileSending(api, queryClient, session, write.method, write.path, becomes("same Admin", adminAlsoViewer))
+    press()
+
+    expect(await write.answered()).toBeInTheDocument()
+    expect(at.reachedFetch).toBe(at.before)
+    expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before + 1)
   })
 })

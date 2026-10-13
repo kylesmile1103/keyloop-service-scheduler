@@ -1,4 +1,8 @@
 using System.Text.Json.Serialization;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
+using Keyloop.ServiceScheduler.Api.Features.Admin.History;
+
 using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 using Keyloop.ServiceScheduler.Api.Features.Identity.GetCurrentUser;
 using Keyloop.ServiceScheduler.Api.Features.FeatureSwitches.GetFeatures;
@@ -102,6 +106,7 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(TriageBookingResponse))]
 [JsonSerializable(typeof(TriageServiceCandidate))]
 [JsonSerializable(typeof(TriagePreferredDate))]
+[JsonSerializable(typeof(TriageUncoveredIssue))]
 [JsonSerializable(typeof(UploadBookingTriageImageRequest))]
 [JsonSerializable(typeof(UploadBookingTriageImageResponse))]
 // The date-range appointments read (shared summaries and status are registered above) and the current caller.
@@ -110,4 +115,17 @@ namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 [JsonSerializable(typeof(CurrentUserResponse))]
 [JsonSerializable(typeof(FeatureSwitchesResponse))]
 [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails))]
+[JsonSerializable(typeof(TechnicianWriteRequest))]
+[JsonSerializable(typeof(BayWriteRequest))]
+[JsonSerializable(typeof(AdminTechnicianResponse))]
+[JsonSerializable(typeof(AdminBayResponse))]
+[JsonSerializable(typeof(IReadOnlyList<AdminTechnicianResponse>))]
+[JsonSerializable(typeof(IReadOnlyList<AdminBayResponse>))]
+[JsonSerializable(typeof(RequirementRuleInput[]))]
+[JsonSerializable(typeof(PolicyWriteRequest))]
+[JsonSerializable(typeof(AdminPolicyResponse))]
+[JsonSerializable(typeof(PolicyEditResponse))]
+[JsonSerializable(typeof(PolicyPreviewTokenInput))]
+[JsonSerializable(typeof(CompetenceWarningResponse))]
+[JsonSerializable(typeof(AdminHistoryResponse))]
 internal sealed partial class SchedulerJsonContext : JsonSerializerContext;

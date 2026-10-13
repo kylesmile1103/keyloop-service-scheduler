@@ -26,8 +26,12 @@ internal static class ServiceTriageRubric
         ["HEAVY-VAN-SERVICE"] = new("Heavy Van Service", "Scheduled maintenance for a heavy commercial van",
             ["heavy van service due", "commercial van maintenance"], ["passenger car routine service", "specific EV charging fault"]),
         ["AIRCON-REGAS"] = new("Air-Con Regas", "Air conditioning refrigerant recharge and performance check",
-            ["air conditioning not cold", "weak cabin cooling", "aircon regas"], ["engine overheating", "heater not warm", "EV charging fault"]),
+            ["air conditioning not cold", "weak cabin cooling", "aircon regas"], ["air conditioning will not switch on", "electrical or compressor fault before diagnosis", "engine overheating", "heater not warm", "EV charging fault"]),
         ["DIAG-FAULT-FINDING"] = new("Diagnostic Fault Finding", "General vehicle fault and warning light diagnosis",
-            ["engine warning light", "rough running", "unexplained fault code", "vehicle will not start"], ["known brake pad wear", "EV charging fault", "routine scheduled service"]),
+            ["engine warning light", "rough running", "unexplained fault code", "vehicle will not start", "air conditioning will not switch on"],
+            ["known brake pad wear", "EV charging fault", "routine scheduled service", "collision damage assessment", "bodywork or headlight repair"]),
+        ["ACCIDENT-DAMAGE-ASSESSMENT"] = new("Accident Damage Assessment", "Inspection and estimate of collision damage, not the repair itself",
+            ["crash damage", "dented panel or bumper after impact", "broken headlights after a collision", "impact damage to glass, wheels or suspension"],
+            ["bodywork or paint repair", "glass or tyre replacement", "headlight fault without an impact", "unrelated air conditioning fault", "live high voltage diagnosis"]),
     }.ToFrozenDictionary(StringComparer.Ordinal);
 }

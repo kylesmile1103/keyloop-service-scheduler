@@ -37,9 +37,13 @@ export default defineConfig({
     },
     exports: { ApiContainer: exports.durableObject({ storage: "sqlite", container: api }) },
     env: {
+      CF_VERSION_METADATA: bindings.versionMetadata(),
       ASSETS: bindings.assets(),
       API: bindings.durableObject({ worker: "keyloop-scheduler", exportName: "ApiContainer" }),
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),
+      // Part of the container start fingerprint (src/index.ts), so a rollout to another image restarts the container
+      // with the current configuration instead of the start options the platform kept from the previous image.
+      API_IMAGE: bindings.text(settings.apiImage),
       ...(settings.triageEnabled === "true" ? {
         AI_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_ai_token" }),
         TRIAGE_IMAGES: bindings.r2({ name: settings.triageBucket }),
@@ -52,6 +56,8 @@ export default defineConfig({
       TRIAGE_ENABLED: bindings.text(settings.triageEnabled),
       TRIAGE_ACCOUNT_ID: bindings.text(settings.triageAccountId),
       TRIAGE_GATEWAY_ID: bindings.text(settings.triageGatewayId),
+      // ADR-029's vehicle-aware booking for this deployment; the API's Production default stays false (src/container-env.ts).
+      VEHICLE_AWARE_REQUIREMENTS: bindings.text(settings.vehicleAwareRequirements),
       EMAIL: bindings.sendEmail({ allowedSenderAddresses: ["notifications@keyloop.kylesmile.me"] }),
       // Disabled integrations must not require provisioning unused credentials.
       ...(settings.emailTransport === "rest" ? {
@@ -59,6 +65,10 @@ export default defineConfig({
       } : {}),
       ...(settings.otlpRelayEnabled === "true" ? {
         GRAFANA_OTLP_BASIC_BROWSER: bindings.secretsStoreSecret({ storeId, secretName: "grafana-otlp-basic-browser" }),
+      } : {}),
+      // Read by the Durable Object at container start only; it never reaches a Worker response or the browser.
+      ...(settings.apiOtlpEnabled === "true" ? {
+        API_OTLP_TOKEN: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_api_otlp_token" }),
       } : {}),
       NOTIFY_FROM: bindings.text("notifications@keyloop.kylesmile.me"),
       NOTIFY_FROM_NAME: bindings.text("Keyloop Service Scheduler (demo)"),
@@ -72,6 +82,8 @@ export default defineConfig({
       EMAIL_MAX_PER_DAY: bindings.text(settings.emailMaxPerDay),
       OTLP_RELAY_ENABLED: bindings.text(settings.otlpRelayEnabled),
       GRAFANA_OTLP_ENDPOINT: bindings.text(settings.grafanaOtlpEndpoint),
+      API_OTLP_ENABLED: bindings.text(settings.apiOtlpEnabled),
+      GRAFANA_INSTANCE_ID: bindings.text(settings.grafanaInstanceId),
       OTLP_RELAY_LIMITER: bindings.rateLimit({ namespace: "2001", simple: { limit: 120, period: 60 } }),
     },
   },

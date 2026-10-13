@@ -3,9 +3,18 @@ import type { ServiceTypeResponse } from "@/api/types.gen"
 /**
  * The seeded service catalogue (ReferenceDataSeed) as GET /dealerships/{id}/service-types answers it, by name, with the real
  * deterministic ids. The catalogue is global; `bookable` is per dealership: Reading has a qualifying active bay and
- * technician for every service, München (three bays, three technicians) for five of the ten.
+ * technician for every service, München (three bays, three technicians) for six of the eleven.
  */
 const catalogue: ReadonlyArray<Omit<ServiceTypeResponse, "bookable">> = [
+  {
+    // Task 32a: an inspection and estimate after a collision, on a standard lift, by a damage-assessment-certified technician.
+    id: "651b016b-c559-8313-9f1c-d22ecd706059",
+    code: "ACCIDENT-DAMAGE-ASSESSMENT",
+    name: "Accident Damage Assessment",
+    durationMinutes: 60,
+    requiredBayCapabilities: ["StandardLift"],
+    requiredCertifications: ["DamageAssessment"],
+  },
   {
     id: "c45da81b-7ca9-85dc-b60e-a3af8edf6ee4",
     code: "AIRCON-REGAS",
@@ -88,11 +97,14 @@ const catalogue: ReadonlyArray<Omit<ServiceTypeResponse, "bookable">> = [
   },
 ]
 
-/** The services München can book: it has no MOT, alignment, air-con or diagnostics bay, and no technician with both EV and diagnostics. */
-const munichBookable = new Set(["BRAKES-PADS-DISCS", "EV-BATTERY-CHECK", "FULL-SERVICE", "HEAVY-VAN-SERVICE", "INTERIM-SERVICE"])
+/**
+ * The services München can book: it has no MOT, alignment, air-con or diagnostics bay, and no technician with both EV and
+ * diagnostics; Hans Richter assesses accident damage (Task 32a).
+ */
+const munichBookable = new Set(["ACCIDENT-DAMAGE-ASSESSMENT", "BRAKES-PADS-DISCS", "EV-BATTERY-CHECK", "FULL-SERVICE", "HEAVY-VAN-SERVICE", "INTERIM-SERVICE"])
 
 /** Reading's catalogue: every service can be booked there. */
 export const readingCatalogue: ServiceTypeResponse[] = catalogue.map((service) => ({ ...service, bookable: true }))
 
-/** München's catalogue, five of the ten bookable. */
+/** München's catalogue, six of the eleven bookable. */
 export const munichCatalogue: ServiceTypeResponse[] = catalogue.map((service) => ({ ...service, bookable: munichBookable.has(service.code) }))

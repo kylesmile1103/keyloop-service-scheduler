@@ -17,6 +17,7 @@ import {
   NO_ROLE_REASON,
   READ_ONLY_REASON,
   type Role,
+  adminWriterOf,
   writerOf,
 } from "@/lib/session"
 
@@ -41,6 +42,11 @@ export interface CurrentUser extends Capabilities {
    * What a view holds for a write (a booking being entered) belongs to it.
    */
   writer: string | null
+  /**
+   * The account whose Admin edits this identity may send (`adminWriterOf`: an Admin's email), else `null`. An edit being
+   * entered in the Resources area belongs to it.
+   */
+  adminWriter: string | null
   /** Where Sign out leads (the hostname's Access logout), when `/me` offers one; Sign in builds its own (`signInHref`). */
   logoutUrl: string | null
   source: IdentitySource
@@ -72,6 +78,7 @@ export function useCurrentUser(): CurrentUser {
     authenticated: user?.authenticated === true,
     roles: user?.authenticated ? knownRoles(user.roles) : [],
     writer: writerOf(user),
+    adminWriter: adminWriterOf(user),
     ...capabilitiesOf(user),
     logoutUrl: user?.logoutUrl ? LOGOUT_PATH : null,
     source: identitySource(),

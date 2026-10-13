@@ -6,6 +6,9 @@ import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { munichCatalogue } from "@/test/catalogue"
 import { munich, reading } from "@/test/dealerships"
 import { problemResponse } from "@/test/mock-api"
+import type { AdminTechnicianResponse } from "@/api/types.gen"
+import { adminServer } from "@/test/admin-api"
+import { admin as adminIdentity } from "@/test/identities"
 import { readingTuesday, technicians } from "@/test/schedules"
 
 import { createSchedulerDataProvider, RESOURCE_NAMES } from "./data-provider"
@@ -29,7 +32,7 @@ afterEach(() => {
 })
 
 describe("the resources data provider", () => {
-  it("names the three read-only resources", () => {
+  it("names its three resources", () => {
     expect(RESOURCE_NAMES).toEqual(["technicians", "bays", "services"])
   })
 
@@ -59,7 +62,7 @@ describe("the resources data provider", () => {
 
     const services = await dataProvider.getList<ServiceRecord>({ resource: "services", meta: { ...meta, dealershipId: munich.id } })
 
-    expect(services.total).toBe(10)
+    expect(services.total).toBe(11)
     expect(services.data.find((record) => record.code === "MOT-TEST")).toMatchObject({
       bookable: false,
       bookedToday: 0,
@@ -144,16 +147,116 @@ describe("the resources data provider", () => {
     })
   })
 
-  it("is read-only: creating, changing or deleting fails loudly until editing is built", async () => {
-    const { requests } = mockBoardApi()
+  it("lists the roster for an Admin from the Admin read, each with its version, and today's work from the schedule", async () => {
+    const admin = adminServer()
+    const { requests } = mockBoardApi({ me: () => adminIdentity, admin })
     const { dataProvider } = setup()
-    const readOnly = { statusCode: 405, message: "The technicians list is read-only." }
 
-    await expect(dataProvider.create({ resource: "technicians", variables: { name: "New" }, meta })).rejects.toMatchObject(readOnly)
-    await expect(dataProvider.update({ resource: "technicians", id: technicians.ben.id, variables: { name: "Ben" }, meta })).rejects.toMatchObject(
-      readOnly
-    )
-    await expect(dataProvider.deleteOne({ resource: "technicians", id: technicians.ben.id, meta })).rejects.toMatchObject(readOnly)
+    const people = await dataProvider.getList<TechnicianRecord>({ resource: "technicians", meta: { ...meta, view: "admin" } })
+    const lanes = await dataProvider.getList<BayRecord>({ resource: "bays", meta: { ...meta, view: "admin" } })
+
+    expect(people.data.map((record) => record.name)).toEqual(readingTuesday.technicians.map((entry) => entry.name))
+    expect(people.data.find((record) => record.id === technicians.chloe.id)).toMatchObject({
+      version: admin.state.technicians.find((record) => record.id === technicians.chloe.id)!.version,
+      hvLevel: 2,
+      hvLevelConfirmed: true,
+      today: { appointments: 2, bookedMinutes: 135, windowMinutes: 600 },
+    })
+    expect(lanes.data.every((record) => typeof record.version === "number")).toBe(true)
+    expect(requestsTo(requests, "/technicians")).toHaveLength(1)
+    expect(requestsTo(requests, "/bays")).toHaveLength(1)
+    // The day's load still comes from the board's one schedule read.
+    expect(requestsTo(requests, "/schedule")).toHaveLength(1)
+  })
+
+  it("reads one record for an Admin's form from the Admin read, fresh, with its version", async () => {
+    const admin = adminServer()
+    const { requests } = mockBoardApi({ me: () => adminIdentity, admin })
+    const { dataProvider } = setup()
+
+    await expect(dataProvider.getOne<TechnicianRecord>({ resource: "technicians", id: technicians.ben.id, meta: { ...meta, view: "admin" } })).resolves.toMatchObject({
+      data: { name: "Ben Okafor", version: admin.state.technicians[1].version, hvLevel: 3 },
+    })
+    expect(requestsTo(requests, `/technicians/${technicians.ben.id}`)).toHaveLength(1)
+  })
+
+  it("sends an Admin's edit with the version it was made from, through the fetch it is given", async () => {
+    const admin = adminServer()
+    const { requests } = mockBoardApi({ me: () => adminIdentity, admin })
+    const { dataProvider } = setup()
+    const ben = admin.state.technicians[1]
+    const bound = vi.fn<typeof fetch>((input, init) => fetch(input, init))
+    const variables = { ...writeOf(ben), name: "Ben Okafor-Smith" }
+
+    const saved = await dataProvider.update({
+      resource: "technicians",
+      id: ben.id,
+      variables,
+      meta: { ...meta, fetch: bound, ifMatch: `"${ben.version}"` },
+    })
+
+    expect(saved.data).toMatchObject({ name: "Ben Okafor-Smith" })
+    expect(bound).toHaveBeenCalledOnce()
+    const put = requests.find((request) => request.method === "PUT")!
+    expect(put.headers.get("If-Match")).toBe(`"${ben.version}"`)
+    expect(await put.clone().json()).toEqual(variables)
+  })
+
+  it("adds a technician or a bay without a version: there is no record to match yet", async () => {
+    const admin = adminServer()
+    const { requests } = mockBoardApi({ me: () => adminIdentity, admin })
+    const { dataProvider } = setup()
+
+    const body = { name: "Bay 7 - Tyres", capabilities: ["StandardLift"], isActive: true }
+    await expect(dataProvider.create({ resource: "bays", variables: body, meta: { ...meta, fetch } })).resolves.toMatchObject({ data: { name: "Bay 7 - Tyres" } })
+    const post = requests.find((request) => request.method === "POST")!
+    expect(post.headers.has("If-Match")).toBe(false)
+  })
+
+  it("maps a stale edit's 412 to Refine's HttpError, keeping the current representation for the conflict", async () => {
+    const admin = adminServer()
+    mockBoardApi({ me: () => adminIdentity, admin })
+    const { dataProvider } = setup()
+    const ben = admin.state.technicians[1]
+    const now = admin.editedElsewhere.technician(ben.id, { hvLevel: 2 })
+
+    const refused = await dataProvider
+      .update({ resource: "technicians", id: ben.id, variables: writeOf(ben), meta: { ...meta, fetch, ifMatch: `"${ben.version}"` } })
+      .catch((error: unknown) => error)
+
+    expect(refused).toMatchObject({ statusCode: 412, cause: { currentETag: `"${now.version}"`, current: { hvLevel: 2 } } })
+  })
+
+  it("never sends an edit without the bound fetch, deletes nothing, and keeps the services read-only", async () => {
+    const admin = adminServer()
+    const { requests } = mockBoardApi({ me: () => adminIdentity, admin })
+    const { dataProvider } = setup()
+    const ben = admin.state.technicians[1]
+
+    await expect(
+      dataProvider.update({ resource: "technicians", id: ben.id, variables: writeOf(ben), meta: { ...meta, ifMatch: `"${ben.version}"` } })
+    ).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining("bound") })
+    await expect(dataProvider.create({ resource: "technicians", variables: writeOf(ben), meta })).rejects.toMatchObject({ statusCode: 400 })
+    await expect(dataProvider.deleteOne({ resource: "technicians", id: ben.id, meta })).rejects.toMatchObject({
+      statusCode: 405,
+      message: "Technicians are never deleted: deactivate one instead, so its appointments and history stay.",
+    })
+    await expect(dataProvider.deleteOne({ resource: "bays", id: "any", meta })).rejects.toMatchObject({ statusCode: 405 })
+    await expect(dataProvider.update({ resource: "services", id: "any", variables: {}, meta: { ...meta, fetch } })).rejects.toMatchObject({
+      statusCode: 405,
+      message: "The services list is read-only.",
+    })
     expect(requests).toHaveLength(0)
   })
+})
+
+const writeOf = (record: AdminTechnicianResponse) => ({
+  name: record.name,
+  employeeNumber: record.employeeNumber,
+  certifications: record.certifications,
+  isActive: record.isActive,
+  hvLevel: record.hvLevel,
+  hvLevelValidUntil: record.hvLevelValidUntil,
+  hvLevelConfirmed: record.hvLevelConfirmed,
+  brandSpecialisms: record.brandSpecialisms,
 })

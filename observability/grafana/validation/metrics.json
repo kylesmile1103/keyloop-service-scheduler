@@ -227,5 +227,16 @@
     "labels": [],
     "source": "scheduler",
     "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.admin.edits",
+    "kind": "counter",
+    "unit": "{edit}",
+    "labels": [
+      "resource",
+      "action"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; src/Keyloop.ServiceScheduler.Infrastructure/Persistence/AdminVocabulary.cs (closed values); docs/ARCHITECTURE.md section 12.1"
   }
 ]

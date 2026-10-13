@@ -7,6 +7,7 @@ import {
   getBookingTriageStatusQueryKey,
   getCurrentUserQueryKey,
   getDealershipsQueryKey,
+  getFeaturesQueryKey,
   getServiceTypesQueryKey,
   getWorkshopScheduleQueryKey,
   listAppointmentsQueryKey,
@@ -43,6 +44,19 @@ const keys = {
   // The Calendar's week, its default view.
   calendarWeek: rangeReadOptions(dealershipId, calendarRange("week", "2026-10-13").from, calendarRange("week", "2026-10-13").to).queryKey,
   availability: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } as GetAvailabilityData["query"] }),
+  // Task 31b: the environment's switches stay; availability read for a vehicle (its profile in the key) goes like any other.
+  features: getFeaturesQueryKey(),
+  vehicleAvailability: getAvailabilityQueryKey({
+    path: { dealershipId },
+    query: {
+      serviceTypeId: "3153f30d-5700-8f07-a25d-4a4ea44dfeef",
+      date: "2026-10-13",
+      powertrain: "BatteryElectric",
+      manufacturer: "VOLKSWAGEN",
+      vehicleClass: "Car",
+      needsLiveDiagnosis: true,
+    },
+  }),
   details: getAppointmentQueryKey({ path: { appointmentId: "8c1f6b3e-5d2a-4f7b-9e1c-3a2b4c5d6e7f" } }),
   // The admin area's Refine cache, whose lists come from the schedule.
   refine: ["default", "technicians", "list", {}],
@@ -53,7 +67,7 @@ const personal = { customerName: "Sophie Turner", vin: "JTDKN3DU0A0123460", regi
 /** A cache as a signed-in Admin leaves it: the identity, reference data, and every caller-dependent read with full names. */
 function seeded() {
   const queryClient = createQueryClient()
-  const reference: readonly unknown[] = [keys.dealerships, keys.serviceTypes, keys.triageStatus]
+  const reference: readonly unknown[] = [keys.dealerships, keys.serviceTypes, keys.triageStatus, keys.features]
   for (const key of Object.values(keys)) {
     queryClient.setQueryData(key, key === keys.me ? admin : reference.includes(key) ? { reference: true } : personal)
   }
@@ -72,10 +86,12 @@ describe("which reads may hold another caller's data", () => {
     const queryClient = seeded()
     const holds = (key: readonly unknown[]) => holdsCallerData(queryClient.getQueryCache().find({ queryKey: key, exact: true })!)
 
-    expect([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus].map(holds)).toEqual([false, false, false, false])
-    expect([keys.schedule, keys.range, keys.overview, keys.calendar, keys.calendarWeek, keys.availability, keys.details, keys.refine].map(holds)).toEqual([
-      true, true, true, true, true, true, true, true,
-    ])
+    expect([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus, keys.features].map(holds)).toEqual([false, false, false, false, false])
+    expect(
+      [keys.schedule, keys.range, keys.overview, keys.calendar, keys.calendarWeek, keys.availability, keys.vehicleAvailability, keys.details, keys.refine].map(
+        holds,
+      ),
+    ).toEqual([true, true, true, true, true, true, true, true, true])
   })
 })
 
@@ -86,7 +102,7 @@ describe("clearing what the previous caller read", () => {
     clearCallerData(queryClient)
 
     const remaining = queryClient.getQueryCache().getAll().map((query) => query.queryKey)
-    expect(remaining).toEqual([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus])
+    expect(remaining).toEqual([keys.me, keys.dealerships, keys.serviceTypes, keys.triageStatus, keys.features])
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("Sophie Turner")
   })
 

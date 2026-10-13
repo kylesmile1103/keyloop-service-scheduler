@@ -5,7 +5,7 @@ import type { ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { type DataTableFeatures, type Noun, resetFilters } from "@/lib/data-table"
+import { type DataTableFeatures, type Noun, resetFiltersFrom } from "@/lib/data-table"
 import { cn } from "@/lib/utils"
 
 const ariaSort = { asc: "ascending", desc: "descending" } as const
@@ -84,7 +84,7 @@ export function ResourceTable<TRow extends { id: string }>({ table, label, noun,
             <TableCell colSpan={columnCount} className="h-32 text-center whitespace-normal">
               <div className="flex flex-col items-center gap-2">
                 <p className="text-sm text-muted-foreground">{`No ${noun.other} match the search and filters.`}</p>
-                <Button type="button" variant="outline" size="sm" className="cursor-pointer" onClick={() => resetFilters(table)}>
+                <Button type="button" variant="outline" size="sm" className="cursor-pointer" onClick={(event) => resetFiltersFrom(table, event.currentTarget)}>
                   Reset filters
                 </Button>
               </div>

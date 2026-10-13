@@ -67,6 +67,29 @@ function longDay(): WorkshopScheduleResponse {
 }
 
 describe("appointments list", () => {
+  it("restores a shared search and status filter, then resets both without losing the dealership or day", async () => {
+    viewportOf(1600)
+    mockBoardApi()
+    const { router } = renderBoard(`${readingList}&date=2026-10-13&q=Sophie&status=Confirmed`)
+    const list = await table()
+    await waitFor(() => expect(columnTexts(list, "Customer")).toEqual(["Sophie Turner"]))
+    expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveValue("Sophie")
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }))
+    await waitFor(() => expect(bodyRows(list)).toHaveLength(6))
+    expect(search(router)).toEqual({ dealership: reading.id, date: "2026-10-13" })
+  })
+
+  it("writes search and status choices into the address for a reload", async () => {
+    viewportOf(1600)
+    mockBoardApi()
+    const { router } = renderBoard(readingList)
+    await table()
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search appointments" }), { target: { value: "Sophie" } })
+    const filter = await openFilter("Status")
+    fireEvent.click(within(filter).getByRole("checkbox", { name: /^Confirmed/ }))
+    await waitFor(() => expect(search(router)).toEqual({ dealership: reading.id, q: "Sophie", status: "Confirmed" }))
+  })
+
   it("lists the board's day as a table by start time, with every column on a wide screen", async () => {
     viewportOf(1600)
     mockBoardApi()
@@ -290,6 +313,8 @@ describe("appointments list", () => {
     fireEvent.click(within(list).getByRole("button", { name: "Reset filters" }))
     expect(bodyRows(list)).toHaveLength(6)
     expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveValue("")
+    // The reset took its own button away: focus is on the search field, not the page.
+    expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveFocus()
   })
 
   it("hides and shows columns from View", async () => {

@@ -37,6 +37,7 @@ export const certifications: Record<Certification, Feature> = {
   WheelAlignment: { label: "Wheel alignment", icon: Crosshair },
   AirConditioning: { label: "Air-con", icon: Snowflake },
   HeavyVehicle: { label: "Heavy vehicle", icon: Truck },
+  DamageAssessment: { label: "Damage assessment", icon: ClipboardCheck },
 }
 
 /** A capability's or certification's name for people ("EvHighVoltage" → "EV high voltage"); unknown names pass through. */

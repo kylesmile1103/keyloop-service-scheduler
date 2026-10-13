@@ -32,6 +32,16 @@ public sealed class ServiceBay : Entity
 
     public bool IsActive { get; private set; }
 
+    public uint RowVersion { get; private set; }
+
+    public void Edit(string name, IEnumerable<BayCapability> capabilities, bool isActive)
+    {
+        var validated = Create(Id, DealershipId, name, capabilities, isActive);
+        Name = validated.Name;
+        Capabilities = validated.Capabilities;
+        IsActive = validated.IsActive;
+    }
+
     public static ServiceBay Create(Guid id, Guid dealershipId, string name, IEnumerable<BayCapability> capabilities, bool isActive = true) =>
         new(
             Guard.NotEmpty(id, nameof(id)),

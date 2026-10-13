@@ -176,22 +176,42 @@ function ToastIcon({ type }: { type: string | undefined }) {
   )
 }
 
+/**
+ * A toast with several lines (`data: { stacked: true }`, the booked toast that explains its allocation): the text takes
+ * the whole width and the action sits under it, so a sentence is not squeezed beside the button (UI_DESIGN 11.15).
+ */
+const isStacked = (data: unknown) => typeof data === "object" && data !== null && (data as { stacked?: unknown }).stacked === true
+
 function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager()
 
-  return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
-      <ToastContent>
-        <ToastIcon type={toastItem.type} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <ToastTitle />
-          <ToastDescription />
-        </div>
-        <ToastAction />
-        <ToastClose />
-      </ToastContent>
-    </Toast>
-  ))
+  return toasts.map((toastItem) => {
+    const stacked = isStacked(toastItem.data)
+    return (
+      <Toast key={toastItem.id} toast={toastItem} data-stacked={stacked ? "" : undefined}>
+        <ToastContent className={cn(stacked && "flex-wrap items-start *:data-[slot=toast-icon]:mt-0.5")}>
+          <ToastIcon type={toastItem.type} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <ToastTitle />
+            <ToastDescription />
+          </div>
+          {stacked ? (
+            <>
+              <ToastClose className="-mt-1" />
+              <div className="flex w-full justify-end">
+                <ToastAction />
+              </div>
+            </>
+          ) : (
+            <>
+              <ToastAction />
+              <ToastClose />
+            </>
+          )}
+        </ToastContent>
+      </Toast>
+    )
+  })
 }
 
 function Toaster({

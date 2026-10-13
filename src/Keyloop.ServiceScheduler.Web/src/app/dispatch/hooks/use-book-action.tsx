@@ -6,14 +6,13 @@ import { getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
 import { SignInPrompt } from "@/components/auth/sign-in-prompt"
 import { WriteReason } from "@/components/auth/write-reason"
-import { toast } from "@/components/ui/toast"
 import { cachedWriteAccess, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
-import { formatDay } from "@/lib/calendar-date"
 import { firstOpenDate } from "@/lib/opening-hours"
 import { DATE_PARAM, DEALERSHIP_PARAM } from "@/lib/workshop-params"
 
 import { BookingDialog } from "../components/booking-dialog"
-import { localTime } from "../lib/appointment-text"
+import type { BookedExplanation } from "../lib/allocation"
+import { useBookedToast } from "./use-booked-toast"
 
 interface BookActionOptions {
   dealership: DealershipResponse
@@ -52,7 +51,8 @@ export interface BookAction {
  * anything is typed, and nothing is sent; any other account sees every Book action unavailable, with the reason on screen
  * and named by each. Which of these a press gets is decided as it happens, from the cached `/me`: a press that lands after
  * the identity changed but before the page has drawn the change opens nothing the new caller may not use. A booking's
- * toast, and the phone's success state, lead to the board on the booked day.
+ * toast (the board's, explained and stacked with vehicle-aware requirements on: `useBookedToast`), and the phone's success
+ * state, lead to the board on the booked day.
  */
 export function useBookAction({ dealership, today, fullScreen }: BookActionOptions): BookAction {
   const access = writeAccessOf(useCurrentUser())
@@ -88,17 +88,11 @@ export function useBookAction({ dealership, today, fullScreen }: BookActionOptio
     navigate({ pathname: "/dispatch", search: `?${search}` })
   }
 
-  const onBooked = (appointment: AppointmentResponse) => {
+  const showBooked = useBookedToast(today)
+  const onBooked = (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => {
     // On a phone the sheet ends on its own success state; wide screens get the board's toast (UI_DESIGN 11.15).
     if (fullScreen) return
-    const day = appointment.startLocal.slice(0, 10)
-    const when = `${localTime(appointment.startLocal)}${day === today ? "" : ` on ${formatDay(day, "short")}`}`
-    toast.add({
-      type: "success",
-      title: "Booked",
-      description: `${appointment.serviceType.name} at ${when} · ${appointment.bay.name} · ${appointment.technician.name}`,
-      actionProps: { children: "View on board", onClick: () => viewOnBoard(appointment) },
-    })
+    showBooked(appointment, explanation, () => viewOnBoard(appointment))
   }
 
   return {

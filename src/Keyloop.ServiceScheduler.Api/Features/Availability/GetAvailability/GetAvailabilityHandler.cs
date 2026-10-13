@@ -72,7 +72,7 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
             VehicleClass = query.VehicleClassValue ?? VehicleClass.Unknown,
         };
         var requirements = options.Value.VehicleAwareRequirements
-            ? RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealershipId, ct), query.LiveDiagnosis ?? false) : null;
+            ? await policies.ResolveAsync(dealershipId, serviceType, profile, query.LiveDiagnosis ?? false, ct) : null;
         var bays = day.Bays.Where(b => b.IsActive && (requirements is null ? b.Supports(serviceType) : b.Satisfies(requirements))).ToList();
         var technicians = day.Technicians.Where(t => t.IsActive && (requirements is null ? t.IsCertifiedFor(serviceType) : t.Satisfies(requirements, date))).ToList();
         if (bays.Count == 0 || technicians.Count == 0)

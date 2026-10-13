@@ -9,8 +9,10 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
+  History,
   LayoutDashboard,
   ListChecks,
+  Scale,
   SunMoon,
   UserRound,
   UsersRound,
@@ -20,6 +22,7 @@ import {
 import { Logo } from "@/components/logo"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { useCurrentUser } from "@/hooks/use-current-user"
 import {
   Sidebar,
   SidebarContent,
@@ -67,6 +70,9 @@ const data = {
         { title: "Technicians", url: "/resources/technicians", icon: UsersRound, carry: [DEALERSHIP_PARAM] },
         { title: "Bays", url: "/resources/bays", icon: Warehouse, carry: [DEALERSHIP_PARAM] },
         { title: "Services", url: "/resources/services", icon: ListChecks, carry: [DEALERSHIP_PARAM] },
+        // The Admin's pages (Task 30b): the API answers only an Admin, so only an Admin is shown them.
+        { title: "Requirement policy", url: "/resources/policy", icon: Scale, carry: [DEALERSHIP_PARAM], adminOnly: true },
+        { title: "Change history", url: "/resources/history", icon: History, carry: [DEALERSHIP_PARAM], adminOnly: true },
       ],
     },
     {
@@ -86,6 +92,7 @@ const data = {
  */
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isMobile } = useSidebar()
+  const { isAdmin } = useCurrentUser()
 
   return (
     <Sidebar {...props}>
@@ -104,7 +111,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       )}
       <SidebarContent>
         {data.navGroups.map((group) => (
-          <NavMain key={group.label} label={group.label} items={group.items} />
+          <NavMain
+            key={group.label}
+            label={group.label}
+            items={group.items.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin)}
+          />
         ))}
       </SidebarContent>
       <SidebarFooter>

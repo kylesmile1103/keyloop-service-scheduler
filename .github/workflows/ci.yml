@@ -169,6 +169,56 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  e2e:
+    name: Whole-stack browser journeys
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KEYLOOP_E2E_INSTALL_DEPS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/Keyloop.ServiceScheduler.Web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: src/Keyloop.ServiceScheduler.Web/pnpm-lock.yaml
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-chromium-${{ hashFiles('Directory.Packages.props') }}
+      - name: Install web dependencies
+        working-directory: src/Keyloop.ServiceScheduler.Web
+        run: pnpm install --frozen-lockfile
+      - name: Run every browser journey on session containers
+        run: |
+          mkdir -p /tmp/kle2e TestResults/e2e
+          export TMPDIR=/tmp/kle2e
+          # A dedicated hosted runner has no other AppHost. Locally the fixture also waits for existing hosts.
+          if ps -axo comm,args | grep -E '^(dotnet|aspire) ' | grep AppHost; then
+            echo "An AppHost is already running; refuse to overlap it."
+            exit 1
+          fi
+          dotnet test --project tests/Keyloop.ServiceScheduler.E2ETests -c Release \
+            --results-directory "$GITHUB_WORKSPACE/TestResults/e2e" \
+            2>&1 | tee TestResults/e2e/suite.log
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: TestResults/e2e/**
+          if-no-files-found: warn
+          retention-days: 14
+
   edge:
     name: Cloudflare edge offline checks
     runs-on: ubuntu-latest
@@ -206,6 +256,16 @@ jobs:
           persist-credentials: false
       - name: Build API image from repository context
         run: docker build -f src/Keyloop.ServiceScheduler.Api/Dockerfile -t keyloop-scheduler-api:ci .
+      - name: API image exits on a startup failure instead of hanging as PID 1
+        run: |
+          # Production with no trusted forwarding network fails startup validation without a database. Without an init process
+          # as PID 1, the crash's abort() is ignored and dotnet spins until killed (status 124 here).
+          set +e
+          timeout 60 docker run --rm --network none keyloop-scheduler-api:ci
+          status=$?
+          set -e
+          echo "exit status $status"
+          test "$status" -ne 0 && test "$status" -ne 124
       - name: Build web image
         run: docker build -f src/Keyloop.ServiceScheduler.Web/Dockerfile -t keyloop-scheduler-web:ci src/Keyloop.ServiceScheduler.Web
 
