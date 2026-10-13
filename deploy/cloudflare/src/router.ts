@@ -1,4 +1,5 @@
 import { jsonError } from "./http.ts";
+import { fetchWithAvailability } from "./availability.ts";
 import { relayBrowserTraces } from "./otlp.ts";
 
 export const API_INSTANCE_NAME = "api";
@@ -16,12 +17,9 @@ export async function routeRequest(request: Request, env: Env): Promise<Response
   headers.set("x-forwarded-proto", url.protocol.slice(0, -1));
   headers.delete("forwarded");
   headers.delete("x-forwarded-host");
-  try {
+  return fetchWithAvailability(request, async () => {
     // F1: the first get must include this hint. A hint is best effort, not a residency guarantee.
     const api = env.API.get(env.API.idFromName(API_INSTANCE_NAME), { locationHint: "weur" });
     return await api.fetch(new Request(request, { headers }));
-  } catch {
-    console.error(JSON.stringify({ event: "ApiUnavailable" }));
-    return jsonError("E_API_UNAVAILABLE", 503);
-  }
+  });
 }

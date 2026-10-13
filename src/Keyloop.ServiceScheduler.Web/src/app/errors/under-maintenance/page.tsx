@@ -3,12 +3,12 @@
 import { ErrorPage } from "../components/error-page"
 import { RetryAction } from "../components/retry-action"
 
-/** 503 (`/errors/under-maintenance`): the scheduler is being updated; nothing booked is lost. */
+/** 503 (`/errors/under-maintenance`): the scheduler is temporarily unavailable; nothing booked is lost. */
 export default function UnderMaintenancePage() {
   return (
     <ErrorPage title="Down for maintenance" illustration="maintenance" action={<RetryAction />}>
-      <p>The scheduler is being updated. Bookings already made are kept.</p>
-      <p>Try again in a few minutes.</p>
+      <p>The scheduler is temporarily unavailable. Bookings already made are kept.</p>
+      <p>Try again in a moment.</p>
     </ErrorPage>
   )
 }
