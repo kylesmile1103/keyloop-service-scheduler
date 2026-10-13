@@ -66,6 +66,7 @@ import {
   problemSlug,
   UnexpectedResponseError,
 } from "@/lib/problem-details"
+import { serviceHelp } from "@/lib/service-help"
 import { cachedIdentityKey } from "@/lib/session"
 import { withSpan } from "@/lib/telemetry"
 import { cn } from "@/lib/utils"
@@ -80,6 +81,7 @@ import {
   type BookingForm,
   type BookingFormInput,
   declaresVehicle,
+  NOTES_LIMIT,
   stepOneFieldsFor,
   toBookingRequest,
   undeclaredProfile,
@@ -331,9 +333,15 @@ function BookingFlow({
 
   // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
   const triage = useBookingTriage(dealershipId)
-  // What the dialog last copied into Notes from the description: notes that still read exactly that are the copy, not the
-  // person's own words, so they can follow the description (or go when the box is unticked); anything else is never touched.
-  const [copiedNotes, setCopiedNotes] = useState("")
+  // What the dialog last wrote into Notes (the description's copy and the lines added from the suggestions), and whether the
+  // description was part of it: notes that still read exactly that are the dialog's, not the person's own words, so they can
+  // follow the description (or go when the box is unticked); anything else is never written over.
+  const [copied, setCopied] = useState<{ text: string; description: boolean }>({ text: "", description: false })
+  // The "Also mentioned" lines *Add to Notes* added while the notes were the dialog's: written after the description's copy.
+  const [noteLines, setNoteLines] = useState<readonly string[]>([])
+  // The line *Add to Notes* last left out because the notes would then be too long: the notice says by how much (counted
+  // against the notes as they are now) until the line fits or is added.
+  const [refusedLine, setRefusedLine] = useState<string | null>(null)
   // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
 
@@ -576,16 +584,67 @@ function BookingFlow({
   }
 
   /**
-   * Step 2's notes from the description, when the box is ticked: written into empty notes, kept up to date while they are
-   * still the copy, taken out again when the box is unticked, and never written over the person's own notes.
+   * Step 2's notes from step 1: the description, when the box is ticked, then any line added from the suggestions. Written
+   * into empty notes, kept up to date while they are still the dialog's, the description taken out again when the box is
+   * unticked, and never written over the person's own notes (which then own any line added before).
    */
-  function copyDescriptionIntoNotes() {
-    const wanted = triage.enabled && triage.copyToNotes ? triage.description.trim() : ""
+  function copyDescriptionIntoNotes(lines: readonly string[] = noteLines) {
     const current = form.getValues("notes") ?? ""
-    if (current !== "" && current !== copiedNotes) return
+    if (!notesAreTheDialogs(current)) {
+      if (lines.length > 0) setNoteLines([])
+      return
+    }
+    const wanted = dialogNotes(lines)
     if (current !== wanted) form.setValue("notes", wanted)
-    setCopiedNotes(wanted)
+    setCopied({ text: wanted, description: copiedDescription() !== "" })
   }
+
+  /** The description as the notes take it: only while the box is ticked. */
+  function copiedDescription() {
+    return triage.enabled && triage.copyToNotes ? triage.description.trim() : ""
+  }
+
+  /** The notes the dialog writes: the description's copy, then the lines added from the suggestions. */
+  function dialogNotes(lines: readonly string[]) {
+    return [copiedDescription(), ...lines].filter((part) => part !== "").join("\n")
+  }
+
+  /** Notes that are empty or read exactly what the dialog last wrote: the dialog's, not the person's own words. */
+  function notesAreTheDialogs(current: string) {
+    return current === "" || current === copied.text
+  }
+
+  /** The notes *Add to Notes* would leave: the line after the description's copy, or after the person's own words. */
+  function notesWith(current: string, line: string) {
+    return notesAreTheDialogs(current) ? dialogNotes([...noteLines, line]) : `${current.trimEnd()}\n${line}`
+  }
+
+  /**
+   * *Add to Notes* on the notice of what else the description mentioned: its fixed line, once. Notes that are still the
+   * dialog's take it after the description's copy (and keep following the description); the person's own notes keep their
+   * words, with the line added after them, since they asked for it. A line that would take the notes past their limit is
+   * not written at all (the notes stay as they are, word for word); the notice says by how much to shorten them.
+   */
+  function addToNotes(line: string) {
+    const current = form.getValues("notes") ?? ""
+    if (current.split("\n").some((existing) => existing.trim() === line)) return
+    const next = notesWith(current, line)
+    if (next.length > NOTES_LIMIT) {
+      setRefusedLine(line)
+      return
+    }
+    setRefusedLine(null)
+    if (!notesAreTheDialogs(current)) {
+      form.setValue("notes", next)
+      return
+    }
+    const lines = [...noteLines, line]
+    setNoteLines(lines)
+    copyDescriptionIntoNotes(lines)
+  }
+
+  // How far past their limit the refused line would still take the notes as they are now: the notice says so while it does.
+  const notesOver = refusedLine === null ? 0 : notesWith(notes, refusedLine).length - NOTES_LIMIT
 
   function back() {
     book.reset()
@@ -676,7 +735,9 @@ function BookingFlow({
     setDropped(null)
     setAnswerDiscarded(false)
     triage.reset()
-    setCopiedNotes("")
+    setCopied({ text: "", description: false })
+    setNoteLines([])
+    setRefusedLine(null)
     setBooked(null)
     goTo(1)
   }
@@ -739,7 +800,10 @@ function BookingFlow({
                   today={today}
                   serviceTypes={serviceTypes.data}
                   current={{ serviceTypeId, date }}
-                  notesHaveOwnText={notes !== "" && notes !== copiedNotes}
+                  notesHaveOwnText={notes !== "" && notes !== copied.text}
+                  notes={notes}
+                  notesRefusal={refusedLine !== null && notesOver > 0 ? { line: refusedLine, over: notesOver } : null}
+                  onAddToNotes={addToNotes}
                   onUse={applySuggestion}
                 />
               ) : null
@@ -754,7 +818,7 @@ function BookingFlow({
             schedule={schedule}
             startUtc={startUtc}
             timeZone={timeZone}
-            notesCopied={copiedNotes !== "" && notes === copiedNotes}
+            notesFrom={copied.text !== "" && notes === copied.text ? (copied.description ? "description" : "suggestions") : null}
             onChangeTime={back}
             vehicleStep={
               vehicleAware
@@ -1074,6 +1138,9 @@ function StepOne({
                               <span className="font-medium">{candidate.name}</span>
                               <span className="text-xs text-muted-foreground tabular-nums">{`${candidate.durationMinutes} min`}</span>
                             </span>
+                            {serviceHelp(candidate.code) && (
+                              <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(candidate.code)}</span>
+                            )}
                             {candidate.bookable ? (
                               <CapabilityBadges
                                 capabilities={candidate.requiredBayCapabilities}
@@ -1103,6 +1170,7 @@ function StepOne({
                   />
                 </span>
               )}
+              {serviceHelp(service?.code) && <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(service?.code)}</span>}
               <FormError message={fieldState.error?.message} />
             </Field>
           )}
@@ -1204,8 +1272,11 @@ interface StepTwoProps {
   schedule: WorkshopScheduleResponse | undefined
   startUtc: string
   timeZone: string
-  /** The notes are the issue description, copied from step 1 (the box there was ticked). */
-  notesCopied: boolean
+  /**
+   * Where the notes came from, while they are still what step 1 wrote: the issue description (the box there was ticked,
+   * with any line added from the suggestions after it), or only lines added from the suggestions.
+   */
+  notesFrom: "description" | "suggestions" | null
   onChangeTime: () => void
   problem: ReactNode
   /**
@@ -1229,7 +1300,7 @@ function StepTwo({
   schedule,
   startUtc,
   timeZone,
-  notesCopied,
+  notesFrom,
   onChangeTime,
   problem,
   vehicleStep,
@@ -1330,16 +1401,18 @@ function StepTwo({
                 {...field}
                 value={field.value ?? ""}
                 rows={2}
-                maxLength={1000}
+                maxLength={NOTES_LIMIT}
                 aria-invalid={fieldState.invalid || undefined}
-                aria-describedby={notesCopied ? `${headingId}-notes-copied` : undefined}
+                aria-describedby={notesFrom ? `${headingId}-notes-copied` : undefined}
                 placeholder="For example: customer waiting in the lounge"
                 className="min-h-20"
               />
-              {notesCopied && (
+              {notesFrom && (
                 // The description may hold personal details: say plainly that, as notes, it is kept.
                 <p id={`${headingId}-notes-copied`} className="text-xs text-muted-foreground">
-                  Copied from the description of the issue. Notes are saved with the booking.
+                  {notesFrom === "description"
+                    ? "Copied from the description of the issue. Notes are saved with the booking."
+                    : "Added from the suggestions on step 1. Notes are saved with the booking."}
                 </p>
               )}
               <FormError message={fieldState.error?.message} />

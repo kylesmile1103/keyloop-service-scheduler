@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { accessSettings } from "./auth.ts";
 import { configList, isMailbox, isReservedDomain, SENDER } from "./email/policy.ts";
 import { grafanaOtlpBaseUrl } from "./otlp.ts";
@@ -6,7 +7,7 @@ import { requiredSecret } from "./secrets.ts";
 type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_NAME" | "EMAIL_ALLOWED_ADDRESSES" |
   "EMAIL_ALLOWED_DOMAINS" | "EMAIL_MAX_PER_RECIPIENT_PER_DAY" | "EMAIL_MAX_PER_DAY" |
   "AUTH_TEAM_DOMAIN" | "AUTH_AUDIENCE" | "AUTH_ADMIN" | "AUTH_SERVICE_ADVISOR" | "AUTH_VIEWER" |
-  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN" |
+  "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN" | "VEHICLE_AWARE_REQUIREMENTS" |
   "API_OTLP_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_INSTANCE_ID" | "API_OTLP_TOKEN">;
 
 // The committed Grafana dashboards select job="keyloop-scheduler/api", which OTLP translation builds as service.namespace/service.name,
@@ -69,9 +70,23 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
   return { addresses, domains };
 }
 
+/**
+ * SHA-256 digest of everything the Durable Object starts the API container with: the image reference, internet access and
+ * the environment, secret values included, so that a changed setting, rotated secret or new image is detected. Only the
+ * digest is stored or compared; the values are never persisted or logged.
+ */
+export function startFingerprint(start: { image: string; enableInternet: boolean; env: Record<string, string> }): string {
+  const env = Object.entries(start.env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  // node:crypto (nodejs_compat) hashes synchronously, so the check adds no extra await to a request.
+  return createHash("sha256").update(JSON.stringify(["keyloop-api-container-start/v1", start.image, start.enableInternet, env])).digest("hex");
+}
+
 export async function containerEnv(env: ContainerEnv): Promise<Record<string, string>> {
   const access = accessSettings(env.AUTH_TEAM_DOMAIN, env.AUTH_AUDIENCE, env.AUTH_ADMIN, env.AUTH_SERVICE_ADVISOR, env.AUTH_VIEWER);
   triageSettings(env.TRIAGE_ENABLED, env.TRIAGE_ACCOUNT_ID, env.TRIAGE_GATEWAY_ID);
+  if (env.VEHICLE_AWARE_REQUIREMENTS !== "true" && env.VEHICLE_AWARE_REQUIREMENTS !== "false") {
+    throw new Error("Set KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false");
+  }
   const otlpEndpoint = apiOtlpSettings(env.API_OTLP_ENABLED, env.GRAFANA_OTLP_ENDPOINT, env.GRAFANA_INSTANCE_ID);
   const notificationsEnabled = env.NOTIFICATIONS_ENABLED === "true";
   const { addresses, domains } = recipientAllowlist(env.EMAIL_ALLOWED_ADDRESSES, env.EMAIL_ALLOWED_DOMAINS, notificationsEnabled);
@@ -111,6 +126,9 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
     result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");
   }
+  // Off passes nothing, so appsettings.Production.json's false applies and the core profile is unchanged. On is this
+  // deployment's explicit override (ADR-029): the API honours vehicle-aware inputs and GET /features tells the board.
+  if (env.VEHICLE_AWARE_REQUIREMENTS === "true") result.Scheduling__VehicleAwareRequirements = "true";
   // Disabled export passes nothing OTLP-related, so ServiceDefaults registers no exporter and the API behaves as before.
   if (otlpEndpoint !== null) {
     const token = await requiredSecret(env.API_OTLP_TOKEN, API_OTLP_TOKEN_SECRET);

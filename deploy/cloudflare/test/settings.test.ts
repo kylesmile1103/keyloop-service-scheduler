@@ -24,6 +24,7 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
       emailAllowedAddresses: "", emailAllowedDomains: "", emailMaxPerRecipientPerDay: "10", emailMaxPerDay: "100",
       otlpRelayEnabled: "false", grafanaOtlpEndpoint: "", apiOtlpEnabled: "false", grafanaInstanceId: "",
       triageEnabled: "false", triageAccountId: "", triageGatewayId: "keyloop-scheduler", triageBucket: "keyloop-scheduler-triage",
+      vehicleAwareRequirements: "false",
     });
   });
   it("accepts API telemetry with the gateway endpoint and the stack's numeric instance ID", () => {
@@ -39,6 +40,11 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
     expect(edgeSettings({
       ...identifiers, KEYLOOP_GRAFANA_INSTANCE_ID: "123456", KEYLOOP_GRAFANA_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
     })).toMatchObject({ apiOtlpEnabled: "false", grafanaInstanceId: "123456" });
+  });
+  it("switches vehicle-aware requirements on only when asked", () => {
+    expect(edgeSettings({ ...identifiers, KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "true" })).toMatchObject({ vehicleAwareRequirements: "true" });
+    expect(edgeSettings({ ...identifiers, KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "false" })).toMatchObject({ vehicleAwareRequirements: "false" });
+    expect(edgeSettings({ ...identifiers, KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "" })).toMatchObject({ vehicleAwareRequirements: "false" });
   });
   it("accepts a complete REST, notification and OTLP profile", () => {
     expect(edgeSettings({
@@ -64,6 +70,8 @@ describe("edge settings evaluated by cloudflare.config.ts", () => {
     [{ KEYLOOP_EMAIL_ALLOWED_ADDRESSES: "reviewer@example.com" }, "non-reserved notification allowlist"],
     [{ KEYLOOP_EMAIL_MAX_PER_DAY: "10001" }, "valid daily email cap"],
     [{ KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY: "0" }, "valid per-recipient email cap"],
+    [{ KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "TRUE" }, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false"],
+    [{ KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "yes" }, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false"],
     [{ KEYLOOP_API_OTLP_ENABLED: "yes" }, "KEYLOOP_API_OTLP_ENABLED to true or false"],
     [{ ...apiOtlp, KEYLOOP_API_OTLP_ENABLED: "TRUE" }, "KEYLOOP_API_OTLP_ENABLED to true or false"],
     [{ ...apiOtlp, KEYLOOP_GRAFANA_OTLP_ENDPOINT: "" }, "API telemetry needs KEYLOOP_GRAFANA_OTLP_ENDPOINT"],

@@ -2,15 +2,18 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
 import { convertV4MiniflareOptions, Miniflare, Response as MiniflareResponse } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assembleAssets } from "../scripts/assemble-assets.mjs";
 
+const source = new URL("../build/runtime-tests-spa/", import.meta.url);
 const directory = new URL("../build/runtime-tests/", import.meta.url);
 let mf: Miniflare;
 
 beforeAll(async () => {
-  await mkdir(new URL("assets/", directory), { recursive: true });
-  await writeFile(new URL("index.html", directory), "<!doctype html><title>SPA runtime fixture</title>");
-  await writeFile(new URL("assets/app-hash.js", directory), "console.log('runtime fixture');");
-  await writeFile(new URL("_headers", directory), await readFile(new URL("../public/_headers", import.meta.url)));
+  // The real assembly: a fixture SPA plus the static API reference, the committed contract and public/_headers.
+  await mkdir(new URL("assets/", source), { recursive: true });
+  await writeFile(new URL("index.html", source), "<!doctype html><title>SPA runtime fixture</title>");
+  await writeFile(new URL("assets/app-hash.js", source), "console.log('runtime fixture');");
+  await assembleAssets(source, directory);
   const result = await build({ entryPoints: [new URL("./runtime-entry.ts", import.meta.url).pathname],
     bundle: true, format: "esm", platform: "browser", write: false, external: ["cloudflare:workers"] });
   mf = new Miniflare(convertV4MiniflareOptions({
@@ -34,10 +37,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await mf?.dispose();
   await rm(directory, { recursive: true, force: true });
+  await rm(source, { recursive: true, force: true });
 });
 
 describe("Miniflare asset and Worker routing", () => {
-  it.each(["/", "/board/deep/link", "/apix"])("serves SPA fallback for %s", async path => {
+  it.each(["/", "/board/deep/link", "/apix", "/health", "/alive", "/scalar"])("serves SPA fallback for %s", async path => {
     const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`, { headers: { "sec-fetch-mode": "navigate" } });
     expect(result.status).toBe(200);
     expect(result.headers.get("content-type")).toContain("text/html");
@@ -64,4 +68,36 @@ describe("Miniflare asset and Worker routing", () => {
     expect(result.status, await result.clone().text()).toBe(404);
     expect(result.headers.get("content-type")).toContain("application/json");
   });
+  it("serves the static API reference at /scalar/v1 under the site CSP", async () => {
+    const result = await mf.dispatchFetch("https://keyloop.kylesmile.me/scalar/v1", { headers: { "sec-fetch-mode": "navigate" } });
+    expect(result.status).toBe(200);
+    expect(result.headers.get("content-type")).toContain("text/html");
+    expect(result.headers.get("content-security-policy")).toBe(siteCsp());
+    const page = await result.text();
+    expect(page).toContain('<script src="/scalar/standalone.js"></script>');
+    expect(page).not.toContain("SPA runtime fixture");
+  });
+  it.each(["/scalar/v1/", "/scalar/v1.html"])("redirects %s to the canonical /scalar/v1", async path => {
+    const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`, { redirect: "manual" });
+    expect(result.status).toBe(307);
+    expect(new URL(result.headers.get("location")!, "https://keyloop.kylesmile.me").pathname).toBe("/scalar/v1");
+  });
+  it.each(["/scalar/before.js", "/scalar/standalone.js", "/scalar/config.js"])("serves %s as a script file", async path => {
+    const result = await mf.dispatchFetch(`https://keyloop.kylesmile.me${path}`);
+    expect(result.status).toBe(200);
+    expect(result.headers.get("content-type")).toContain("javascript");
+    expect(result.headers.get("x-content-type-options")).toBe("nosniff");
+    await result.body?.cancel();
+  });
+  it("serves the committed contract as JSON at /openapi/v1.json, not the API's runtime document", async () => {
+    const result = await mf.dispatchFetch("https://keyloop.kylesmile.me/openapi/v1.json");
+    expect(result.status).toBe(200);
+    expect(result.headers.get("content-type")).toContain("application/json");
+    expect(await result.text()).toBe(await readFile(new URL("../../../contracts/openapi/v1.json", import.meta.url), "utf8"));
+  });
 });
+
+function siteCsp() {
+  return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; " +
+    "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+}

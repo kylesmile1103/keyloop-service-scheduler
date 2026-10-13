@@ -1,12 +1,12 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
-import { CalendarDays, CalendarX2, Check, CircleAlert, LoaderCircle, ScanSearch } from "lucide-react"
-import { useEffect, useId, useLayoutEffect, useRef } from "react"
+import { CalendarDays, CalendarX2, Check, CircleAlert, ImagePlus, Info, LoaderCircle, MessageSquareText, NotebookPen, ScanSearch } from "lucide-react"
+import { type DragEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
-import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate } from "@/api/types.gen"
+import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate, TriageUncoveredIssue } from "@/api/types.gen"
 import { CapabilityBadges } from "@/components/capability-badges"
 import { ProblemAlert } from "@/components/problem-alert"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Label } from "@/components/ui/label"
@@ -16,9 +16,21 @@ import { featureList } from "@/lib/features"
 import { illustrationAlt, illustrations } from "@/lib/illustrations"
 import { openingHoursOn } from "@/lib/opening-hours"
 import { authRefusalTitle, parseProblem, problemSlug, UnexpectedResponseError } from "@/lib/problem-details"
+import { serviceHelp } from "@/lib/service-help"
 import { cn } from "@/lib/utils"
 
 import type { BookingTriage, TriageAnswer } from "../hooks/use-booking-triage"
+import {
+  alsoMentioned,
+  inspectionAction,
+  inspectionService,
+  NO_MATCH,
+  noMatchNextSteps,
+  noticeApplies,
+  notesLine,
+  notesTooLong,
+  phraseOf,
+} from "../lib/triage-copy"
 
 interface BookingTriageProps {
   triage: BookingTriage
@@ -30,6 +42,12 @@ interface BookingTriageProps {
   current: { serviceTypeId: string; date: string }
   /** Notes already holds the person's own text, so ticking the box copies nothing (it never overwrites). */
   notesHaveOwnText: boolean
+  /** The booking's notes as they stand, so a line already added says so. */
+  notes: string
+  /** A line *Add to Notes* left out, and how many characters too long the notes as they are would be with it. */
+  notesRefusal: NotesRefusal | null
+  /** *Add to Notes* on the notice of what else the description mentioned: its fixed line, added once. */
+  onAddToNotes: (line: string) => void
   /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
   onUse: (serviceTypeId: string, date: string | null) => void
   /**
@@ -42,12 +60,25 @@ interface BookingTriageProps {
 /**
  * Booking intake triage in step 1 (ARCHITECTURE §8.10, §15): the issue in the customer's words, "Suggest a service", and
  * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
- * possible ones (nothing chosen when the model is unsure), or a plain "no match". Using one sets the service and, when that
- * day is still to come and the workshop is open then, the day asked for; the free starts for them come next. A failure
- * leaves the manual choice below as it is.
+ * possible ones (nothing chosen when the model is unsure), or a plain no-match with what to do next. A further problem the
+ * description mentioned is named in fixed words beside the service it is outside (Task 32b). Using one sets the service
+ * and, when that day is still to come and the workshop is open then, the day asked for; the free starts for them come
+ * next. A failure leaves the manual choice below as it is.
  */
-export function BookingTriageIntake({ triage, dealership, today, serviceTypes, current, notesHaveOwnText, onUse, blockedBy }: BookingTriageProps) {
-  const ids = { description: useId(), help: useId(), count: useId(), error: useId(), photos: useId(), photoHelp: useId(), photoError: useId() }
+export function BookingTriageIntake({
+  triage,
+  dealership,
+  today,
+  serviceTypes,
+  current,
+  notesHaveOwnText,
+  notes,
+  notesRefusal,
+  onAddToNotes,
+  onUse,
+  blockedBy,
+}: BookingTriageProps) {
+  const ids = { description: useId(), help: useId(), count: useId(), error: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
   const { answer, failure, pending, waiting, descriptionError, maxLength } = triage
@@ -71,7 +102,6 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
   }
 
   const describedBy = [ids.help, ids.count, descriptionError ? ids.error : null].filter(Boolean).join(" ")
-  const noPhotos = triage.photos.length === 0
 
   return (
     <section aria-label="Suggest a service from the issue" className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:p-4">
@@ -105,67 +135,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
         )}
       </Field>
 
-      {triage.imagesEnabled && (
-        <Field className="gap-1.5" data-invalid={triage.imageError ? true : undefined}>
-          <FieldLabel htmlFor={ids.photos}>Photos or paperwork (optional)</FieldLabel>
-          {/*
-            Before the first photo, the field says what is worth photographing, beside the picture of it (UI_DESIGN 12.1).
-            The file input keeps its place in this wrapper either way, so the element the file picker returns focus to is
-            never replaced when the photos arrive.
-          */}
-          <div
-            className={cn(
-              noPhotos &&
-                "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 rounded-lg border border-dashed border-input p-3"
-            )}
-          >
-            {noPhotos && (
-              <img
-                src={illustrations["photo-evidence"]}
-                alt={illustrationAlt["photo-evidence"]}
-                width={1200}
-                height={900}
-                draggable={false}
-                className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
-              />
-            )}
-            {noPhotos && (
-              <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
-            )}
-            <input
-              id={ids.photos}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              disabled={pending || Boolean(blockedBy)}
-              aria-invalid={triage.imageError ? true : undefined}
-              aria-describedby={[ids.photoHelp, triage.imageError ? ids.photoError : null, blockedBy].filter(Boolean).join(" ")}
-              className={cn(
-                "w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-border file:bg-background file:px-3 file:py-2 file:text-sm file:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-                noPhotos && "col-span-2 sm:col-span-1"
-              )}
-              onChange={(event) => { triage.addPhotos(Array.from(event.target.files ?? [])); event.target.value = "" }}
-            />
-          </div>
-          <p id={ids.photoHelp} className="text-xs text-muted-foreground">
-            Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
-          </p>
-          {triage.imageError && <FieldError id={ids.photoError}>{triage.imageError}</FieldError>}
-          {triage.photos.length > 0 && (
-            <ul aria-label="Selected photos" className="flex flex-col gap-2">
-              {triage.photos.map((photo, index) => (
-                <li key={`${photo.name}-${photo.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg border border-border p-2">
-                  <PhotoPreview photo={photo} />
-                  <span className="min-w-0 flex-1 truncate text-sm">{photo.name}</span>
-                  <Button type="button" variant="ghost" disabled={pending} onClick={() => triage.removePhoto(index)} aria-label={`Remove photo ${index + 1}: ${photo.name}`}>
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Field>
-      )}
+      {triage.imagesEnabled && <PhotoField triage={triage} pending={pending} blockedBy={blockedBy} />}
 
       <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <Button
@@ -195,7 +165,7 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
 
       {/* Always on the page, so what each answer says is read out as it arrives. */}
       <p role="status" className="sr-only">
-        {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today) : ""}
+        {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today, serviceTypes) : ""}
       </p>
 
       {alert && (
@@ -221,10 +191,153 @@ export function BookingTriageIntake({ triage, dealership, today, serviceTypes, c
           today={today}
           serviceTypes={serviceTypes}
           current={current}
+          notes={notes}
+          notesRefusal={notesRefusal}
+          onAddToNotes={onAddToNotes}
           onUse={onUse}
         />
       )}
     </section>
+  )
+}
+
+/** A drag that carries files (not text or a link dragged from the page). */
+const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files")
+
+interface PhotoFieldProps {
+  triage: BookingTriage
+  /** A suggestion is being asked for: its photos are on their way, so none is added or removed meanwhile. */
+  pending: boolean
+  /** As Suggest a service's: the id of the reason this account cannot ask any more; no photo is added meanwhile. */
+  blockedBy?: string
+}
+
+/**
+ * *Photos or paperwork (optional)*: a styled *Add photos* control over a visually hidden file input (UI_DESIGN 12.1). The
+ * input keeps the field's label, accept list, limits, error and keyboard behaviour (Tab reaches it, Enter or Space opens the
+ * picker, the control shows its focus), and the browser's own button, "No file chosen" text and tooltip never show. Photos
+ * can also be dropped anywhere on the field: a drop goes through the same checks as the picker, and while the field is
+ * unavailable it is still kept from the browser, which would otherwise leave the page to open the file. Before the first
+ * photo the dashed panel says what is worth photographing, beside the picture of it; after, it is the slim row that adds
+ * more. The input keeps its place in the panel either way, so the element the file picker returns focus to is never
+ * replaced when the photos arrive.
+ */
+function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
+  const ids = { input: useId(), help: useId(), error: useId() }
+  const disabled = pending || Boolean(blockedBy)
+  const [dragging, setDragging] = useState(false)
+  // Enter and leave fire for every child the pointer crosses: the highlight goes only when the drag has left the field.
+  const depth = useRef(0)
+  const noPhotos = triage.photos.length === 0
+
+  function enter(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    depth.current += 1
+    if (!disabled) setDragging(true)
+  }
+  function over(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = disabled ? "none" : "copy"
+  }
+  function leave(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    depth.current = Math.max(0, depth.current - 1)
+    if (depth.current === 0) setDragging(false)
+  }
+  function drop(event: DragEvent) {
+    if (!carriesFiles(event)) return
+    event.preventDefault()
+    depth.current = 0
+    setDragging(false)
+    if (!disabled) triage.addPhotos(Array.from(event.dataTransfer.files))
+  }
+
+  return (
+    <Field
+      className="group/photos gap-1.5"
+      data-invalid={triage.imageError ? true : undefined}
+      data-dragging={dragging || undefined}
+      onDragEnter={enter}
+      onDragOver={over}
+      onDragLeave={leave}
+      onDrop={drop}
+    >
+      <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
+      <div
+        className={cn(
+          "rounded-lg border border-dashed border-input transition-colors duration-100",
+          "group-data-dragging/photos:border-signal group-data-dragging/photos:bg-signal/10",
+          noPhotos ? "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 p-3" : "px-3 py-2"
+        )}
+      >
+        {noPhotos && (
+          <img
+            src={illustrations["photo-evidence"]}
+            alt={illustrationAlt["photo-evidence"]}
+            width={1200}
+            height={900}
+            draggable={false}
+            className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
+          />
+        )}
+        {noPhotos && (
+          <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
+        )}
+        <div className={cn("relative flex flex-wrap items-center gap-x-3 gap-y-1", noPhotos && "col-span-2 sm:col-span-1 sm:col-start-2")}>
+          <input
+            id={ids.input}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            // An empty title keeps the browser's own tooltip (the chosen file names) from floating over the photos.
+            title=""
+            disabled={disabled}
+            aria-invalid={triage.imageError ? true : undefined}
+            aria-describedby={[ids.help, triage.imageError ? ids.error : null, blockedBy].filter(Boolean).join(" ")}
+            className="peer sr-only"
+            onChange={(event) => {
+              triage.addPhotos(Array.from(event.target.files ?? []))
+              event.target.value = ""
+            }}
+          />
+          <label
+            htmlFor={ids.input}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "cursor-pointer",
+              "peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
+              "peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
+            )}
+          >
+            <ImagePlus aria-hidden="true" />
+            Add photos
+          </label>
+          {/* Only where a pointer can drag: a phone has nothing to drop. */}
+          <span aria-hidden="true" className="hidden text-xs text-muted-foreground peer-disabled:opacity-50 pointer-fine:inline">
+            or drop them here
+          </span>
+        </div>
+      </div>
+      <p id={ids.help} className="text-xs text-muted-foreground">
+        Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
+      </p>
+      {triage.imageError && <FieldError id={ids.error}>{triage.imageError}</FieldError>}
+      {triage.photos.length > 0 && (
+        <ul aria-label="Selected photos" className="flex flex-col gap-2">
+          {triage.photos.map((photo, index) => (
+            <li key={`${photo.name}-${photo.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg border border-border p-2">
+              <PhotoPreview photo={photo} />
+              <span className="min-w-0 flex-1 truncate text-sm">{photo.name}</span>
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => triage.removePhoto(index)} aria-label={`Remove photo ${index + 1}: ${photo.name}`}>
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Field>
   )
 }
 
@@ -285,31 +398,49 @@ function dayAskedFor(response: TriageBookingResponse, dealership: DealershipResp
 
 const dayName = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 
-/** What the status region reads out for an answer. */
-function announcement(response: TriageBookingResponse, dealership: DealershipResponse, today: string): string {
+/** The name of the service an uncovered issue is outside, from the answer's candidates or else the catalogue. */
+function outsideName(response: TriageBookingResponse, serviceTypes: ServiceTypeResponse[] | undefined): string | null {
+  const id = response.uncoveredIssue?.outsideServiceTypeId
+  if (!id) return null
+  return response.services.find((candidate) => candidate.serviceType.id === id)?.serviceType.name ?? serviceTypes?.find((service) => service.id === id)?.name ?? null
+}
+
+/** What the status region reads out for an answer: the cards, what else was mentioned and the next step, as the screen says them. */
+function announcement(
+  response: TriageBookingResponse,
+  dealership: DealershipResponse,
+  today: string,
+  serviceTypes: ServiceTypeResponse[] | undefined
+): string {
   const candidates = candidatesOf(response, undefined)
+  const issue = response.uncoveredIssue
+  if (response.recommendation === "no-match" || candidates.length === 0) {
+    const inspection = inspectionService(serviceTypes)
+    const mentioned = issue ? `Mentioned: ${phraseOf(issue.category)}. ` : ""
+    const next = inspection ? `${inspectionAction(inspection)}, choose a service below or contact the workshop.` : noMatchNextSteps(false)
+    return `${NO_MATCH} ${mentioned}${next}`
+  }
   const day = dayAskedFor(response, dealership, today)
   const why = day?.notUsed === "passed" ? ", which has passed" : day?.notUsed === "closed" ? ", when the workshop is closed" : ""
   const asked = day ? `Asked for ${dayName(day.date)}${why}. ` : ""
-  if (response.recommendation === "no-match" || candidates.length === 0) {
-    return "No service here matches the description. Choose the service yourself."
-  }
+  // Read with the answer's first choice: a suggestion's likely service, or nothing chosen yet.
+  const firstChoice = response.recommendation === "suggest" ? candidates[0].serviceType.id : null
+  const also = issue && noticeApplies(issue, firstChoice) ? `${alsoMentioned(issue.category, outsideName(response, serviceTypes))} ` : ""
   if (response.recommendation === "suggest") {
     const [top] = candidates
-    return `Likely: ${top.serviceType.name}, ${top.percent}%. ${asked}Check it, then choose Use this.`
+    return `Likely: ${top.serviceType.name}, ${top.percent}%. ${asked}${also}Check it, then choose Use this.`
   }
   const names = candidates.map((candidate) => candidate.serviceType.name).join(", ")
   return candidates.length === 1
-    ? `1 service could fit: ${names}. ${asked}Choose it if it matches, then choose Use this.`
-    : `${candidates.length} services could fit: ${names}. ${asked}Choose one, then choose Use this.`
+    ? `One service could fit: ${names}. ${asked}${also}Choose it if it matches, then choose Use this.`
+    : `${candidates.length} services could fit: ${names}. ${asked}${also}Choose one, then choose Use this.`
 }
 
-/** The headline over the answer, in the same plain words. */
+/** The headline over the matched cards, in the same plain words, for one card or several. */
 function headline(response: TriageBookingResponse, count: number): string {
-  if (response.recommendation === "no-match" || count === 0) {
-    return "No service here matches the description. Choose the service yourself below."
+  if (response.recommendation === "suggest") {
+    return count === 1 ? "This service fits the description. Check it, then use it." : "One service fits best. Check it, then use it."
   }
-  if (response.recommendation === "suggest") return "One service fits best. Check it, then use it."
   return count === 1
     ? "This service could fit. Choose it if it matches, then use it."
     : "These services could fit. Choose the one that matches, then use it."
@@ -327,10 +458,27 @@ interface SuggestionsProps {
   today: string
   serviceTypes: ServiceTypeResponse[] | undefined
   current: { serviceTypeId: string; date: string }
+  notes: string
+  notesRefusal: NotesRefusal | null
+  onAddToNotes: (line: string) => void
   onUse: (serviceTypeId: string, date: string | null) => void
 }
 
-function Suggestions({ answer, stale, pending, selected, onSelect, dealership, today, serviceTypes, current, onUse }: SuggestionsProps) {
+function Suggestions({
+  answer,
+  stale,
+  pending,
+  selected,
+  onSelect,
+  dealership,
+  today,
+  serviceTypes,
+  current,
+  notes,
+  notesRefusal,
+  onAddToNotes,
+  onUse,
+}: SuggestionsProps) {
   const { response } = answer
   const candidates = candidatesOf(response, serviceTypes)
   const day = dayAskedFor(response, dealership, today)
@@ -339,17 +487,19 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
   const usableDate = day && day.notUsed === null ? day.date : null
   const inUse = chosen !== null && current.serviceTypeId === chosen.serviceType.id && (usableDate === null || current.date === usableDate)
   const matched = response.recommendation !== "no-match" && candidates.length > 0
+  const issue = response.uncoveredIssue
+  const notice = matched && issue && noticeApplies(issue, chosen?.serviceType.id ?? null) ? issue : null
 
   return (
     <div aria-busy={pending || undefined} className="flex flex-col gap-3 border-t border-border pt-3">
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-pretty">{headline(response, candidates.length)}</p>
-        {stale && (
-          <p className="text-xs text-pretty text-muted-foreground">
-            The description or photos have changed since these suggestions. Suggest again to update them.
-          </p>
-        )}
-      </div>
+      {matched ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium text-pretty">{headline(response, candidates.length)}</p>
+          {stale && <StaleNote />}
+        </div>
+      ) : (
+        <NoMatch response={response} serviceTypes={serviceTypes} current={current} stale={stale} pending={pending} onUse={onUse} />
+      )}
 
       {matched && (
         <RadioGroup
@@ -363,6 +513,26 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
             <CandidateCard key={candidate.serviceType.id} candidate={candidate} />
           ))}
         </RadioGroup>
+      )}
+
+      {/*
+        What else the description mentioned, beside the service it is outside. A polite region that stays on the page while
+        the cards do, so the notice is read out when choosing a card brings it back (its first appearance is read with the
+        answer, above); it never takes focus.
+      */}
+      {matched && (
+        <div aria-live="polite" className="empty:hidden">
+          {notice && (
+            <AlsoMentioned
+              issue={notice}
+              outsideName={outsideName(response, serviceTypes)}
+              notes={notes}
+              notesRefusal={notesRefusal}
+              disabled={pending || stale}
+              onAddToNotes={onAddToNotes}
+            />
+          )}
+        </div>
       )}
 
       {matched && day && <DayAskedFor date={day.date} notUsed={day.notUsed} />}
@@ -386,16 +556,139 @@ function Suggestions({ answer, stale, pending, selected, onSelect, dealership, t
   )
 }
 
+function StaleNote() {
+  return (
+    <p className="text-xs text-pretty text-muted-foreground">
+      The description or photos have changed since these suggestions. Suggest again to update them.
+    </p>
+  )
+}
+
+interface NoMatchProps {
+  response: TriageBookingResponse
+  serviceTypes: ServiceTypeResponse[] | undefined
+  current: { serviceTypeId: string; date: string }
+  stale: boolean
+  pending: boolean
+  onUse: (serviceTypeId: string, date: string | null) => void
+}
+
 /**
- * One suggested service as a card in a radio group (arrow keys move, Space chooses): its name, duration and needs, and how
- * likely it is: "Likely" or "Possible" with the percentage, and a thin meter to compare the cards at a glance.
+ * No bookable service matches: said plainly, with what was described in its fixed words when the answer names it, and the
+ * next steps. The inspection (Diagnostic Fault Finding, by its catalogue code) is offered as an action only while this
+ * dealership can book it; choosing it works as *Use this* does, for the service alone (a no-match applies no day).
+ */
+function NoMatch({ response, serviceTypes, current, stale, pending, onUse }: NoMatchProps) {
+  const inspection = inspectionService(serviceTypes)
+  const issue = response.uncoveredIssue
+  const inUse = inspection !== null && current.serviceTypeId === inspection.id
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-pretty">{NO_MATCH}</p>
+        {stale && <StaleNote />}
+      </div>
+      {issue && (
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Mentioned</span>{" "}
+          <span className="inline-flex min-h-7 items-center gap-1.5 rounded-chip border border-input bg-card px-2.5 py-1 text-sm font-medium">
+            <MessageSquareText aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            <span>{phraseOf(issue.category)}</span>
+          </span>
+        </p>
+      )}
+      {inspection && (
+        <Button
+          type="button"
+          variant="signal"
+          onClick={() => !stale && !inUse && onUse(inspection.id, null)}
+          disabled={inUse || pending || stale}
+          focusableWhenDisabled
+          // A long name wraps on a phone rather than running out of the section.
+          className="h-auto min-h-10 max-w-full self-start py-2 text-left whitespace-normal pointer-coarse:min-h-11"
+        >
+          {inUse && <Check aria-hidden="true" />}
+          {inUse ? `${inspection.name} in use` : inspectionAction(inspection)}
+        </Button>
+      )}
+      <p className="text-xs text-pretty text-muted-foreground">{noMatchNextSteps(inspection !== null)}</p>
+    </div>
+  )
+}
+
+/** A line *Add to Notes* left out, and by how many characters the notes as they are now would pass their limit with it. */
+interface NotesRefusal {
+  line: string
+  over: number
+}
+
+interface AlsoMentionedProps {
+  issue: TriageUncoveredIssue
+  /** The service it is outside, when the answer names one the screen knows. */
+  outsideName: string | null
+  notes: string
+  notesRefusal: NotesRefusal | null
+  /** The answer is out of date or another is on its way, as for Use this. */
+  disabled: boolean
+  onAddToNotes: (line: string) => void
+}
+
+/**
+ * "Also mentioned: …": a further problem in the description that the suggested service does not cover, in its fixed words
+ * (never the model's), with *Add to Notes*, which writes its line into the booking's notes once and then says so in place.
+ * When the line would take the notes past their limit nothing is written, and the note says by how much to shorten them,
+ * in its polite region and tied to the button, which keeps focus.
+ */
+function AlsoMentioned({ issue, outsideName, notes, notesRefusal, disabled, onAddToNotes }: AlsoMentionedProps) {
+  const refusalId = useId()
+  const line = notesLine(issue.category)
+  const added = notes.split("\n").some((existing) => existing.trim() === line)
+  const over = !added && notesRefusal?.line === line ? notesRefusal.over : null
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-info/30 bg-info-subtle px-3 py-2.5 text-sm text-foreground">
+      <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        <p className="text-pretty">{alsoMentioned(issue.category, outsideName)}</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => !added && !disabled && onAddToNotes(line)}
+          // Added, it stays where it is, focusable, saying so: the line is in the notes once.
+          disabled={added || disabled}
+          focusableWhenDisabled
+          aria-describedby={over !== null ? refusalId : undefined}
+          className="bg-background"
+        >
+          {added ? <Check aria-hidden="true" /> : <NotebookPen aria-hidden="true" />}
+          {added ? "Added to Notes" : "Add to Notes"}
+        </Button>
+        {over !== null && (
+          <p id={refusalId} className="flex items-start gap-1.5 text-pretty text-destructive">
+            <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span>{notesTooLong(over)}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One suggested service as a card in a radio group (arrow keys move, Space chooses): its name, duration, help line (for a
+ * service whose name alone could mislead) and needs, and how likely it is: "Likely" or "Possible" with the percentage, and
+ * a thin meter to compare the cards at a glance.
  */
 function CandidateCard({ candidate }: { candidate: Candidate }) {
   const descriptionId = useId()
+  const helpId = useId()
   const { serviceType, entry, usable, reason, likelihood, percent } = candidate
   const needs = entry ? featureList(entry.requiredBayCapabilities, entry.requiredCertifications, true) : []
-  // Described by why it cannot be chosen, or else by what it needs (when it needs more than every bay and technician has).
-  const described = !usable || needs.length > 0 ? descriptionId : undefined
+  const help = serviceHelp(serviceType.code)
+  // Described by its help line, then by why it cannot be chosen, or else by what it needs (when it needs more than every
+  // bay and technician has).
+  const described = [help ? helpId : null, !usable || needs.length > 0 ? descriptionId : null].filter(Boolean).join(" ") || undefined
 
   return (
     <Radio.Root
@@ -422,6 +715,11 @@ function CandidateCard({ candidate }: { candidate: Candidate }) {
           <span className="text-sm leading-snug font-semibold">{serviceType.name}</span>
           <span className="text-xs text-muted-foreground tabular-nums">{`${serviceType.durationMinutes} min`}</span>
         </span>
+        {help && (
+          <span id={helpId} className="text-xs text-pretty text-muted-foreground">
+            {help}
+          </span>
+        )}
         {usable ? (
           needs.length > 0 && entry && (
             <CapabilityBadges

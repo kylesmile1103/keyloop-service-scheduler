@@ -29,12 +29,16 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 /// passed while the pair did not start (the Worker selected the reserved Cloudflare email provider), so this boots the API with
 /// exactly that fixture. The database is migrated first, as the operator's migration bundle does; the API itself must not migrate.
 /// The OTLP-enabled profile (<c>container-env-otlp.json</c>) is the core one plus API telemetry export to Grafana Cloud; it is booted
-/// against a loopback receiver in place of the gateway. Only locally signed tokens, stubbed JWKS and a fake telemetry token are used.
+/// against a loopback receiver in place of the gateway. The vehicle-aware profile (<c>container-env-vehicle-aware.json</c>) is the core
+/// one plus the deployment's override <c>Scheduling__VehicleAwareRequirements=true</c>. Only locally signed tokens, stubbed JWKS and a
+/// fake telemetry token are used.
 /// </summary>
 public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposable
 {
     private const string FixtureFile = "cloudflare-container-env-core.json";
     private const string OtlpFixtureFile = "cloudflare-container-env-otlp.json";
+    private const string VehicleAwareFixtureFile = "cloudflare-container-env-vehicle-aware.json";
+    private const string VehicleAwareSwitch = "Scheduling__VehicleAwareRequirements";
     private const string PublicHost = "http://keyloop.kylesmile.me";
     private readonly RSA _rsa = RSA.Create(2048);
     private readonly IReadOnlyDictionary<string, string> _workerEnv = ReadWorkerEnv(FixtureFile);
@@ -68,6 +72,10 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         // API telemetry is off in the core profile: no OTEL variable, so ServiceDefaults registers no OTLP exporter.
         _workerEnv.Keys.ShouldNotContain(key => key.StartsWith("OTEL_", StringComparison.Ordinal));
         services.GetRequiredService<IConfiguration>()["OTEL_EXPORTER_OTLP_ENDPOINT"].ShouldBeNullOrWhiteSpace();
+
+        // Vehicle-aware requirements are off in the core profile: no Scheduling variable, so appsettings.Production.json's false applies.
+        _workerEnv.Keys.ShouldNotContain(key => key.StartsWith("Scheduling__", StringComparison.Ordinal));
+        services.GetRequiredService<IOptions<SchedulingOptions>>().Value.VehicleAwareRequirements.ShouldBeFalse();
 
         // Startup seeding ran as the runtime would on a fresh deployment: the catalogue and the demo week, in Production.
         using (var dealerships = await SendAsync(client, HttpMethod.Get, "/api/v1/dealerships"))
@@ -201,6 +209,38 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         // errors still pass.
         entries.ShouldNotContain(entry => entry.Level < LogLevel.Warning && ChattyCategories.Any(prefix => entry.Category.StartsWith(prefix, StringComparison.Ordinal)),
             string.Join(", ", entries.Where(entry => entry.Level < LogLevel.Warning).Select(entry => entry.Category).Distinct()));
+    }
+
+    [Fact]
+    public async Task Worker_vehicle_aware_env_turns_on_ADR_029_in_Production_and_the_public_features_report_it()
+    {
+        var vehicleAwareEnv = ReadWorkerEnv(VehicleAwareFixtureFile);
+        // The deployment's switch adds exactly one variable to the core profile.
+        vehicleAwareEnv[VehicleAwareSwitch].ShouldBe("true");
+        vehicleAwareEnv.Where(entry => entry.Key != VehicleAwareSwitch).OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .ShouldBe(_workerEnv.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+
+        await using var host = await WorkerHostAsync("cloudflare_env_vehicle_aware", vehicleAwareEnv, null, null);
+        using var client = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri(PublicHost), AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Clear();
+
+        // The override binds over appsettings.Production.json's false; Production's other scheduling rules stay (one hour's lead time).
+        var scheduling = host.Services.GetRequiredService<IOptions<SchedulingOptions>>().Value;
+        (scheduling.VehicleAwareRequirements, scheduling.MinimumLeadTime).ShouldBe((true, TimeSpan.FromHours(1)));
+
+        // The board reads the switch from the public features endpoint, signed out included.
+        using (var features = await SendAsync(client, HttpMethod.Get, "/api/v1/features"))
+        {
+            features.StatusCode.ShouldBe(HttpStatusCode.OK);
+            using var body = JsonDocument.Parse(await features.Content.ReadAsStringAsync(Ct));
+            body.RootElement.GetProperty("vehicleAwareRequirements").GetBoolean().ShouldBeTrue();
+        }
+
+        // Availability answers vehicle-aware inputs instead of refusing them with 422 vehicle-aware-requirements-disabled.
+        var availability = $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/availability" +
+            $"?serviceTypeId={ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE")}&date=2026-10-13&powertrain=Ice&vehicleClass=Car";
+        using var answered = await SendAsync(client, HttpMethod.Get, availability);
+        answered.StatusCode.ShouldBe(HttpStatusCode.OK, await answered.Content.ReadAsStringAsync(Ct));
     }
 
     private static readonly string[] ChattyCategories = ["Microsoft.EntityFrameworkCore.Database.Command", "System.Net.Http.HttpClient.", "Polly"];

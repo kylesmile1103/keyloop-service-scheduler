@@ -36,6 +36,7 @@ export function edgeSettings(source: Source) {
   const emailSendingEnabled = flag(source, "KEYLOOP_EMAIL_SENDING_ENABLED");
   const otlpRelayEnabled = flag(source, "KEYLOOP_OTLP_RELAY_ENABLED");
   const triageEnabled = flag(source, "KEYLOOP_TRIAGE_ENABLED");
+  const vehicleAwareRequirements = flag(source, "KEYLOOP_VEHICLE_AWARE_REQUIREMENTS");
   const triageAccountId = setting(source, "KEYLOOP_TRIAGE_ACCOUNT_ID", "");
   const triageGatewayId = setting(source, "KEYLOOP_TRIAGE_GATEWAY_ID", "keyloop-scheduler");
   const triageBucket = setting(source, "KEYLOOP_TRIAGE_BUCKET", "keyloop-scheduler-triage");
@@ -63,6 +64,6 @@ export function edgeSettings(source: Source) {
     secretsStoreId, apiImage, authTeamDomain, authAudience, authAdmin, authServiceAdvisor, authViewer, notificationsEnabled, emailSendingEnabled, emailTransport, emailAccountId,
     emailAllowedAddresses, emailAllowedDomains, emailMaxPerRecipientPerDay: caps.perRecipient, emailMaxPerDay: caps.perDay,
     otlpRelayEnabled, grafanaOtlpEndpoint, apiOtlpEnabled, grafanaInstanceId,
-    triageEnabled, triageAccountId, triageGatewayId, triageBucket,
+    triageEnabled, triageAccountId, triageGatewayId, triageBucket, vehicleAwareRequirements,
   };
 }
