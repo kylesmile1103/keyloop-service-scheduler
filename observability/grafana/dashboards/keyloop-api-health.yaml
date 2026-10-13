@@ -47,6 +47,8 @@ spec:
       label: Metrics datasource
       type: datasource
       query: prometheus
+      # Excludes Grafana Cloud's internal usage and cardinality sources.
+      regex: /^(?!.*(usage|cardinality)).*$/
       refresh: 1
       options: []
       multi: false
@@ -55,6 +57,8 @@ spec:
       label: Logs datasource
       type: datasource
       query: loki
+      # Grafana Cloud stacks also hold internal Loki sources (alert state history, usage insights) that sort first.
+      regex: /^(?!.*(alert-state-history|usage-insights)).*$/
       refresh: 1
       options: []
       multi: false
