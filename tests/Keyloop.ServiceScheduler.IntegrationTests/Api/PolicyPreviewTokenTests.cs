@@ -132,14 +132,21 @@ public sealed class PolicyPreviewTokenTests(PostgresFixture pg) : IAsyncLifetime
             command.Parameters.AddWithValue("key", DealershipLock.KeyFor(ReferenceDataSeed.ReadingDealershipId));
             await command.ExecuteNonQueryAsync(Ct);
         }
-        var publication = PutAsync(_client, _publication);
+        var edit = EditTechnicianAsync("hvLevel", JsonValue.Create(4)!);
+        Task<HttpResponseMessage>? publication = null;
         try
         {
             await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, 1, Ct);
-            await EditTechnicianAsync("hvLevel", JsonValue.Create(4)!);
+            edit.IsCompleted.ShouldBeFalse("the resource edit also waits for the dealership lock");
+            // Queue the edit first, then publication: publication must read the edit's committed roster after its own wait.
+            publication = PutAsync(_client, _publication);
+            await DatabaseProbe.WaitForBlockedSessionsAsync(pg.ConnectionString, 2, Ct);
+            publication.IsCompleted.ShouldBeFalse();
+            (await _factory.WithDbAsync(db => db.AdminChanges.CountAsync(Ct))).ShouldBe(0);
         }
         finally { await transaction.RollbackAsync(Ct); }
-        using var response = await publication.WaitAsync(TimeSpan.FromSeconds(20), Ct);
+        await edit.WaitAsync(TimeSpan.FromSeconds(20), Ct);
+        using var response = await publication!.WaitAsync(TimeSpan.FromSeconds(20), Ct);
         await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, "policy-preview-outdated", Ct);
         (await _factory.WithDbAsync(db => db.RequirementPolicyVersions.CountAsync(Ct))).ShouldBe(0);
         (await _factory.WithDbAsync(db => db.AdminChanges.CountAsync(Ct))).ShouldBe(1);
