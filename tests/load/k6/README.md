@@ -133,7 +133,17 @@ tests/load/k6/run.sh mixed-workload.js -e RATE=600 -e DURATION=5m
 tests/load/k6/run.sh spike.js -e RATE=6000 -e SPIKE_HOLD=30s -e MAX_DROPPED_ITERATIONS=0
 ```
 
-Those overrides separate API capacity from admission control and apply only to that disposable local stack. Record them with the results. Do not infer a sustainable production throughput from a throttled Development run or a short validation. No full-duration or saturation gate was run on the shared development machine.
+Those overrides separate API capacity from admission control and apply only to that disposable local stack. Record them with the results. Do not infer a sustainable production throughput from a throttled Development run or a short validation. The saturation gate has not been run. The full controller gate above was run on 2026-10-13 against a dedicated local stack (the API built in Release at commit c0e2a52, Development with its seeded week and default limits, a throwaway PostgreSQL 17 container, k6 on the same machine); every profile exited 0:
+
+| Profile | Duration | Result |
+|---|---|---|
+| availability-read | 236 s | 856 requests; availability p95 20.3 ms (p99 46.1), schedule p95 7.2 ms (p99 25.5); no throttling, no dropped iterations, no 5xx |
+| booking-contention | 81 s | 5 rounds of 30 contenders: exactly one 201 and 29 `slot-unavailable` conflicts per round, start lag under 250 ms, each winner read back; no 429, no 5xx |
+| mixed-workload | 300 s | 374 requests, 30 complete booking lifecycles; booking p95 28.1 ms (p99 71.2), availability p95 19.1 ms, schedule p95 14.1 ms; no 5xx |
+| soak | 1800 s | 2,174 requests, 180 complete lifecycles; booking p95 27.0 ms (max 36), availability p95 18.7 ms, schedule p95 14.1 ms; no 5xx, no orphaned bookings |
+| spike | 105 s | 611 requests; 19.6% throttled with Retry-After and 127 dropped iterations, by design (see above); admitted availability p95 18.3 ms; no 5xx |
+
+These are local figures on one machine with the default Development limits, not a claim about the deployed demo.
 
 ## Remote approval and optional telemetry
 
