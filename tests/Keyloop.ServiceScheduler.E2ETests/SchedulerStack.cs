@@ -83,6 +83,12 @@ public abstract class SchedulerStack : IAsyncLifetime
                         context.EnvironmentVariables.Remove(key);
                     }
                 });
+            // Every journey of a class is the same user (the Development identity), and the API's global limit is per user:
+            // 300 requests in any minute, shared by the whole class. Fifteen journeys finishing in under a minute went past
+            // it (Task 39b: the last journey's /me and /dealerships answered 429). The journeys test the pages, not the
+            // limiter (the integration tests do), so this stack gives that one user room; the booking limit is unchanged.
+            builder.CreateResourceBuilder(builder.Resources.OfType<IResourceWithEnvironment>().Single(r => r.Name == "api"))
+                .WithEnvironment("Security__RateLimiting__GlobalPermitsPerMinute", "1200");
             app = await builder.BuildAsync(ct);
             await app.StartAsync(ct);
             foreach (var resource in new[] { "api", "web", "mailpit" })

@@ -49,6 +49,42 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     });
 
     [Fact]
+    public Task Returning_customer_found_by_registration_fills_the_next_booking() => Run(nameof(Returning_customer_found_by_registration_fills_the_next_booking), async journey =>
+    {
+        // Task 39: staff book a customer, then find them again by registration on the next booking and book from that.
+        var customer = Customer.Unique();
+        var addresses = new List<string>();
+        journey.Page.Request += (_, request) => addresses.Add(request.Url);
+        await journey.GotoBoardAsync();
+        var first = await journey.SubmitBookingAsync(await journey.PrepareBookingAsync(customer));
+        await Expect(journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "Book appointment", Exact = true })).ToHaveCountAsync(0);
+
+        var dialog = await journey.OpenStepTwoAsync();
+        var match = await FindReturningAsync(journey, dialog, customer);
+        await Expect(match).ToContainTextAsync("1 visit");
+        await Expect(match).ToContainTextAsync(customer.Email);
+        await Expect(match).ToContainTextAsync("E2E Scheduler");
+        await match.ClickAsync();
+        foreach (var (label, value) in new[] { ("Name", customer.Name), ("Email", customer.Email), ("Phone", "+44 7700 900999"), ("VIN", customer.Vin), ("Registration", customer.Registration), ("Make", "E2E"), ("Model", "Scheduler") })
+        {
+            await Expect(dialog.GetByRole(AriaRole.Textbox, new() { Name = label, Exact = true })).ToHaveValueAsync(value);
+        }
+        await Expect(dialog.GetByText(new Regex("^Details from the booking on"))).ToBeVisibleAsync();
+        var second = await journey.SubmitBookingAsync(dialog);
+        second["customer"]!.String("email").ShouldBe(customer.Email);
+        second["vehicle"]!.String("vin").ShouldBe(customer.Vin);
+        second.String("id").ShouldNotBe(first.String("id"));
+        await Expect(journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "Book appointment", Exact = true })).ToHaveCountAsync(0);
+
+        dialog = await journey.OpenStepTwoAsync();
+        await Expect(await FindReturningAsync(journey, dialog, customer)).ToContainTextAsync("2 visits");
+        // The search went in request bodies only: no address the page asked for carries the registration.
+        var registration = customer.Registration.Replace(" ", "", StringComparison.Ordinal);
+        addresses.ShouldNotContain(address => Uri.UnescapeDataString(address).Replace(" ", "", StringComparison.Ordinal).Contains(registration, StringComparison.OrdinalIgnoreCase));
+        journey.BrowserErrors.ShouldBeEmpty("no failed request or console error on the way");
+    });
+
+    [Fact]
     public Task Taken_slot_explains_the_conflict_and_a_suggested_slot_recovers() => Run(nameof(Taken_slot_explains_the_conflict_and_a_suggested_slot_recovers), async journey =>
     {
         var customer = Customer.Unique();
@@ -293,6 +329,19 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     });
 
     private Task Run(string name, Func<BrowserJourney, Task> test) => BrowserJourney.RunAsync(stack, name, test);
+
+    /// <summary>Types the customer's registration into the returning-customer search and waits for their match.</summary>
+    private static async Task<ILocator> FindReturningAsync(BrowserJourney journey, ILocator dialog, Customer customer)
+    {
+        var answered = journey.Page.WaitForResponseAsync(r => r.Request.Method == "POST" && r.Url.EndsWith("/customer-lookups", StringComparison.Ordinal));
+        await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Returning customer", Exact = true }).FillAsync(customer.Registration);
+        var response = await answered;
+        response.Status.ShouldBe(200, await response.TextAsync());
+        JsonNode.Parse(response.Request.PostData!)!.String("query").ShouldBe(customer.Registration);
+        var match = dialog.GetByRole(AriaRole.Option, new() { NameRegex = new Regex($"^{Regex.Escape(customer.Name)}, registration {Regex.Escape(customer.Registration)},") });
+        await Expect(match).ToBeVisibleAsync();
+        return match;
+    }
     private async Task AssertBookedAsync(BrowserJourney journey, JsonObject appointment, Customer customer)
     {
         await Expect(journey.Page.GetByText("Booked", new() { Exact = true })).ToBeVisibleAsync();
