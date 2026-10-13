@@ -712,7 +712,7 @@ describe("configuration changes reach a running container", () => {
     const { runtime, storage } = await warmContainer();
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const next = deploy(runtime, storage);
-    next.mocks.DB_URL.get.mockImplementationOnce(() => new Promise((_, reject) => {
+    next.mocks.DB_URL.get.mockImplementation(() => new Promise((_, reject) => {
       setTimeout(() => reject(new Error("local-sensitive-value")), 5_000);
     }));
     // Through the Worker's router, as the request arrives.
@@ -722,14 +722,18 @@ describe("configuration changes reach a running container", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     // The container sleeps (or its host restarts) while the read is still pending.
     runtime.exit();
-    await vi.advanceTimersByTimeAsync(7_000);
+    await vi.advanceTimersByTimeAsync(12_000);
     const outcome = await response;
     expect("value" in outcome && outcome.value.status).toBe(503);
-    expect("value" in outcome && await outcome.value.json()).toEqual({ code: "E_API_UNAVAILABLE", retryable: true });
+    expect("value" in outcome && await outcome.value.json()).toMatchObject({
+      type: "https://api.keyloop.example/problems/service-unavailable", status: 503,
+    });
     expect(runtime.starts).toHaveLength(1);
     expect(runtime.proxied).toHaveLength(1);
     expect(errors.mock.calls.map(call => String(call[0]))).not.toContain(JSON.stringify({ event: "ApiContainerConfigUnverified" }));
+    expect(errors.mock.calls.map(call => String(call[0]))).toEqual([JSON.stringify({ event: "ApiUnavailable" })]);
     // The next request reads the configuration again and starts the container with all of it.
+    next.mocks.DB_URL.get.mockResolvedValue("local-test-database-value");
     expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
     expect(runtime.starts).toHaveLength(2);
     expect(runtime.starts[1]!.env).toEqual(runtime.starts[0]!.env);

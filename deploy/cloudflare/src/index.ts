@@ -1,4 +1,5 @@
 import { Container } from "@cloudflare/containers";
+import { fetchWithAvailability } from "./availability.ts";
 import { containerEnv, startFingerprint } from "./container-env.ts";
 import { handleEmailRelay } from "./email/relay.ts";
 import { routeRequest } from "./router.ts";
@@ -26,18 +27,48 @@ export class ApiContainer extends Container<Env> {
   private startConfigCurrent = false;
   private checkedVersionId: string | undefined;
   private reconciling: Promise<void> | undefined;
+  private activeHttpRequests = 0;
 
   override async fetch(request: Request): Promise<Response> {
     // F5: once checked, a healthy container serves requests without reading Secrets Store. Every other request, including
     // one that arrives while another request's check, restart or cold start is still in progress, waits on that same
-    // attempt with its 60 s readiness window. Otherwise containerFetch would wait with the library's 20 s default and
-    // answer a raw 500 during a slower cold start (F11).
+    // attempt with its 60 s readiness window before reaching the native port fetch (F11).
     const versionId = this.env.CF_VERSION_METADATA.id;
     if (!this.startConfigCurrent || this.checkedVersionId !== versionId || !(await this.runningAndHealthy())) {
       this.reconciling ??= this.reconcile(versionId).finally(() => { this.reconciling = undefined; });
       await this.reconciling;
     }
-    return this.containerFetch(request, API_PORT);
+    // The SDK's containerFetch catches port errors, logs their raw text and returns a text 500. Fetch at the native
+    // transport boundary instead, so a rejected fetch can be distinguished from every API-produced HTTP response.
+    return fetchWithAvailability(request, () => this.proxyHttp(request));
+  }
+
+  private async proxyHttp(request: Request): Promise<Response> {
+    this.activeHttpRequests++;
+    this.renewActivityTimeout();
+    const finished = () => {
+      this.activeHttpRequests--;
+      this.renewActivityTimeout();
+    };
+    try {
+      const response = await this.ctx.container!.getTcpPort(API_PORT).fetch(request.url.replace(/^https:/, "http:"), request);
+      if (response.body === null) {
+        finished();
+        return response;
+      }
+      // Keep the container awake until the response finishes, including a slow client or streaming response.
+      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+      this.ctx.waitUntil(response.body.pipeTo(writable).catch(() => {}).finally(finished));
+      return new Response(readable, response);
+    } catch (error) {
+      finished();
+      throw error;
+    }
+  }
+
+  override async onActivityExpired(): Promise<void> {
+    if (this.activeHttpRequests > 0) this.renewActivityTimeout();
+    else await super.onActivityExpired();
   }
 
   private async reconcile(versionId: string): Promise<void> {
@@ -47,16 +78,15 @@ export class ApiContainer extends Container<Env> {
       envVars = await containerEnv(this.env);
     } catch (error) {
       // A container that is not running is never started without its configuration. Health is read again because the
-      // container can stop while Secrets Store is slow to fail; containerFetch would then start it with whatever this.envVars
-      // holds, an empty environment on a fresh instance. The request gets the Worker's JSON 503 and the next request checks again.
+      // container can stop while Secrets Store is slow to fail. Refuse forwarding in that case; the Worker supplies the
+      // availability fallback, and the next attempt checks again before any start.
       if (!healthy || !(await this.runningAndHealthy())) throw error;
       // The running container keeps serving with the configuration it was started with; the next request checks again.
       console.error(JSON.stringify({ event: "ApiContainerConfigUnverified" }));
       return;
     }
     const fingerprint = startFingerprint({ image: this.env.API_IMAGE, enableInternet: this.enableInternet, env: envVars });
-    // containerFetch can still start a container that stops after this check; it then uses this.envVars, which always
-    // matches the recorded fingerprint.
+    // Keep the SDK's start defaults consistent with the recorded fingerprint, including any SDK-initiated restart.
     this.envVars = envVars;
     if (this.ctx.container?.running) {
       const recorded = await this.ctx.storage.get<string>(START_FINGERPRINT_KEY);

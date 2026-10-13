@@ -63,6 +63,11 @@ interface VehicleProfileFieldsProps {
   service: ServiceTypeResponse | undefined
   /** The section's place for focus ("Change the vehicle" from a refusal on step 2). */
   sectionRef?: Ref<HTMLDivElement>
+  /**
+   * In the wide dialog's job column (UI_DESIGN 11.14): the frame's padding stays 12 px at every width, as the suggestions
+   * section's does there, so the column holds the whole job at 1440 x 900.
+   */
+  compact?: boolean
 }
 
 /**
@@ -71,7 +76,7 @@ interface VehicleProfileFieldsProps {
  * powertrain asks for a private reason (kept with the booking for audit, never sent to the customer); live HV diagnosis is
  * offered where it applies, with the two-person warning. Part of the booking being entered, discarded with it.
  */
-export function VehicleProfileFields({ form, service, sectionRef }: VehicleProfileFieldsProps) {
+export function VehicleProfileFields({ form, service, sectionRef, compact = false }: VehicleProfileFieldsProps) {
   const ids = {
     legend: useId(),
     powertrain: useId(),
@@ -100,7 +105,10 @@ export function VehicleProfileFields({ form, service, sectionRef }: VehicleProfi
       tabIndex={-1}
       aria-labelledby={ids.legend}
       data-slot="vehicle-step"
-      className="flex flex-col gap-3 rounded-xl border border-border p-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-4"
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border border-border p-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        !compact && "sm:p-4"
+      )}
     >
       <p id={ids.legend} className="text-sm font-semibold">
         Vehicle

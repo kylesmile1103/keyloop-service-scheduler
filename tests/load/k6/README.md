@@ -81,7 +81,7 @@ A capped arrival-rate executor may run out of VUs while they wait, and then drop
 
 Discovery reads dealerships, the bookable service catalogue, schedules and availability. By default it prefers Reading and `EV-BATTERY-CHECK`; the seed provides exactly one EV bay and one certified technician at Reading and Munich. GUIDs are never hardcoded. A different catalogue can use `DEALERSHIP_ID` and `SERVICE_CODE`. Preferred resources are hints in this API and cannot create single capacity; the script therefore verifies exactly one active qualified bay and technician before starting.
 
-Setup finds non-overlapping slots with `freeBays==1`, `freeTechnicians==1` and no active appointment overlapping either qualified resource. It reserves one full alternative per day so later rounds still have suggestions. Dates start 14 days ahead, beyond the seeded demo week and Production lead time, and stay within the 90-day horizon. Normal reads include closed days. Booking lifecycles select open weekdays from dealership operating hours and fetch currently available slots before booking.
+Setup finds non-overlapping slots where the service has exactly one qualified bay, that bay is free (`freeBays==1`, with at least one free qualified technician) and no active appointment overlaps it. The bay is the contended resource: every contender needs it, so exactly one can win however many technicians qualify. With vehicle-aware requirements on (Development), technicians qualify by HV level, and two can qualify for the EV check. It reserves one full alternative per day so later rounds still have suggestions. Dates start 14 days ahead, beyond the seeded demo week and Production lead time, and stay within the 90-day horizon. Normal reads include closed days. Booking lifecycles select open weekdays from dealership operating hours and fetch currently available slots before booking.
 
 Each round is a separate `shared-iterations` scenario with N VUs and N iterations. VUs prepare distinct valid customers/VINs, then sleep until the same `scenario.startTime + GATE_MS` timestamp. A maximum start-lag threshold detects a missed release. Since shared iterations are not guaranteed to be evenly distributed, a VU taking a second iteration fails the unique-participant gate. Round counts prevent one round's extra successes from compensating for another's missing winner. Odd rounds omit idempotency keys; even rounds use a distinct key per contender.
 
@@ -133,7 +133,17 @@ tests/load/k6/run.sh mixed-workload.js -e RATE=600 -e DURATION=5m
 tests/load/k6/run.sh spike.js -e RATE=6000 -e SPIKE_HOLD=30s -e MAX_DROPPED_ITERATIONS=0
 ```
 
-Those overrides separate API capacity from admission control and apply only to that disposable local stack. Record them with the results. Do not infer a sustainable production throughput from a throttled Development run or a short validation. No full-duration or saturation gate was run on the shared development machine.
+Those overrides separate API capacity from admission control and apply only to that disposable local stack. Record them with the results. Do not infer a sustainable production throughput from a throttled Development run or a short validation. The saturation gate has not been run. The full controller gate above was run on 2026-10-13 against a dedicated local stack (the API built in Release at commit c0e2a52, Development with its seeded week and default limits, a throwaway PostgreSQL 17 container, k6 on the same machine); every profile exited 0:
+
+| Profile | Duration | Result |
+|---|---|---|
+| availability-read | 236 s | 856 requests; availability p95 20.3 ms (p99 46.1), schedule p95 7.2 ms (p99 25.5); no throttling, no dropped iterations, no 5xx |
+| booking-contention | 81 s | 5 rounds of 30 contenders: exactly one 201 and 29 `slot-unavailable` conflicts per round, start lag under 250 ms, each winner read back; no 429, no 5xx |
+| mixed-workload | 300 s | 374 requests, 30 complete booking lifecycles; booking p95 28.1 ms (p99 71.2), availability p95 19.1 ms, schedule p95 14.1 ms; no 5xx |
+| soak | 1800 s | 2,174 requests, 180 complete lifecycles; booking p95 27.0 ms (max 36), availability p95 18.7 ms, schedule p95 14.1 ms; no 5xx, no orphaned bookings |
+| spike | 105 s | 611 requests; 19.6% throttled with Retry-After and 127 dropped iterations, by design (see above); admitted availability p95 18.3 ms; no 5xx |
+
+These are local figures on one machine with the default Development limits, not a claim about the deployed demo.
 
 ## Remote approval and optional telemetry
 

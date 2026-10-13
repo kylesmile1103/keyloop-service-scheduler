@@ -199,8 +199,10 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var customer = Customer.Unique();
         await stack.BookAsync(customer: customer);
         await journey.Page.GotoAsync(stack.PageUrl("/appointments"));
-        await Expect(journey.Page.GetByRole(AriaRole.Row).Filter(new() { HasText = customer.Name })).ToBeVisibleAsync();
+        // Search first: the list shows ten rows a page, and journeys that ran earlier can fill the day, so the new booking may
+        // start on page 2. The search narrows the day to it, wherever it sorts.
         await journey.Page.GetByRole(AriaRole.Searchbox, new() { Name = "Search appointments", Exact = true }).FillAsync(customer.Name);
+        await Expect(journey.Page.GetByRole(AriaRole.Row).Filter(new() { HasText = customer.Name })).ToBeVisibleAsync();
         await journey.Page.GetByRole(AriaRole.Button, new() { Name = "Status filter", Exact = true }).ClickAsync();
         await journey.Page.GetByRole(AriaRole.Checkbox, new() { NameRegex = new Regex("^Confirmed ") }).ClickAsync();
         await journey.Page.Keyboard.PressAsync("Escape");

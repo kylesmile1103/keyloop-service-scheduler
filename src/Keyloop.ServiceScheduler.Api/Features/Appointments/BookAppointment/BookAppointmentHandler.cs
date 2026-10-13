@@ -28,7 +28,8 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 /// a committed booking is replayed before any rule could reject it); the lock-free rules are checked (404s and the 422s); the
 /// appointment id is minted, once per request; then one transaction at <c>READ COMMITTED</c> takes the dealership's advisory lock, looks
 /// for the minted id (an earlier run of this request may have committed although its commit reported a failure), looks the key up again
-/// (a concurrent request with it may have committed while this one waited; an expired row is deleted), with vehicle-aware requirements
+/// (a concurrent request with it may have committed while this one waited; an expired row is deleted), revalidates the booking window
+/// against the current clock for a new booking, with vehicle-aware requirements
 /// confirms that the policy version it resolved is still the latest (otherwise it resolves again, ADR-029 Task 30a amendment), re-checks
 /// the current roster with plain reads, re-checks availability, allocates, and inserts the appointment, its history row and the memoised response.
 /// </summary>
@@ -315,7 +316,6 @@ public sealed class BookAppointmentHandler(
         run.Committing = false;
         var booking = run.Booking;
         db.ChangeTracker.Clear();
-        var now = Now();
         var dealershipId = booking.Dealership.Id;
         var request = booking.Command.Request;
 
@@ -340,6 +340,7 @@ public sealed class BookAppointmentHandler(
             return earlier;
         }
 
+        var now = Now();
         if (booking.Command.IdempotencyKey is { } key)
         {
             var stored = await db.IdempotencyKeys.AsNoTracking().FirstOrDefaultAsync(k => k.Key == key, ct);
@@ -355,6 +356,10 @@ public sealed class BookAppointmentHandler(
                 await db.IdempotencyKeys.Where(k => k.Key == key && k.ExpiresAtUtc <= now).ExecuteDeleteAsync(ct);
             }
         }
+
+        // Waiting for the lock can cross the start, lead-time or horizon boundary. A new booking must still be bookable now;
+        // committed-id recovery and same-key success replay above retain their earlier answer even after that boundary.
+        windowPolicy.EnsureBookable(booking.Slot.StartUtc);
 
         // A policy publication commits only under this lock, so the version read here is settled until this transaction ends. A booking
         // that resolved an older version before the lock must not commit under it (ADR-029 Task 30a amendment): one plain read, no lock.

@@ -85,8 +85,8 @@ public sealed class FindReturningCustomersHandler(SchedulerDbContext db, ILogger
 
                 UNION
                 SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
-                WHERE dealership_id = @dealership AND public.customer_lookup_name_prefixes(customer_name)
-                    @> ARRAY(SELECT lower(word) FROM unnest(@nameWords::text[]) AS word)
+                WHERE dealership_id = @dealership AND public.customer_lookup_scoped_name_prefixes(dealership_id, customer_name)
+                    @> ARRAY(SELECT @dealership::text || ':' || lower(word) FROM unnest(@nameWords::text[]) AS word)
                 """ : ""),
         };
         return $$"""

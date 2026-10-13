@@ -40,6 +40,9 @@ while true; do
       --application-id "$KEYLOOP_CONTAINER_APPLICATION_ID" --state active \
       > "$scratch/instances.json" 2> "$scratch/cf-error.log"; then
     if node "$check" instances "$scratch/instances.json" "$image"; then
+      [[ "$(get /api/ready "$scratch/ready")" == 200 ]] || {
+        echo 'New image is running but schema readiness did not return 200.' >&2; exit 1;
+      }
       [[ "$(get /api/v1/dealerships "$scratch/dealerships.json")" == 200 ]] || {
         echo 'New image is running but dealerships did not return 200.' >&2; exit 1;
       }
@@ -76,4 +79,4 @@ while IFS= read -r path; do
   fi
 done < "$scratch/schedule-paths"
 [[ "$masked" == true ]] || { echo 'No seeded appointments found: anonymous masking was not proven.' >&2; exit 1; }
-printf 'PASS: image tag %s, API, SPA, feature flag, exact OpenAPI and non-empty anonymous masking.\n' "$tag"
+printf 'PASS: image tag %s, schema readiness, API, SPA, feature flag, exact OpenAPI and non-empty anonymous masking.\n' "$tag"

@@ -1,5 +1,6 @@
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Npgsql;
+using DotNet.Testcontainers.Images;
 using Testcontainers.PostgreSql;
 using Xunit.Sdk;
 using Xunit.v3;
@@ -22,6 +23,11 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17")
+        // Shared local Docker verification may forbid pulls; fresh CI runners retain the normal missing-image policy.
+        .WithImagePullPolicy(Environment.GetEnvironmentVariable("KEYLOOP_TEST_CACHED_IMAGES_ONLY") == "true"
+            ? PullPolicy.Never : PullPolicy.Missing)
+        .WithResourceMapping(Path.Combine(AppContext.BaseDirectory, "Fixtures/runtime-role.sql"), "/grants/")
+        .WithResourceMapping(Path.Combine(AppContext.BaseDirectory, "Fixtures/verify-runtime-role.sql"), "/grants/")
         .WithDatabase("schedulerdb")
         .WithUsername("scheduler")
         .WithPassword("scheduler-test")
@@ -36,6 +42,15 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     public async ValueTask DisposeAsync() => await _container.DisposeAsync();
+
+    /// <summary>Executes the actual deployment script with psql as owner in this fixture's disposable container.</summary>
+    public async Task RunGrantScriptAsync(string database, bool verifyOnly, CancellationToken ct, bool succeeds = true)
+    {
+        var result = await _container.ExecAsync(["psql", "--no-psqlrc", "-U", "scheduler", "-d", database,
+            "-v", "ON_ERROR_STOP=1", "-f", verifyOnly ? "/grants/verify-runtime-role.sql" : "/grants/runtime-role.sql"], ct);
+        if (succeeds) { result.ExitCode.ShouldBe(0, result.Stderr); }
+        else { result.ExitCode.ShouldNotBe(0, "the postcondition must reject excess grants"); }
+    }
 
     private async Task WaitUntilReachableFromHostAsync(TimeSpan timeout)
     {
@@ -58,6 +73,26 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>Creates a new, empty database in the same container (dropping any previous one of that name) and returns its connection string.</summary>
+    /// <summary>
+    /// Releases a per-test database: closes the idle pooled connections of the given connection strings (Npgsql keeps a pool per
+    /// connection string for minutes after its last use, which a disposed host does not close) and drops the database. Tests that
+    /// create a database per test call this from their teardown, so a run never accumulates idle connections up to
+    /// max_connections (53300 "too many clients").
+    /// </summary>
+    public async Task ReleaseDatabaseAsync(string name, params string[] connectionStrings)
+    {
+        foreach (var connectionString in connectionStrings)
+        {
+            await using var pooled = new NpgsqlConnection(connectionString);
+            NpgsqlConnection.ClearPool(pooled);
+        }
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        var quoted = new NpgsqlCommandBuilder().QuoteIdentifier(name);
+        await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {quoted} WITH (FORCE)", connection);
+        await drop.ExecuteNonQueryAsync();
+    }
+
     public async Task<string> CreateEmptyDatabaseAsync(string name, CancellationToken ct)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);

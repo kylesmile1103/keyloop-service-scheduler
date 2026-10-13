@@ -4,6 +4,7 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 using Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 using Keyloop.ServiceScheduler.Infrastructure.Triage;
+using Keyloop.ServiceScheduler.Domain.Dealerships;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -21,7 +22,8 @@ public sealed class TriageBookingHandler(SchedulerDbContext db, ServiceCatalogue
         }
         var dealership = await db.Dealerships.AsNoTracking().FirstOrDefaultAsync(d => d.Id == dealershipId, ct)
             ?? throw new NotFoundException(ProblemResources.Dealership, dealershipId);
-        var entries = await catalogue.ReadAsync(dealershipId, ct);
+        var localDate = LocalTimeConverter.ToLocalDate(clock.GetUtcNow().UtcDateTime, dealership.TimeZone);
+        var entries = await catalogue.ReadAsync(dealershipId, scheduling.Value.VehicleAwareRequirements, localDate, ct);
         var services = entries.Where(e => e.Bookable).Select(e => e.ServiceType).ToList();
         var input = ClefQuestionBuilder.Build(connection.Value.Model, request.Description, services, dealership, clock, scheduling.Value.BookingHorizonDays);
         if (request.ImageIds is { Length: > 0 } ids)

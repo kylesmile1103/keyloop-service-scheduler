@@ -803,9 +803,17 @@ function BookingFlow({
 
   return (
     <form ref={formRef} noValidate onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-      <header className={cn("flex flex-col gap-3 border-b px-4 pt-4 pb-3 sm:px-6", sheet && "pt-[max(1rem,env(safe-area-inset-top))]")}>
+      <header
+        className={cn(
+          "flex flex-col gap-3 border-b px-4 pt-4 pb-3 sm:px-6",
+          sheet && "pt-[max(1rem,env(safe-area-inset-top))]",
+          // The wide dialog's header is one band on the body's two columns: the title over the job, the stepper over the
+          // second column, level with the title, so the row the stepper had goes to the columns below (UI_DESIGN 11.14).
+          columns && "grid grid-cols-2 items-center justify-items-start gap-x-8"
+        )}
+      >
         {/* Room for the close button on the title only, so the stepper has the whole width and its names fit on a phone. */}
-        <div className="flex flex-col gap-0.5 pr-10">
+        <div className={cn("flex flex-col gap-0.5", !columns && "pr-10")}>
           <Title className="font-heading text-lg font-semibold">Book appointment</Title>
           <Description className="text-sm text-muted-foreground">{`${dealership.name} · times in ${timeZone}`}</Description>
         </div>
@@ -847,7 +855,9 @@ function BookingFlow({
             vehicle={
               vehicleAware || dropped === "availability" || dropped === "switch" || dropped === "unreadable"
                 ? {
-                    section: vehicleAware ? <VehicleProfileFields form={form} service={service} sectionRef={vehicleSectionRef} /> : null,
+                    section: vehicleAware ? (
+                      <VehicleProfileFields form={form} service={service} sectionRef={vehicleSectionRef} compact={columns} />
+                    ) : null,
                     availability: availabilityVehicle,
                     dropped: dropped === "unreadable" ? "unreadable" : dropped === "availability" || dropped === "switch" ? "off" : null,
                     onRefused: () => vehicleRefused("availability"),
@@ -868,6 +878,7 @@ function BookingFlow({
                   notesRefusal={refusedLine !== null && notesOver > 0 ? { line: refusedLine, over: notesOver } : null}
                   onAddToNotes={addToNotes}
                   onUse={applySuggestion}
+                  compact={columns}
                 />
               ) : null
             }
@@ -1171,10 +1182,18 @@ function StepOne({
   return (
     <section
       aria-labelledby={`${ids.service}-heading`}
-      className={columns ? "grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] gap-x-8" : "flex flex-col gap-5"}
+      className={
+        columns
+          ? // Two panes that scroll apart, parted by a hairline from the header's border to the footer's, in the middle of
+            // the gap: the job's pane ends where its fields do, and the rule keeps a short one from reading as unfinished.
+            // A background, not a positioned element: positioning the section would make it the containing block of the
+            // columns' visually hidden text, which would then escape their scrolling and make the whole body scroll.
+            "grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] gap-x-8 bg-[linear-gradient(var(--color-border),var(--color-border))] bg-[length:1px_100%] bg-center bg-no-repeat"
+          : "flex flex-col gap-5"
+      }
     >
       {/* What the job is, then when: in reading order, so Tab goes down the left column before the start times. */}
-      <Column columns={columns} label={vehicle?.section ? "Service and vehicle" : "Service and date"} className="flex flex-col gap-5">
+      <Column columns={columns} label={vehicle?.section ? "Service and vehicle" : "Service and date"} className="flex flex-col gap-4">
         <h3 id={`${ids.service}-heading`} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
           Service and time
         </h3>
@@ -1315,8 +1334,8 @@ function StepOne({
         {vehicle?.section}
       </Column>
 
-      {/* Level with the left column's first field: the column's 1 rem padding, the heading's 1.5 rem line, the 1.25 rem gap. */}
-      <Column columns={columns} labelledBy={ids.start} className="flex flex-col pt-15">
+      {/* Level with the left column's first field: the column's 1 rem padding, the heading's 1.5 rem line, the 1 rem gap. */}
+      <Column columns={columns} labelledBy={ids.start} className="flex flex-col pt-14">
         <Controller
           control={form.control}
           name="startUtc"

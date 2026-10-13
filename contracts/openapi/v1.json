@@ -93,7 +93,7 @@
           "Catalog"
         ],
         "summary": "List the service catalogue for a dealership",
-        "description": "The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician\ncertifications each requires. `bookable` is computed for this dealership: at least one active bay and one active\ntechnician qualify. Whether a slot is free on a given day is a separate question for the availability route.",
+        "description": "The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician\ncertifications each requires. `bookable` is computed for this dealership: at least one active bay and one active\ntechnician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies\nunder the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable\nwhen an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;\ncatalogue eligibility ignores busy time, opening hours and the booking window.",
         "operationId": "GetServiceTypes",
         "parameters": [
           {
@@ -6601,7 +6601,7 @@
           },
           "bookable": {
             "type": "boolean",
-            "description": "True when the dealership has at least one active bay with every required capability and at least one active technician with\nevery required certification. It says the service can ever be booked there, not that a slot is free on a given day."
+            "description": "True when the dealership has at least one active bay with every required capability and at least one active technician with\nevery required certification when vehicle-aware requirements are off. When on, some powertrain/class profile the booking dialog\ncan submit must satisfy the latest dealership policy on today's dealership-local date, including inclusive HV expiry, without\nrequiring the legacy HV certificate. Busy time, opening hours and the booking window are excluded; availability checks the chosen\nvehicle and appointment date."
           }
         },
         "description": "A catalogue entry: how long the service takes, what it needs, and whether the dealership in the route can perform it."

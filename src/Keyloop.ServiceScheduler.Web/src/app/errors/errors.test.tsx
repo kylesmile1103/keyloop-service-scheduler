@@ -112,7 +112,8 @@ describe("error pages", () => {
     const { router } = renderAt(ERROR_PAGES.underMaintenance, { from: "/dispatch" })
 
     expect(await heading("Down for maintenance")).toBeInTheDocument()
-    expect(screen.getByText("The scheduler is being updated. Bookings already made are kept.")).toBeInTheDocument()
+    expect(screen.getByText("The scheduler is temporarily unavailable. Bookings already made are kept.")).toBeInTheDocument()
+    expect(screen.getByText("Try again in a moment.")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
     await waitFor(() => expect(router.state.location.pathname).toBe("/dispatch"))
   })
@@ -122,6 +123,23 @@ describe("error pages", () => {
 
     expect(await heading("Page not found")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the dispatch board" })).toHaveAttribute("href", "/dispatch")
+  })
+
+  it("breaks the missing path only between its segments, the full stop staying with the last one", async () => {
+    renderAt("/workshop/requirement-policy/a1b2-c3d4")
+
+    expect(await heading("Page not found")).toBeInTheDocument()
+    const line = screen.getByText(/^Nothing lives at/)
+    expect(line).toHaveTextContent("Nothing lives at /workshop/requirement-policy/a1b2-c3d4.")
+    // One code element for the whole path, made of one unbreakable box per segment (its `/` first), with a break allowed
+    // only between boxes: never mid-segment, so never after a hyphen. The full stop is in the last box.
+    const code = line.querySelector("code")!
+    expect(code).toHaveTextContent("/workshop/requirement-policy/a1b2-c3d4.")
+    expect(code).not.toHaveClass("break-all")
+    const boxes = Array.from(code.children).filter((child) => child.tagName === "SPAN")
+    expect(boxes.map((box) => box.textContent)).toEqual(["/workshop", "/requirement-policy", "/a1b2-c3d4."])
+    for (const box of boxes) expect(box).toHaveClass("inline-block", "max-w-full", "wrap-anywhere")
+    expect(code.querySelectorAll(":scope > wbr")).toHaveLength(2)
   })
 
   // Each status has its own picture (wave 2), described by the images README's alt text: the key and open padlock, the
