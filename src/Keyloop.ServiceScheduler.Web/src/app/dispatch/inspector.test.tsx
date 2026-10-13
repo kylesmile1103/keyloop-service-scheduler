@@ -43,6 +43,15 @@ describe("a booking's details at 1280 px and wider", () => {
 
     const inspector = await findInspector()
     expect(inspector.tagName).toBe("ASIDE")
+    // Sticky, and sized to the window below its top (the measured offset and cap; jsdom has no layout, so the browser
+    // check and the E2E journey measure where it ends): header, scrolling cards, then the pinned action row.
+    expect(inspector).toHaveClass("sticky", "top-4", "flex-col")
+    expect(inspector.style.getPropertyValue("--inspector-offset")).toMatch(/^\d+px$/)
+    expect(inspector.style.getPropertyValue("--inspector-cap")).toMatch(/^\d+px$/)
+    expect([...inspector.children].map((part) => part.getAttribute("data-slot"))).toEqual(["details-header", "details-body", "details-actions"])
+    // The board keeps its own height: no row is added under its last lane.
+    const timeline = screen.getByRole("region", { name: "Timeline by bay" }).firstElementChild as HTMLElement
+    expect(timeline.style.gridTemplateRows).toBe(`2.5rem repeat(${readingTuesday.bays.length}, auto)`)
     expect(within(inspector).getByRole("heading", { level: 2, name: "Interim Service" })).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     // The board is not hidden from assistive technology: its blocks are found without `hidden: true`.

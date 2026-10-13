@@ -167,158 +167,161 @@ export function AppointmentDetails({
         onClose={onClose}
       />
 
-      <div data-slot="details-body" className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
-        <DetailsCard title="Job" icon={ClipboardList}>
-          {warning && (
-            <CompetenceWarningNotice
-              warning={warning}
-              technician={appointment.technician.name}
-              bay={appointment.bay.name}
-              day={formatDay(day, "long")}
-              className="mb-3"
+      {/* The scrolling part carries no padding of its own, so in a short window it can give up all its height to the actions. */}
+      <div data-slot="details-body" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex min-h-full flex-col gap-3 p-4">
+          <DetailsCard title="Job" icon={ClipboardList}>
+            {warning && (
+              <CompetenceWarningNotice
+                warning={warning}
+                technician={appointment.technician.name}
+                bay={appointment.bay.name}
+                day={formatDay(day, "long")}
+                className="mb-3"
+              />
+            )}
+            <Rows>
+              <Row term="Bay">{appointment.bay.name}</Row>
+              <Row term="Technician">
+                <span className="flex min-w-0 items-center gap-2">
+                  <InitialsAvatar name={appointment.technician.name} size="sm" />
+                  <span className="truncate">{appointment.technician.name}</span>
+                </span>
+              </Row>
+              <Row term="Duration">
+                <span className="tabular-nums">{`${appointment.serviceType.durationMinutes} min`}</span>
+              </Row>
+              {hvNeeded !== null && (
+                <Row term="HV needed">
+                  <HvLevelBadge level={hvNeeded} named />
+                </Row>
+              )}
+            </Rows>
+            {allocation && (
+              <Collapsible className="mt-3 border-t pt-2">
+                <CollapsibleTrigger className="group/why -mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] cursor-pointer items-center gap-2 rounded-lg px-1.5 text-left text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+                  <Route aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">Why this allocation</span>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-panel-open/why:rotate-180"
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2">
+                  <AllocationExplanationView
+                    appointment={record!}
+                    allocation={allocation}
+                    service={service}
+                    roster={roster.data}
+                    showProfile
+                    framed={false}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </DetailsCard>
+
+          <DetailsCard title="Customer" icon={UserRound}>
+            <Rows>
+              <Row term="Name">{appointment.customerName}</Row>
+              {(recordLoading || record) && (
+                <>
+                  <Row term="Email">
+                    <Pending loading={recordLoading}>
+                      {record && (
+                        <Copyable value={record.customer.email} label="Copy email" copiedLabel="Email copied">
+                          <a className={cn(contactLink, "break-all")} href={`mailto:${record.customer.email}`}>
+                            {record.customer.email}
+                          </a>
+                        </Copyable>
+                      )}
+                    </Pending>
+                  </Row>
+                  <Row term="Phone">
+                    <Pending loading={recordLoading}>
+                      {record && (
+                        <Copyable value={record.customer.phone} label="Copy phone number" copiedLabel="Phone number copied">
+                          <a className={cn(contactLink, "tabular-nums")} href={`tel:${record.customer.phone.replaceAll(" ", "")}`}>
+                            {record.customer.phone}
+                          </a>
+                        </Copyable>
+                      )}
+                    </Pending>
+                  </Row>
+                </>
+              )}
+            </Rows>
+          </DetailsCard>
+
+          <DetailsCard title="Vehicle" icon={CarFront}>
+            {/* A generic car, never captioned as the customer's own (UI_DESIGN 12.2). */}
+            <div className="mb-3 flex items-center gap-3">
+              <img
+                src={vehiclePlaceholder}
+                alt=""
+                width={960}
+                height={640}
+                draggable={false}
+                className="pointer-events-none h-auto w-24 shrink-0 select-none"
+              />
+              <div className="flex min-w-0 flex-col items-start gap-1.5">
+                <Pending loading={recordLoading}>
+                  {record && <span className="font-heading font-semibold text-pretty">{`${record.vehicle.make} ${record.vehicle.model}`}</span>}
+                </Pending>
+                <PlateChip registration={appointment.registration} />
+              </div>
+            </div>
+            <Rows>
+              <Row term="VIN">
+                {unmasked ? (
+                  <Copyable value={appointment.vin} label="Copy VIN" copiedLabel="VIN copied">
+                    <span className="font-mono text-xs tracking-wide break-all">{appointment.vin}</span>
+                  </Copyable>
+                ) : (
+                  <span className="font-mono text-xs tracking-wide break-all">{appointment.vin}</span>
+                )}
+              </Row>
+            </Rows>
+          </DetailsCard>
+
+          {record?.notes && (
+            <DetailsCard title="Notes" icon={StickyNote}>
+              <p className="text-sm whitespace-pre-line text-pretty">{record.notes}</p>
+            </DetailsCard>
+          )}
+          {record?.cancellationReason && (
+            <DetailsCard title="Cancelled because" icon={Ban}>
+              <p className="text-sm whitespace-pre-line text-pretty">{record.cancellationReason}</p>
+            </DetailsCard>
+          )}
+
+          <RecordAccess access={detailsAccess} />
+          {detailsFailure !== null && (
+            <ProblemAlert
+              title="Couldn’t load the full record"
+              error={detailsFailure}
+              onRetry={() => void details.refetch()}
+              retrying={details.isFetching}
             />
           )}
-          <Rows>
-            <Row term="Bay">{appointment.bay.name}</Row>
-            <Row term="Technician">
-              <span className="flex min-w-0 items-center gap-2">
-                <InitialsAvatar name={appointment.technician.name} size="sm" />
-                <span className="truncate">{appointment.technician.name}</span>
-              </span>
-            </Row>
-            <Row term="Duration">
-              <span className="tabular-nums">{`${appointment.serviceType.durationMinutes} min`}</span>
-            </Row>
-            {hvNeeded !== null && (
-              <Row term="HV needed">
-                <HvLevelBadge level={hvNeeded} named />
-              </Row>
-            )}
-          </Rows>
-          {allocation && (
-            <Collapsible className="mt-3 border-t pt-2">
-              <CollapsibleTrigger className="group/why -mx-1.5 flex min-h-9 w-[calc(100%+0.75rem)] cursor-pointer items-center gap-2 rounded-lg px-1.5 text-left text-sm font-medium outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-                <Route aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1">Why this allocation</span>
-                <ChevronDown
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-panel-open/why:rotate-180"
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">
-                <AllocationExplanationView
-                  appointment={record!}
-                  allocation={allocation}
-                  service={service}
-                  roster={roster.data}
-                  showProfile
-                  framed={false}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </DetailsCard>
 
-        <DetailsCard title="Customer" icon={UserRound}>
-          <Rows>
-            <Row term="Name">{appointment.customerName}</Row>
-            {(recordLoading || record) && (
+          {/* The quiet footer: when it was booked, and the reference to quote, aligned with the cards' rows. */}
+          <dl className="mt-auto grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3.25 pt-1 text-xs text-muted-foreground">
+            {record && (
               <>
-                <Row term="Email">
-                  <Pending loading={recordLoading}>
-                    {record && (
-                      <Copyable value={record.customer.email} label="Copy email" copiedLabel="Email copied">
-                        <a className={cn(contactLink, "break-all")} href={`mailto:${record.customer.email}`}>
-                          {record.customer.email}
-                        </a>
-                      </Copyable>
-                    )}
-                  </Pending>
-                </Row>
-                <Row term="Phone">
-                  <Pending loading={recordLoading}>
-                    {record && (
-                      <Copyable value={record.customer.phone} label="Copy phone number" copiedLabel="Phone number copied">
-                        <a className={cn(contactLink, "tabular-nums")} href={`tel:${record.customer.phone.replaceAll(" ", "")}`}>
-                          {record.customer.phone}
-                        </a>
-                      </Copyable>
-                    )}
-                  </Pending>
-                </Row>
+                <dt>Booked</dt>
+                <dd className="tabular-nums">{`${formatDay(todayIn(timeZone, new Date(record.createdAtUtc)), "short")}, ${formatLocalTime(record.createdAtUtc, timeZone)}`}</dd>
               </>
             )}
-          </Rows>
-        </DetailsCard>
-
-        <DetailsCard title="Vehicle" icon={CarFront}>
-          {/* A generic car, never captioned as the customer's own (UI_DESIGN 12.2). */}
-          <div className="mb-3 flex items-center gap-3">
-            <img
-              src={vehiclePlaceholder}
-              alt=""
-              width={960}
-              height={640}
-              draggable={false}
-              className="pointer-events-none h-auto w-24 shrink-0 select-none"
-            />
-            <div className="flex min-w-0 flex-col items-start gap-1.5">
-              <Pending loading={recordLoading}>
-                {record && <span className="font-heading font-semibold text-pretty">{`${record.vehicle.make} ${record.vehicle.model}`}</span>}
-              </Pending>
-              <PlateChip registration={appointment.registration} />
-            </div>
-          </div>
-          <Rows>
-            <Row term="VIN">
-              {unmasked ? (
-                <Copyable value={appointment.vin} label="Copy VIN" copiedLabel="VIN copied">
-                  <span className="font-mono text-xs tracking-wide break-all">{appointment.vin}</span>
-                </Copyable>
-              ) : (
-                <span className="font-mono text-xs tracking-wide break-all">{appointment.vin}</span>
-              )}
-            </Row>
-          </Rows>
-        </DetailsCard>
-
-        {record?.notes && (
-          <DetailsCard title="Notes" icon={StickyNote}>
-            <p className="text-sm whitespace-pre-line text-pretty">{record.notes}</p>
-          </DetailsCard>
-        )}
-        {record?.cancellationReason && (
-          <DetailsCard title="Cancelled because" icon={Ban}>
-            <p className="text-sm whitespace-pre-line text-pretty">{record.cancellationReason}</p>
-          </DetailsCard>
-        )}
-
-        <RecordAccess access={detailsAccess} />
-        {detailsFailure !== null && (
-          <ProblemAlert
-            title="Couldn’t load the full record"
-            error={detailsFailure}
-            onRetry={() => void details.refetch()}
-            retrying={details.isFetching}
-          />
-        )}
-
-        {/* The quiet footer: when it was booked, and the reference to quote, aligned with the cards' rows. */}
-        <dl className="mt-auto grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3.25 pt-1 text-xs text-muted-foreground">
-          {record && (
-            <>
-              <dt>Booked</dt>
-              <dd className="tabular-nums">{`${formatDay(todayIn(timeZone, new Date(record.createdAtUtc)), "short")}, ${formatLocalTime(record.createdAtUtc, timeZone)}`}</dd>
-            </>
-          )}
-          <dt>Reference</dt>
-          <dd className="flex min-w-0 items-center gap-1">
-            <code className="min-w-0 truncate font-mono" title={appointment.id}>
-              {appointment.id}
-            </code>
-            <CopyButton value={appointment.id} label="Copy appointment reference" copiedLabel="Reference copied" />
-          </dd>
-        </dl>
+            <dt>Reference</dt>
+            <dd className="flex min-w-0 items-center gap-1">
+              <code className="min-w-0 truncate font-mono" title={appointment.id}>
+                {appointment.id}
+              </code>
+              <CopyButton value={appointment.id} label="Copy appointment reference" copiedLabel="Reference copied" />
+            </dd>
+          </dl>
+        </div>
       </div>
 
       <CancelActions
@@ -521,6 +524,7 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
   const startRef = useRef<HTMLButtonElement>(null)
+  const fieldsRef = useRef<HTMLDivElement>(null)
   // Where focus goes once the confirm has drawn or gone: the reason as it opens, Cancel booking… once it is kept. Not on
   // the first render: opened to cancel, the sheet itself puts focus on the reason.
   const focusNext = useRef<"reason" | "start" | null>(null)
@@ -546,10 +550,19 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
   })
 
   useEffect(() => {
-    if (focusNext.current === "reason") reasonRef.current?.focus()
-    else if (focusNext.current === "start") startRef.current?.focus()
+    if (focusNext.current === "reason") {
+      reasonRef.current?.focus()
+      // In view within the details, whatever the window's height (the action row scrolls when the confirm outgrows it).
+      reasonRef.current?.scrollIntoView?.({ block: "nearest" })
+    } else if (focusNext.current === "start") startRef.current?.focus()
     focusNext.current = null
   }, [open, reasonRef])
+
+  useEffect(() => {
+    // A refusal is drawn under the reason: bring it into view where the confirm's fields scroll in a short window.
+    const fields = fieldsRef.current
+    if (cancel.isError && fields) fields.scrollTop = fields.scrollHeight
+  }, [cancel.isError])
 
   const problem = parseProblem(cancel.error)
   const refusedStatus = failureStatus(cancel.error)
@@ -583,6 +596,8 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
 
   // A visitor who is not signed in has the sign-in panel above, which covers cancelling.
   if (access.state === "sign-in" && canCancel(status)) return null
+  // With the confirm open, a refusal shows inside it, under the reason and next to the buttons (scrolled into view there).
+  const confirmShown = open && access.state === "allowed" && canCancel(status)
 
   const alert = showProblem && (
     <ProblemAlert
@@ -597,11 +612,14 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
   )
 
   return (
+    // Pinned under the cards. The cards give up their height first (a shrink weight a thousandth of theirs); only when they
+    // have none left, with the confirm open in a short window, does the action row shrink too: the confirm's prompt and
+    // reason then scroll inside it, its buttons staying in view.
     <div
       data-slot="details-actions"
-      className="flex shrink-0 flex-col gap-3 border-t bg-muted/30 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t bg-muted/30 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [flex-shrink:0.001]"
     >
-      {alert}
+      {!confirmShown && alert}
       {!canCancel(status) ? (
         <p className="text-sm text-muted-foreground">
           {status === "Cancelled" ? "This appointment is cancelled." : "Only a confirmed or checked-in appointment can be cancelled."}
@@ -622,42 +640,46 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
           </Button>
         </div>
       ) : open ? (
-        <form noValidate aria-labelledby={promptId} onSubmit={submit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-0.5">
-            <p id={promptId} className="font-heading text-sm font-semibold">
-              Cancel this booking?
-            </p>
-            <p className="text-sm text-pretty text-muted-foreground">
-              {`${appointment.bay.name} and ${appointment.technician.name} become free at ${formatLocalTime(appointment.startUtc, timeZone)}.`}
-            </p>
-          </div>
-          <Field data-invalid={Boolean(reasonError) || undefined} className="gap-1.5">
-            <FieldLabel htmlFor={reasonId}>Reason</FieldLabel>
-            <Textarea
-              ref={reasonRef}
-              id={reasonId}
-              value={reason}
-              maxLength={REASON_LIMIT}
-              rows={2}
-              disabled={cancel.isPending}
-              placeholder="For example: the customer rang to rearrange"
-              aria-invalid={Boolean(reasonError) || undefined}
-              aria-describedby={`${reasonError ? `${errorId} ` : ""}${countId}`}
-              onChange={(event) => {
-                setReason(event.target.value)
-                if (missingReason && event.target.value.trim()) setMissingReason(false)
-              }}
-              className="max-h-40 min-h-16 bg-background"
-            />
-            <div className="flex items-start justify-between gap-3">
-              <FieldError id={errorId}>{reasonError}</FieldError>
-              <span id={countId} className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                {`${reason.length}/${REASON_LIMIT}`}
-                <span className="sr-only"> characters</span>
-              </span>
+        <form noValidate aria-labelledby={promptId} onSubmit={submit} className="flex min-h-0 flex-col gap-4">
+          {/* Inset by the focus ring's width, so the reason's ring is not clipped where this part scrolls. */}
+          <div ref={fieldsRef} data-slot="cancel-confirm-fields" className="-m-1 flex min-h-0 flex-col gap-3 overflow-y-auto p-1">
+            <div className="flex flex-col gap-0.5">
+              <p id={promptId} className="font-heading text-sm font-semibold">
+                Cancel this booking?
+              </p>
+              <p className="text-sm text-pretty text-muted-foreground">
+                {`${appointment.bay.name} and ${appointment.technician.name} become free at ${formatLocalTime(appointment.startUtc, timeZone)}.`}
+              </p>
             </div>
-          </Field>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Field data-invalid={Boolean(reasonError) || undefined} className="gap-1.5">
+              <FieldLabel htmlFor={reasonId}>Reason</FieldLabel>
+              <Textarea
+                ref={reasonRef}
+                id={reasonId}
+                value={reason}
+                maxLength={REASON_LIMIT}
+                rows={2}
+                disabled={cancel.isPending}
+                placeholder="For example: the customer rang to rearrange"
+                aria-invalid={Boolean(reasonError) || undefined}
+                aria-describedby={`${reasonError ? `${errorId} ` : ""}${countId}`}
+                onChange={(event) => {
+                  setReason(event.target.value)
+                  if (missingReason && event.target.value.trim()) setMissingReason(false)
+                }}
+                className="max-h-40 min-h-16 bg-background"
+              />
+              <div className="flex items-start justify-between gap-3">
+                <FieldError id={errorId}>{reasonError}</FieldError>
+                <span id={countId} className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {`${reason.length}/${REASON_LIMIT}`}
+                  <span className="sr-only"> characters</span>
+                </span>
+              </div>
+            </Field>
+            {alert}
+          </div>
+          <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={keep} disabled={cancel.isPending} className="cursor-pointer max-md:h-11">
               Keep booking
             </Button>

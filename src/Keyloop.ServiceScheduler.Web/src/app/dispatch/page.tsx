@@ -286,15 +286,14 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
         {/* The board and, once a booking is chosen on a wide screen, its details docked on the right: the board keeps every
             width the inspector leaves it (`minmax(0, 1fr)`), and its timeline scrolls sideways inside its card when the
             hours no longer fit. */}
-        <div className={cn(inspected && "grid grid-cols-[minmax(0,1fr)_26rem] gap-5")}>
+        <div className={cn(inspected && "grid grid-cols-[minmax(0,1fr)_26rem] items-start gap-5")}>
           <div className="min-w-0">
             {/* Out of the tab order: the panel holds focusable content (the timeline, its blocks, the agenda's lanes), so Tab
-                goes from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). Beside the
-                inspector the board takes the row's height, so the two cards end level. */}
-            <TabsContent value="bays" tabIndex={-1} className="h-full">
+                goes from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). */}
+            <TabsContent value="bays" tabIndex={-1}>
               {mode === "bays" && boardFor("bays")}
             </TabsContent>
-            <TabsContent value="technicians" tabIndex={-1} className="h-full">
+            <TabsContent value="technicians" tabIndex={-1}>
               {mode === "technicians" && boardFor("technicians")}
             </TabsContent>
           </div>

@@ -20,10 +20,7 @@ interface TimelineGridProps {
   selectedId: string | null
   /** How a block shows its details: a sheet (a dialog) or the docked inspector. */
   details?: BlockDetails
-  /**
-   * The docked inspector takes room beside the board: the lane column keeps the tablet's 160 px at every width, and the
-   * timeline fills the height its card is given (the inspector's), its empty hours running on below the last lane.
-   */
+  /** The docked inspector takes room beside the board: the lane column keeps the tablet's 160 px at every width. */
   narrow?: boolean
   /** A booking just made: its block draws the booked halo. */
   bookedId?: string | null
@@ -70,19 +67,13 @@ export function TimelineGrid({
       role="region"
       aria-label={mode === "bays" ? "Timeline by bay" : "Timeline by technician"}
       tabIndex={0}
-      className={cn(
-        "relative overflow-auto overscroll-x-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        // Beside the inspector the card may be as tall as the inspector can be (the window less 2rem), its header and
-        // legend included, and the timeline grows to fill it; otherwise it scrolls inside 70 % of the window.
-        narrow ? "max-h-[calc(100svh-9.5rem)] min-h-0 flex-1" : "max-h-[min(70svh,52rem)]"
-      )}
+      className="relative max-h-[min(70svh,52rem)] overflow-auto overscroll-x-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
     >
       <div
-        className={cn("grid min-w-fit [--lane-width:10rem]", narrow ? "min-h-full" : "xl:[--lane-width:13.75rem]")}
+        className={cn("grid min-w-fit [--lane-width:10rem]", !narrow && "xl:[--lane-width:13.75rem]")}
         style={{
           gridTemplateColumns: `var(--lane-width) repeat(${grid.columns}, minmax(1.125rem, 1fr))`,
-          // Beside the inspector, a last row takes whatever height is left, so the day's grid reaches the card's foot.
-          gridTemplateRows: `2.5rem repeat(${lanes.length}, auto)${narrow ? " 1fr" : ""}`,
+          gridTemplateRows: `2.5rem repeat(${lanes.length}, auto)`,
         }}
       >
         {/* Ruler: decorative, since every block names its own times. Hour labels sit at the top, the "now" pill under them on
@@ -172,7 +163,6 @@ export function TimelineGrid({
             onSelect={onSelect}
           />
         ))}
-        {narrow && <div aria-hidden="true" className="sticky left-0 z-10 col-start-1 border-r bg-card" style={{ gridRow: lanes.length + 2 }} />}
       </div>
     </div>
   )

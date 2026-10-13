@@ -278,7 +278,7 @@ export function ScheduleBoard({
   }
 
   return (
-    <Card ref={ref} tabIndex={-1} role="region" aria-labelledby={headingId} className={cn("gap-0 py-0 outline-none", narrow && "h-full")}>
+    <Card ref={ref} tabIndex={-1} role="region" aria-labelledby={headingId} className="gap-0 py-0 outline-none">
       {header}
       {body}
       {data?.operatingWindow && lanes.length > 0 && (
