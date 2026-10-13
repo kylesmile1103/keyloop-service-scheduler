@@ -71,6 +71,18 @@ public abstract class SchedulerStack : IAsyncLifetime
                 container.Annotations.OfType<ContainerMountAnnotation>().Where(m => m.Type == ContainerMountType.Volume)
                     .ToList().ForEach(m => container.Annotations.Remove(m));
             }
+            // The testing builder runs without a dashboard, but the web resource's OTLP exporter still hands the dev server the
+            // dashboard's collector address, so the browser posts telemetry to a port nobody listens on (refused on a CI runner).
+            // Browser telemetry is off in this stack, as in every build without an explicit endpoint; the journeys still assert
+            // that no other request fails.
+            builder.CreateResourceBuilder(builder.Resources.OfType<IResourceWithEnvironment>().Single(r => r.Name == "web"))
+                .WithEnvironment(context =>
+                {
+                    foreach (var key in context.EnvironmentVariables.Keys.Where(k => k.StartsWith("OTEL_", StringComparison.Ordinal)).ToList())
+                    {
+                        context.EnvironmentVariables.Remove(key);
+                    }
+                });
             app = await builder.BuildAsync(ct);
             await app.StartAsync(ct);
             foreach (var resource in new[] { "api", "web", "mailpit" })
