@@ -64,23 +64,33 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
     }
     public async Task<ILocator> PrepareBookingAsync(Customer customer, string service = "Interim Service", bool electric = false, string? startLocal = null)
     {
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Book appointment", Exact = true }).ClickAsync();
-        var dialog = Page.GetByRole(AriaRole.Dialog, new() { Name = "Book appointment", Exact = true });
-        await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Service", Exact = true }).ClickAsync();
-        await Page.GetByRole(AriaRole.Option, new() { NameRegex = new Regex($"^{Regex.Escape(service)}(?: |$)") }).ClickAsync();
-        if (electric)
-        {
-            await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Powertrain", Exact = true }).ClickAsync();
-            await Page.GetByRole(AriaRole.Option, new() { NameRegex = new Regex("^Battery electric") }).ClickAsync();
-            await dialog.GetByLabel("Why you’re declaring it", new() { Exact = true }).FillAsync(customer.Notes);
-        }
-        var slots = dialog.GetByRole(AriaRole.Radio, new() { NameRegex = new Regex(startLocal is null ? @"^\d\d:\d\d, .* free$" : $"^{Regex.Escape(startLocal)}, .* free$") });
-        await slots.First.ClickAsync();
-        await dialog.GetByRole(AriaRole.Button, new() { Name = "Next", Exact = true }).ClickAsync();
+        var dialog = await OpenStepTwoAsync(service, electric ? customer.Notes : null, startLocal);
         foreach (var (label, value) in new[] { ("Name", customer.Name), ("Email", customer.Email), ("Phone", "+44 7700 900999"), ("VIN", customer.Vin), ("Registration", customer.Registration), ("Make", "E2E"), ("Model", "Scheduler"), ("Notes for the workshop", customer.Notes) })
         {
             await dialog.GetByRole(AriaRole.Textbox, new() { Name = label, Exact = true }).FillAsync(value);
         }
+        return dialog;
+    }
+    /// <summary>
+    /// Opens the booking dialog and completes step 1 (the service, a battery electric declaration when a reason is given,
+    /// and the first free start or the one named), leaving it on step 2 with the customer and vehicle still empty.
+    /// </summary>
+    public async Task<ILocator> OpenStepTwoAsync(string service = "Interim Service", string? electricReason = null, string? startLocal = null)
+    {
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Book appointment", Exact = true }).ClickAsync();
+        var dialog = Page.GetByRole(AriaRole.Dialog, new() { Name = "Book appointment", Exact = true });
+        await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Service", Exact = true }).ClickAsync();
+        await Page.GetByRole(AriaRole.Option, new() { NameRegex = new Regex($"^{Regex.Escape(service)}(?: |$)") }).ClickAsync();
+        if (electricReason is not null)
+        {
+            await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Powertrain", Exact = true }).ClickAsync();
+            await Page.GetByRole(AriaRole.Option, new() { NameRegex = new Regex("^Battery electric") }).ClickAsync();
+            await dialog.GetByLabel("Why you’re declaring it", new() { Exact = true }).FillAsync(electricReason);
+        }
+        var slots = dialog.GetByRole(AriaRole.Radio, new() { NameRegex = new Regex(startLocal is null ? @"^\d\d:\d\d, .* free$" : $"^{Regex.Escape(startLocal)}, .* free$") });
+        await slots.First.ClickAsync();
+        await dialog.GetByRole(AriaRole.Button, new() { Name = "Next", Exact = true }).ClickAsync();
+        await Expect(dialog.GetByRole(AriaRole.Heading, new() { Name = "Customer and vehicle", Exact = true })).ToBeVisibleAsync();
         return dialog;
     }
     public async Task<JsonObject> SubmitBookingAsync(ILocator dialog)

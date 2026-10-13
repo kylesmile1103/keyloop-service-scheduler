@@ -25,6 +25,7 @@ import type {
   DealershipResponse,
   GetAvailabilityData,
   Powertrain,
+  ReturningCustomerResponse,
   ServiceTypeResponse,
   VehicleClass,
   VehicleProfile,
@@ -88,9 +89,11 @@ import {
   toBookingRequest,
   undeclaredProfile,
 } from "../lib/booking-schema"
+import { RETURNING_FIELDS, type ReturningValues, returningValues } from "../lib/returning-customer"
 import { AllocationExplanationView } from "./allocation-explanation"
 import { AvailabilityChips, SuggestedSlotChips } from "./availability-chips"
 import { BookingTriageIntake } from "./booking-triage"
+import { ReturningCustomerSearch } from "./returning-customer-search"
 import {
   DeclaredVehicle,
   type Lookup,
@@ -401,16 +404,48 @@ function BookingFlow({
           : { state: "idle" }
   const decoded = resolvedHere ? knownManufacturer(resolvedHere.manufacturer) : null
 
-  function lookUp(trigger: "button" | "blur") {
+  /** Look up: the button, leaving the field with a whole VIN, or a returning customer's VIN filled in (`fill`). */
+  function lookUp(trigger: "button" | "blur" | "fill") {
     if (blocked || lookupWaiting > 0) return
     const value = form.getValues("vehicle.vin").trim().toUpperCase()
     if (!WHOLE_VIN.test(value)) {
       if (trigger === "button") void form.trigger("vehicle.vin", { shouldFocus: true })
       return
     }
-    // Leaving the field looks up a VIN once; the button always asks again.
-    if (trigger === "blur" && ((resolve.isPending && resolveForThisVin) || (resolved?.vin === value && resolved.identity === current.identity))) return
+    // Leaving the field, or filling it, looks up a VIN once; the button always asks again.
+    const asked = (resolve.isPending && resolve.variables?.body.vin === value) || (resolved?.vin === value && resolved.identity === current.identity)
+    if (trigger !== "button" && asked) return
     resolve.mutate({ body: { vin: value } })
+  }
+
+  // The returning customer chosen on step 2 (Task 39b): what it filled in, and the start of the booking it came from, for
+  // the note under the search and its Clear. Part of the booking being entered, so it goes with it.
+  const [filled, setFilled] = useState<{ from: string; values: ReturningValues } | null>(null)
+
+  /**
+   * A returning customer chosen: their latest booking's customer and vehicle fill the fields (each still editable, checked
+   * as it is filled), and with vehicle-aware requirements on the VIN is looked up as Look up would.
+   */
+  function chooseReturning(match: ReturningCustomerResponse) {
+    const values = returningValues(match)
+    for (const path of RETURNING_FIELDS) {
+      const value = values[path]
+      if (value !== undefined) form.setValue(path, value, { shouldDirty: true, shouldValidate: true })
+    }
+    setFilled({ from: match.lastVisitUtc, values })
+    if (vehicleAware) lookUp("fill")
+  }
+
+  /** The note's Clear: empties the fields the choice filled, except one changed since (the person's own words stay). */
+  function clearReturning() {
+    if (!filled) return
+    for (const path of RETURNING_FIELDS) {
+      const value = filled.values[path]
+      if (value === undefined || form.getValues(path) !== value) continue
+      form.setValue(path, "", { shouldDirty: true })
+      form.clearErrors(path)
+    }
+    setFilled(null)
   }
 
   // A declared manufacturer that disagrees with the VIN: "Use decoded data" holds for the VIN, the declaration and the decoded
@@ -757,6 +792,7 @@ function BookingFlow({
     setCopied({ text: "", description: false })
     setNoteLines([])
     setRefusedLine(null)
+    setFilled(null)
     setBooked(null)
     goTo(1)
   }
@@ -848,6 +884,18 @@ function BookingFlow({
             timeZone={timeZone}
             notesFrom={copied.text !== "" && notes === copied.text ? (copied.description ? "description" : "suggestions") : null}
             onChangeTime={back}
+            returning={
+              // Keyed by who is signed in: any change of caller starts the search empty, its matches gone (ARCHITECTURE §15).
+              <ReturningCustomerSearch
+                key={current.identity}
+                dealershipId={dealershipId}
+                timeZone={timeZone}
+                blockedBy={blocked ? blockedId : undefined}
+                filledFrom={filled?.from ?? null}
+                onChoose={chooseReturning}
+                onClear={clearReturning}
+              />
+            }
             vehicleStep={
               vehicleAware
                 ? {
@@ -1352,6 +1400,8 @@ interface StepTwoProps {
   notesFrom: "description" | "suggestions" | null
   onChangeTime: () => void
   problem: ReactNode
+  /** The returning-customer search, at the top of the customer section (Task 39b). */
+  returning: ReactNode
   /**
    * With vehicle-aware requirements on: the vehicle as declared on step 1 (in the summary), the VIN with Look up in place of
    * the plain field, and what the VIN said, under it. `null` otherwise: today's step 2.
@@ -1377,6 +1427,7 @@ function StepTwo({
   notesFrom,
   onChangeTime,
   problem,
+  returning,
   vehicleStep,
 }: StepTwoProps) {
   const headingId = useId()
@@ -1405,6 +1456,7 @@ function StepTwo({
       <div className={columns ? "grid grid-cols-2 items-start gap-x-8" : "contents"}>
         <FieldSet className="gap-4">
           <FieldLegend variant="label">Customer</FieldLegend>
+          {returning}
           {/* One field to a line in a column, which also keeps the customer about as tall as the vehicle beside it. */}
           <FieldGroup className={cn("grid gap-4", !columns && "sm:grid-cols-2")}>
             <TextField form={form} name="customer.name" label="Name" autoComplete="name" className={columns ? undefined : "sm:col-span-2"} />

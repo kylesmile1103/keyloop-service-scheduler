@@ -7,7 +7,9 @@ import type {
   CurrentUserResponse,
   DealershipResponse,
   FeatureSwitchesResponse,
+  FindReturningCustomersRequest,
   ResolveVehicleProfileRequest,
+  ReturningCustomerResponse,
   ScheduledAppointmentResponse,
   ServiceTypeResponse,
   TriageBookingRequest,
@@ -64,6 +66,8 @@ export interface BoardApiOptions {
   features?: () => Answer<FeatureSwitchesResponse>
   /** POST a VIN to resolve. By default: Volkswagen for a WVW VIN, the manufacturer not known for any other. */
   resolveVehicle?: (body: ResolveVehicleProfileRequest) => Answer<VehicleProfile>
+  /** POST a returning-customer search (`FindReturningCustomers`, Task 39). By default: nothing matches. */
+  customerLookup?: (dealershipId: string, body: FindReturningCustomersRequest, request: Request) => Answer<ReturningCustomerResponse[]>
   /**
    * The Admin routes of Task 30a (technicians, bays, the requirement policy, the change history), answered by an
    * `adminServer` (src/test/admin-api.ts). Without one they are 404s, as on an API that has none.
@@ -263,6 +267,10 @@ export function mockBoardApi(options: BoardApiOptions = {}) {
       const body = (await request.clone().json()) as ResolveVehicleProfileRequest
       if (options.resolveVehicle) return answer(options.resolveVehicle(body))
       return jsonResponse(body.vin?.toUpperCase().startsWith("WVW") ? decodedVolkswagen : undecoded)
+    }
+    if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/customer-lookups$/.exec(path)) && request.method === "POST") {
+      const body = (await request.clone().json()) as FindReturningCustomersRequest
+      return answer(options.customerLookup ? options.customerLookup(match[1], body, request) : [])
     }
     if ((match = /^\/api\/v1\/dealerships\/([^/]+)\/booking-triage\/images$/.exec(path)) && request.method === "POST") {
       const body = (await request.clone().json()) as UploadBookingTriageImageRequest

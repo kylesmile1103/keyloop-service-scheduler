@@ -945,7 +945,20 @@ describe("the booking dialog's two columns", () => {
 
   const before = (first: Element, second: Element) => Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING)
 
-  const stepTwoOrder = ["Name", "Email", "Phone", "VIN", "Registration", "Make", "Model", "Preferred bay", "Preferred technician", "Notes for the workshop"]
+  // The returning-customer search heads the customer column (Task 39b), so Tab meets it before the fields it fills in.
+  const stepTwoOrder = [
+    "Returning customer",
+    "Name",
+    "Email",
+    "Phone",
+    "VIN",
+    "Registration",
+    "Make",
+    "Model",
+    "Preferred bay",
+    "Preferred technician",
+    "Notes for the workshop",
+  ]
 
   it("puts the job on the left and its start times on the right from 1280 px, in reading order", async () => {
     mockBoardApi()
