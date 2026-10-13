@@ -5,6 +5,7 @@ import { listAppointmentsQueryKey } from "@/api/@tanstack/react-query.gen"
 import type { ListAppointmentsData } from "@/api/types.gen"
 import { mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
+import { findInspector, startCancelling } from "@/test/details"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
 import { interimServiceType } from "@/test/schedules"
@@ -71,8 +72,8 @@ describe("range reads after a change on the board", () => {
     seedRanges(queryClient)
 
     fireEvent.click(await screen.findByRole("button", { name: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed" }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang to rearrange" } })
+    const sheet = await findInspector()
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang to rearrange" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 
     await screen.findByText("Appointment cancelled")
@@ -95,8 +96,8 @@ describe("range reads after a change on the board", () => {
     seedRanges(queryClient)
 
     fireEvent.click(await screen.findByRole("button", { name: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed" }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang to rearrange" } })
+    const sheet = await findInspector()
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang to rearrange" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 
     await within(sheet).findByText("Invalid state transition")

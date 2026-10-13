@@ -8,6 +8,7 @@ import { rangeReadOptions, rangeReadsOf } from "@/lib/appointment-range"
 import { currentUserQueryKey, READ_ONLY_REASON } from "@/lib/session"
 import { bookedFrom, defaultSchedule, mockBoardApi, rangeFromSchedules, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { startCancelling } from "@/test/details"
 import {
   cachedText,
   deferred,
@@ -222,7 +223,7 @@ describe.each<[string, CurrentUserResponse]>([
     const api = mockApiAs(() => me, { cancel: () => answer.promise })
     const { queryClient } = renderBoard(calendar)
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
     await waitFor(() => expect(posts(api.requests, "/cancel")).toHaveLength(1))
 
@@ -313,7 +314,7 @@ describe("a write from the Calendar, bound to the account the page was drawn for
     const api = mockApiAs(() => admin)
     const { queryClient } = renderBoard(calendar)
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
     queryClient.setQueryData(currentUserQueryKey(), next)
@@ -428,7 +429,7 @@ describe("writes answered for the caller who sent them", () => {
     invalidate.mockClear()
     rangeReadsBefore = rangeReads(api.requests).length
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
     await screen.findByText("Appointment cancelled")
     expect(invalidate).toHaveBeenCalledWith({ queryKey: rangeReadsOf(reading.id) })
@@ -462,9 +463,11 @@ describe("no gated request for a caller who may not make it", () => {
     if (holdsRole(me)) {
       // A Viewer reads the record, and sees cancelling unavailable with the reason.
       expect(within(sheet).getByText(READ_ONLY_REASON)).toBeInTheDocument()
-      fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+      fireEvent.click(within(sheet).getByRole("button", { name: "Cancel booking…" }))
+      expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
     } else {
       expect(within(sheet).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
+      expect(within(sheet).queryByRole("button", { name: "Cancel booking…" })).not.toBeInTheDocument()
       expect(within(sheet).queryByRole("button", { name: "Cancel appointment" })).not.toBeInTheDocument()
     }
 

@@ -8,6 +8,7 @@ import { rangeReadOptions, rangeReadsOf } from "@/lib/appointment-range"
 import { currentUserQueryKey, READ_ONLY_REASON } from "@/lib/session"
 import { bookedFrom, defaultSchedule, mockBoardApi, rangeFromSchedules, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { startCancelling } from "@/test/details"
 import {
   cachedText,
   deferred,
@@ -207,7 +208,7 @@ describe.each<[string, CurrentUserResponse]>([
     const api = mockApiAs(() => me, { cancel: () => answer.promise })
     const { queryClient } = renderBoard(overview)
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
     await waitFor(() => expect(posts(api.requests, "/cancel")).toHaveLength(1))
 
@@ -295,7 +296,7 @@ describe("a write from the Overview, bound to the account the page was drawn for
     const api = mockApiAs(() => admin)
     const { queryClient } = renderBoard(overview)
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
     queryClient.setQueryData(currentUserQueryKey(), next)

@@ -11,6 +11,9 @@ import { appointmentLabel, firstName, timeRange } from "../lib/appointment-text"
 import type { BoardAppointment, LaneMode } from "../lib/schedule"
 import { statusMeta } from "../lib/status"
 
+/** How a block shows its details: a sheet over the board (a dialog), or the inspector docked beside it. */
+export type BlockDetails = "sheet" | "inspector"
+
 interface AppointmentBlockProps {
   appointment: BoardAppointment
   /** The lane view: a bay's block names its technician, a technician's block names its bay. */
@@ -18,8 +21,13 @@ interface AppointmentBlockProps {
   timeZone: string
   /** The block's place on the timeline (`grid-column`, `grid-row`). */
   style: CSSProperties
-  /** Its details sheet is open. */
+  /** Its details are open. */
   selected: boolean
+  /**
+   * Where its details open: a sheet (the block says it opens a dialog, and whether it is open), or the docked inspector
+   * (the block whose details it shows is the current one).
+   */
+  details?: BlockDetails
   /** Just booked: the block draws the booked halo for 3 s (UI_DESIGN 10). */
   booked?: boolean
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
@@ -48,9 +56,9 @@ export function PlateChip({
  * One appointment on the timeline: a button in its status's colours (and icon) spanning its time. A narrow block keeps the
  * start of the service name and the avatar; wider ones add the status icon, the plate, the technician's first name (a
  * two-hour job at 1440 px shows it), and the VIN once it fits whole: a VIN cut short identifies nothing. Hover or focus
- * shows the whole record; a click opens the details sheet.
+ * shows the whole record; a click opens its details (the sheet, or the inspector docked beside the board).
  */
-export function AppointmentBlock({ appointment, mode, timeZone, style, selected, booked = false, onSelect }: AppointmentBlockProps) {
+export function AppointmentBlock({ appointment, mode, timeZone, style, selected, details = "sheet", booked = false, onSelect }: AppointmentBlockProps) {
   const { icon: StatusIcon, classes, label: statusLabel } = statusMeta[appointment.status]
   const counterpart = mode === "bays" ? appointment.technician.name : appointment.bay.name
 
@@ -59,14 +67,17 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
       <TooltipTrigger
         type="button"
         aria-label={appointmentLabel(appointment, timeZone)}
-        aria-haspopup="dialog"
-        aria-expanded={selected}
+        aria-haspopup={details === "sheet" ? "dialog" : undefined}
+        aria-expanded={details === "sheet" ? selected : undefined}
+        aria-current={details === "inspector" && selected ? "true" : undefined}
         data-appointment-id={appointment.id}
         data-selected={selected || undefined}
         data-booked={booked || undefined}
         onClick={(event) => onSelect(appointment, event.currentTarget)}
         style={style}
         className={cn(
+          // Scrolled into view clear of the sticky ruler and lane column (the inspector shows its block when it opens).
+          "scroll-mt-11 scroll-ml-[calc(var(--lane-width)+0.25rem)]",
           "@container/block relative z-[1] mx-px my-1 flex min-w-0 cursor-pointer flex-col justify-center gap-1 overflow-hidden rounded-md border-l-3 px-2 py-1 text-left text-dense shadow-xs outline-none",
           "transition-shadow duration-150 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card",
           "data-selected:ring-2 data-selected:ring-primary data-selected:ring-offset-1 data-selected:ring-offset-card",

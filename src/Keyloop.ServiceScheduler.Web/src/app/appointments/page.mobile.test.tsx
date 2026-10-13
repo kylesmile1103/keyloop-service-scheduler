@@ -64,7 +64,7 @@ describe("appointments list on a phone", () => {
 
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
     expect(sheet).toHaveAttribute("data-side", "bottom")
-    expect(within(sheet).getByRole("textbox", { name: "Reason" })).toBeInTheDocument()
+    expect(within(sheet).getByRole("button", { name: "Cancel booking…" })).toBeInTheDocument()
   })
 
   it("filters in a bottom sheet and says how many appointments the filters leave", async () => {

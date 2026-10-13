@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus, RotateCw } from "lucide-react"
-import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react"
+import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { getDealershipsOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { AppointmentResponse, DealershipResponse } from "@/api/types.gen"
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { cachedWriteAccess, useCurrentUser, writeAccessOf } from "@/hooks/use-current-user"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useNow } from "@/hooks/use-now"
 import { useQueryFailure } from "@/hooks/use-query-failure"
@@ -22,6 +23,7 @@ import { todayIn } from "@/lib/calendar-date"
 import { firstOpenDate } from "@/lib/opening-hours"
 import { cn } from "@/lib/utils"
 
+import { AppointmentInspector } from "./components/appointment-inspector"
 import { AppointmentSheet } from "./components/appointment-sheet"
 import { BoardPlaceholder } from "./components/board-placeholder"
 import { BookingDialog } from "./components/booking-dialog"
@@ -35,6 +37,9 @@ import { type BoardAppointment, buildLanes, type LaneMode, reviewCount, withVisi
 
 /** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
 const AUTO_REFRESH_MS = 5000
+
+/** From this width a booking's details dock beside the board instead of opening a sheet over it (UI_DESIGN 11.14). */
+const DOCKED_DETAILS = "(min-width: 1280px)"
 
 export default function DispatchPage() {
   const dealershipsOptions = getDealershipsOptions()
@@ -126,9 +131,12 @@ interface DealershipDayProps {
 }
 
 /**
- * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, the details sheet and the booking
- * dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
+ * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, a booking's details and the
+ * booking dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
  * the same board; there is one schedule query, which both lane views and both presentations draw from.
+ *
+ * A booking's details dock beside the board from 1280 px (the inspector: the board narrows and stays usable, and choosing
+ * another booking swaps them in place); on narrower screens they open as a sheet over it (a bottom sheet on phones).
  *
  * Booking follows the signed-in role (UI_DESIGN 11.20): an Admin or Service advisor books; a visitor who is not signed in
  * gets the sign-in prompt instead of the dialog, before anything is typed; any other account sees every Book action
@@ -148,6 +156,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const board = useRef<HTMLDivElement>(null)
   const currentUser = useCurrentUser()
   const access = writeAccessOf(currentUser)
+  const docked = useMediaQuery(DOCKED_DETAILS) && !agenda
   const [signInPrompt, setSignInPrompt] = useState(false)
   const reasonId = useId()
   // Every Book action is unavailable, but keeps focus, while it cannot book; the reason names it for screen readers.
@@ -176,11 +185,15 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const current = selection?.dealershipId === dealership.id && selection.identity === currentUser.identity ? selection : null
   const onBoard = new Set(lanes.flatMap((lane) => lane.appointments.map((appointment) => appointment.id)))
   const { bookedId, highlight } = useBookedHighlight(onBoard, board)
+  const selectedId = current?.open ? current.appointment.id : null
+  const inspected = docked && current?.open ? current.appointment : null
+  useInspectorFocus(inspected?.id ?? null, opener, board)
 
   const openDetails = (appointment: BoardAppointment, element: HTMLElement) => {
     opener.current = element
     setSelection({ appointment, dealershipId: dealership.id, open: true, identity: currentUser.identity })
   }
+  const closeDetails = () => setSelection((previous) => (previous ? { ...previous, open: false } : previous))
 
   const queryClient = useQueryClient()
   // Decided as it is pressed, from the cached `/me` (a press can land before the board has drawn a change of identity).
@@ -230,7 +243,9 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       onDateChange={setDate}
       agenda={agenda}
       now={now}
-      selectedId={current?.open ? current.appointment.id : null}
+      selectedId={selectedId}
+      details={docked ? "inspector" : "sheet"}
+      narrow={inspected !== null}
       bookedId={bookedId}
       emptyAction={date >= today ? bookButton : undefined}
       onSelect={openDetails}
@@ -268,27 +283,52 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           now={now}
           refetchInterval={refetchInterval}
         />
-        {/* Out of the tab order: the panel holds focusable content (the timeline, its blocks, the agenda's lanes), so Tab goes
-            from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). */}
-        <TabsContent value="bays" tabIndex={-1}>
-          {mode === "bays" && boardFor("bays")}
-        </TabsContent>
-        <TabsContent value="technicians" tabIndex={-1}>
-          {mode === "technicians" && boardFor("technicians")}
-        </TabsContent>
-        <AppointmentSheet
-          appointment={current?.appointment ?? null}
-          open={current?.open ?? false}
-          onOpenChange={(open) => setSelection((previous) => (previous ? { ...previous, open } : previous))}
-          side={agenda ? "bottom" : "right"}
-          dealershipId={dealership.id}
-          date={date}
-          timeZone={timeZone}
-          returnFocus={() => (opener.current?.isConnected ? opener.current : board.current)}
-          onCancelled={() => {
-            opener.current = null
-          }}
-        />
+        {/* The board and, once a booking is chosen on a wide screen, its details docked on the right: the board keeps every
+            width the inspector leaves it (`minmax(0, 1fr)`), and its timeline scrolls sideways inside its card when the
+            hours no longer fit. */}
+        <div className={cn(inspected && "grid grid-cols-[minmax(0,1fr)_26rem] gap-5")}>
+          <div className="min-w-0">
+            {/* Out of the tab order: the panel holds focusable content (the timeline, its blocks, the agenda's lanes), so Tab
+                goes from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). Beside the
+                inspector the board takes the row's height, so the two cards end level. */}
+            <TabsContent value="bays" tabIndex={-1} className="h-full">
+              {mode === "bays" && boardFor("bays")}
+            </TabsContent>
+            <TabsContent value="technicians" tabIndex={-1} className="h-full">
+              {mode === "technicians" && boardFor("technicians")}
+            </TabsContent>
+          </div>
+          {inspected && (
+            <AppointmentInspector
+              appointment={inspected}
+              dealershipId={dealership.id}
+              date={date}
+              timeZone={timeZone}
+              onClose={closeDetails}
+              onCancelled={(appointmentId) => {
+                // Its block is about to leave the board, so focus will go to the board. A cancellation that answers after
+                // another booking was chosen leaves that one's details open.
+                if (opener.current?.dataset.appointmentId === appointmentId) opener.current = null
+                setSelection((previous) => (previous?.appointment.id === appointmentId ? { ...previous, open: false } : previous))
+              }}
+            />
+          )}
+        </div>
+        {!docked && (
+          <AppointmentSheet
+            appointment={current?.appointment ?? null}
+            open={current?.open ?? false}
+            onOpenChange={(open) => setSelection((previous) => (previous ? { ...previous, open } : previous))}
+            side={agenda ? "bottom" : "right"}
+            dealershipId={dealership.id}
+            date={date}
+            timeZone={timeZone}
+            returnFocus={() => (opener.current?.isConnected ? opener.current : board.current)}
+            onCancelled={() => {
+              opener.current = null
+            }}
+          />
+        )}
       </Tabs>
 
       <BookingDialog
@@ -322,6 +362,30 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       )}
     </>
   )
+}
+
+/**
+ * Keeps keyboard focus sensible around the docked inspector, which has no focus trap: the booking it shows is scrolled into
+ * the timeline's view when it opens or swaps (the board just narrowed, and the block may have left the visible hours), and
+ * when it closes (its close button, Escape, a cancellation, a change of who is signed in) focus that the inspector took
+ * with it goes back to the booking's block, or to the board once the block is gone, never to the page's body. Focus a
+ * dialog holds (the session dialog) is left there.
+ */
+function useInspectorFocus(inspectedId: string | null, opener: RefObject<HTMLElement | null>, board: RefObject<HTMLElement | null>) {
+  const shown = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const previous = shown.current
+    shown.current = inspectedId
+    if (inspectedId !== null) {
+      const block = board.current?.querySelector<HTMLElement>(`[data-appointment-id="${inspectedId}"]`)
+      block?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+      return
+    }
+    const active = document.activeElement
+    if (previous === null || (active !== null && active !== document.body)) return
+    const target = opener.current?.isConnected ? opener.current : board.current
+    target?.focus()
+  }, [inspectedId, opener, board])
 }
 
 /**

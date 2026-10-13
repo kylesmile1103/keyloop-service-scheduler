@@ -5,6 +5,7 @@ import type { CompetenceWarningResponse, CurrentUserResponse, WorkshopScheduleRe
 import { COMPETENCE_REASONS, competenceReason } from "@/lib/competence-warnings"
 import { detailsFor, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector } from "@/test/details"
 import { admin, anonymous, serviceAdvisor, viewer } from "@/test/identities"
 import { maskedSchedule } from "@/test/identity-change"
 import { renderBoard, viewportOf } from "@/test/render-board"
@@ -82,17 +83,18 @@ describe("competence warnings on the board", () => {
     expect(screen.getByRole("list", { name: "Status legend" })).toHaveTextContent("Needs review: its technician or bay no longer qualifies")
   })
 
-  it("names every reason in the details sheet, with the people and bay concerned, and moves nothing", async () => {
+  it("names every reason in the details, with the people and bay concerned, and moves nothing", async () => {
     api(serviceAdvisor)
     renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: /^Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed, needs review$/ }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     const review = await within(sheet).findByRole("region", { name: "Needs review" })
     expect(review).toHaveTextContent("Amelia Clarke's HV level is now below the level this job needs.")
     expect(review).toHaveTextContent(`${bays.standard.name} no longer has equipment this job needs.`)
     expect(review).toHaveTextContent("Nothing has been moved")
-    // The sheet still shows the booking as it is: same bay, technician and time.
+    // The details still show the booking as it is: same bay, technician and time; the notice heads the Job card.
+    expect(within(review.closest<HTMLElement>('[data-slot="details-card"]')!).getByRole("heading", { level: 3, name: "Job" })).toBeInTheDocument()
     expect(within(sheet).getByText(bays.standard.name)).toBeInTheDocument()
   })
 
