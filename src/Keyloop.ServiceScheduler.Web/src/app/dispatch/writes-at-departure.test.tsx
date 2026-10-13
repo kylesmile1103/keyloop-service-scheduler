@@ -581,6 +581,7 @@ describe.each([
 
 const technicians = `/resources/technicians?dealership=${reading.id}`
 const bayList = `/resources/bays?dealership=${reading.id}`
+const policyPage = `/resources/policy?dealership=${reading.id}`
 const privateName = "Private Previous Admin Name"
 
 /** Requests of one method to a path that ends with `suffix`. */
@@ -706,7 +707,42 @@ const adminWritePaths: AdminWritePath[] = [
     carries: [],
     answered: () => screen.findByText("Bay taken out of service"),
   },
+  {
+    name: "Preview changes to the requirement policy",
+    page: policyPage,
+    method: "PUT",
+    path: "/requirement-policy",
+    open: async () => {
+      await raiseRoutineRule()
+      return () => fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+    },
+    carries: [],
+    answered: () => screen.findByRole("region", { name: "What version 3 would change" }),
+  },
+  {
+    name: "Publish the requirement policy",
+    page: policyPage,
+    method: "PUT",
+    path: "/requirement-policy",
+    open: async () => {
+      await raiseRoutineRule()
+      fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+      await screen.findByRole("region", { name: "What version 3 would change" })
+      return () => fireEvent.click(screen.getByRole("button", { name: "Publish version 3" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Policy version 3 published"),
+  },
 ]
+
+/** The draft every policy path starts from: the routine rule raised to level 4. */
+async function raiseRoutineRule() {
+  fireEvent.click(await screen.findByRole("button", { name: "Edit hv-routine" }, { timeout: 10_000 }))
+  const dialog = await screen.findByRole("dialog", { name: "Edit rule hv-routine" })
+  fireEvent.click(within(dialog).getByRole("radio", { name: "Level 4, Live working" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save rule" }))
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit rule hv-routine" })).not.toBeInTheDocument())
+}
 
 /**
  * Changes who is signed in while the generated client prepares the first `method` request to `path` from now on (as
@@ -758,7 +794,8 @@ describe.each(adminWritePaths)("$name, an Admin's edit, while the generated clie
     expect(at.prepared).toBe(1)
     expect(at.reachedFetch).toBe(at.before)
     expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before)
-    expect(screen.queryAllByText(/^(Technician|Bay) (saved|added|deactivated|taken out of service)$|^HV level confirmed$/)).toHaveLength(0)
+    expect(screen.queryAllByText(/^(Technician|Bay) (saved|added|deactivated|taken out of service)$|^HV level confirmed$|^Policy version \d+ published$/)).toHaveLength(0)
+    expect(screen.queryByRole("region", { name: /^What version \d+ would change$/ })).not.toBeInTheDocument()
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
     for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)

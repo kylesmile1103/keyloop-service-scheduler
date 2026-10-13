@@ -175,9 +175,13 @@ function TechnicianSheetBody(props: BodyProps) {
     queryOptions: { enabled: editing.mode === "edit", refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false, staleTime: Infinity, gcTime: 0 },
   })
   const [generation, setGeneration] = useState(0)
+  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin) never rebases the
+  // form; Reload, after a 428, starts it again from a fresh read.
+  const [kept, setKept] = useState<AdminTechnicianResponse | null>(null)
+  if (!kept && query?.data?.data && generation === 0) setKept(query.data.data)
 
   if (editing.mode === "create") return <TechnicianFormBody {...props} base={null} />
-  const record = query?.data?.data
+  const record = generation === 0 ? (kept ?? query?.data?.data) : query?.data?.data
   if (!record) {
     if (query?.error) {
       return (

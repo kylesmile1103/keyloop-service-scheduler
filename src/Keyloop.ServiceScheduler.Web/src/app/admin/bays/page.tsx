@@ -61,10 +61,12 @@ function BayList({ dealership, today, phone }: ResourceScope) {
   const read = useResourceList<BayRecord>("bays", { dealership, today, view: access.admin ? "admin" : "workshop" })
   const rows = read.rows ?? NO_ROWS
   const refresh = useRefreshAfterEdit()
-  const { identity } = useCurrentUser()
+  // An open edit belongs to the Admin it was opened by (`adminWriter`): another Admin, or a role that cannot edit, closes it.
+  const { adminWriter } = useCurrentUser()
+  const writer = adminWriter ?? ""
   // Open for the identity it was opened for; closed without saving when who is signed in changes.
-  const editor = useOpenFor<BayEditing>(identity)
-  const activity = useOpenFor<BayRecord>(identity)
+  const editor = useOpenFor<BayEditing>(writer)
+  const activity = useOpenFor<BayRecord>(writer)
   const opener = useRef<HTMLElement | null>(null)
   const addButton = useRef<HTMLButtonElement>(null)
   const saved = (record: AdminBayResponse, title: string, description: string) => {

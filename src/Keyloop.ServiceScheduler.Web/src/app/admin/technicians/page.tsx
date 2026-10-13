@@ -93,12 +93,14 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
   // HV competence (ADR-029): the schedule carries it to a role, the Admin read to an Admin, with vehicle-aware requirements on.
   const vehicleAware = useVehicleAware()
   const refresh = useRefreshAfterEdit()
-  const { identity } = useCurrentUser()
+  // An open edit belongs to the Admin it was opened by (`adminWriter`): another Admin, or a role that cannot edit, closes it.
+  const { adminWriter } = useCurrentUser()
+  const writer = adminWriter ?? ""
 
-  // What is open, and for whom: an edit (or a deactivation) belongs to the identity it was opened for, and closes without
-  // saving in the same render as a change of who is signed in (`useOpenFor`), saying so when the new caller is an Admin too.
-  const editor = useOpenFor<TechnicianEditing>(identity)
-  const activity = useOpenFor<TechnicianRecord>(identity)
+  // What is open, and for whom: an edit (or a deactivation) closes without saving in the same render as a change to another
+  // Admin or to a role that cannot edit (`useOpenFor`), saying so when the new caller is an Admin too.
+  const editor = useOpenFor<TechnicianEditing>(writer)
+  const activity = useOpenFor<TechnicianRecord>(writer)
   const opener = useRef<HTMLElement | null>(null)
   const addButton = useRef<HTMLButtonElement>(null)
 

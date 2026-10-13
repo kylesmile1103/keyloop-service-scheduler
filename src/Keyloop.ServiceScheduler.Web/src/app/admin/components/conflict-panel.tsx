@@ -16,6 +16,8 @@ interface ConflictPanelProps {
   actions: ReactNode
   /** Whether to show this Admin's own values (off where the action changed nothing of the record yet, a confirmation). */
   showYours?: boolean
+  /** The columns' names: what a row is ("Field", "Rule") and the two states compared. */
+  columns?: { field: string; opened: string; now: string }
   className?: string
 }
 
@@ -26,7 +28,9 @@ interface ConflictPanelProps {
  * when this Admin left it). Below 640 px each row stacks its three values under the field's name; the explicit table roles
  * keep it a table to assistive technology when CSS changes its display.
  */
-export function ConflictPanel({ ref, title, children, rows, actions, showYours = true, className }: ConflictPanelProps) {
+const COLUMNS = { field: "Field", opened: "When you opened it", now: "Now" }
+
+export function ConflictPanel({ ref, title, children, rows, actions, showYours = true, columns = COLUMNS, className }: ConflictPanelProps) {
   const headingId = useId()
   return (
     <section
@@ -53,13 +57,13 @@ export function ConflictPanel({ ref, title, children, rows, actions, showYours =
           <thead className="bg-muted/50 text-xs text-muted-foreground max-sm:sr-only">
             <tr role="row">
               <th scope="col" role="columnheader" className="px-3 py-2 font-medium">
-                Field
+                {columns.field}
               </th>
               <th scope="col" role="columnheader" className="px-3 py-2 font-medium">
-                When you opened it
+                {columns.opened}
               </th>
               <th scope="col" role="columnheader" className="px-3 py-2 font-medium">
-                Now
+                {columns.now}
               </th>
               {showYours && (
                 <th scope="col" role="columnheader" className="px-3 py-2 font-medium">
@@ -74,10 +78,10 @@ export function ConflictPanel({ ref, title, children, rows, actions, showYours =
                 <th scope="row" role="rowheader" className="px-3 py-2 font-medium max-sm:col-span-2 max-sm:p-0">
                   {row.label}
                 </th>
-                <Cell label="When you opened it" className="text-muted-foreground">
+                <Cell label={columns.opened} className="text-muted-foreground">
                   {row.opened}
                 </Cell>
-                <Cell label="Now" className="font-medium">
+                <Cell label={columns.now} className="font-medium">
                   {row.now}
                 </Cell>
                 {showYours && (

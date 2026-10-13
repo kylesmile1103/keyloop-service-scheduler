@@ -438,6 +438,23 @@ describe("an open form when who is signed in changes", () => {
     expect(writes(api.requests, "PUT")).toHaveLength(0)
   })
 
+  it("stays open, with what was entered, when the same Admin gains another role", async () => {
+    const { session, api, queryClient } = setup()
+
+    const sheet = await editForm("Ben Okafor")
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "Benjamin Okafor" } })
+    const alsoViewer = { ...admin, roles: ["Admin", "Viewer"] }
+    session.me = alsoViewer
+    act(() => queryClient.setQueryData(currentUserQueryKey(), alsoViewer))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)))
+
+    expect(screen.getByRole("dialog", { name: "Edit Ben Okafor" })).toBeInTheDocument()
+    expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor")
+    save(sheet)
+    expect(await screen.findByText("Technician saved")).toBeInTheDocument()
+    expect(await bodyOf(writes(api.requests, "PUT")[0])).toMatchObject({ name: "Benjamin Okafor" })
+  })
+
   it("is closed, and the list becomes read-only, when the Admin becomes a Viewer", async () => {
     const { session, api, queryClient } = setup()
 

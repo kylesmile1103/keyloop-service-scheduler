@@ -1,10 +1,11 @@
 import { useState } from "react"
 
 /**
- * Something opened in the Resources area (an edit sheet, a deactivation) for the identity it was opened for (Task 30b,
- * ARCHITECTURE §15): what it holds was read and entered as that caller. When who is signed in changes it closes without
- * saving in the same render, never painting for the next caller, and `discarded` says so for a note (the next caller may
- * be another Admin, who should know why the sheet went).
+ * Something opened in the Resources area (an edit sheet, a deactivation, a policy draft) for the Admin it was opened by
+ * (Task 30b, ARCHITECTURE §15): `owner` is that Admin (`CurrentUser.adminWriter`), as a booking being entered belongs to its
+ * writer. When it changes (another Admin, or a role that cannot edit) the open thing closes without saving in the same
+ * render, never painting for the next caller, and `discarded` says so for a note; the same Admin gaining or losing another
+ * role keeps it, as the same writer keeps a booking.
  */
 export function useOpenFor<T>(identity: string) {
   const [state, setState] = useState<{ value: T; identity: string; open: boolean } | null>(null)
