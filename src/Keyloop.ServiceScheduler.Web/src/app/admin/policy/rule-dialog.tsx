@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Field, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { bayCapabilities, certifications } from "@/lib/features"
 import { cn } from "@/lib/utils"
 import { type HvLevel, hvLevelOf, POWERTRAINS, powertrainLabels, VEHICLE_CLASSES, vehicleClassLabels } from "@/lib/vehicle-aware"
@@ -40,6 +41,8 @@ interface RuleDialogProps {
  * equipment, certifications). Saving changes the draft only; nothing is sent until the draft is previewed and published.
  */
 export function RuleDialog({ editing, onOpenChange, others, services, onSave }: RuleDialogProps) {
+  // A rule being edited is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(editing !== null)
   return (
     <Dialog open={editing !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-2xl">

@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { type DetailsAccess, detailsAccessOf, useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, todayIn } from "@/lib/calendar-date"
@@ -401,6 +402,8 @@ function CancelForm({ access, appointment, status, timeZone, reasonRef, onCancel
   const countId = useId()
   const deniedId = useId()
   const [reason, setReason] = useState("")
+  // A reason typed is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(reason.trim() !== "")
   const [missingReason, setMissingReason] = useState(false)
   const generated = cancelAppointmentMutation()
   // Bound to the account the sheet was drawn for and sent only while the cache names it (checked last as the request

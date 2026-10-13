@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { AppointmentListItemResponse, CurrentUserResponse } from "@/api/types.gen"
 import { currentUserQueryKey } from "@/lib/session"
+import { hasUnsavedWork } from "@/lib/unsaved-work"
 import { ADMIN_TRACE_ID, adminServer, type AdminServerOptions, etagOf } from "@/test/admin-api"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
@@ -79,6 +80,17 @@ const save = (sheet: HTMLElement) => fireEvent.click(within(sheet).getByRole("bu
 const ben = technicians.ben
 
 describe("editing technicians, as an Admin", () => {
+  it("holds off a silent session renewal while the edit sheet is open", async () => {
+    setup()
+
+    expect(hasUnsavedWork()).toBe(false)
+    const sheet = await editForm("Amelia Clarke")
+    expect(hasUnsavedWork()).toBe(true)
+    fireEvent.keyDown(sheet, { key: "Escape" })
+    await waitFor(() => expect(sheet).not.toBeInTheDocument())
+    expect(hasUnsavedWork()).toBe(false)
+  })
+
   it("offers Add technician and each row's actions", async () => {
     setup()
 
