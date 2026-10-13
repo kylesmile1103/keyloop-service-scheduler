@@ -60,6 +60,26 @@ public class TelemetryTests
             ignoreOrder: true);
     }
 
+    [Theory]
+    [InlineData("legacy-hv-component")]
+    [InlineData("hv-awareness")]
+    [InlineData("hv-routine")]
+    [InlineData("hv-aircon")]
+    [InlineData("hv-components")]
+    [InlineData("hv-post-collision")]
+    [InlineData("heavy-vehicle")]
+    [InlineData("hv-live-diagnosis")]
+    public void Built_in_rule_metric_labels_keep_their_fixed_vocabulary(string code) => SchedulerTelemetry.RuleLabel(code).ShouldBe(code);
+
+    [Fact]
+    public void Arbitrary_policy_rule_codes_share_one_custom_metric_label()
+    {
+        foreach (var code in Enumerable.Range(1, 64).Select(i => $"site-{i}-policy-{Guid.NewGuid():N}"))
+        {
+            SchedulerTelemetry.RuleLabel(code).ShouldBe("custom");
+        }
+    }
+
     [Fact]
     public async Task Booked_event_is_logged_as_1001_with_ids_and_the_masked_vin()
     {

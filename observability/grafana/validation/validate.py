@@ -433,7 +433,19 @@ def check_manifests(root=ROOT, repo=REPO, alerts_dir=None):
     metrics = json.loads((root / "validation/metrics.json").read_text())
     series = {name: m for m in metrics for name in series_names(m)}
     declarations = telemetry_declarations(repo)
+    catalogued = {m["instrument"]: m for m in metrics if m["source"] not in {"framework", "otlp"}}
+    require(set(catalogued) == set(declarations), "Custom metric inventory must cover every service instrument")
+    for metric in catalogued.values():
+        require(set(metric["labels"]) <= {"action", "constraint", "criterion", "kind", "outcome", "previous_status",
+                                           "reason", "resource", "rule", "source", "uncovered_category"},
+                "Unbounded custom metric label")
     design = (repo / "docs/ARCHITECTURE.md").read_text().split("## 12. Observability", 1)[1].split("\n## 13.", 1)[0]
+    for instrument, metric in catalogued.items():
+        kind, body = declarations[instrument]
+        require(kind == {"counter": "Counter", "histogram": "Histogram", "gauge": "ObservableGauge"}[metric["kind"]],
+                f"Kind mismatch for {instrument}")
+        require(unit_declared(body, metric["unit"]), f"Unit mismatch for {instrument}")
+        require(instrument in design, f"{instrument} missing from ARCHITECTURE section 12")
     defaults = (repo / "src/Keyloop.ServiceScheduler.ServiceDefaults/Extensions.cs").read_text()
     used, missing = set(), set()
     query_count = 0

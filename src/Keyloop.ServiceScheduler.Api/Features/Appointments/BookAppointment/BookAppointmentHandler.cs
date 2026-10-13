@@ -128,8 +128,9 @@ public sealed class BookAppointmentHandler(
             {
                 foreach (var rule in requirements.FiredRules)
                 {
-                    SchedulerTelemetry.RequirementRuleFired.Add(1, new KeyValuePair<string, object?>("rule", rule));
+                    SchedulerTelemetry.RequirementRuleFired.Add(1, new KeyValuePair<string, object?>("rule", SchedulerTelemetry.RuleLabel(rule)));
                 }
+                activity?.SetTag("requirements.fired_rules", requirements.FiredRules.ToArray());
                 var provenance = profile!.Provenance;
                 foreach (var source in new[] { provenance.Powertrain, provenance.Manufacturer, provenance.VehicleClass }.Distinct())
                 {
@@ -241,7 +242,7 @@ public sealed class BookAppointmentHandler(
         {
             activity?.SetTag("booking.outcome", outcome);
             SchedulerTelemetry.BookingRequests.Add(
-                1, new KeyValuePair<string, object?>("outcome", outcome), new KeyValuePair<string, object?>("dealership.id", command.DealershipId.ToString()));
+                1, new KeyValuePair<string, object?>("outcome", outcome));
             SchedulerTelemetry.BookingDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("outcome", outcome));
             if (BookingOutcomes.IsRejection(outcome))
             {
@@ -464,7 +465,7 @@ public sealed class BookAppointmentHandler(
         await DealershipLock.AcquireAsync(db, dealershipId, ct);
         var waitedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         activity?.SetTag("lock.wait_ms", waitedMs);
-        SchedulerTelemetry.LockWait.Record(waitedMs, new KeyValuePair<string, object?>("dealership.id", dealershipId.ToString()));
+        SchedulerTelemetry.LockWait.Record(waitedMs);
     }
 
     private async Task<(IReadOnlyList<ServiceBay> AllBays, IReadOnlyList<Technician> AllTechnicians, IReadOnlyList<ServiceBay> Bays, IReadOnlyList<Technician> Technicians)> QualifiedResourcesAsync(

@@ -207,7 +207,7 @@ spec:
   - id: 3
     title: Bookings confirmed
     description: 'Confirmed transactions in the selected range, excluding idempotent replays. Approximate: increase() needs two exported samples, so the value a series
-      carries at its first export (per dealership and process) is not counted.'
+      carries at its first export (per process) is not counted.'
     type: stat
     gridPos:
       x: 8
@@ -707,7 +707,7 @@ spec:
     gridPos:
       x: 0
       y: 23
-      w: 12
+      w: 24
       h: 7
     datasource:
       type: prometheus
@@ -751,60 +751,6 @@ spec:
       tooltip:
         show: true
         yHistogram: false
-  - id: 13
-    title: Hottest dealerships, lock wait p95
-    description: Top five dealerships only, to bound the legend and identify lock hot spots. dealership.id becomes dealership_id in Mimir.
-    type: timeseries
-    gridPos:
-      x: 12
-      y: 23
-      w: 12
-      h: 7
-    datasource:
-      type: prometheus
-      uid: ${ds_metrics}
-    interval: 1m
-    fieldConfig:
-      defaults:
-        unit: ms
-        thresholds:
-          mode: absolute
-          steps:
-          - color: green
-            value: null
-        custom:
-          drawStyle: line
-          lineWidth: 2
-          fillOpacity: 0
-          showPoints: never
-          spanNulls: false
-          stacking:
-            mode: none
-            group: A
-          thresholdsStyle:
-            mode: 'off'
-      overrides: []
-    targets:
-    - datasource:
-        type: prometheus
-        uid: ${ds_metrics}
-      editorMode: code
-      expr: topk(5, histogram_quantile(0.95, sum by (le, dealership_id) (rate(scheduler_booking_lock_wait_milliseconds_bucket{job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"}[$__rate_interval]))))
-      legendFormat: '{{dealership_id}}'
-      instant: false
-      range: true
-      format: time_series
-      exemplar: false
-      refId: A
-      interval: 1m
-    options:
-      legend:
-        displayMode: list
-        placement: bottom
-        calcs: []
-      tooltip:
-        mode: multi
-        sort: desc
   - id: 14
     title: Availability p95
     description: Read-path calculation latency, aggregated across dealerships. Compare with booking and lock wait to locate contention.
