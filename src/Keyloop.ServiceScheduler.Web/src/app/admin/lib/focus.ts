@@ -74,3 +74,24 @@ export function pastConfirmed(id: string): HTMLElement | null {
     null
   )
 }
+
+/**
+ * After a confirmation the list is read again, which can take away the row actions focus moved to (another Admin's rename
+ * that leaves the search, or moves the technician to another page). Armed with the record id, it checks after each commit
+ * until that re-read has landed: if focus was lost to the page, it resolves the target again by id against the list as it
+ * is now (`pastConfirmed`: the next level to review, the row actions, else the search field).
+ */
+export function useRefocusAfterReread(fetching: boolean) {
+  const pending = useRef<{ id: string; sawFetch: boolean } | null>(null)
+  useEffect(() => {
+    const armed = pending.current
+    if (!armed) return
+    if (fetching) armed.sawFetch = true
+    const active = document.activeElement
+    if (!active || active === document.body || !active.isConnected) pastConfirmed(armed.id)?.focus()
+    if (armed.sawFetch && !fetching) pending.current = null
+  })
+  return (id: string) => {
+    pending.current = { id, sawFetch: false }
+  }
+}

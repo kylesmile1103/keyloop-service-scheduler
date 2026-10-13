@@ -440,6 +440,25 @@ describe("HV levels and deactivation, as an Admin", () => {
     expect(bodyRows(await table()).at(-1)).toHaveTextContent("Zach Okafor")
   })
 
+  it("moves focus to the search field when a concurrent rename takes the confirmed technician out of the search", async () => {
+    const { server } = setup(benUnconfirmed)
+
+    const note = await screen.findByRole("region", { name: "HV levels to review" })
+    const search = screen.getByRole("searchbox", { name: "Search technicians" })
+    fireEvent.change(search, { target: { value: "Ben" } })
+    await waitFor(() => expect(bodyRows(screen.getByRole("table", { name: "Technicians" }))).toHaveLength(1))
+    server.editedElsewhere.technician(ben.id, { hvLevel: 2, name: "Zach Okafor" })
+    within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
+    fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
+    const dialog = await screen.findByRole("dialog", { name: "Ben Okafor's record changed" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm HV 2" }))
+
+    expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    // Read again, "Zach Okafor" no longer matches "Ben": his row goes, and focus with it would be lost; it lands on the search.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Actions for (Ben|Zach) Okafor$/ })).not.toBeInTheDocument())
+    await waitFor(() => expect(search).toHaveFocus())
+  })
+
   it("returns focus by record after two conflicts in a row, on Cancel and on confirming", async () => {
     const { server } = setup(benUnconfirmed)
 

@@ -25,7 +25,7 @@ import type { TechnicianRecord } from "../lib/resources"
 import { useAdminAccess } from "../lib/use-admin-access"
 import { useOpenFor } from "../lib/use-open-for"
 import { useResourceList } from "../lib/use-resource-list"
-import { byLabel, pastConfirmed } from "../lib/focus"
+import { byLabel, pastConfirmed, useRefocusAfterReread } from "../lib/focus"
 import { technicianColumns, technicianSearch } from "./columns"
 import { UnconfirmedLevelsNote } from "./competence"
 import { COMPETENCE_CHOICES, competenceColumns, competenceOf } from "./competence-model"
@@ -110,9 +110,12 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
     void refresh(dealership.id)
     return record
   }
+  // The re-read after a confirmation can take away where focus went (a concurrent rename out of the search or page).
+  const refocusAfterReread = useRefocusAfterReread(read.fetching)
   const confirmLevel = useConfirmLevel({
     dealership,
     onDone: (record) => {
+      refocusAfterReread(record.id)
       // The confirmed level's button leaves the review note once the list is read again: focus moves on first.
       if (byLabel("HV levels to review")?.contains(document.activeElement)) pastConfirmed(record.id)?.focus()
       return saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`)
