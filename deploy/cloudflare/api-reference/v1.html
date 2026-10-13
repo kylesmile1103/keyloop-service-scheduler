@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- The deployed site's API reference. scripts/assemble-assets.mjs publishes this page at /scalar/v1, next to Scalar's
+     self-hosted standalone bundle and the committed contract at /openapi/v1.json, the paths the API's own Development
+     reference uses. No inline script: the site CSP allows only same-origin script files. -->
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>API reference | Keyloop Service Scheduler</title>
+    <meta name="description" content="OpenAPI reference for the Keyloop Service Scheduler API, rendered from the committed v1 contract." />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <noscript>The interactive reference needs JavaScript. The OpenAPI contract is at <a href="/openapi/v1.json">/openapi/v1.json</a>.</noscript>
+    <!-- Not the id api-reference: the bundle auto-mounts a second, default-configured reference (Scalar's font CDN
+         included) on the element with that id. -->
+    <div id="keyloop-api-reference"></div>
+    <script src="/scalar/before.js"></script>
+    <script src="/scalar/standalone.js"></script>
+    <script src="/scalar/config.js"></script>
+  </body>
+</html>

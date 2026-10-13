@@ -28,6 +28,7 @@ const taskEnv = {
   KEYLOOP_TRIAGE_ENABLED: integrations ? "true" : "false",
   KEYLOOP_TRIAGE_ACCOUNT_ID: integrations ? "00000000000000000000000000000000" : "",
   KEYLOOP_TRIAGE_GATEWAY_ID: "keyloop-scheduler",
+  KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: integrations ? "true" : "false",
   KEYLOOP_GRAFANA_OTLP_ENDPOINT: integrations ? "https://otlp-gateway-local.grafana.net/otlp" : "",
   KEYLOOP_API_OTLP_ENABLED: integrations ? "true" : "false",
   KEYLOOP_GRAFANA_INSTANCE_ID: integrations ? "123456" : "",
@@ -66,6 +67,8 @@ if (action === "build" && result.status === 0) {
   assert.equal(worker.previewUrls, false);
   assert.deepEqual(worker.env.EMAIL.allowedSenderAddresses, ["notifications@keyloop.kylesmile.me"]);
   assert.equal(worker.env.DB_URL.secretName, "keyloop_prod_db_url");
+  assert.equal(worker.env.API_IMAGE.value, taskEnv.KEYLOOP_API_IMAGE);
+  assert.equal(container.image?.reference ?? container.image, taskEnv.KEYLOOP_API_IMAGE);
   assert.equal(worker.env.EMAIL_SENDING_ENABLED.value, "false");
   assert.equal(worker.env.OTLP_RELAY_LIMITER.type, "rate-limit");
   assert.equal(worker.exports.ApiContainer.container, "keyloop-scheduler-api");
@@ -80,6 +83,7 @@ if (action === "build" && result.status === 0) {
   assert.equal(worker.env.API_OTLP_ENABLED.value, integrations ? "true" : "false");
   assert.equal(Boolean(worker.env.TRIAGE_IMAGES), integrations);
   assert.equal(worker.env.TRIAGE_ENABLED.value, integrations ? "true" : "false");
+  assert.equal(worker.env.VEHICLE_AWARE_REQUIREMENTS.value, integrations ? "true" : "false");
   // Only the hourly sweep deletes abandoned photo uploads (reads delete just the expired object they find).
   assert.deepEqual(worker.triggers ?? [], integrations ? [{ type: "scheduled", schedule: "0 * * * *" }] : []);
   if (integrations) {
@@ -98,6 +102,11 @@ if (action === "build" && result.status === 0) {
   });
   assert.notEqual(refused.status, 0);
   assert.match(`${refused.stdout}${refused.stderr}`, /Set KEYLOOP_EMAIL_TRANSPORT to binding or rest/);
+  const refusedSwitch = spawnSync(cf, ["build"], {
+    cwd: new URL("../", import.meta.url), env: { ...taskEnv, KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: "yes" }, encoding: "utf8",
+  });
+  assert.notEqual(refusedSwitch.status, 0);
+  assert.match(`${refusedSwitch.stdout}${refusedSwitch.stderr}`, /Set KEYLOOP_VEHICLE_AWARE_REQUIREMENTS to true or false/);
   if (integrations) {
     // Enabled API telemetry without the stack's numeric instance ID would only fail at the first export.
     const refusedOtlp = spawnSync(cf, ["build"], {
