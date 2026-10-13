@@ -75,8 +75,40 @@ describe("API routing and ADR-024", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const result = await routeRequest(edgeRequest("/api"), env);
     expect(result.status).toBe(503);
+    expect(result.headers.get("content-type")).toBe("application/problem+json");
+    expect(result.headers.get("retry-after")).toBe("3");
+    expect(result.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(2);
     expect(await result.text()).not.toContain("local-sensitive-value");
     expect(log.mock.calls.flat().join()).not.toContain("local-sensitive-value");
+    expect(log.mock.calls).toEqual([[JSON.stringify({ event: "ApiUnavailable" })]]);
     expect(mocks.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a write when the Durable Object binding throws", async () => {
+    const { env, mocks } = fakeEnv();
+    mocks.API.get().fetch.mockRejectedValue(new Error("rollout exit"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const requestId = "01234567-89ab-cdef-0123-456789abcdef";
+    const response = await routeRequest(edgeRequest("/api/v1/appointments", {
+      method: "POST", body: "private write", headers: { "idempotency-key": "one", "x-request-id": requestId },
+    }), env);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+    expect(await response.json()).toMatchObject({ traceId: requestId, instance: "/api/v1/appointments" });
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual([[JSON.stringify({ event: "ApiUnavailable" })]]);
+  });
+
+  it("passes through an API 500 without changing its body or headers", async () => {
+    const { env, mocks } = fakeEnv();
+    const response = Response.json({ type: "https://api.keyloop.example/problems/internal-error", status: 500 }, {
+      status: 500, headers: { "content-type": "application/problem+json", "x-request-id": "api-generated" },
+    });
+    mocks.API.get().fetch.mockResolvedValue(response);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await routeRequest(edgeRequest("/api/v1/dealerships"), env)).toBe(response);
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(1);
+    expect(log).not.toHaveBeenCalled();
   });
 });

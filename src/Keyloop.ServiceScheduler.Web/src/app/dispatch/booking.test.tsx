@@ -436,11 +436,19 @@ describe("booking an appointment", () => {
     expect(within(alert).getByText("Idempotency-Key must be 1 to 64 letters, digits, '-' or '_'.")).toBeInTheDocument()
   })
 
-  it("says when the server failed, and tries again safely with the same booking and key", async () => {
+  it.each(["bare response", "edge problem"])("handles a 503 %s and tries again safely with the same booking and key", async shape => {
     let attempts = 0
     const api = mockBoardApi({
       book: (_, body) =>
-        ++attempts === 1 ? new Response("", { status: 503, statusText: "Service Unavailable" }) : bookedFrom(body),
+        ++attempts === 1
+          ? shape === "bare response"
+            ? new Response("", { status: 503, statusText: "Service Unavailable" })
+            : problemResponse(503, {
+                type: "https://api.keyloop.example/problems/service-unavailable", title: "Service unavailable", status: 503,
+                detail: "The scheduler is temporarily unavailable. Please try again in a moment.",
+                instance: "/api/v1/dealerships/reading/appointments", traceId: "edge-request-id",
+              })
+          : bookedFrom(body),
     })
     renderBoard(readingBoard)
     const scope = await openDialog()
@@ -451,6 +459,8 @@ describe("booking an appointment", () => {
     expect(await screen.findByText("Couldn’t book the appointment", { selector: "[data-slot=toast-title]" })).toBeInTheDocument()
     expect(screen.getByText(/The server answered 503\./)).toBeInTheDocument()
     const alert = await within(scope).findByRole("alert")
+    if (shape === "edge problem") expect(alert).toHaveTextContent("Please try again in a moment.")
+    expect(bookingRequests(api.requests)).toHaveLength(1)
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }))
 
     await screen.findByText("Booked")

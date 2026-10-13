@@ -77,6 +77,7 @@ export function fakeContainerState(runtime: FakeContainerRuntime, values = new M
     container: runtime,
     exports: { ContainerProxy: () => ({ fetch: async () => new Response(null, { status: 520 }) }) },
     blockConcurrencyWhile: <T>(callback: () => Promise<T>) => callback(),
+    waitUntil: (_promise: Promise<unknown>) => {},
     storage: {
       get: async (key: string) => values.get(key),
       put: async (key: string, value: unknown) => { values.set(key, value); },

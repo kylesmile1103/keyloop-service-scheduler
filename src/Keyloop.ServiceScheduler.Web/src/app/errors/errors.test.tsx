@@ -112,7 +112,8 @@ describe("error pages", () => {
     const { router } = renderAt(ERROR_PAGES.underMaintenance, { from: "/dispatch" })
 
     expect(await heading("Down for maintenance")).toBeInTheDocument()
-    expect(screen.getByText("The scheduler is being updated. Bookings already made are kept.")).toBeInTheDocument()
+    expect(screen.getByText("The scheduler is temporarily unavailable. Bookings already made are kept.")).toBeInTheDocument()
+    expect(screen.getByText("Try again in a moment.")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
     await waitFor(() => expect(router.state.location.pathname).toBe("/dispatch"))
   })
