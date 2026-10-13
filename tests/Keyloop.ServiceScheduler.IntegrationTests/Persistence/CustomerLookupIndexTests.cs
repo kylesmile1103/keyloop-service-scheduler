@@ -43,7 +43,7 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
             db.Database.SetCommandTimeout(180);
             // Exercise upgrading a sizeable pre-existing history, as a migration bundle will do in production.
             var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(db.Database.GetMigrations().ToList()[^3], Ct);
+            await migrator.MigrateAsync("20261012204715_AdminEditing", Ct);
             // Completed/cancelled imports need no exclusive resources. Clone the real migrated row's required FK fields.
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO appointments (id, dealership_id, service_type_id, bay_id, technician_id, start_utc, end_utc,
@@ -135,9 +135,8 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
         await _factory.WithDbAsync(async db =>
         {
             db.Database.HasPendingModelChanges().ShouldBeFalse();
-            var migrations = db.Database.GetMigrations().ToList();
             var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(migrations[^3], Ct);
+            await migrator.MigrateAsync("20261012204715_AdminEditing", Ct);
             var indexes = await db.Database.SqlQuery<string>($"""
                 SELECT indexname::text AS "Value" FROM pg_indexes WHERE indexname LIKE 'ix_appointments_lookup_%'
                 """).ToListAsync(Ct);
@@ -146,7 +145,7 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
             indexes = await db.Database.SqlQuery<string>($"""
                 SELECT indexname::text AS "Value" FROM pg_indexes WHERE indexname LIKE 'ix_appointments_lookup_%'
                 """).ToListAsync(Ct);
-            indexes.Count.ShouldBe(8);
+            indexes.Count.ShouldBe(9);
         });
     }
 
@@ -180,16 +179,15 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
     {
         await _factory.WithDbAsync(async db =>
         {
-            var migrations = db.Database.GetMigrations().ToList();
             var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(migrations[^2], Ct);
+            await migrator.MigrateAsync("20261013073749_CustomerLookupIndexes", Ct);
             var previousDefinitions = await LookupIndexDefinitionsAsync(db);
             previousDefinitions.Count.ShouldBe(6);
             var previousNames = await db.Database.SqlQuery<string>($"""
                 SELECT pg_get_functiondef('public.customer_lookup_name_prefixes(text)'::regprocedure) AS "Value"
                 """).SingleAsync(Ct);
             await AssertPreviousPhoneQueryAsync(db);
-            await migrator.MigrateAsync(cancellationToken: Ct);
+            await migrator.MigrateAsync("20261013091600_CustomerLookupPhoneNormalization", Ct);
             var upgradedDefinitions = await LookupIndexDefinitionsAsync(db);
             upgradedDefinitions.Count.ShouldBe(8);
             foreach (var definition in previousDefinitions)
@@ -200,7 +198,7 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
                 SELECT pg_get_functiondef('public.customer_lookup_name_prefixes(text)'::regprocedure) AS "Value"
                 """).SingleAsync(Ct)).ShouldBe(previousNames);
             await AssertPreviousPhoneQueryAsync(db);
-            await migrator.MigrateAsync(migrations[^2], Ct);
+            await migrator.MigrateAsync("20261013073749_CustomerLookupIndexes", Ct);
             (await LookupIndexDefinitionsAsync(db)).ShouldBe(previousDefinitions);
             await AssertPreviousPhoneQueryAsync(db);
             await migrator.MigrateAsync(cancellationToken: Ct);
