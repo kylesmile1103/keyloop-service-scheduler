@@ -119,6 +119,8 @@ describe("the requirement policy, as an Admin", () => {
     expect(publish()).not.toHaveAttribute("aria-disabled", "true")
     fireEvent.click(publish())
     expect(await screen.findByText("Policy version 3 published")).toBeInTheDocument()
+    // Publish went with the draft bar: focus is on Add rule, not the page.
+    expect(screen.getByRole("button", { name: "Add rule" })).toHaveFocus()
     const [, published] = policyWrites(api.requests)
     expect(published.headers.get("If-Match")).toBe(policyETagOf(2))
     // The publication carries the token of the preview the Admin saw (Task 30c), and nothing else differs.
@@ -209,11 +211,14 @@ describe("the requirement policy, as an Admin", () => {
     expect(row).toHaveTextContent("A light commercial (van)")
     expect(row).toHaveTextContent("New")
 
+    // Remove and Put back take themselves away; focus goes to the other one, never to the page.
     fireEvent.click(within(ruleRow(await rulesTable(), "hv-aircon")).getByRole("button", { name: "Remove hv-aircon" }))
     const removed = screen.getByRole("list", { name: "Removed rules" })
     expect(removed).toHaveTextContent("hv-aircon")
+    expect(within(removed).getByRole("button", { name: "Put hv-aircon back" })).toHaveFocus()
     fireEvent.click(within(removed).getByRole("button", { name: "Put hv-aircon back" }))
     expect(ruleRow(await rulesTable(), "hv-aircon")).toBeDefined()
+    expect(within(ruleRow(await rulesTable(), "hv-aircon")).getByRole("button", { name: "Edit hv-aircon" })).toHaveFocus()
     expect(screen.getByText("1 change to version 2")).toBeInTheDocument()
   })
 
@@ -247,6 +252,8 @@ describe("the requirement policy, as an Admin", () => {
     expect(within(conflict).getByRole("row", { name: /hv-aircon/ })).toHaveTextContent("HV 3")
     expect(within(conflict).getByRole("row", { name: /hv-aircon/ })).toHaveTextContent("HV 4")
     fireEvent.click(within(conflict).getByRole("button", { name: "Keep my changes on version 3" }))
+    // The next step is a new preview of the carried draft.
+    expect(screen.getByRole("button", { name: "Preview changes" })).toHaveFocus()
 
     const table = await rulesTable()
     expect(screen.getByRole("heading", { level: 2, name: "Version 3" })).toBeInTheDocument()
@@ -271,6 +278,7 @@ describe("the requirement policy, as an Admin", () => {
 
     await setLevel("hv-routine", "Level 4, Live working")
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }))
+    expect(screen.getByRole("button", { name: "Add rule" })).toHaveFocus()
 
     expect(ruleRow(await rulesTable(), "hv-routine")).toHaveTextContent("HV 2")
     expect(screen.queryByRole("button", { name: /^Publish version/ })).not.toBeInTheDocument()

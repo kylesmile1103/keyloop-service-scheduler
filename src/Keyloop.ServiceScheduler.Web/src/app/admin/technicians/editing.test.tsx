@@ -237,6 +237,7 @@ describe("editing technicians, as an Admin", () => {
 
     fireEvent.click(within(conflict).getByRole("button", { name: "Reapply my changes" }))
     await waitFor(() => expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor"))
+    expect(within(sheet).getByRole("button", { name: "Save changes" })).toHaveFocus()
     expect(within(sheet).getByRole("radio", { name: /^Level 2, Routine maintenance/ })).toBeChecked()
     expect(within(sheet).getByRole("textbox", { name: "Employee number" })).toHaveValue("T-9002")
     expect(within(sheet).getByRole("status")).toHaveTextContent("Your changes are applied to the latest version. Check them, then save.")
@@ -380,9 +381,12 @@ describe("HV levels and deactivation, as an Admin", () => {
 
     const note = await screen.findByRole("region", { name: "HV levels to review" })
     expect(note).toHaveTextContent("Ben Okafor")
+    within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
     fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
 
     expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    // The button (and the note, with the last level) goes: focus is on Ben's row actions, not the page.
+    expect(screen.getByRole("button", { name: "Actions for Ben Okafor" })).toHaveFocus()
     const [post] = requestsTo(api.requests, "/confirm-hv-level")
     expect(post.method).toBe("POST")
     expect(post.headers.get("If-Match")).toBe(etagOf(722))

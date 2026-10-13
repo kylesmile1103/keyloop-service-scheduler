@@ -134,6 +134,7 @@ describe("editing bays, as an Admin", () => {
     expect(within(conflict).getByRole("row", { name: /Equipment Standard lift, EV high voltage Standard lift No change/ })).toBeInTheDocument()
     fireEvent.click(within(conflict).getByRole("button", { name: "Reapply my changes" }))
     await waitFor(() => expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Bay 4 - Electric"))
+    expect(within(sheet).getByRole("button", { name: "Save changes" })).toHaveFocus()
     expect(within(sheet).getByRole("checkbox", { name: "EV high voltage" })).not.toBeChecked()
     save(sheet)
 

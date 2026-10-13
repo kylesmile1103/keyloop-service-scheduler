@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { LoaderCircle, Pencil, Plus, Scale, Trash2, Undo2 } from "lucide-react"
 import { useId, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 
 import { getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
 import type { AdminPolicyResponse, PolicyEditResponse, RequirementRuleInput, ServiceTypeResponse } from "@/api/types.gen"
@@ -113,6 +114,17 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const [outdated, setOutdated] = useState<string | null>(null)
   const previewAgainRef = useRef<HTMLButtonElement>(null)
   const publishRef = useRef<HTMLButtonElement>(null)
+  const previewButtonRef = useRef<HTMLButtonElement>(null)
+  const addRuleRef = useRef<HTMLButtonElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  // A control that takes itself away (Remove, Put back, Discard, Keep, Publish) hands focus on before it goes, so focus is
+  // never lost to the page: first to Add rule, which is always there, then (once the change is drawn) to what comes next.
+  const handOff = (change: () => void, next?: () => HTMLElement | null | undefined) => {
+    addRuleRef.current?.focus()
+    flushSync(change)
+    next?.()?.focus()
+  }
+  const inCard = (label: string) => cardRef.current?.querySelector<HTMLElement>(`[aria-label="${label}"]`)
   // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
   // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
   // of it in the render the change arrives in (React's pattern for state that follows a prop), never painting for the next
@@ -148,9 +160,11 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
         setOutdated(null)
         return
       }
-      setDraft(null)
-      setPreview(null)
-      queryClient.setQueryData(policyOptions.queryKey, result.policy)
+      handOff(() => {
+        setDraft(null)
+        setPreview(null)
+        queryClient.setQueryData(policyOptions.queryKey, result.policy)
+      })
       void refresh(dealership.id)
       toast.add({
         type: "success",
@@ -163,15 +177,17 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
       // Admin confirmed no longer says what publishing would do. It goes, so Publish waits for a new one.
       const problem = parseProblem(error)
       if (!variables.dryRun && problem !== null && problemSlug(problem) === "policy-preview-outdated") {
-        setPreview(null)
-        setOutdated(variables.key)
-        requestAnimationFrame(() => previewAgainRef.current?.focus())
+        flushSync(() => {
+          setPreview(null)
+          setOutdated(variables.key)
+        })
+        previewAgainRef.current?.focus()
         return
       }
       const stale = conflictOf<AdminPolicyResponse>(error)
       if (stale && base) {
-        setConflict({ opened: base, current: stale.current, mine: variables.rules })
-        requestAnimationFrame(() => conflictRef.current?.focus())
+        flushSync(() => setConflict({ opened: base, current: stale.current, mine: variables.rules }))
+        conflictRef.current?.focus()
       }
     },
   })
@@ -202,18 +218,26 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   }
   const keepMine = () => {
     if (!conflict) return
-    queryClient.setQueryData(policyOptions.queryKey, conflict.current)
-    setDraft({ identity, base: conflict.current, rules: carriedOnto(conflict.opened.rules, conflict.current.rules, conflict.mine) })
-    setConflict(null)
-    write.reset()
+    // Next: a new preview of the carried draft.
+    handOff(() => {
+      queryClient.setQueryData(policyOptions.queryKey, conflict.current)
+      setDraft({ identity, base: conflict.current, rules: carriedOnto(conflict.opened.rules, conflict.current.rules, conflict.mine) })
+      setConflict(null)
+      write.reset()
+    }, () => previewButtonRef.current)
   }
   const dropMine = () => {
     if (!conflict) return
-    queryClient.setQueryData(policyOptions.queryKey, conflict.current)
-    setDraft(null)
-    setConflict(null)
-    write.reset()
+    handOff(() => {
+      queryClient.setQueryData(policyOptions.queryKey, conflict.current)
+      setDraft(null)
+      setConflict(null)
+      write.reset()
+    })
   }
+  const remove = (rule: RequirementRuleInput) =>
+    handOff(() => edit(rules.filter((other) => other.code !== rule.code)), () => inCard(`Put ${rule.code} back`))
+  const putBack = (rule: RequirementRuleInput) => handOff(() => edit(inOrder([...rules, rule])), () => inCard(`Edit ${rule.code}`))
 
   if (!base) {
     if (policyFailure !== null) {
@@ -252,7 +276,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   return (
     <>
       {discarded && <DiscardedNote>Your unpublished changes were discarded: who is signed in changed.</DiscardedNote>}
-      <Card className="gap-0 py-0">
+      <Card ref={cardRef} className="gap-0 py-0">
         <div className={cn("flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b px-4 py-3")}>
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -265,16 +289,16 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
               New bookings use the latest version; appointments keep the version they were booked under. A rule only adds needs.
             </p>
           </div>
-          <Button type="button" onClick={() => setEditing({ rule: blankRule(rules), isNew: true })} className={cn("cursor-pointer", phone && "w-full")}>
+          <Button ref={addRuleRef} type="button" onClick={() => setEditing({ rule: blankRule(rules), isNew: true })} className={cn("cursor-pointer", phone && "w-full")}>
             <Plus aria-hidden="true" />
             Add rule
           </Button>
         </div>
 
         {phone ? (
-          <RuleCards rules={rules} changes={changes} services={services} onEdit={(rule) => setEditing({ rule, isNew: false })} onRemove={(rule) => edit(rules.filter((other) => other.code !== rule.code))} />
+          <RuleCards rules={rules} changes={changes} services={services} onEdit={(rule) => setEditing({ rule, isNew: false })} onRemove={remove} />
         ) : (
-          <RuleTable rules={rules} changes={changes} services={services} onEdit={(rule) => setEditing({ rule, isNew: false })} onRemove={(rule) => edit(rules.filter((other) => other.code !== rule.code))} />
+          <RuleTable rules={rules} changes={changes} services={services} onEdit={(rule) => setEditing({ rule, isNew: false })} onRemove={remove} />
         )}
 
         {removed.length > 0 && (
@@ -284,7 +308,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
               {removed.map((rule) => (
                 <li key={rule.code} className="flex items-center gap-1 rounded-full border border-dashed border-input py-0.5 pr-0.5 pl-3 text-sm">
                   <code className="font-mono text-xs tracking-wide line-through decoration-muted-foreground">{rule.code}</code>
-                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Put ${rule.code} back`} className="rounded-full" onClick={() => edit(inOrder([...rules, rule]))}>
+                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Put ${rule.code} back`} className="rounded-full" onClick={() => putBack(rule)}>
                     <Undo2 aria-hidden="true" />
                   </Button>
                 </li>
@@ -305,16 +329,19 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => {
-                  setDraft(null)
-                  write.reset()
-                }}
+                onClick={() =>
+                  handOff(() => {
+                    setDraft(null)
+                    write.reset()
+                  })
+                }
                 className="cursor-pointer max-sm:h-11"
                 disabled={pending}
               >
                 Discard changes
               </Button>
               <Button
+                ref={previewButtonRef}
                 type="button"
                 variant={previewed ? "outline" : "default"}
                 onClick={() => send(true)}

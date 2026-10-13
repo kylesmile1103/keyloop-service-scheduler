@@ -111,7 +111,10 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
   }
   const confirmLevel = useConfirmLevel({
     dealership,
-    onDone: (record) => saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`),
+    onDone: (record) => {
+      focusPastConfirmed(record.name)
+      return saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`)
+    },
   })
   const showCompetence = vehicleAware && rows.some((row) => competenceOf(row, today) !== null)
   const columnVisibility = useColumnVisibility(showCompetence)
@@ -286,4 +289,17 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
       )}
     </>
   )
+}
+
+/**
+ * A confirmed level's button leaves the review note (and the note goes with the last one) once the list is read again: focus
+ * moves on first, to the next level to review, else to that technician's row actions, so it is not lost to the page.
+ */
+function focusPastConfirmed(name: string) {
+  const note = document.querySelector('[aria-label="HV levels to review"]')
+  const active = document.activeElement
+  if (!note || !(active instanceof HTMLElement) || !note.contains(active)) return
+  const next = [...note.querySelectorAll<HTMLButtonElement>("button")].find((button) => button !== active && button.textContent !== `Confirm ${name}'s level`)
+  const actions = [...document.querySelectorAll<HTMLElement>("[aria-label]")].find((element) => element.getAttribute("aria-label") === `Actions for ${name}`)
+  ;(next ?? actions)?.focus()
 }

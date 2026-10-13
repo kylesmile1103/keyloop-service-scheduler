@@ -208,8 +208,8 @@ function BayFormBody({
       const failure = shownFailure(error)
       const stale = conflictOf<AdminBayResponse>(failure)
       if (stale) {
-        setConflict({ ...stale, mine: variables.body })
-        requestAnimationFrame(() => conflictRef.current?.focus())
+        flushSync(() => setConflict({ ...stale, mine: variables.body }))
+        conflictRef.current?.focus()
         return
       }
       const problem = parseProblem(failure)
@@ -246,12 +246,14 @@ function BayFormBody({
   const reapply = () => {
     if (!conflict || !base) return
     const merged = reapplied(bayFields, bayWrite(base), bayWrite(conflict.current), conflict.mine)
+    // Reapply goes with the comparison: focus moves to Save, the next step, before it does (a focused element removed from
+    // the sheet would send focus to the sheet itself).
+    saveRef.current?.focus()
     setBase(conflict.current)
     form.reset(valuesOf(merged))
     setConflict(null)
     setReappliedNote(true)
     save.reset()
-    requestAnimationFrame(() => saveRef.current?.focus())
   }
 
   // Reload after a 428 keeps what the Admin entered: the technician form's rule (unchanged, kept for another Save; changed,

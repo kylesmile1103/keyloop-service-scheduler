@@ -150,6 +150,8 @@ describe("the change history, as an Admin", () => {
     await waitFor(async () => expect(within(await changes()).getAllByRole("article")).toHaveLength(30))
     expect(historyReads(api.requests).at(-1)).toMatchObject({ offset: "25", limit: "25" })
     expect(screen.queryByRole("button", { name: "Show older changes" })).not.toBeInTheDocument()
+    // The last page took the button away: focus is on the first change it loaded.
+    await waitFor(async () => expect(within(await changes()).getAllByRole("article")[25]).toHaveFocus())
   })
 
   it("says when nothing has been changed yet", async () => {

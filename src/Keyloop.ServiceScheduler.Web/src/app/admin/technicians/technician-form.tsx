@@ -299,9 +299,10 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       const failure = shownFailure(error)
       const stale = conflictOf<AdminTechnicianResponse>(failure)
       if (stale) {
-        setConflict({ ...stale, mine: variables.body })
-        // The Save that was pressed is no longer the next step: the comparison is.
-        requestAnimationFrame(() => conflictRef.current?.focus())
+        // The Save that was pressed is no longer the next step: the comparison is (drawn at once, then focused; a frame's
+        // wait can come before React commits it).
+        flushSync(() => setConflict({ ...stale, mine: variables.body }))
+        conflictRef.current?.focus()
         return
       }
       const problem = parseProblem(failure)
@@ -339,12 +340,14 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
   const reapply = () => {
     if (!conflict || !base) return
     const merged = reapplied(technicianFields, technicianWrite(base), technicianWrite(conflict.current), conflict.mine)
+    // Reapply goes with the comparison: focus moves to Save, the next step, before it does (a focused element removed from
+    // the sheet would send focus to the sheet itself).
+    saveRef.current?.focus()
     setBase(conflict.current)
     form.reset(valuesOf(merged))
     setConflict(null)
     setReappliedNote(true)
     save.reset()
-    requestAnimationFrame(() => saveRef.current?.focus())
   }
 
   // Reload after a 428 keeps what the Admin entered (Codex check of Task 30b): read the record again; unchanged since the

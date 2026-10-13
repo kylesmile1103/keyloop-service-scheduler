@@ -2,7 +2,7 @@ import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BadgeCheck, History, type LucideIcon, Pencil, Plus, Power, PowerOff, RotateCw, Scale } from "lucide-react"
-import { useId } from "react"
+import { useEffect, useId, useRef } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 
 import { getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
@@ -84,6 +84,18 @@ function HistoryFeed({ dealership }: ResourceScope) {
     ...adminHistoryPages(dealership.id, { ...(kind ? { resourceKind: kind } : {}), ...(resourceId ? { resourceId } : {}), limit: PAGE }),
     enabled: () => cachedCapabilities(queryClient).isAdmin,
   })
+  const feedRef = useRef<HTMLDivElement>(null)
+  // The last page takes Show older changes away: focus goes to the first change it loaded, not to the page. The page can
+  // arrive before or after React draws it, so the hand-off is tried at once and again after each commit until it lands.
+  const focusFrom = useRef<number | null>(null)
+  const focusLoaded = () => {
+    const index = focusFrom.current
+    const article = index === null ? undefined : feedRef.current?.querySelectorAll<HTMLElement>("article")[index]
+    if (!article) return
+    focusFrom.current = null
+    article.focus()
+  }
+  useEffect(focusLoaded)
   const items = history.data?.pages.flatMap((page) => page.items) ?? []
   const resourceName = resourceId ? (items.map(nameOf).find(Boolean) ?? (kind === "bay" ? "This bay" : "This technician")) : null
 
@@ -151,7 +163,7 @@ function HistoryFeed({ dealership }: ResourceScope) {
           </IllustratedState>
         </Card>
       ) : (
-        <div role="feed" aria-label="Changes" aria-busy={history.isFetchingNextPage} className="flex flex-col gap-2">
+        <div ref={feedRef} role="feed" aria-label="Changes" aria-busy={history.isFetchingNextPage} className="flex flex-col gap-2">
           {items.map((item, index) => (
             <Entry key={item.id} item={item} dealership={dealership} services={services} position={index + 1} total={history.hasNextPage ? -1 : items.length} />
           ))}
@@ -165,7 +177,13 @@ function HistoryFeed({ dealership }: ResourceScope) {
           className="cursor-pointer self-start"
           disabled={history.isFetchingNextPage}
           focusableWhenDisabled
-          onClick={() => void history.fetchNextPage()}
+          onClick={async () => {
+            const loaded = items.length
+            const result = await history.fetchNextPage()
+            if (result.hasNextPage) return
+            focusFrom.current = loaded
+            focusLoaded()
+          }}
         >
           <RotateCw aria-hidden="true" className={history.isFetchingNextPage ? "animate-spin motion-reduce:animate-none" : undefined} />
           Show older changes
@@ -242,7 +260,13 @@ function Entry({ item, dealership, services, position, total }: EntryProps) {
     : []
 
   return (
-    <article aria-labelledby={headingId} aria-posinset={position} aria-setsize={total} className="flex gap-3 rounded-xl border border-border bg-card p-3 text-sm shadow-xs sm:p-4">
+    <article
+      aria-labelledby={headingId}
+      aria-posinset={position}
+      aria-setsize={total}
+      tabIndex={-1}
+      className="flex gap-3 rounded-xl border border-border bg-card p-3 text-sm shadow-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-4"
+    >
       <span aria-hidden="true" className={cn("inline-flex size-9 shrink-0 items-center justify-center rounded-chip", item.action === "deactivate" ? "bg-destructive/10 text-destructive" : "bg-secondary text-secondary-foreground")}>
         <Icon className="size-4.5" />
       </span>
