@@ -6,6 +6,7 @@ import { defaultSchedule, mockBoardApi, requestsTo } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { problemResponse } from "@/test/mock-api"
+import { cancelWithReason, findInspector, queryInspector, startCancelling } from "@/test/details"
 import { boardHeading, pointerClick, renderBoard, search } from "@/test/render-board"
 import {
   appointments,
@@ -408,10 +409,12 @@ describe("dispatch board: day summary", () => {
   })
 })
 
+// At the tests' default 1440 px a booking's details dock beside the board (the inspector); the sheet is covered at 1024 and
+// 390 px in inspector.test.tsx and board.mobile.test.tsx.
 describe("dispatch board: details and cancellation", () => {
   async function openInterim() {
     fireEvent.click(await block(interimLabel))
-    return screen.findByRole("dialog", { name: "Interim Service" })
+    return findInspector()
   }
 
   it("opens an appointment's details from its block", async () => {
@@ -419,10 +422,13 @@ describe("dispatch board: details and cancellation", () => {
     renderBoard(readingBoard)
 
     const sheet = await openInterim()
-    // The sheet is modal: the board behind it is hidden from assistive technology until it closes.
-    expect(screen.getByRole("button", { name: interimLabel, hidden: true })).toHaveAttribute("aria-expanded", "true")
+    // Docked, not modal: the block stays on the board, marked as the one shown.
+    expect(screen.getByRole("button", { name: interimLabel })).toHaveAttribute("aria-current", "true")
+    expect(within(sheet).getByRole("heading", { level: 2, name: "Interim Service" })).toBeInTheDocument()
     expect(within(sheet).getByText("Confirmed")).toBeInTheDocument()
-    expect(within(sheet).getByText("Tuesday 13 October 2026, 08:00–09:00 (Europe/London)")).toBeInTheDocument()
+    expect(within(sheet).getByText("Tuesday 13 October 2026,").parentElement).toHaveTextContent(
+      "Tuesday 13 October 2026, 08:00–09:00 (Europe/London)"
+    )
     expect(within(sheet).getByText("Bay 1 - Standard")).toBeInTheDocument()
     expect(within(sheet).getByText("Amelia Clarke")).toBeInTheDocument()
     expect(within(sheet).getByText("RF20 BCJ")).toBeInTheDocument()
@@ -444,7 +450,7 @@ describe("dispatch board: details and cancellation", () => {
 
     fireEvent.keyDown(document.activeElement!, { key: "Escape" })
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     await waitFor(() => expect(screen.getByRole("button", { name: interimLabel })).toHaveFocus())
   })
 
@@ -495,14 +501,13 @@ describe("dispatch board: details and cancellation", () => {
     const availabilityBefore = requestsTo(api.requests, "/availability").length
     const sheet = await openInterim()
 
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang to rearrange" } })
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    cancelWithReason(sheet, "Customer rang to rearrange")
 
     expect(await screen.findByText("Appointment cancelled")).toBeInTheDocument()
     const [cancel] = requestsTo(api.requests, "/cancel")
     expect(new URL(cancel.url).pathname).toBe(`/api/v1/appointments/${appointments.interim.id}/cancel`)
     expect(await cancel.clone().json()).toEqual({ reason: "Customer rang to rearrange" })
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     await waitFor(() => expect(screen.queryByRole("button", { name: interimLabel })).not.toBeInTheDocument())
     expect(within(await lane("Bay 1 - Standard")).getAllByRole("button")).toHaveLength(2)
     // The freed bay and technician may change the next free slot, so it is read again too.
@@ -516,8 +521,7 @@ describe("dispatch board: details and cancellation", () => {
     renderBoard(readingBoard)
     const sheet = await openInterim()
 
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "   " } })
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    cancelWithReason(sheet, "   ")
 
     expect(await within(sheet).findByText("Say why the appointment is cancelled.")).toBeInTheDocument()
     expect(within(sheet).getByRole("textbox", { name: "Reason" })).toHaveAttribute("aria-invalid", "true")
@@ -557,8 +561,7 @@ describe("dispatch board: details and cancellation", () => {
     const recordsBefore = requestsTo(api.requests, record).length
     const schedulesBefore = requestsTo(api.requests, "/schedule").length
 
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    cancelWithReason(sheet, "Duplicate booking")
 
     const alert = await within(sheet).findByRole("alert")
     expect(within(alert).getByText(title)).toBeInTheDocument()
@@ -569,7 +572,7 @@ describe("dispatch board: details and cancellation", () => {
     // The board and the record are read again: someone else changed this appointment.
     await waitFor(() => expect(requestsTo(api.requests, "/schedule").length).toBeGreaterThan(schedulesBefore))
     await waitFor(() => expect(requestsTo(api.requests, record).length).toBeGreaterThan(recordsBefore))
-    expect(screen.getByRole("dialog", { name: "Interim Service" })).toBeInTheDocument()
+    expect(queryInspector()).toBeInTheDocument()
   })
 
   it("keeps keyboard focus on Cancel appointment while it cancels and after a failure", async () => {
@@ -578,7 +581,7 @@ describe("dispatch board: details and cancellation", () => {
     const api = mockBoardApi({ cancel: async () => (await held, new Response("", { status: 502, statusText: "Bad Gateway" })) })
     renderBoard(readingBoard)
     const sheet = await openInterim()
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Duplicate booking" } })
     const cancel = within(sheet).getByRole("button", { name: "Cancel appointment" })
 
     cancel.focus()
@@ -603,8 +606,7 @@ describe("dispatch board: details and cancellation", () => {
     renderBoard(readingBoard)
     const sheet = await openInterim()
 
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Duplicate booking" } })
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    cancelWithReason(sheet, "Duplicate booking")
 
     const alert = await within(sheet).findByRole("alert")
     expect(within(alert).getByText("Couldn’t cancel the appointment")).toBeInTheDocument()
@@ -626,10 +628,9 @@ describe("dispatch board: details and cancellation", () => {
     renderBoard(readingBoard)
     const sheet = await openInterim()
 
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "x" } })
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
+    cancelWithReason(sheet, "x")
 
-    // The API names the field by its JSON path; the sheet names it as the form does.
+    // The API names the field by its JSON path; the details name it as the form does.
     expect(await within(sheet).findByText("Reason is required, 1 to 500 characters after trimming.")).toBeInTheDocument()
     expect(within(sheet).getByRole("textbox", { name: "Reason" })).toHaveAttribute("aria-invalid", "true")
   })
@@ -639,9 +640,11 @@ describe("dispatch board: details and cancellation", () => {
     renderBoard(readingBoard)
 
     fireEvent.click(await block("EV Battery Health Check, Bay 4 - EV, 09:00 to 10:00, Ben Okafor, In progress"))
-    const sheet = await screen.findByRole("dialog", { name: "EV Battery Health Check" })
+    const sheet = await findInspector()
 
+    expect(within(sheet).getByRole("heading", { level: 2, name: "EV Battery Health Check" })).toBeInTheDocument()
     expect(within(sheet).getByText("Only a confirmed or checked-in appointment can be cancelled.")).toBeInTheDocument()
+    expect(within(sheet).queryByRole("button", { name: "Cancel booking…" })).not.toBeInTheDocument()
     expect(within(sheet).queryByRole("button", { name: "Cancel appointment" })).not.toBeInTheDocument()
   })
 

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { boardWindow, buildGrid, type GridSpec, hourLines, nowPosition, spanFor, stackRows } from "../lib/time-grid"
-import { AppointmentBlock } from "./appointment-block"
+import { AppointmentBlock, type BlockDetails } from "./appointment-block"
 
 interface TimelineGridProps {
   lanes: readonly Lane[]
@@ -18,6 +18,10 @@ interface TimelineGridProps {
   /** The current instant; the "now" line shows only while it falls inside the drawn day. */
   now: Date
   selectedId: string | null
+  /** How a block shows its details: a sheet (a dialog) or the docked inspector. */
+  details?: BlockDetails
+  /** The docked inspector takes room beside the board: the lane column keeps the tablet's 160 px at every width. */
+  narrow?: boolean
   /** A booking just made: its block draws the booked halo. */
   bookedId?: string | null
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
@@ -41,6 +45,8 @@ export function TimelineGrid({
   timeZone,
   now,
   selectedId,
+  details = "sheet",
+  narrow = false,
   bookedId = null,
   onSelect,
 }: TimelineGridProps) {
@@ -64,7 +70,7 @@ export function TimelineGrid({
       className="relative max-h-[min(70svh,52rem)] overflow-auto overscroll-x-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
     >
       <div
-        className="grid min-w-fit [--lane-width:10rem] xl:[--lane-width:13.75rem]"
+        className={cn("grid min-w-fit [--lane-width:10rem]", !narrow && "xl:[--lane-width:13.75rem]")}
         style={{
           gridTemplateColumns: `var(--lane-width) repeat(${grid.columns}, minmax(1.125rem, 1fr))`,
           gridTemplateRows: `2.5rem repeat(${lanes.length}, auto)`,
@@ -151,6 +157,8 @@ export function TimelineGrid({
             mode={mode}
             timeZone={timeZone}
             selectedId={selectedId}
+            details={details}
+            narrow={narrow}
             bookedId={bookedId}
             onSelect={onSelect}
           />
@@ -167,6 +175,8 @@ interface TimelineLaneProps {
   mode: LaneMode
   timeZone: string
   selectedId: string | null
+  details: BlockDetails
+  narrow: boolean
   bookedId: string | null
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
 }
@@ -174,7 +184,7 @@ interface TimelineLaneProps {
 const inactiveWords: Record<LaneMode, string> = { bays: "Out of service", technicians: "Inactive" }
 
 /** One lane: its sticky label (name, equipment or certifications) and its appointments, stacked when they overlap. */
-function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, bookedId, onSelect }: TimelineLaneProps) {
+function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, details, narrow, bookedId, onSelect }: TimelineLaneProps) {
   const { rows, placed } = stackRows(lane.appointments)
   const name = lane.isActive ? lane.name : `${lane.name}, ${inactiveWords[mode].toLowerCase()}`
 
@@ -196,8 +206,8 @@ function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, bookedId, o
           {lane.name}
         </span>
         <span className="flex min-w-0 items-center gap-1.5">
-          {/* The employee number needs the wide lane column; the details sheet and lane filter name the technician anyway. */}
-          {lane.detail && <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground xl:inline">{lane.detail}</span>}
+          {/* The employee number needs the wide lane column; the details and the lane filter name the technician anyway. */}
+          {lane.detail && !narrow && <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground xl:inline">{lane.detail}</span>}
           {lane.isActive ? (
             <CapabilityBadges capabilities={lane.capabilities} certifications={lane.certifications} max={1} />
           ) : (
@@ -218,6 +228,7 @@ function TimelineLane({ lane, row, grid, mode, timeZone, selectedId, bookedId, o
             mode={mode}
             timeZone={timeZone}
             selected={item.id === selectedId}
+            details={details}
             booked={item.id === bookedId}
             onSelect={onSelect}
             style={{ gridColumn: `${span.start + 1} / ${span.end + 1}`, gridRow: stackRow + 1 }}

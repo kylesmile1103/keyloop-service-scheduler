@@ -121,20 +121,36 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     });
 
     [Fact]
-    public Task Cancelling_from_the_sheet_removes_the_block_and_records_the_reason() => Run(nameof(Cancelling_from_the_sheet_removes_the_block_and_records_the_reason), async journey =>
+    public Task Cancelling_from_the_docked_details_removes_the_block_and_records_the_reason() => Run(nameof(Cancelling_from_the_docked_details_removes_the_block_and_records_the_reason), async journey =>
     {
         var customer = Customer.Unique();
         var appointment = await stack.BookAsync(customer: customer);
         await journey.GotoBoardAsync();
-        await BrowserJourney.Block(journey.Page, appointment).ClickAsync();
-        var sheet = journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "Interim Service", Exact = true });
-        await sheet.GetByRole(AriaRole.Textbox, new() { Name = "Reason", Exact = true }).FillAsync(customer.Notes);
+        var block = BrowserJourney.Block(journey.Page, appointment);
+        await block.ClickAsync();
+        // At 1440 px the details dock beside the board: no dialog, the board stays usable and marks the booking shown.
+        var details = journey.Page.GetByRole(AriaRole.Complementary, new() { Name = "Appointment details", Exact = true });
+        await Expect(details.GetByRole(AriaRole.Heading, new() { Name = "Interim Service", Exact = true })).ToBeFocusedAsync();
+        await Expect(journey.Page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+        await Expect(block).ToHaveAttributeAsync("aria-current", "true");
+        await Expect(details.GetByText(customer.Email, new() { Exact = true })).ToBeVisibleAsync();
+        // The inspector ends inside the window: its action is in view without scrolling the page, and so is the confirm.
+        await Expect(details).ToHaveCSSAsync("position", "sticky");
+        var start = details.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true });
+        await Expect(start).ToBeInViewportAsync(new() { Ratio = 1 });
+        await start.ClickAsync();
+        var reason = details.GetByRole(AriaRole.Textbox, new() { Name = "Reason", Exact = true });
+        await Expect(reason).ToBeFocusedAsync();
+        await Expect(reason).ToBeInViewportAsync(new() { Ratio = 1 });
+        await Expect(details.GetByRole(AriaRole.Button, new() { Name = "Cancel appointment", Exact = true })).ToBeInViewportAsync(new() { Ratio = 1 });
+        await journey.ScanAsync("board-details-confirm");
+        await reason.FillAsync(customer.Notes);
         var cancelled = journey.Page.WaitForResponseAsync(r => r.Request.Method == "POST" && r.Url.EndsWith("/cancel", StringComparison.Ordinal));
-        await sheet.GetByRole(AriaRole.Button, new() { Name = "Cancel appointment", Exact = true }).ClickAsync();
+        await details.GetByRole(AriaRole.Button, new() { Name = "Cancel appointment", Exact = true }).ClickAsync();
         (await cancelled).Status.ShouldBe(200);
-        await Expect(sheet.GetByText("This appointment is cancelled.", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(sheet).ToHaveCountAsync(0);
-        await Expect(BrowserJourney.Block(journey.Page, appointment)).ToHaveCountAsync(0);
+        await Expect(journey.Page.GetByText("Appointment cancelled", new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(details).ToHaveCountAsync(0);
+        await Expect(block).ToHaveCountAsync(0);
         var history = await stack.GetAsync($"{stack.DealershipPath}/appointments?from={stack.Date}&to={stack.Date}&status=Cancelled");
         history.AsArray().ShouldContain(a => a!.String("id") == appointment.String("id") && a!.String("status") == "Cancelled");
         (await stack.GetAsync($"/api/v1/appointments/{appointment.String("id")}")).String("cancellationReason").ShouldBe(customer.Notes);
@@ -224,9 +240,14 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         appointment["technician"]!.String("name").ShouldBe("Ben Okafor");
         appointment["allocation"]!["minimumHvLevel"]!.GetValue<int>().ShouldBe(3);
         await BrowserJourney.Block(journey.Page, appointment).ClickAsync();
-        var sheet = journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "EV Battery Health Check", Exact = true });
-        await Expect(sheet.GetByText("Why this allocation", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(sheet.GetByText(new Regex("HV 3" )).First).ToBeVisibleAsync();
+        var details = journey.Page.GetByRole(AriaRole.Complementary, new() { Name = "Appointment details", Exact = true });
+        await Expect(details.GetByRole(AriaRole.Heading, new() { Name = "EV Battery Health Check", Exact = true })).ToBeVisibleAsync();
+        // The Job card names the level the job needed; why this technician and bay is a disclosure under it.
+        await Expect(details.GetByText("HV 3", new() { Exact = true })).ToBeVisibleAsync();
+        await details.GetByRole(AriaRole.Button, new() { Name = "Why this allocation", Exact = true }).ClickAsync();
+        var why = details.GetByRole(AriaRole.Region, new() { Name = "Why this allocation", Exact = true });
+        await Expect(why).ToContainTextAsync("Ben Okafor");
+        await Expect(why.GetByText(new Regex("HV 3")).First).ToBeVisibleAsync();
     });
 
     [Fact]
@@ -268,6 +289,9 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var sheet = journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "Interim Service", Exact = true });
         await Expect(sheet).ToHaveAttributeAsync("data-side", "bottom");
         await Expect(sheet.GetByText(existing["customer"]!.String("name"), new() { Exact = true })).ToBeVisibleAsync();
+        // The same cards as the docked details, and the action row pinned above the home indicator.
+        await Expect(sheet.GetByRole(AriaRole.Heading, new() { Name = "Vehicle", Exact = true })).ToBeAttachedAsync();
+        await Expect(sheet.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true })).ToBeInViewportAsync();
         await sheet.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
         var booked = await journey.SubmitBookingAsync(await journey.PrepareBookingAsync(Customer.Unique()));
         await journey.Page.GetByRole(AriaRole.Button, new() { Name = "View on board", Exact = true }).ClickAsync();

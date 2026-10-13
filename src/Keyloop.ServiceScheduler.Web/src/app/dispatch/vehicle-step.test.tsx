@@ -6,6 +6,7 @@ import { featureSwitchesQueryKey } from "@/lib/feature-switches"
 import { currentUserQueryKey } from "@/lib/session"
 import { bookedFrom, mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector, openExplanation } from "@/test/details"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { jsonResponse, problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
@@ -1007,9 +1008,11 @@ describe("the allocation, explained in the details sheet", () => {
     vehicleApi({ appointment: () => explainedRecord })
     renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
+    // The job's HV need shows in the Job card; why this technician and bay is one press away.
+    expect(await within(sheet).findByText("HV 2")).toBeInTheDocument()
 
-    const why = await within(sheet).findByRole("region", { name: "Why this allocation" })
+    const why = await openExplanation(sheet)
     expect(why).toHaveTextContent(
       "Amelia Clarke: the technician you asked for, free and qualified at HV level 2 or above with General service, for a full hybrid (declared)."
     )
@@ -1024,19 +1027,22 @@ describe("the allocation, explained in the details sheet", () => {
     vehicleApi({ features: () => vehicleAwareOff, appointment: () => explainedRecord })
     renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
 
+    expect(within(sheet).queryByRole("button", { name: "Why this allocation" })).not.toBeInTheDocument()
     expect(within(sheet).queryByRole("region", { name: "Why this allocation" })).not.toBeInTheDocument()
+    expect(within(sheet).queryByText("HV needed")).not.toBeInTheDocument()
   })
 
   it("shows none to a visitor, whose sheet reads no record", async () => {
     const api = vehicleApi({ me: () => anonymous, appointment: () => explainedRecord })
     renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: /^Interim Service, Bay 1 - Standard, 08:00 to 09:00/ }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     await within(sheet).findByText("Sign in to see the whole booking")
 
+    expect(within(sheet).queryByRole("button", { name: "Why this allocation" })).not.toBeInTheDocument()
     expect(within(sheet).queryByRole("region", { name: "Why this allocation" })).not.toBeInTheDocument()
     expect(sheet).not.toHaveTextContent("Hybrid badge")
     expect(requestsTo(api.requests, `/appointments/${explainedRecord.id}`)).toHaveLength(0)

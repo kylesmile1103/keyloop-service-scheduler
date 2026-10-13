@@ -11,6 +11,7 @@ import { clearCallerData } from "@/lib/session-cache"
 import { adminServer } from "@/test/admin-api"
 import { bookedFrom, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector, startCancelling } from "@/test/details"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
@@ -197,7 +198,7 @@ async function cancelFrom(row: () => Promise<HTMLElement>) {
   fireEvent.click(await row())
   const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
   await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
-  fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: reason } })
+  fireEvent.change(startCancelling(sheet), { target: { value: reason } })
   return () => fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
 }
 
@@ -321,9 +322,9 @@ const writePaths: WritePath[] = [
     nth: 1,
     open: async () => {
       fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-      const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+      const sheet = await findInspector()
       await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
-      fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: reason } })
+      fireEvent.change(startCancelling(sheet), { target: { value: reason } })
       return () => fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
     },
     carries: [reason],

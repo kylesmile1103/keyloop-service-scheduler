@@ -6,6 +6,7 @@ import type { CurrentUserResponse, WorkshopScheduleResponse } from "@/api/types.
 import { NO_ROLE_REASON, READ_ONLY_REASON } from "@/lib/session"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector, queryInspector, startCancelling } from "@/test/details"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
 import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
@@ -152,13 +153,13 @@ describe.each<[string, CurrentUserResponse]>([
   })
 })
 
-describe("the details sheet", () => {
+describe("a booking's details (docked beside the board at 1440 px)", () => {
   it("shows a visitor who is not signed in the board's masked card and a sign-in panel, without asking for the record", async () => {
     const { requests } = mockBoardApi({ me: () => anonymous })
     renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     const panel = within(sheet).getByRole("region", { name: "Sign in to see the whole booking" })
     expect(within(panel).getByText(/Contact details, the vehicle and cancelling need a workshop account\./)).toBeInTheDocument()
     expect(within(panel).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(board)}`)
@@ -166,18 +167,19 @@ describe("the details sheet", () => {
     expect(requests.filter((request) => /\/api\/v1\/appointments\//.test(new URL(request.url).pathname))).toHaveLength(0)
     expect(within(sheet).queryByRole("alert")).not.toBeInTheDocument()
     expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
+    expect(within(sheet).queryByRole("button", { name: "Cancel booking…" })).not.toBeInTheDocument()
     expect(within(sheet).queryByRole("button", { name: "Cancel appointment" })).not.toBeInTheDocument()
   })
 
-  it("shows a Viewer the whole record, and Cancel appointment unavailable with the reason", async () => {
+  it("shows a Viewer the whole record, and Cancel booking unavailable with the reason", async () => {
     const { requests } = mockBoardApi({ me: () => viewer })
     renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
 
-    const cancel = within(sheet).getByRole("button", { name: "Cancel appointment" })
+    const cancel = within(sheet).getByRole("button", { name: "Cancel booking…" })
     expectUnavailableButFocusable(cancel)
     expect(document.getElementById(cancel.getAttribute("aria-describedby")!)).toHaveTextContent(READ_ONLY_REASON)
     expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
@@ -190,7 +192,7 @@ describe("the details sheet", () => {
     renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     expect(within(sheet).getByText(/Your account has no workshop role yet, so customer details stay masked\./)).toBeInTheDocument()
     expect(within(sheet).queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
     expect(requests.filter((request) => /\/api\/v1\/appointments\//.test(new URL(request.url).pathname))).toHaveLength(0)
@@ -201,8 +203,8 @@ describe("the details sheet", () => {
     renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    expect(within(sheet).getByRole("textbox", { name: "Reason" })).toBeInTheDocument()
+    const sheet = await findInspector()
+    expect(startCancelling(sheet)).toBeInTheDocument()
     expectAvailable(within(sheet).getByRole("button", { name: "Cancel appointment" }))
   })
 })
@@ -409,10 +411,10 @@ describe("a /me that fails after it has answered", () => {
     const api = mockBoardApi({ me: () => (failing ? new Response("", { status: 502, statusText: "Bad Gateway" }) : admin) })
     const { queryClient } = renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
     fireEvent.keyDown(sheet, { key: "Escape" })
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
     const recordsBefore = recordReads()
     const schedulesBefore = requestsTo(api.requests, "/schedule").length
@@ -428,14 +430,14 @@ describe("a /me that fails after it has answered", () => {
     const prompt = await screen.findByRole("dialog", { name: "Sign in to book" })
     expect(screen.queryByRole("dialog", { name: "Book appointment" })).not.toBeInTheDocument()
     expect(within(prompt).getByText("Couldn’t check who is signed in, so the app treats you as signed out.")).toBeInTheDocument()
-    // The record is not read while nobody is known, even from a sheet opened again.
+    // The record is not read while nobody is known, even from details opened again.
     fireEvent.click(within(prompt).getByRole("button", { name: "Not now" }))
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Sign in to book" })).not.toBeInTheDocument())
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const reopened = await screen.findByRole("dialog", { name: "Interim Service" })
+    const reopened = await findInspector()
     expect(within(reopened).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
     fireEvent.keyDown(reopened, { key: "Escape" })
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     expect(recordReads()).toBe(recordsBefore)
 
     // Try again, and /me answers: booking opens again.

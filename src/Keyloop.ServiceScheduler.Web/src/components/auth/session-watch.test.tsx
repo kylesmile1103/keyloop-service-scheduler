@@ -9,6 +9,7 @@ import { createQueryClient } from "@/lib/query-client"
 import { currentUserQueryKey } from "@/lib/session"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector, queryInspector, startCancelling } from "@/test/details"
 import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, renderBoard } from "@/test/render-board"
@@ -76,10 +77,11 @@ function refocus() {
 const meReads = (requests: readonly Request[]) => requestsTo(requests, "/api/v1/me").length
 const sessionDialog = (name: string) => screen.findByRole("dialog", { name })
 
+/** Cancels the Interim Service from its details, docked beside the board at the tests' 1440 px. */
 async function cancelInterim(reason = "Customer rang to rearrange") {
   fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-  const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-  fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: reason } })
+  const sheet = await findInspector()
+  fireEvent.change(startCancelling(sheet), { target: { value: reason } })
   fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
   return sheet
 }
@@ -111,14 +113,14 @@ describe("a 401 or 403 from the server", () => {
     expect(document.body.textContent).not.toContain(`${problems}unauthenticated`)
     expect(document.body.textContent).not.toContain('"status"')
 
-    // /me now says signed out: the sheet, which showed the booking as the previous caller read it, has closed beneath.
+    // /me now says signed out: the details, which showed the booking as the previous caller read it, have closed beneath.
     await waitFor(() => expect(sheet).not.toBeInTheDocument())
     expect(signIn).toHaveFocus()
     fireEvent.click(within(dialog).getByRole("button", { name: "Not now" }))
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your session has ended" })).not.toBeInTheDocument())
-    // Opened again, it offers sign-in in place of the cancellation.
+    // Opened again, they offer sign-in in place of the cancellation.
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const again = await screen.findByRole("dialog", { name: "Interim Service" })
+    const again = await findInspector()
     expect(within(again).getByRole("region", { name: "Sign in to see the whole booking" })).toBeInTheDocument()
     expect(within(again).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
   })
@@ -157,14 +159,14 @@ describe("a 401 or 403 from the server", () => {
     const close = within(dialog).getByRole("button", { name: "Close" })
     await waitFor(() => expect(close).toHaveFocus())
     await waitFor(() => expect(meReads(api.requests)).toBeGreaterThan(before))
-    // /me names the same caller: the sheet stays, titling the refusal in its own words.
+    // /me names the same caller: the details stay, titling the refusal in their own words.
     expect(within(sheet).getByText("Couldn’t cancel the appointment: your role doesn’t allow it")).toBeInTheDocument()
     fireEvent.click(close)
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your role doesn’t allow that" })).not.toBeInTheDocument())
     expect(sheet).toBeInTheDocument()
   })
 
-  it("closes the sheet beneath a 403 when /me then names a role that cannot cancel, and shows why when it is opened again", async () => {
+  it("closes the details beneath a 403 when /me then names a role that cannot cancel, and shows why when they are opened again", async () => {
     let me: CurrentUserResponse = serviceAdvisor
     mockBoardApi({
       me: () => me,
@@ -183,7 +185,7 @@ describe("a 401 or 403 from the server", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Your role doesn’t allow that" })).not.toBeInTheDocument())
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const again = await screen.findByRole("dialog", { name: "Interim Service" })
+    const again = await findInspector()
     expect(within(again).getByText("Your role can view bookings but not change them.")).toBeInTheDocument()
   })
 
@@ -238,7 +240,7 @@ describe("a change of identity", () => {
     const { queryClient } = renderBoard(board)
 
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
     const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
     const readsBefore = recordReads()
@@ -246,7 +248,7 @@ describe("a change of identity", () => {
     me = anonymous
     refocus()
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     expect(screen.queryByRole("link", { name: "sophie.turner@example.com" })).not.toBeInTheDocument()
     // Settle the re-reads, then check none of them was the record.
     await waitFor(() => expect(screen.getAllByText("*******").length).toBeGreaterThan(0))
@@ -321,7 +323,7 @@ describe("a change of identity", () => {
     const api = mockBoardApi({ me: () => me, schedule: () => scheduleFor(me) })
     renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
     const recordReads = () => requestsTo(api.requests, `/appointments/${readingTuesday.bays[0].appointments[0].id}`).length
     const readsBefore = recordReads()
@@ -332,7 +334,7 @@ describe("a change of identity", () => {
     me = anonymous
     refocus()
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
+    await waitFor(() => expect(queryInspector()).not.toBeInTheDocument())
     await waitFor(() => expect(screen.getAllByText("*******").length).toBeGreaterThan(0))
     expect(recordReads()).toBe(readsBefore)
   })
@@ -367,6 +369,9 @@ function expectNothingPersonal(text: string | null, where: string) {
   for (const field of personalFields) expect(text ?? "", `${field} in ${where}`).not.toContain(field)
 }
 
+/** The open details: docked beside the board (at the tests' 1440 px), a sheet over the list. */
+const queryDetails = (page: string) => (page === board ? queryInspector() : screen.queryByRole("dialog", { name: "Interim Service" }))
+
 /** Opens the Interim Service booking's details on the board (its block) or the list (its row's View details). */
 async function openInterimDetails(page: string) {
   if (page === board) fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
@@ -374,7 +379,7 @@ async function openInterimDetails(page: string) {
     fireEvent.click(await screen.findByRole("button", { name: "Actions for Interim Service at 08:00, Sophie Turner" }))
     fireEvent.click(await screen.findByRole("menuitem", { name: "View details" }))
   }
-  const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+  const sheet = page === board ? await findInspector() : await screen.findByRole("dialog", { name: "Interim Service" })
   expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
   return sheet
 }
@@ -382,7 +387,7 @@ async function openInterimDetails(page: string) {
 describe.each([
   ["the board", board],
   ["the appointments list", list],
-])("an open details sheet on %s when the identity changes", (_, page) => {
+])("open details on %s when the identity changes", (_, page) => {
   it.each<[string, CurrentUserResponse | "unreadable"]>([
     ["signs out", anonymous],
     ["loses every role", noRole],
@@ -402,8 +407,12 @@ describe.each([
     me = next
     refocus()
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
-    expectNothingPersonal(sheet.textContent, "the sheet")
+    await waitFor(() => expect(queryDetails(page)).not.toBeInTheDocument())
+    // The sheet empties as it animates out; the docked inspector leaves the page at once, its content with it.
+    if (page === board) expect(sheet).not.toBeInTheDocument()
+    else expectNothingPersonal(sheet.textContent, "the details")
+    // Focus that the details held goes back into the page's content, never to the body.
+    if (page === board) await waitFor(() => expect(document.getElementById("content")?.contains(document.activeElement)).toBe(true))
     expect(JSON.stringify(queryClient.getQueryCache().getAll().map((query) => query.state.data))).not.toContain("sophie.turner@example.com")
     if (!roleHolder()) {
       // The page itself read again as the new caller: masked, as the API answers it.
