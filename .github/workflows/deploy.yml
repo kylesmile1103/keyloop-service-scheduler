@@ -272,6 +272,8 @@ jobs:
 
   verify:
     needs: [plan, deploy]
+    # An explicit condition: without one, the implicit success() skips this job whenever migrate (an ancestor through deploy) was skipped.
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.deploy.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: plan

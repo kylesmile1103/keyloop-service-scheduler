@@ -128,4 +128,5 @@ it.each([
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+  // Two full runs of the setup script, each spawning a fake gh per call: about 3 s when idle, over the 5 s default on a loaded runner.
+}, 30_000);

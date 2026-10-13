@@ -7,9 +7,22 @@ using Deque.AxeCore.Playwright;
 namespace Keyloop.ServiceScheduler.E2ETests;
 
 /// <summary>One fresh browser context per test, with evidence retained if any assertion fails.</summary>
-internal sealed class BrowserJourney(SchedulerStack stack, string directory) : IAsyncDisposable
+internal sealed class BrowserJourney(SchedulerStack stack, string directory)
 {
+    /// <summary>
+    /// How long a page of the Vite dev server may take to become usable after a navigation (Task 37). Each journey's fresh
+    /// context fetches the app's unbundled modules again (about 250 before the board asks for its schedule), and a cold
+    /// server transforms each on its first request; on a loaded machine that took longer than the 15 s an action or an
+    /// assertion is given. Only page loads get it: navigations and the board's readiness signal. Every action and every
+    /// other assertion keeps 15 s.
+    /// </summary>
+    public const float PageLoadTimeout = 60_000;
+
+    /// <summary>The most each step of a failure's evidence (the trace, a screenshot, an accessibility snapshot, closing) may take.</summary>
+    private static readonly TimeSpan CaptureStepTimeout = TimeSpan.FromSeconds(20);
+
     private readonly List<IBrowserContext> contexts = [];
+    private readonly List<double> boardReadySeconds = [];
     public List<string> BrowserErrors { get; } = [];
     public IPage Page { get; private set; } = null!;
     public string DirectoryPath => directory;
@@ -22,6 +35,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory) : I
             RecordVideoDir = Path.Combine(directory, "video"),
         });
         context.SetDefaultTimeout(15_000);
+        context.SetDefaultNavigationTimeout(PageLoadTimeout);
         await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true, Sources = true });
         contexts.Add(context);
         var page = await context.NewPageAsync();
@@ -32,14 +46,21 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory) : I
         Page ??= page;
         return page;
     }
+    /// <summary>
+    /// Opens the dispatch board and waits for the board's own readiness signal: its schedule answered and its heading drawn,
+    /// within <see cref="PageLoadTimeout"/>. Not the document's load event, which waits for every static subresource and
+    /// says nothing about whether the board can be used.
+    /// </summary>
     public async Task GotoBoardAsync(IPage? page = null)
     {
         page ??= Page;
-        var loaded = page.WaitForResponseAsync(r => r.Url.Contains("/schedule?", StringComparison.Ordinal) && r.Status == 200);
-        await page.GotoAsync(stack.PageUrl("/dispatch"));
+        var clock = Stopwatch.StartNew();
+        var loaded = page.WaitForResponseAsync(r => r.Url.Contains("/schedule?", StringComparison.Ordinal) && r.Status == 200, new() { Timeout = PageLoadTimeout });
+        await page.GotoAsync(stack.PageUrl("/dispatch"), new() { WaitUntil = WaitUntilState.Commit });
         await loaded;
-        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dispatch board", Exact = true })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Dispatch board", Exact = true })).ToBeVisibleAsync(new() { Timeout = PageLoadTimeout });
         await Expect(page.GetByRole(AriaRole.Combobox, new() { Name = "Dealership", Exact = true })).ToContainTextAsync("Keyloop Motors Reading");
+        boardReadySeconds.Add(Math.Round(clock.Elapsed.TotalSeconds, 2));
     }
     public async Task<ILocator> PrepareBookingAsync(Customer customer, string service = "Interim Service", bool electric = false, string? startLocal = null)
     {
@@ -84,58 +105,104 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory) : I
         var severe = result.Violations.Where(v => v.Impact is "serious" or "critical").ToArray();
         severe.ShouldBeEmpty(string.Join('\n', severe.Select(v => $"{v.Id}: {v.Description}: {string.Join(", ", v.Nodes.Select(n => n.Html))}")));
     }
-    public async Task FinishAsync(bool success)
-    {
-        for (var i = 0; i < contexts.Count; i++)
-        {
-            var context = contexts[i];
-            if (!success)
-            {
-                foreach (var page in context.Pages.Where(p => !p.IsClosed))
-                {
-                    await page.ScreenshotAsync(new() { Path = Path.Combine(directory, $"failure-{i}.png"), FullPage = true });
-                    await File.WriteAllTextAsync(Path.Combine(directory, $"failure-{i}.aria.txt"), await page.Locator("body").AriaSnapshotAsync());
-                }
-            }
-            await context.Tracing.StopAsync(success ? new() : new() { Path = Path.Combine(directory, $"trace-{i}.zip") });
-            await context.CloseAsync();
-        }
-        contexts.Clear();
-        await File.WriteAllLinesAsync(Path.Combine(directory, "browser.log"), BrowserErrors);
-        if (success && Directory.Exists(Path.Combine(directory, "video")))
-        {
-            Directory.Delete(Path.Combine(directory, "video"), recursive: true);
-        }
-    }
-    public async ValueTask DisposeAsync()
-    {
-        foreach (var context in contexts)
-        {
-            await context.CloseAsync();
-        }
-    }
     public static async Task RunAsync(SchedulerStack stack, string name, Func<BrowserJourney, Task> test, bool mobile = false)
     {
         var directory = Path.Combine(stack.RunDirectory, name);
         Directory.CreateDirectory(directory);
-        await using var journey = new BrowserJourney(stack, directory);
+        var journey = new BrowserJourney(stack, directory);
         var clock = Stopwatch.StartNew();
-        var success = false;
         try
         {
             await journey.NewPageAsync(mobile);
             await test(journey);
-            success = true;
         }
         catch (Exception error)
         {
-            await File.WriteAllTextAsync(Path.Combine(directory, "failure.txt"), error.ToString());
+            // The journey's own failure is the one reported. Its evidence is gathered best effort, each step bounded, and
+            // nothing that gathering meets (a page too busy to screenshot, a context that will not close) replaces it.
+            try
+            {
+                await journey.CaptureFailureAsync(name, error, clock.Elapsed);
+            }
+            catch (Exception captureFailure)
+            {
+                TestContext.Current.TestOutputHelper?.WriteLine($"Failure evidence could not be gathered: {captureFailure}");
+            }
+
             throw;
         }
-        finally
-        {
-            await journey.FinishAsync(success);
-            await File.WriteAllTextAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(new { name, success, seconds = clock.Elapsed.TotalSeconds }));
-        }
+
+        await journey.FinishAsync(name, clock.Elapsed);
     }
+
+    /// <summary>A passing journey: traces and videos are discarded, and a failure to tear down is reported as one.</summary>
+    private async Task FinishAsync(string name, TimeSpan elapsed)
+    {
+        foreach (var context in contexts)
+        {
+            await context.Tracing.StopAsync();
+            await context.CloseAsync();
+        }
+
+        contexts.Clear();
+        await File.WriteAllLinesAsync(Path.Combine(directory, "browser.log"), BrowserErrors);
+        if (Directory.Exists(Path.Combine(directory, "video")))
+        {
+            Directory.Delete(Path.Combine(directory, "video"), recursive: true);
+        }
+
+        await WriteResultAsync(name, success: true, elapsed);
+    }
+
+    /// <summary>
+    /// A failed journey's evidence, most useful first: the exception, each context's trace (network, console and DOM for the
+    /// whole journey, needing nothing from a page), then each open page's screenshot and accessibility snapshot, then the
+    /// video (written as its context closes). Every step is bounded by <see cref="CaptureStepTimeout"/> and none throws; a
+    /// step that failed is listed in capture.log and in the test's output beside the original exception.
+    /// </summary>
+    private async Task CaptureFailureAsync(string name, Exception error, TimeSpan elapsed)
+    {
+        var problems = new List<string>();
+        async Task Attempt(string step, Func<Task> capture)
+        {
+            try
+            {
+                await capture().WaitAsync(CaptureStepTimeout);
+            }
+            catch (Exception failure)
+            {
+                problems.Add($"{step}: {failure.GetType().Name}: {failure.Message.Split('\n')[0]}");
+            }
+        }
+
+        var stepTimeout = (float)CaptureStepTimeout.TotalMilliseconds;
+        await Attempt("failure.txt", () => File.WriteAllTextAsync(Path.Combine(directory, "failure.txt"), error.ToString()));
+        for (var i = 0; i < contexts.Count; i++)
+        {
+            var context = contexts[i];
+            var index = i;
+            await Attempt($"trace-{index}.zip", () => context.Tracing.StopAsync(new() { Path = Path.Combine(directory, $"trace-{index}.zip") }));
+            foreach (var page in context.Pages.Where(p => !p.IsClosed))
+            {
+                await Attempt($"failure-{index}.png", () => page.ScreenshotAsync(new() { Path = Path.Combine(directory, $"failure-{index}.png"), FullPage = true, Timeout = stepTimeout }));
+                await Attempt($"failure-{index}.aria.txt", async () =>
+                    await File.WriteAllTextAsync(Path.Combine(directory, $"failure-{index}.aria.txt"), await page.Locator("body").AriaSnapshotAsync(new() { Timeout = stepTimeout })));
+            }
+
+            await Attempt($"closing context {index}", () => context.CloseAsync());
+        }
+
+        contexts.Clear();
+        await Attempt("browser.log", () => File.WriteAllLinesAsync(Path.Combine(directory, "browser.log"), BrowserErrors));
+        if (problems.Count > 0)
+        {
+            await Attempt("capture.log", () => File.WriteAllLinesAsync(Path.Combine(directory, "capture.log"), problems));
+            TestContext.Current.TestOutputHelper?.WriteLine($"Failure evidence incomplete ({directory}):{Environment.NewLine}{string.Join(Environment.NewLine, problems)}");
+        }
+
+        await Attempt("result.json", () => WriteResultAsync(name, success: false, elapsed));
+    }
+
+    private Task WriteResultAsync(string name, bool success, TimeSpan elapsed) =>
+        File.WriteAllTextAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(new { name, success, seconds = elapsed.TotalSeconds, boardReadySeconds }));
 }
