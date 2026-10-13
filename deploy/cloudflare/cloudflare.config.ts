@@ -37,6 +37,7 @@ export default defineConfig({
     },
     exports: { ApiContainer: exports.durableObject({ storage: "sqlite", container: api }) },
     env: {
+      CF_VERSION_METADATA: bindings.versionMetadata(),
       ASSETS: bindings.assets(),
       API: bindings.durableObject({ worker: "keyloop-scheduler", exportName: "ApiContainer" }),
       DB_URL: bindings.secretsStoreSecret({ storeId, secretName: "keyloop_prod_db_url" }),

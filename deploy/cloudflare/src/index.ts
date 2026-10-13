@@ -21,10 +21,10 @@ export class ApiContainer extends Container<Env> {
   override enableInternet = true;
   override pingEndpoint = "localhost/alive";
 
-  // Whether this Durable Object instance has confirmed that the running container was started with the configuration it
-  // would pass now. Every deploy, including one that only changes settings, the image or nothing at all, replaces the
-  // instance, so each deploy checks once; a container the platform restarted on its own keeps its earlier start options.
+  // A Durable Object can survive a settings-only deploy. Check once per Worker version as well as per instance/start;
+  // the platform can restart the container with its earlier start options, so health alone does not prove configuration.
   private startConfigCurrent = false;
+  private checkedVersionId: string | undefined;
   private reconciling: Promise<void> | undefined;
 
   override async fetch(request: Request): Promise<Response> {
@@ -32,14 +32,15 @@ export class ApiContainer extends Container<Env> {
     // one that arrives while another request's check, restart or cold start is still in progress, waits on that same
     // attempt with its 60 s readiness window. Otherwise containerFetch would wait with the library's 20 s default and
     // answer a raw 500 during a slower cold start (F11).
-    if (!this.startConfigCurrent || !(await this.runningAndHealthy())) {
-      this.reconciling ??= this.reconcile().finally(() => { this.reconciling = undefined; });
+    const versionId = this.env.CF_VERSION_METADATA.id;
+    if (!this.startConfigCurrent || this.checkedVersionId !== versionId || !(await this.runningAndHealthy())) {
+      this.reconciling ??= this.reconcile(versionId).finally(() => { this.reconciling = undefined; });
       await this.reconciling;
     }
     return this.containerFetch(request, API_PORT);
   }
 
-  private async reconcile(): Promise<void> {
+  private async reconcile(versionId: string): Promise<void> {
     const healthy = await this.runningAndHealthy();
     let envVars: Record<string, string>;
     try {
@@ -61,6 +62,7 @@ export class ApiContainer extends Container<Env> {
       const recorded = await this.ctx.storage.get<string>(START_FINGERPRINT_KEY);
       if (recorded === fingerprint && healthy) {
         this.startConfigCurrent = true;
+        this.checkedVersionId = versionId;
         return;
       }
       if (recorded !== fingerprint) {
@@ -76,6 +78,7 @@ export class ApiContainer extends Container<Env> {
       cancellationOptions: { portReadyTimeoutMS: READY_TIMEOUT_MS },
     });
     this.startConfigCurrent = true;
+    this.checkedVersionId = versionId;
   }
 
   private async runningAndHealthy(): Promise<boolean> {

@@ -5,6 +5,7 @@ export const FAKE_API_OTLP_TOKEN = "glc_local-fake-otlp-token>ab?c";
 // Binding fakes are confined to this test boundary. Global fetch is denied by setup.ts.
 export function fakeEnv() {
   const env = {
+    CF_VERSION_METADATA: { id: "fixture-worker-version-1", tag: "", timestamp: "" },
     ASSETS: { fetch: vi.fn().mockResolvedValue(new Response("<html>SPA</html>", { headers: { "content-type": "text/html" } })), connect: vi.fn() },
     API: {
       idFromName: vi.fn().mockReturnValue("fake-api-id"),

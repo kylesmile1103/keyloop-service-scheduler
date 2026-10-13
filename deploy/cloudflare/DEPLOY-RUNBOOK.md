@@ -1,4 +1,85 @@
-# First deployment runbook: core profile
+# Public demo deployment runbook
+
+## Deploy from GitHub Actions
+
+Task 35 (stakeholder decision, 2026-10-13) moves routine releases to [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml), with the stakeholder approving the `production` environment. The manual core-profile instructions below remain the first-resource/bootstrap and break-glass fallback. CI in `ci.yml` is unchanged.
+
+Both `workflow_dispatch` and `workflow_run` require this workflow file on the repository's default branch. Use `main` as that branch. A successful `CI` run on `main` plans its exact `head_sha`; a manual run must select `main` and prove that exact SHA already passed CI. Fork/PR completions and failed CI do not plan. Current-main checks before planning, migration and deployment refuse commits superseded while queued or awaiting review, preventing a delayed approval from rolling back a newer commit. Protect main and review workflow/configuration changes before merging: repository build credentials are available to trusted main code.
+
+The job graph is `plan -> [migrate, if manually requested] -> deploy -> verify`; `deploy` explicitly accepts a skipped migration and refuses a failed or cancelled one. `deploy-production` concurrency keeps one run active, with `cancel-in-progress: false` so an active migration/deploy is never interrupted by a newer run. GitHub may replace an older pending run with a newer pending one. All jobs use disposable Ubuntu runners. Global token permissions are `contents: read`; only `plan` adds `actions: read` to check manual dispatch's CI evidence and confirm that `production` has a non-empty required-reviewer rule before publishing the build image. The controller must still select the stakeholder and disable bypass in repository settings.
+
+- `plan`, without an environment: native `linux/amd64` API build, immutable 12-character SHA tag, `cf containers push` to the managed registry, same-origin SPA build with OTEL/API-base overrides unset, edge build and `cf deploy --prebuilt --provision=false --dry-run`. Pushing this build image does not roll out an application. Its summary shows the SHA, tag, container policy and the dry run's binding resource labels, with values/account identifiers removed.
+- `migrate`, protected `production`, manual `migrate=true` only: restore pinned `dotnet-ef` from `.config/dotnet-tools.json`, build a self-contained `linux-x64` bundle, apply pending migrations as the Neon owner, then reapply and verify `deploy/neon/runtime-role.sql`. Reruns apply only pending migrations and repeat idempotent grants. The runtime role must already exist, created with SQL as described below. Bundle builds set `KEYLOOP_BUILD_MIGRATION_BUNDLE=true` to skip OpenAPI generation for the self-contained target (the document loader cannot load it); ordinary builds/CI still generate and compare the contract. The small `deploy/neon/github-migrate` tool uses Npgsql's keyword parser (including quoted passwords), requires direct-host `SSL Mode=VerifyFull;Channel Binding=Require`, gives `psql` equivalent libpq TLS/channel-binding environment settings, and withholds child output on failure. It never echoes the connection. The bundle's connection is briefly a child process argument on the isolated runner, as in the manual path.
+- `deploy`, protected `production`: rebuild the SPA and edge for the planned SHA, then deploy its own output with `--prebuilt --provision=false --message "<sha> via GitHub Actions run <run_id>"`. Each protected job can require a separate approval. No bundle or `.cloudflare/output` crosses job boundaries.
+- `verify`, after deployment: curl without cookies and with a normal browser user agent wakes the API, polls actual active instances for the new image and running status, requires dealerships 200 afterwards, and checks `/` 200, the expected vehicle-aware feature flag, byte-equal committed OpenAPI, and a non-empty seeded anonymous schedule with initials, masked VIN and fully masked registration. Empty schedules do not prove masking. All network/rollout checks share a six-minute deadline; failure fails the run. No smoke response bodies are logged or uploaded.
+
+Private `.cloudflare/output` and build logs are removed with `if: always()` in both build jobs, including failed builds. No deployment artefact is uploaded. A forcibly terminated runner can skip cleanup; it is disposable, and its filesystem is never published.
+
+### Controller setup and first run
+
+1. Complete the existing resource prerequisites with the stakeholder: Neon direct endpoint, migrations/runtime role, Cloudflare Container application, Secrets Store scoped secrets, Access application, custom domain and Email binding onboarding. For a migration-requiring release, choose manual `migrate=true` before approving a deploy; automatic runs do not migrate. Reject/cancel the automatically queued deployment if its schema is not ready, then dispatch the migration run. Use additive migrations that leave the previous API compatible while migration and deployment are separately approved.
+2. In GitHub **Settings -> Environments -> New environment**, name it exactly `production`. Add the stakeholder under **Required reviewers** and save. Keep **Prevent self-review** off for this single-reviewer demo so the stakeholder can dispatch and then approve; enable it only with another authorized initiator/reviewer available. Disable administrator bypass of protection rules. Under **Deployment branches and tags**, select **Selected branches and tags**, add branch `main` only, and remove other allowances. Required reviewers need a GitHub plan/repository visibility that supports this protection: on Free/Pro/Team it is supported for public repositories. Verify the reviewer rule is present before enabling deployment, since YAML alone cannot enforce it. [GitHub environment protection](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
+3. Create scoped Cloudflare API tokens as below. Authenticate `gh` with a controller account able to administer this repository's environment and set its secrets/variables. Set the non-sensitive variables locally, and supply secrets through local environment values the controller already holds or the script's hidden prompts. Do not put literal credentials/role lists into history. The script makes GitHub writes, so only the authorized controller runs it:
+
+   ```sh
+   export KEYLOOP_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+   export KEYLOOP_CONTAINER_APPLICATION_ID=<existing container application id>
+   # Set the switches/identifiers below to the already approved live profile.
+   # CLOUDFLARE_PLAN_API_TOKEN is a separate local input for the repository token.
+   bash deploy/cloudflare/scripts/configure-github-environment.sh <owner>/<repo> <stakeholder-github-login>
+   ```
+
+   The script uses `gh api --method PUT repos/{owner}/{repo}/environments/production --input -` with the numeric stakeholder reviewer, then adds the `main` branch policy if absent. It sends each secret through stdin to `gh secret set --env production`, never `--body`/arguments, and disables shell tracing and `GH_DEBUG`. The PUT API supports reviewers/self-review/branch policy but does not expose the administrator-bypass checkbox; set that in the dashboard. It preserves existing branch policies, so inspect/remove old non-main allowances there. [GitHub environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment)
+4. Check **Settings -> Secrets and variables -> Actions**, and the environment's own inputs, using the complete inventory below. Keep environment and repository copies in sync by rerunning the script when approved settings change. Inspect the `production` protection rule in the dashboard after setup. The environment deploy token overrides the repository plan token because both are named `CLOUDFLARE_API_TOKEN` in their own scope.
+5. Merge the reviewed changes onto default `main` through the controller's normal process, wait for `CI` to pass, then inspect the plan summary and approve `production`. For schema changes, dispatch **Deploy public demo -> Run workflow -> main -> migrate=true**, approve migration, wait for its success, then approve deployment. The final `verify` job must pass; its failure does not silently roll back. This implementation performs no live deployment or account setup.
+
+### GitHub configuration inventory
+
+[GitHub environment inputs](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#environment-secrets) are available only to jobs referencing that environment. To satisfy the ungated `plan` and `verify` jobs, the setup script also installs repository copies of the build configuration. The Neon owner connection stays exclusively in `production`. The repository `CLOUDFLARE_API_TOKEN` uses the separate plan token; the production value uses the deploy token. Repository copies of role/recipient lists remain GitHub secrets. These copies are the necessary platform adjustment to the brief's environment-only configuration; they are not new Cloudflare application secrets.
+
+| Environment secret (also repository secret except where stated) | Purpose |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Environment: deploy token. Repository: separate registry/inspection token from local `CLOUDFLARE_PLAN_API_TOKEN` |
+| `CLOUDFLARE_ACCOUNT_ID` | Account identifier, treated as sensitive here; derived image registry prefix |
+| `KEYLOOP_SECRETS_STORE_ID` | Existing Secrets Store identifier |
+| `KEYLOOP_ACCESS_AUDIENCE` | Access application AUD tags |
+| `KEYLOOP_ACCESS_ADMIN`, `KEYLOOP_ACCESS_SERVICE_ADVISOR`, `KEYLOOP_ACCESS_VIEWER` | Private role lists; empty lists are allowed |
+| `KEYLOOP_TRIAGE_ACCOUNT_ID`, `KEYLOOP_EMAIL_ACCOUNT_ID` | Sensitive account identifiers for enabled triage/REST email; empty while unused |
+| `KEYLOOP_EMAIL_ALLOWED_ADDRESSES`, `KEYLOOP_EMAIL_ALLOWED_DOMAINS` | Private approved recipient lists; empty while notifications are disabled |
+| `NEON_OWNER_CONNECTION` | **Environment only**: owner Npgsql keyword string, direct host, verified TLS and required channel binding |
+
+| Environment variable (also repository variable) | Default / purpose |
+| --- | --- |
+| `KEYLOOP_ACCESS_TEAM_DOMAIN` | Required canonical `https://<team>.cloudflareaccess.com` |
+| `KEYLOOP_CONTAINER_APPLICATION_ID` | Required existing singleton application id for live verification |
+| `KEYLOOP_TRIAGE_ENABLED`, `KEYLOOP_VEHICLE_AWARE_REQUIREMENTS`, `KEYLOOP_API_OTLP_ENABLED` | `false`; set only to the approved live profile |
+| `KEYLOOP_NOTIFICATIONS_ENABLED`, `KEYLOOP_EMAIL_SENDING_ENABLED`, `KEYLOOP_OTLP_RELAY_ENABLED` | `false`; notifications remain disabled until the API adapter exists |
+| `KEYLOOP_TRIAGE_GATEWAY_ID` | `keyloop-scheduler` |
+| `KEYLOOP_TRIAGE_BUCKET` | `keyloop-scheduler-triage`; existing private R2 bucket |
+| `KEYLOOP_GRAFANA_OTLP_ENDPOINT`, `KEYLOOP_GRAFANA_INSTANCE_ID` | Empty while telemetry is disabled; approved stack identifiers when enabled |
+| `KEYLOOP_EMAIL_TRANSPORT` | `binding`; `rest` only by explicit selection |
+| `KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY`, `KEYLOOP_EMAIL_MAX_PER_DAY` | `10`, `100`; approved caps below the account quota |
+
+`KEYLOOP_API_IMAGE` is derived separately in each build job as `registry.cloudflare.com/<account id>/keyloop-scheduler-api:<12-char SHA>`; never set it in GitHub. Database/AI/email/OTLP credential values stay in Cloudflare Secrets Store (`keyloop_prod_db_url`, optional `keyloop_prod_ai_token`, `keyloop_prod_email_api_token`, `keyloop_prod_api_otlp_token`, `grafana-otlp-basic-browser`); deployment binds references only. `NEON_OWNER_CONNECTION` is the migration owner's separate credential, not the runtime database secret.
+
+### Cloudflare token permissions
+
+Checked against official documentation on 2026-10-13, not exercised against the live account. Use custom tokens scoped to this account and, for zone permissions, only `kylesmile.me`. `cf` beta names can differ between the dashboard and API: the permission reference calls the account capability **Containers Write**, while endpoint security lists **Workers Containers Write**. Select the matching account Containers edit/write capability; do not grant unrelated account permissions. [Permission reference](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
+
+| Permission | Token | Evidence / confidence |
+| --- | --- | --- |
+| Account Workers Scripts Write (or Editor scoped to the existing Worker) | Production | Verified in [Workers authorization](https://developers.cloudflare.com/workers/authorization/): deploy existing Worker and resource bindings |
+| Account Containers Write / Workers Containers Write | Both | Verified for [application updates](https://developers.cloudflare.com/api/resources/containers/subresources/applications/methods/edit/) and [instance inspection](https://developers.cloudflare.com/api/resources/containers/subresources/applications/subresources/instances/methods/list/). Required for registry credential generation/push is inferred from [registry credentials](https://developers.cloudflare.com/api/resources/containers/subresources/registries/subresources/credentials/methods/generate/), registry API security and the pinned CLI implementation; the credentials request restricts its managed-registry JWT to push/pull. There is no separately documented registry-only API token permission. This broad Containers capability can also change applications; protect trusted main workflows accordingly |
+| Account Settings Read | Both | Permission existence verified in the reference; inclusion for CLI account/entitlement lookup is inferred. Account selection is explicit |
+| Zone Workers Routes Write, zone `kylesmile.me` only | Production | Verified for changing routes/custom domains in [Workers authorization](https://developers.cloudflare.com/workers/authorization/workers/). Existing unchanged domain connections need only Worker Editor, but the pinned deployment reconciles the configured domain, so retain this zone capability for this pipeline |
+| Zone Read, zone `kylesmile.me` only | Production | Existence verified in the reference; needed for beta CLI domain-to-zone resolution is inferred |
+| Account Secrets Store Edit (API may label it Secrets Store Write) | Production | Verified in [Secrets Store access control](https://developers.cloudflare.com/secrets-store/access-control/): binding existing secrets still requires Edit and their `workers` scope; Read alone fails |
+
+Do not grant R2 Write or AI Gateway Edit just to deploy: [Workers bindings authorization](https://developers.cloudflare.com/workers/authorization/#bindings) says binding existing resources needs Worker Editor, without separate permissions on those resources. Here `--provision=false` forbids auto-provisioning; R2 is an existing binding and AI Gateway id/account are text settings, not a gateway-management operation. No deploy-time AI token, Workers AI execution permission, Access edit, DNS edit, Email send or Grafana permission is requested. If the pinned beta CLI reports an additional metadata lookup requiring R2 Read, that would be an unverified CLI-specific requirement to diagnose on the first controller run, not a reason to grant resource write access in advance. The separate runtime AI token and optional runtime email token retain their existing scopes.
+
+[cf CI authentication](https://developers.cloudflare.com/cf/ci/) and [unattended agents](https://developers.cloudflare.com/cf/agents/#authenticate-unattended-agents) explicitly confirm that `CLOUDFLARE_API_TOKEN` takes priority over stored OAuth, with no interactive login in CI; `CLOUDFLARE_ACCOUNT_ID` selects the account. Node 22.23.3 and `cf` 1.0.0-beta.14 remain pinned. No OAuth file is used or copied. The first real token-scope/registry/rollout proof belongs to the controller's approved Actions run.
+
+## Manual core profile fallback
 
 This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last on afterwards. The database is Neon Free PostgreSQL 17 in Frankfurt (AWS `eu-central-1`). [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
 
@@ -41,7 +122,7 @@ read -rs NEON_OWNER_PW   # the owner role's password (hidden)
 
 ```sh
 dotnet tool restore
-dotnet ef migrations bundle --project src/Keyloop.ServiceScheduler.Infrastructure \
+KEYLOOP_BUILD_MIGRATION_BUNDLE=true dotnet ef migrations bundle --project src/Keyloop.ServiceScheduler.Infrastructure \
   --startup-project src/Keyloop.ServiceScheduler.Api --configuration Release \
   --self-contained --target-runtime osx-arm64 --output artifacts/keyloop-efbundle-osx-arm64 --force
 ```

@@ -403,7 +403,7 @@ describe("start configuration fingerprint", () => {
   }, 30_000);
 });
 
-// A deploy replaces the Durable Object instance but keeps its storage and the running container. The platform also restarts
+// A deploy can replace or retain the Durable Object instance, keeping its storage and the running container. The platform also restarts
 // a container on an image rollout with the start options it kept, so only the Durable Object can apply a new configuration.
 describe("configuration changes reach a running container", () => {
   beforeEach(() => { vi.useFakeTimers(); });
@@ -430,6 +430,77 @@ describe("configuration changes reach a running container", () => {
   }
 
   const enableTriage = (env: Env) => { env.TRIAGE_ENABLED = "true" as Env["TRIAGE_ENABLED"]; };
+
+  it("reconciles a settings deploy on a surviving instance once, coalescing requests", async () => {
+    const { runtime, first } = await warmContainer();
+    runtime.stopAfterMs = 5_000;
+    enableTriage(first.env);
+    first.env.CF_VERSION_METADATA.id = "fixture-worker-version-2";
+    const one = settle(first.api.fetch(edgeRequest("/api/v1/features")));
+    await vi.advanceTimersByTimeAsync(100);
+    const two = settle(first.api.fetch(edgeRequest("/api/v1/dealerships")));
+    await vi.advanceTimersByTimeAsync(7_000);
+    for (const response of [one, two]) expect(await response).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.signals).toEqual([15]);
+    expect(runtime.starts).toHaveLength(2);
+    expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true" });
+    expect(first.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(first.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
+    expect(runtime.starts).toHaveLength(2);
+  });
+
+  it("checks a new Worker version on the same instance without restarting unchanged configuration", async () => {
+    const { runtime, first } = await warmContainer();
+    first.env.CF_VERSION_METADATA.id = "fixture-worker-version-2";
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(first.mocks.DB_URL.get).toHaveBeenCalledTimes(2);
+    expect(runtime.signals).toEqual([]);
+    expect(runtime.starts).toHaveLength(1);
+  });
+
+  it("picks up a rotated secret on a surviving instance only after its Worker version changes", async () => {
+    const { runtime, first } = await warmContainer();
+    first.mocks.DB_URL.get.mockResolvedValue("rotated-local-test-value");
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts).toHaveLength(1);
+    first.env.CF_VERSION_METADATA.id = "fixture-worker-version-2";
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[1]!.env).toMatchObject({ ConnectionStrings__schedulerdb: "rotated-local-test-value" });
+  });
+
+  it("retries an unverified new Worker version without accepting it as checked", async () => {
+    const { runtime, first } = await warmContainer();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    first.env.CF_VERSION_METADATA.id = "fixture-worker-version-2";
+    enableTriage(first.env);
+    first.mocks.DB_URL.get.mockRejectedValueOnce(new Error("local-sensitive-value"));
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts).toHaveLength(1);
+    expect(await serve(first.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
+    expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true" });
+    expect(first.mocks.DB_URL.get).toHaveBeenCalledTimes(3);
+    expect(errors.mock.calls.map(call => String(call[0]))).toEqual([JSON.stringify({ event: "ApiContainerConfigUnverified" })]);
+  });
+
+  it("keeps a failed version restart bounded and retries it with the previous fingerprint", async () => {
+    const { runtime, storage, first } = await warmContainer();
+    const previous = storage.get(START_FINGERPRINT_KEY);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    runtime.ignoresSigterm = true;
+    runtime.destroy = async () => { runtime.destroys++; };
+    first.env.CF_VERSION_METADATA.id = "fixture-worker-version-2";
+    enableTriage(first.env);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(await serve(first.api, "/api", STOP_GRACE_MS + 6_000)).toEqual({
+        error: expect.objectContaining({ message: "The API container did not stop for a configuration restart" }),
+      });
+      expect(storage.get(START_FINGERPRINT_KEY)).toBe(previous);
+    }
+    expect(runtime.starts).toHaveLength(1);
+    expect(runtime.signals).toEqual([15, 15]);
+  });
 
   it("restarts the running container once with the new environment after a settings deploy (the live triage incident)", async () => {
     const { runtime, storage } = await warmContainer();

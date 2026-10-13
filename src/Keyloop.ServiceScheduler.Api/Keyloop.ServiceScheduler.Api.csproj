@@ -16,7 +16,10 @@
   <PropertyGroup>
     <!-- Build-time OpenAPI (ADR-008, Addendum B §B1): every build writes the v1 document to contracts/openapi/v1.json, which is committed
          and from which the web client is generated. Program.cs skips database work while BuildTimeOpenApi.IsActive. -->
-    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+    <!-- EF bundles publish a self-contained target: the document tool cannot load that target assembly. CI already checks the
+         committed contract. Disable generation only for the explicit bundle build, keeping ordinary builds unchanged. -->
+    <OpenApiGenerateDocumentsOnBuild Condition="'$(KEYLOOP_BUILD_MIGRATION_BUNDLE)' != 'true'">true</OpenApiGenerateDocumentsOnBuild>
+    <OpenApiGenerateDocumentsOnBuild Condition="'$(KEYLOOP_BUILD_MIGRATION_BUNDLE)' == 'true'">false</OpenApiGenerateDocumentsOnBuild>
     <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../contracts/openapi</OpenApiDocumentsDirectory>
     <OpenApiGenerateDocumentsOptions>--file-name v1 --openapi-version OpenApi3_1</OpenApiGenerateDocumentsOptions>
   </PropertyGroup>

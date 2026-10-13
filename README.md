@@ -457,6 +457,12 @@ It is intentionally deferred. A compiled model must be regenerated whenever the 
 
 **`TODO(deployment)`:** provision the approved Neon PostgreSQL, Secrets Store inputs, DNS and Cloudflare resources, publish an API image, and rehearse sleep/wake, forwarding trust and controlled email delivery with the stakeholder. The [edge implementation and deployment runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define Worker/static assets, the .NET Container, PostgreSQL and the credential boundary. The hostname `keyloop.kylesmile.me` is the intended target, with rollout still pending.
 
+### CI/CD
+
+[CI](.github/workflows/ci.yml) remains the validation gate. [Deploy public demo](.github/workflows/deploy.yml) plans an exact successful main SHA, builds its API image natively on Ubuntu with a 12-character SHA tag, pushes the build image and dry-runs the SPA/edge deployment. The stakeholder approves the `production` environment before deployment. Manual `migrate=true` first applies pending EF migrations and idempotent Neon runtime grants behind the same environment protection. Verification polls the real container image and checks API readiness, the SPA, feature flag, exact OpenAPI and anonymous masking within six minutes. Main advancing while approval is pending makes the old release fail before migration/deployment.
+
+The [Actions runbook](deploy/cloudflare/DEPLOY-RUNBOOK.md#deploy-from-github-actions) documents required reviewers, the complete GitHub input list, the controller-only setup script and minimal token permissions. Both triggers become available only after the workflow is on default `main`. An ungated plan needs repository copies of build settings and a separate registry/inspection token; migration-owner credentials stay in `production`, and application credentials stay in Cloudflare Secrets Store. No private build output is uploaded. The laptop deployment path remains the break-glass fallback; the first live Actions run is a controller operation.
+
 ## AI Collaboration Narrative
 
 ### Strategy and evidence
