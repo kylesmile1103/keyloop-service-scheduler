@@ -76,22 +76,25 @@ export function bookingDay(lastVisitUtc: string, timeZone: string): string {
 export const visitCount = (visits: number) => `${visits} ${visits === 1 ? "visit" : "visits"}`
 
 /**
- * A match's history line: "Last visit 12 Oct 2026 · 3 visits", in the dealership's time zone. The most recent booking
- * can still be to come (bookings are made ahead), and then it is not a visit yet: "Booked for 20 Oct 2026 · 3 visits".
+ * A match's history line: "Last visit 12 Oct 2026 · 3 visits", dated in the dealership's time zone. The most recent
+ * booking can still be to come (bookings are made ahead, later today included), and then it is not a visit yet: "Booked
+ * for 20 Oct 2026 · 3 visits". Its start is compared with the moment `now`, not with a calendar day: the board's day the
+ * dialog opens on can be any day.
  */
-export function visitLine(match: ReturningCustomerResponse, timeZone: string, today: string): string {
-  const day = todayIn(timeZone, new Date(match.lastVisitUtc))
-  return `${day > today ? "Booked for" : "Last visit"} ${formatDay(day, "dated")} · ${visitCount(match.visits)}`
+export function visitLine(match: ReturningCustomerResponse, timeZone: string, now: Date): string {
+  const start = new Date(match.lastVisitUtc)
+  const day = todayIn(timeZone, start)
+  return `${start.getTime() > now.getTime() ? "Booked for" : "Last visit"} ${formatDay(day, "dated")} · ${visitCount(match.visits)}`
 }
 
 /** A match as a screen reader hears it, one phrase per part. */
-export function matchLabel(match: ReturningCustomerResponse, timeZone: string, today: string): string {
+export function matchLabel(match: ReturningCustomerResponse, timeZone: string, now: Date): string {
   return [
     match.customer.name,
     `registration ${match.vehicle.registration}`,
     vehicleOf(match),
     contactOf(match),
-    visitLine(match, timeZone, today).replace(" · ", ", "),
+    visitLine(match, timeZone, now).replace(" · ", ", "),
   ]
     .filter(Boolean)
     .join(", ")

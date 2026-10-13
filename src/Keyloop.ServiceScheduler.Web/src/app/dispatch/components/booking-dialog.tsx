@@ -887,7 +887,6 @@ function BookingFlow({
                 key={current.identity}
                 dealershipId={dealershipId}
                 timeZone={timeZone}
-                today={today}
                 blockedBy={blocked ? blockedId : undefined}
                 filledFrom={filled?.from ?? null}
                 onChoose={chooseReturning}

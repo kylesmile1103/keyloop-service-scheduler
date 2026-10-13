@@ -48,13 +48,16 @@ describe("what a match shows", () => {
   })
 
   it("dates the last visit on the dealership's calendar, and calls a booking still to come what it is", () => {
-    expect(visitLine(graceGolf, "Europe/London", "2026-10-13")).toBe("Last visit 12 Oct 2026 · 3 visits")
-    expect(visitLine(graceYaris, "Europe/London", "2026-10-13")).toBe("Last visit 28 Aug 2026 · 1 visit")
+    const now = new Date("2026-10-13T08:00:00Z")
+    expect(visitLine(graceGolf, "Europe/London", now)).toBe("Last visit 12 Oct 2026 · 3 visits")
+    expect(visitLine(graceYaris, "Europe/London", now)).toBe("Last visit 28 Aug 2026 · 1 visit")
     // 23:30 UTC on the 4th is 00:30 on the 5th in Reading, and still the 4th in New York.
-    expect(visitLine(adaClio, "Europe/London", "2026-10-13")).toBe("Last visit 5 Oct 2026 · 2 visits")
-    expect(visitLine(adaClio, "America/New_York", "2026-10-13")).toBe("Last visit 4 Oct 2026 · 2 visits")
-    expect(visitLine(graceGolf, "Europe/London", "2026-10-12")).toBe("Last visit 12 Oct 2026 · 3 visits")
-    expect(visitLine(graceGolf, "Europe/London", "2026-10-11")).toBe("Booked for 12 Oct 2026 · 3 visits")
+    expect(visitLine(adaClio, "Europe/London", now)).toBe("Last visit 5 Oct 2026 · 2 visits")
+    expect(visitLine(adaClio, "America/New_York", now)).toBe("Last visit 4 Oct 2026 · 2 visits")
+    // Its start (09:00 UTC on the 12th) against the moment, not the day: a booking later today is still to come.
+    expect(visitLine(graceGolf, "Europe/London", new Date("2026-10-12T09:00:00Z"))).toBe("Last visit 12 Oct 2026 · 3 visits")
+    expect(visitLine(graceGolf, "Europe/London", new Date("2026-10-12T08:59:59Z"))).toBe("Booked for 12 Oct 2026 · 3 visits")
+    expect(visitLine(graceGolf, "Europe/London", new Date("2026-10-11T12:00:00Z"))).toBe("Booked for 12 Oct 2026 · 3 visits")
   })
 
   it("counts the matches, and says to type more when there may be others", () => {

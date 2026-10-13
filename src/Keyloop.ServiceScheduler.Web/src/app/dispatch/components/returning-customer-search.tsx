@@ -33,8 +33,6 @@ export interface ReturningCustomerSearchProps {
   dealershipId: string
   /** The dealership's IANA zone: a match's last visit is a date on its calendar. */
   timeZone: string
-  /** Today on the dealership's calendar (`yyyy-MM-dd`), to tell a visit made from one still to come. */
-  today: string
   /** The id of the note saying why the search is unavailable (the identity changed to one that may not book). */
   blockedBy?: string
   /** The most recent booking's start (`lastVisitUtc`) of the match the fields were filled from, while the note shows. */
@@ -60,7 +58,7 @@ export interface ReturningCustomerSearchProps {
  * soon as nothing shows it (`gcTime` 0), and by the identity change's cache clearing. The dialog keys this component by
  * the identity, so any change of caller starts it empty.
  */
-export function ReturningCustomerSearch({ dealershipId, timeZone, today, blockedBy, filledFrom, onChoose, onClear }: ReturningCustomerSearchProps) {
+export function ReturningCustomerSearch({ dealershipId, timeZone, blockedBy, filledFrom, onChoose, onClear }: ReturningCustomerSearchProps) {
   const id = useId()
   const ids = { input: `${id}-input`, listbox: `${id}-listbox`, line: `${id}-line`, note: `${id}-note` }
   const optionId = (index: number) => `${id}-option-${index}`
@@ -257,6 +255,8 @@ export function ReturningCustomerSearch({ dealershipId, timeZone, today, blocked
     "Search earlier bookings by registration, email, phone or name."
   )
 
+  // Read at each render: a match still to come (later today included) is "Booked for", a past one "Last visit".
+  const now = new Date()
   return (
     <div data-slot="returning-customer" className="flex flex-col gap-3">
       <Field className="gap-1.5">
@@ -315,7 +315,7 @@ export function ReturningCustomerSearch({ dealershipId, timeZone, today, blocked
                   id={optionId(index)}
                   role="option"
                   aria-selected={index === active}
-                  aria-label={matchLabel(match, timeZone, today)}
+                  aria-label={matchLabel(match, timeZone, now)}
                   onClick={() => choose(match)}
                   onMouseMove={() => index !== active && setActive(index)}
                   // A hairline between matches (inset like the text), so each three-line match reads as one.
@@ -332,7 +332,7 @@ export function ReturningCustomerSearch({ dealershipId, timeZone, today, blocked
                     <span className="min-w-0 truncate">{contactOf(match)}</span>
                     <span className="max-w-[50%] shrink-0 truncate text-right">{vehicleOf(match)}</span>
                   </span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{visitLine(match, timeZone, today)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{visitLine(match, timeZone, now)}</span>
                 </li>
               ))}
             </ul>
