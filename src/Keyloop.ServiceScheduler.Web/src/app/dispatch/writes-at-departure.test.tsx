@@ -72,6 +72,30 @@ function cached(queryClient: QueryClient): string {
 /** Lets the send, its answer and TanStack's notifications all run. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 150)))
 
+/**
+ * Waits for the steps the assertions after a change of identity depend on, never for a fixed time (Task 37): the change
+ * landed in the preparation it was aimed at, then the write finished (nothing pending: it was stopped there, or it ran to
+ * its end), so it can send nothing more. A fixed wait could pass before either: a later request of a write (the second
+ * photo's upload, the suggestion after an upload) is prepared only once a photo was read and an earlier request answered,
+ * which a loaded runner took longer than 150 ms to reach. Then lets whatever the write might still wrongly cause (a
+ * toast, an answer kept) render before the test looks for it.
+ */
+async function landedAndFinished(at: { landed: boolean }, queryClient: QueryClient) {
+  await waitFor(() => expect(at.landed, "the change of identity landed while the request was prepared").toBe(true))
+  await waitFor(() => expect(queryClient.isMutating(), "the write finished").toBe(0))
+  await settle()
+}
+
+/**
+ * A test that ends (failing) while its write still runs must not hand that write to the next test: the write's later
+ * requests would leave through the next test's stubbed `fetch` (looked up as each leaves) and pass its interceptors on the
+ * shared client, so one slow test showed as two failures (Task 37). Each test waits, bounded, for its own writes to
+ * finish before it ends, while `fetch` is still its own (vitest restores globals before the next test).
+ */
+function finishWritesWithTheTest(queryClient: QueryClient) {
+  onTestFinished(() => waitFor(() => expect(queryClient.isMutating(), "the test's writes finished").toBe(0)))
+}
+
 const customer = {
   Name: "Draft Private Customer",
   Email: "draft.private@example.invalid",
@@ -140,15 +164,18 @@ const meFails: Change = {
 /**
  * Changes who is signed in while the generated client prepares the `nth` POST to `path` from now on: in a microtask queued
  * from a request interceptor on the app's client, so the change lands while the client awaits its interceptors. Records
- * how many POSTs to `path` had been sent before (`before`), how many the client prepared since (`prepared`), and how many
- * had reached fetch when the change landed (`reachedFetch`).
+ * how many POSTs to `path` had been sent before (`before`), how many the client prepared since (`prepared`), how many
+ * had reached fetch when the change landed (`reachedFetch`), and whether it has landed (`landed`).
  */
 function changeWhilePreparing(api: { requests: Request[] }, queryClient: QueryClient, session: Session, path: string, nth: number, change: Change) {
-  const at = { before: posts(api.requests, path).length, prepared: 0, reachedFetch: -1 }
+  const at = { before: posts(api.requests, path).length, prepared: 0, reachedFetch: -1, landed: false }
   const interceptor = (request: Request) => {
     if (request.method === "POST" && new URL(request.url).pathname.endsWith(path) && ++at.prepared === nth) {
       at.reachedFetch = posts(api.requests, path).length
-      queueMicrotask(() => change.apply(queryClient, session))
+      queueMicrotask(() => {
+        change.apply(queryClient, session)
+        at.landed = true
+      })
     }
     return request
   }
@@ -448,10 +475,12 @@ function boardApi(session: Session, write: WritePath) {
   })
 }
 
-/** Opens the write's page as it is made from there, at its time. */
+/** Opens the write's page as it is made from there, at its time; the test finishes its writes before it ends. */
 function renderPage(write: WritePath) {
   if (write.now) vi.setSystemTime(new Date(write.now))
-  return renderBoard(write.page ?? board)
+  const rendered = renderBoard(write.page ?? board)
+  finishWritesWithTheTest(rendered.queryClient)
+  return rendered
 }
 
 /** Whether the write's answer, once used, marks the dealership's range reads stale (a booking or a cancellation does). */
@@ -472,7 +501,7 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
     const at = changeWhilePreparing(api, queryClient, session, write.path, write.nth, change)
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     press()
-    await settle()
+    await landedAndFinished(at, queryClient)
 
     // The change landed inside the client's preparation of this request: built, not yet given to fetch.
     expect(at.prepared).toBe(write.nth)
@@ -501,8 +530,9 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
 
       const at = changeWhilePreparing(api, queryClient, session, write.path, write.nth, becomes("same email", sameEmailAdvisor))
       press()
-      await settle()
+      await landedAndFinished(at, queryClient)
 
+      expect(at.prepared).toBe(write.nth)
       expect(at.reachedFetch).toBe(at.before + write.nth - 1)
       expect(posts(api.requests, write.path)).toHaveLength(at.before + write.nth - 1)
       expect(posts(api.requests, "/booking-triage")).toHaveLength(0)
@@ -550,20 +580,23 @@ describe.each([
       const write = writePaths.find((candidate) => candidate.name === name)!
       const api = boardApi(session, write)
       const { queryClient } = renderBoard(board)
+      finishWritesWithTheTest(queryClient)
       const press = await write.open()
-      let reachedFetch = -1
+      const at = { reachedFetch: -1, landed: false }
       const stop = queryClient.getMutationCache().subscribe((event) => {
         if (event.type !== "updated" || event.action.type !== "pending") return
         const change = () => {
-          reachedFetch = posts(api.requests, path).length
+          at.reachedFetch = posts(api.requests, path).length
           becomes("another account", otherAdmin).apply(queryClient, session)
+          at.landed = true
         }
         const later = (left: number) => queueMicrotask(() => (left > 0 ? later(left - 1) : change()))
         later(depth)
       })
       press()
-      await settle()
+      await landedAndFinished(at, queryClient)
       stop()
+      const { reachedFetch } = at
       outcomes.push({ depth, reachedFetch, sent: posts(api.requests, path).length })
       cleanup()
     }
@@ -746,14 +779,17 @@ async function raiseRoutineRule() {
 
 /**
  * Changes who is signed in while the generated client prepares the first `method` request to `path` from now on (as
- * `changeWhilePreparing`, for any method): records how many had reached fetch when the change landed.
+ * `changeWhilePreparing`, for any method): records how many had reached fetch when the change landed, and whether it has.
  */
 function changeWhileSending(api: { requests: Request[] }, queryClient: QueryClient, session: Session, method: string, path: string, change: Change) {
-  const at = { before: sent(api.requests, method, path).length, prepared: 0, reachedFetch: -1 }
+  const at = { before: sent(api.requests, method, path).length, prepared: 0, reachedFetch: -1, landed: false }
   const interceptor = (request: Request) => {
     if (request.method === method && new URL(request.url).pathname.endsWith(path) && ++at.prepared === 1) {
       at.reachedFetch = sent(api.requests, method, path).length
-      queueMicrotask(() => change.apply(queryClient, session))
+      queueMicrotask(() => {
+        change.apply(queryClient, session)
+        at.landed = true
+      })
     }
     return request
   }
@@ -785,11 +821,12 @@ describe.each(adminWritePaths)("$name, an Admin's edit, while the generated clie
     const session: Session = { me: admin, meFails: false }
     const api = adminApi(session, write)
     const { queryClient } = renderBoard(write.page)
+    finishWritesWithTheTest(queryClient)
     const press = await write.open()
 
     const at = changeWhileSending(api, queryClient, session, write.method, write.path, change)
     press()
-    await settle()
+    await landedAndFinished(at, queryClient)
 
     expect(at.prepared).toBe(1)
     expect(at.reachedFetch).toBe(at.before)
@@ -805,6 +842,7 @@ describe.each(adminWritePaths)("$name, an Admin's edit, while the generated clie
     const session: Session = { me: admin, meFails: false }
     const api = adminApi(session, write)
     const { queryClient } = renderBoard(write.page)
+    finishWritesWithTheTest(queryClient)
     const press = await write.open()
 
     const at = changeWhileSending(api, queryClient, session, write.method, write.path, becomes("same Admin", adminAlsoViewer))
