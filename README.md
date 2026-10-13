@@ -218,7 +218,7 @@ The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract 
 
 ## Try it with curl
 
-Routes and body fields follow the integrated [OpenAPI contract](contracts/openapi/v1.json), including cancellation and triage. **`TODO(final-gate)`:** rehearse this sequence against an isolated stack, preserving its real status codes and problem payloads.
+Routes and body fields follow the integrated [OpenAPI contract](contracts/openapi/v1.json), including cancellation and triage. This sequence was rehearsed on 2026-10-13 against an isolated Development stack (a throwaway PostgreSQL 17, the API with its seeded week) for Friday 16 October: the booking answered `201` with `Location: /api/v1/appointments/{id}` on Bay 4 - EV with Ben Okafor; the same body under a new key answered `409` `application/problem+json` of type `slot-unavailable` with three `suggestedSlots` (from 10:00 local) and a `traceId`; the original key replayed `201` with `Idempotent-Replayed: true`; the same key with a different customer name answered `422 idempotency-key-reuse`; the cancel answered `200` with status `Cancelled` and its reason; a second cancel answered `409 invalid-state-transition` with `currentStatus: "Cancelled"` and `attempted: "cancel"`; and the released start was offered again.
 
 Set `API_BASE` to the API's plain-HTTP endpoint from the dashboard, without a trailing slash. Set `DATE` to a future open local date in Reading, in `yyyy-MM-dd` form and within the booking horizon. Using discovered ids and an offered UTC start avoids stale, hard-coded appointment dates.
 
