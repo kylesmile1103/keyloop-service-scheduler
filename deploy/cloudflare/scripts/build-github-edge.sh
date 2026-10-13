@@ -17,7 +17,8 @@ export KEYLOOP_API_IMAGE="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/keyloop
   mkdir -p build
   # Build output can contain role lists. Do not send it to the Actions log.
   if ! npm run build > build/github-build.log 2>&1; then
-    echo 'Edge build failed; output withheld because the configuration contains private values.' >&2
+    echo 'Edge build failed. Output with identifiers removed:' >&2
+    bash scripts/print-redacted-error.sh build/github-build.log
     exit 1
   fi
 )
