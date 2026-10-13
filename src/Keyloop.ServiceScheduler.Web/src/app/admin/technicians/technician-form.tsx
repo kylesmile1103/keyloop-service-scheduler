@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
-import { CircleAlert, LoaderCircle, Plus, RotateCw, X } from "lucide-react"
+import { LoaderCircle, Plus, X } from "lucide-react"
 import { type KeyboardEvent, type RefObject, useId, useRef, useState } from "react"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
@@ -9,7 +9,7 @@ import type { AdminTechnicianResponse, Certification, DealershipResponse, Techni
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
+import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -17,13 +17,14 @@ import { Switch } from "@/components/ui/switch"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { formatDay, isCalendarDate, shiftDate } from "@/lib/calendar-date"
 import { certifications } from "@/lib/features"
-import { authRefusalTitle, failureStatus, fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
+import { fieldErrors, parseProblem, problemSlug } from "@/lib/problem-details"
 import { type HvLevel, hvLevelOf } from "@/lib/vehicle-aware"
 
 import { ConflictPanel } from "../components/conflict-panel"
 import { EditSheet } from "../components/edit-sheet"
+import { FailureAlert, FieldMessage } from "../components/form-parts"
 import { UpcomingWork } from "../components/upcoming-work"
-import { type Conflict, conflictOf, preconditionMissing, resourceTag } from "../lib/admin-api"
+import { type Conflict, conflictOf, resourceTag } from "../lib/admin-api"
 import { conflictRows, reapplied, technicianFields, technicianWrite } from "../lib/changes"
 import { type SchedulerHttpError, shownFailure } from "../lib/http-error"
 import { HvLevelField } from "./hv-level-field"
@@ -641,7 +642,7 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
           </ConflictPanel>
         )}
         {showFailure && (
-          <FailureAlert failure={failure} editingName={editingName} onReload={onReload} retrying={save.isPending} onRetry={submit} />
+          <FailureAlert failure={failure} action={`save ${editingName}`} onReload={onReload} retrying={save.isPending} onRetry={submit} />
         )}
         {reappliedNote && (
           <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">
@@ -660,52 +661,4 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       </div>
     </form>
   )
-}
-
-/** An error under its field (11.4): `CircleAlert` and the sentence, named by the field's `aria-describedby`. */
-export function FieldMessage({ id, message }: { id: string; message: string | undefined }) {
-  if (!message) return null
-  return (
-    <FieldError id={id} className="flex items-start gap-1.5">
-      <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span>{message}</span>
-    </FieldError>
-  )
-}
-
-interface FailureAlertProps {
-  failure: unknown
-  editingName: string
-  onReload?: () => void
-  onRetry: () => void
-  retrying: boolean
-}
-
-/**
- * A save the API refused for a reason other than a field or a conflict (UI_DESIGN 11.16): signed out or another role, in the
- * action's words; an edit sent without its version (`428`, the app's fault), with Reload; anything else with Try again.
- */
-function FailureAlert({ failure, editingName, onReload, onRetry, retrying }: FailureAlertProps) {
-  const status = failureStatus(failure)
-  if (preconditionMissing(failure)) {
-    return (
-      <ProblemAlert
-        title="Couldn’t save: the change went without the version it was made from"
-        error={failure}
-        tone="warning"
-        actions={
-          onReload && (
-            <Button type="button" variant="outline" size="sm" onClick={onReload} className="cursor-pointer text-foreground">
-              <RotateCw aria-hidden="true" />
-              Reload
-            </Button>
-          )
-        }
-      />
-    )
-  }
-  if (status === 401 || status === 403) {
-    return <ProblemAlert title={authRefusalTitle(status, `save ${editingName}`)} error={failure} tone="warning" />
-  }
-  return <ProblemAlert title="Couldn’t save" error={failure} onRetry={onRetry} retrying={retrying} tone={status && status < 500 ? "warning" : "error"} />
 }

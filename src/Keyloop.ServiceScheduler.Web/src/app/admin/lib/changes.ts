@@ -14,7 +14,7 @@ import { bayCapabilities, certifications } from "@/lib/features"
  * compare. Each field has its label and its value in words, so "HV level: HV 3 → HV 2" reads the same everywhere.
  */
 
-interface FieldWords<T> {
+export interface FieldWords<T> {
   key: keyof T & string
   label: string
   words: (value: never) => string

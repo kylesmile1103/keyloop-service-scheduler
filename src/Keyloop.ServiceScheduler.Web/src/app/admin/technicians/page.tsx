@@ -12,10 +12,12 @@ import { certifications } from "@/lib/features"
 import { dataTableFeatures, PAGE_SIZES } from "@/lib/data-table"
 import { useVehicleAware } from "@/lib/feature-switches"
 
+import { ActivityDialog } from "../components/activity-dialog"
 import { AdminButton, ReadOnlyNote } from "../components/admin-access"
 import { DiscardedNote } from "../components/discarded-note"
 import { ResourceList } from "../components/resource-list"
 import { ResourcePage, type ResourceScope } from "../components/resource-page"
+import { technicianFields, technicianWrite } from "../lib/changes"
 import { TODAY_CHOICES } from "../lib/columns"
 import { historyHref } from "../lib/history-link"
 import { useRefreshAfterEdit } from "../lib/refresh"
@@ -26,7 +28,8 @@ import { useResourceList } from "../lib/use-resource-list"
 import { technicianColumns, technicianSearch } from "./columns"
 import { UnconfirmedLevelsNote } from "./competence"
 import { COMPETENCE_CHOICES, competenceColumns, competenceOf } from "./competence-model"
-import { ActivityDialog, TechnicianRowActions } from "./technician-actions"
+import { adminRecordOf } from "./admin-record"
+import { TechnicianRowActions } from "./technician-actions"
 import { TechnicianCards } from "./technician-cards"
 import { TechnicianFigures } from "./technician-figures"
 import { type TechnicianEditing, TechnicianSheet } from "./technician-form"
@@ -246,7 +249,23 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
             }}
           />
           <ActivityDialog
-            row={activity.value}
+            resource="technicians"
+            record={activity.value ? adminRecordOf(activity.value) : null}
+            fields={technicianFields}
+            writeOf={technicianWrite}
+            words={(record, off) =>
+              off
+                ? {
+                    title: `Deactivate ${record.name}?`,
+                    action: "Deactivate",
+                    consequence: `${record.name} stops taking new bookings. Appointments already booked keep ${record.name}, and the board flags them for review.`,
+                  }
+                : {
+                    title: `Reactivate ${record.name}?`,
+                    action: "Reactivate",
+                    consequence: `${record.name} takes new bookings again. Appointments flagged because ${record.name} was inactive are no longer flagged for that.`,
+                  }
+            }
             open={activity.isOpen}
             onOpenChange={(open) => !open && activity.close()}
             dealership={dealership}

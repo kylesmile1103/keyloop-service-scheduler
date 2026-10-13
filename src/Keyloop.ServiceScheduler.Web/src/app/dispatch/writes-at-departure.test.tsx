@@ -14,7 +14,7 @@ import { reading } from "@/test/dealerships"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard } from "@/test/render-board"
-import { availabilityOn, interimServiceType, technicians as technicianIds } from "@/test/schedules"
+import { availabilityOn, bays as bayIds, interimServiceType, technicians as technicianIds } from "@/test/schedules"
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
 import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
@@ -580,6 +580,7 @@ describe.each([
 // advisor, which may still book but not edit. The same Admin gaining another role is the same writer.
 
 const technicians = `/resources/technicians?dealership=${reading.id}`
+const bayList = `/resources/bays?dealership=${reading.id}`
 const privateName = "Private Previous Admin Name"
 
 /** Requests of one method to a path that ends with `suffix`. */
@@ -662,6 +663,49 @@ const adminWritePaths: AdminWritePath[] = [
     carries: [],
     answered: () => screen.findByText("Technician deactivated"),
   },
+  {
+    name: "Save changes to a bay",
+    page: bayList,
+    method: "PUT",
+    path: `/bays/${bayIds.ev.id}`,
+    open: async () => {
+      await adminRowAction("Bay 4 - EV", "Edit")
+      const sheet = await screen.findByRole("dialog", { name: "Edit Bay 4 - EV" })
+      const name = await within(sheet).findByRole("textbox", { name: "Name" })
+      await waitFor(() => expect(name).toHaveValue("Bay 4 - EV"))
+      fireEvent.change(name, { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Save changes" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Bay saved"),
+  },
+  {
+    name: "Add bay",
+    page: bayList,
+    method: "POST",
+    path: "/bays",
+    open: async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Add bay" }, { timeout: 10_000 }))
+      const sheet = await screen.findByRole("dialog", { name: "Add bay" })
+      fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: privateName } })
+      return () => fireEvent.click(within(sheet).getByRole("button", { name: "Add bay" }))
+    },
+    carries: [privateName],
+    answered: () => screen.findByText("Bay added"),
+  },
+  {
+    name: "Take a bay out of service",
+    page: bayList,
+    method: "PUT",
+    path: `/bays/${bayIds.ev.id}`,
+    open: async () => {
+      await adminRowAction("Bay 4 - EV", "Take out of service")
+      const dialog = await screen.findByRole("dialog", { name: "Take Bay 4 - EV out of service?" })
+      return () => fireEvent.click(within(dialog).getByRole("button", { name: "Take out of service" }))
+    },
+    carries: [],
+    answered: () => screen.findByText("Bay taken out of service"),
+  },
 ]
 
 /**
@@ -714,7 +758,7 @@ describe.each(adminWritePaths)("$name, an Admin's edit, while the generated clie
     expect(at.prepared).toBe(1)
     expect(at.reachedFetch).toBe(at.before)
     expect(sent(api.requests, write.method, write.path)).toHaveLength(at.before)
-    expect(screen.queryAllByText(/^Technician (saved|added|deactivated)$|^HV level confirmed$/)).toHaveLength(0)
+    expect(screen.queryAllByText(/^(Technician|Bay) (saved|added|deactivated|taken out of service)$|^HV level confirmed$/)).toHaveLength(0)
     await waitFor(() => expect(queryClient.isMutating()).toBe(0))
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
     for (const value of write.carries) expect(cached(queryClient)).not.toContain(value)
