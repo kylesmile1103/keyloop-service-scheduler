@@ -4,7 +4,7 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Clef-flash through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. When it is on, the dispatch board's booking dialog offers it in its first step: describe the issue, get suggested services, and use one to fill in the service and day.
 
-**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** Task 17b Chrome QA, the final whole-branch review, and the clean-clone verification with coverage and screenshots. The public demo is live (see [Live demo](#live-demo)) and GitHub Actions runs CI on every push and pull request.
+**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. Task 17b's Chrome visual QA, an independent whole-branch review and a clean-clone verification with coverage ran on 2026-10-13 (see [Run the tests](#run-the-tests) and [Defects the process found](#defects-the-process-found)). The public demo is live (see [Live demo](#live-demo)) and GitHub Actions runs CI on every push and pull request.
 
 ## Live demo
 
@@ -100,7 +100,7 @@ Running the API on its own in Development, set `Auth__Development__Roles__0` to 
 
 Where a deployed build offers **Sign in** (the Access login, coming back to the same page, dealership and day) and **Sign out** (the hostname's Access logout), the development server shows **How to sign in**, which leads to those settings, and no Sign out. A refusal the UI did not foresee (a session that ended, a role removed) is answered once, with "Your session has ended" and Sign in for a `401` or "Your role doesn't allow that" for a `403`, and the app reads `/me` again; when the identity changes (or `/me` cannot be read, which counts as signed out at once), whatever the previous caller read is cleared and read again, an open details sheet closes, a booking being entered is discarded with a note saying so (unless the same email keeps a role that may book), and a write's answer that arrives afterwards is thrown away.
 
-Screenshots of the main screens, taken as the Development Admin, are under [Screens](#screens). **`TODO(final-gate)`:** record the final clean-clone startup.
+Screenshots of the main screens, taken as the Development Admin, are under [Screens](#screens). A clean clone of `64a91f0` from GitHub (2026-10-13) built with no warnings, reported no pending model changes and started the whole stack in the Aspire smoke test (20/20, 27 s) and the browser journeys. Its two test failures, the runtime-role tests exhausting the test server's connections and one journey's booking sorting onto a second page of the Appointments list, were fixed in `5049620` and `f5c6fb1` and rerun green (integration 893/893, E2E 15/15).
 
 ## Admin editing (Task 30)
 
@@ -208,7 +208,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests -c Release --no-b
   --coverage --coverage-output-format cobertura --results-directory TestResults/unit
 ```
 
-Use a short `TMPDIR` because Microsoft.Testing.Platform's pipe path must stay under 104 bytes on macOS. The clean-clone coverage run remains a final-gate requirement.
+Use a short `TMPDIR` because Microsoft.Testing.Platform's pipe path must stay under 104 bytes on macOS. The clean-clone coverage run (2026-10-13, `64a91f0`) measured 86.7% line and 76.0% branch coverage of the API, Domain and Infrastructure assemblies from the integration suite (Api 82.9%, Domain 84.8%, Infrastructure 93.4% lines), and 91.8% line coverage of Domain from the unit suite alone.
 
 Frontend checks run in the web project:
 
@@ -231,7 +231,7 @@ Browser E2E tests (`Category=E2E`) use .NET Playwright with Chromium and Aspire.
 
 The journeys cover browser booking and conflict recovery, real API 400/422 form feedback, cancellation/history, day/list filters and URL persistence, overview/calendar consistency, vehicle competence, Admin stale edits and policy preview tokens, visitor masking, Mailpit, phone booking, dark-mode persistence and serious/critical axe checks. Appointments currently has a single-day selector, so a date-range list filter has no UI to exercise. The visitor Book action opens a sign-in prompt. Triage needs a model and remains covered by the fake-endpoint integration/component tests.
 
-The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, the E2E job after backend/frontend, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. **`TODO(final-gate)`:** record final unit, integration, concurrency, contract, Aspire and frontend totals, durations and coverage from the clean integrated checkout, plus the CI run result. Earlier branch totals are not submission totals.
+The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, the E2E job after backend/frontend, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. Final totals from the clean integrated checkout (2026-10-13): unit 1,058; integration 893 in about 3.5 minutes, including the 19 contract tests and the unchanged ten-case 30-way concurrency proof; Aspire smoke 20 in 27 s; browser journeys 15 in about 1 minute 50 s; web 1,588; edge 347; coverage as above. GitHub Actions run 38428132843 passed all eight required checks on `c0e2a52`, and every pull request to `main` runs the same checks.
 
 ## Try it with curl
 
@@ -419,7 +419,7 @@ Use the Aspire dashboard to follow an action from browser to SQL:
 4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected API failures remain Error. EF's failed-commit `TransactionError` also stays Error.
 5. **Browser correlation:** inspect `ui.book_appointment` and `ui.booking_triage`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
 
-`/alive` is the process probe. `/health` requires connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. The Cloudflare verifier requires edge-only `GET /api/ready` 200, a bodyless status from the same `/health` check with no diagnostic details and no caching; public catalogue reads and `/alive` alone are insufficient. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. **`TODO(final-gate)`:** attach the integrated trace/metric screenshots and real stress-run evidence; SLO targets in the design are not measured performance results.
+`/alive` is the process probe. `/health` requires connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. The Cloudflare verifier requires edge-only `GET /api/ready` 200, a bodyless status from the same `/health` check with no diagnostic details and no caching; public catalogue reads and `/alive` alone are insufficient. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. Stress evidence: the k6 [full controller gate](tests/load/k6/README.md#full-controller-gate) passed on 2026-10-13 against a dedicated local Release API (availability p95 20 ms, booking p95 28 ms, a 30-minute soak with no 5xx, exactly one winner per 30-way round). These are local figures, not the deployed demo's. Trace and metric screenshots are not attached: the dashboards are code under `observability/grafana` and run in the demo's Grafana Cloud stack.
 
 ### Grafana Cloud
 
@@ -445,15 +445,15 @@ The script forces a Release analyzer rebuild, preserves its build exit status an
 | EF Core | Runtime model and query translation, migrations in local/test environments | Evaluate compiled models and supported precompiled-query tooling; externalize migrations for an eventual AOT runtime |
 | OpenAPI | Build-time document and XML-comment generation | Attribute reflection while generating a document outside Production; no production runtime document mapping |
 
-The groundwork report at base `9f5a168` measured the following **historical baseline, `TODO(final-gate)`**:
+The script was rerun on the clean clone of `64a91f0` (2026-10-13): the Release analyzer build succeeded with six unique diagnostics, all from EF Core, and none application-owned.
 
-| Origin | Historical diagnostic count, TODO(final-gate) | Call sites and removal path |
+| Origin | Diagnostics | Call sites and removal path |
 |---|---|---|
-| Application-owned | 1 IL2026 | `SchedulingOptions`: `RangeAttribute(Type, string, string)` on TimeSpan. Task 18a commit `533b1e0` replaces it with typed inclusive-bound checks through the generated validator; remeasure the integrated build |
-| EF Core | 5: 1 IL2026 and 4 IL3050 | `SchedulerDbContext` constructor plus `DatabaseInitializer.GetPendingMigrationsAsync`, `GetMigrations`, `MigrateAsync`. Compiled-model/query evaluation and deployment-time migrations are the removal path, without a promise that compiled models alone remove the warnings |
+| Application-owned | 0 | The earlier TimeSpan `RangeAttribute` warning is gone (typed checks through the generated validator) |
+| EF Core | 6: 1 IL2026 and 5 IL3050 | `SchedulerDbContext` constructor (IL2026 and IL3050); `DatabaseInitializer` `GetPendingMigrationsAsync`, `GetMigrations` and `MigrateAsync`; `SchedulerReadinessCheck` `GetPendingMigrationsAsync`. Compiled-model/query evaluation and deployment-time migrations are the removal path, without a promise that compiled models alone remove the warnings |
 | FluentValidation / other | 0 emitted | Absence from this analyzer output does not establish reflection-free dependencies or whole-program trim safety |
 
-The owned TimeSpan warning is removed; the integrated readiness check adds an EF migration-readiness call site. **`TODO(final-gate)`:** rerun this script on the final clean clone and replace the historical baseline with its warning catalogue, counts and artifact reference.
+The readiness check's migration query is the one EF call site added since the groundwork baseline (`9f5a168`: 1 IL2026 and 4 IL3050 from EF Core, plus the owned TimeSpan warning). The script keeps its full log under `artifacts/aot-readiness/` and CI uploads it as the **AOT readiness** artifact.
 
 The DbContext, design-time factory and all existing migrations live in Infrastructure. Migration commands use Api as the startup project:
 
@@ -506,7 +506,7 @@ Claude in Chrome researched Keyloop's public design language and product UI, inc
 
 Task reports record **RED before GREEN**, including behavioural failures for existing defects. Mutation probes remove guards, registrations, constraints or middleware to ask whether a test can actually fail. Characterization tests that were already green are identified as such rather than given an invented RED phase. Examples include exclusion-constraint removal, idempotency-order mutations, a lost-commit fault injector, independent availability-oracle checks and the HSTS removal probe.
 
-Builds use warnings as errors; reflection-based JSON is disabled in both API and integration tests; mapping and contract drift checks catch generated-code omissions. Reviewers independently retraced the availability example and DST values, used scratch probes for faults, and requested fixes instead of weakening assertions. Mermaid diagrams were validated as part of the architecture work. The automated suites exercise booking, reseeding, cancellation, themes, focus and responsive component states; Aspire smoke checks the API and Vite proxy. They do not establish Chrome layout, console or network cleanliness. Task 17b's Chrome visual QA and the clean-clone final gate remain **`TODO(final-gate)`**, as does the planned Fable whole-branch review. These practices provide evidence without claiming every planned gate has already run.
+Builds use warnings as errors; reflection-based JSON is disabled in both API and integration tests; mapping and contract drift checks catch generated-code omissions. Reviewers independently retraced the availability example and DST values, used scratch probes for faults, and requested fixes instead of weakening assertions. Mermaid diagrams were validated as part of the architecture work. The automated suites exercise booking, reseeding, cancellation, themes, focus and responsive component states; Aspire smoke checks the API and Vite proxy. They do not establish Chrome layout, console or network cleanliness. Task 17b's Chrome visual QA (screens, console and network), the clean-clone final gate and an independent whole-branch review (run by Codex rather than the planned Fable reviewer) ran on 2026-10-13; their findings are the last rows of the table below.
 
 ### Defects the process found
 
@@ -538,8 +538,14 @@ The first rows reproduce the substance of the hand-off notes' defect log; later 
 | Task 18 AOT | Analyzer found application-owned trim-sensitive TimeSpan validation | Typed inclusive bounds through the generated validator (`533b1e0`) |
 | Frontend 15a/15b | Theme did not follow system changes, a lazy-import test was vacuous, and client generation could delete hand-written runtime config | Theme behavior tests, import-side-effect probe and `output.clean=false` (`19fdf75`, `773103a`) |
 | Frontend 15b | A shared request-id setting reused one UUID for the session, and automatic dealership selection could cancel a pending sidebar navigation | Per-request interceptor and navigation-aware selection, with behavioural regressions (`773103a`) |
+| Stakeholder-run audit (Task 38) | A booking could commit with a resource that lost its qualification while it waited; dealership ids on metric labels; repeated policy changes answered 500 | Admin resource writes under the dealership lock and the roster read under it (`5b70e67`), bounded labels (`de3c6f4`), retryable `409` (`0593c46`) |
+| Live rollout | A request reaching the container during a version hand-over got a raw 500 from the edge | RFC 9457 `503` with `Retry-After`, one retry for safe methods only (`c3e9e02`) |
+| Whole-branch review | A booking could commit after its start passed while it waited for the dealership lock | Window revalidated under the lock after replay checks, with lock-wait regressions (`894bf89`) |
+| Whole-branch review | Catalogue and triage eligibility used the legacy HV certificate while availability and booking used HV levels | One qualification model and cross-endpoint parity tests (`91417fb`) |
+| Whole-branch review | Runtime grants allowed audit updates/deletes and appointment deletion; deploy verification passed with a migration missing; the runbook's migration inventory was stale | Explicit per-table grants proven by 15 runtime-role tests, an anonymous `/api/ready` gate in verification, an inventory from the pinned bundle (`71b5f7d`) |
+| Clean-clone gate | Runtime-role tests exhausted the test server's connections; a journey's booking sorted onto page 2 | Pools and databases released per test (`5049620`), search before asserting (`f5c6fb1`) |
 
-Task 18a's fixes are integrated, the scope-disposal assertion now observes one request flow, and the booking UI's stable idempotency key is covered by its tests. **`TODO(final-gate)`:** reconcile the final whole-branch review findings before finalizing this table.
+Task 18a's fixes are integrated, the scope-disposal assertion now observes one request flow, and the booking UI's stable idempotency key is covered by its tests. The last rows are the stakeholder-run audit, the live rollout, the whole-branch review and the clean-clone gate of 2026-10-13.
 
 ### Rejections and trade-offs
 
