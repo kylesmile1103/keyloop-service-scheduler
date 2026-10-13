@@ -63,7 +63,7 @@ jobs:
       KEYLOOP_EMAIL_ALLOWED_ADDRESSES: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_ADDRESSES }}
       KEYLOOP_EMAIL_ALLOWED_DOMAINS: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_DOMAINS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
@@ -158,7 +158,7 @@ jobs:
     timeout-minutes: 20
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -218,7 +218,7 @@ jobs:
       KEYLOOP_EMAIL_ALLOWED_ADDRESSES: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_ADDRESSES }}
       KEYLOOP_EMAIL_ALLOWED_DOMAINS: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_DOMAINS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -284,7 +284,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       EXPECTED_VEHICLE_AWARE_REQUIREMENTS: ${{ needs.deploy.outputs.vehicle-aware }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
