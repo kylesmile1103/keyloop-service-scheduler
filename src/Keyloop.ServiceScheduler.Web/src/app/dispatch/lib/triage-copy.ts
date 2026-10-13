@@ -1,5 +1,7 @@
 import type { ServiceTypeResponse, TriageUncoveredCategory, TriageUncoveredIssue } from "@/api/types.gen"
 
+import { NOTES_LIMIT } from "./booking-schema"
+
 /**
  * The fixed words for a further problem the description mentioned (Task 32a's closed vocabulary, ARCHITECTURE §8.10): the
  * API sends only the category, and the screen says it in these client-owned words, never in the model's. `satisfies`
@@ -21,6 +23,13 @@ export function phraseOf(category: TriageUncoveredCategory): string {
 
 /** The line *Add to Notes* writes into the booking's notes. */
 export const notesLine = (category: TriageUncoveredCategory) => `Also mentioned: ${phraseOf(category)}.`
+
+/**
+ * Said in the notice when *Add to Notes* would take the notes past their limit, so nothing was written: by how much the
+ * notes must be shortened for the line to fit, in the words of the notes rule.
+ */
+export const notesTooLong = (over: number) =>
+  `Notes must be shortened by ${over} ${over === 1 ? "character" : "characters"} to add this line. Notes can be at most ${NOTES_LIMIT} characters.`
 
 /**
  * The notice beside a suggestion: what else the description mentioned, outside the service named when the answer says which

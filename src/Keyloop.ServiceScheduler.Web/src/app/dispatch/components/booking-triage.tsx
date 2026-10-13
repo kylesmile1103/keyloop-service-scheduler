@@ -28,6 +28,7 @@ import {
   noMatchNextSteps,
   noticeApplies,
   notesLine,
+  notesTooLong,
   phraseOf,
 } from "../lib/triage-copy"
 
@@ -43,6 +44,8 @@ interface BookingTriageProps {
   notesHaveOwnText: boolean
   /** The booking's notes as they stand, so a line already added says so. */
   notes: string
+  /** A line *Add to Notes* left out, and how many characters too long the notes as they are would be with it. */
+  notesRefusal: NotesRefusal | null
   /** *Add to Notes* on the notice of what else the description mentioned: its fixed line, added once. */
   onAddToNotes: (line: string) => void
   /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
@@ -70,6 +73,7 @@ export function BookingTriageIntake({
   current,
   notesHaveOwnText,
   notes,
+  notesRefusal,
   onAddToNotes,
   onUse,
   blockedBy,
@@ -188,6 +192,7 @@ export function BookingTriageIntake({
           serviceTypes={serviceTypes}
           current={current}
           notes={notes}
+          notesRefusal={notesRefusal}
           onAddToNotes={onAddToNotes}
           onUse={onUse}
         />
@@ -454,6 +459,7 @@ interface SuggestionsProps {
   serviceTypes: ServiceTypeResponse[] | undefined
   current: { serviceTypeId: string; date: string }
   notes: string
+  notesRefusal: NotesRefusal | null
   onAddToNotes: (line: string) => void
   onUse: (serviceTypeId: string, date: string | null) => void
 }
@@ -469,6 +475,7 @@ function Suggestions({
   serviceTypes,
   current,
   notes,
+  notesRefusal,
   onAddToNotes,
   onUse,
 }: SuggestionsProps) {
@@ -520,6 +527,7 @@ function Suggestions({
               issue={notice}
               outsideName={outsideName(response, serviceTypes)}
               notes={notes}
+              notesRefusal={notesRefusal}
               disabled={pending || stale}
               onAddToNotes={onAddToNotes}
             />
@@ -609,11 +617,18 @@ function NoMatch({ response, serviceTypes, current, stale, pending, onUse }: NoM
   )
 }
 
+/** A line *Add to Notes* left out, and by how many characters the notes as they are now would pass their limit with it. */
+interface NotesRefusal {
+  line: string
+  over: number
+}
+
 interface AlsoMentionedProps {
   issue: TriageUncoveredIssue
   /** The service it is outside, when the answer names one the screen knows. */
   outsideName: string | null
   notes: string
+  notesRefusal: NotesRefusal | null
   /** The answer is out of date or another is on its way, as for Use this. */
   disabled: boolean
   onAddToNotes: (line: string) => void
@@ -622,10 +637,14 @@ interface AlsoMentionedProps {
 /**
  * "Also mentioned: …": a further problem in the description that the suggested service does not cover, in its fixed words
  * (never the model's), with *Add to Notes*, which writes its line into the booking's notes once and then says so in place.
+ * When the line would take the notes past their limit nothing is written, and the note says by how much to shorten them,
+ * in its polite region and tied to the button, which keeps focus.
  */
-function AlsoMentioned({ issue, outsideName, notes, disabled, onAddToNotes }: AlsoMentionedProps) {
+function AlsoMentioned({ issue, outsideName, notes, notesRefusal, disabled, onAddToNotes }: AlsoMentionedProps) {
+  const refusalId = useId()
   const line = notesLine(issue.category)
   const added = notes.split("\n").some((existing) => existing.trim() === line)
+  const over = !added && notesRefusal?.line === line ? notesRefusal.over : null
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-info/30 bg-info-subtle px-3 py-2.5 text-sm text-foreground">
       <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
@@ -639,11 +658,18 @@ function AlsoMentioned({ issue, outsideName, notes, disabled, onAddToNotes }: Al
           // Added, it stays where it is, focusable, saying so: the line is in the notes once.
           disabled={added || disabled}
           focusableWhenDisabled
+          aria-describedby={over !== null ? refusalId : undefined}
           className="bg-background"
         >
           {added ? <Check aria-hidden="true" /> : <NotebookPen aria-hidden="true" />}
           {added ? "Added to Notes" : "Add to Notes"}
         </Button>
+        {over !== null && (
+          <p id={refusalId} className="flex items-start gap-1.5 text-pretty text-destructive">
+            <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span>{notesTooLong(over)}</span>
+          </p>
+        )}
       </div>
     </div>
   )

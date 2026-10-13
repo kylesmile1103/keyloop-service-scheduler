@@ -12,6 +12,9 @@ const id = (message: string) => z.guid(message)
 /** The longest declaration reason the API keeps (`VehicleProfile.MaxDeclarationReasonLength`), counted after trimming. */
 export const DECLARATION_REASON_LIMIT = 500
 
+/** The longest notes the API keeps (`Appointment.MaxNotesLength`); the form counts them as typed. */
+export const NOTES_LIMIT = 1000
+
 /** An OEM code as the API accepts it: letters, digits and hyphens, at most 32 (`VehicleProfileRequestValidator`). */
 const MANUFACTURER_CODE = /^[A-Z0-9-]{1,32}$/
 
@@ -69,7 +72,7 @@ export const bookingSchema = z.object({
   needsLiveDiagnosis: z.boolean().optional(),
   preferredBayId: id("Choose a bay").optional(),
   preferredTechnicianId: id("Choose a technician").optional(),
-  notes: z.string().max(1000, "Notes can be at most 1000 characters").optional(),
+  notes: z.string().max(NOTES_LIMIT, `Notes can be at most ${NOTES_LIMIT} characters`).optional(),
 })
 
 /**

@@ -81,6 +81,7 @@ import {
   type BookingForm,
   type BookingFormInput,
   declaresVehicle,
+  NOTES_LIMIT,
   stepOneFieldsFor,
   toBookingRequest,
   undeclaredProfile,
@@ -338,6 +339,9 @@ function BookingFlow({
   const [copied, setCopied] = useState<{ text: string; description: boolean }>({ text: "", description: false })
   // The "Also mentioned" lines *Add to Notes* added while the notes were the dialog's: written after the description's copy.
   const [noteLines, setNoteLines] = useState<readonly string[]>([])
+  // The line *Add to Notes* last left out because the notes would then be too long: the notice says by how much (counted
+  // against the notes as they are now) until the line fits or is added.
+  const [refusedLine, setRefusedLine] = useState<string | null>(null)
   // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
 
@@ -585,33 +589,62 @@ function BookingFlow({
    * unticked, and never written over the person's own notes (which then own any line added before).
    */
   function copyDescriptionIntoNotes(lines: readonly string[] = noteLines) {
-    const description = triage.enabled && triage.copyToNotes ? triage.description.trim() : ""
-    const wanted = [description, ...lines].filter((part) => part !== "").join("\n")
     const current = form.getValues("notes") ?? ""
-    if (current !== "" && current !== copied.text) {
+    if (!notesAreTheDialogs(current)) {
       if (lines.length > 0) setNoteLines([])
       return
     }
+    const wanted = dialogNotes(lines)
     if (current !== wanted) form.setValue("notes", wanted)
-    setCopied({ text: wanted, description: description !== "" })
+    setCopied({ text: wanted, description: copiedDescription() !== "" })
+  }
+
+  /** The description as the notes take it: only while the box is ticked. */
+  function copiedDescription() {
+    return triage.enabled && triage.copyToNotes ? triage.description.trim() : ""
+  }
+
+  /** The notes the dialog writes: the description's copy, then the lines added from the suggestions. */
+  function dialogNotes(lines: readonly string[]) {
+    return [copiedDescription(), ...lines].filter((part) => part !== "").join("\n")
+  }
+
+  /** Notes that are empty or read exactly what the dialog last wrote: the dialog's, not the person's own words. */
+  function notesAreTheDialogs(current: string) {
+    return current === "" || current === copied.text
+  }
+
+  /** The notes *Add to Notes* would leave: the line after the description's copy, or after the person's own words. */
+  function notesWith(current: string, line: string) {
+    return notesAreTheDialogs(current) ? dialogNotes([...noteLines, line]) : `${current.trimEnd()}\n${line}`
   }
 
   /**
    * *Add to Notes* on the notice of what else the description mentioned: its fixed line, once. Notes that are still the
    * dialog's take it after the description's copy (and keep following the description); the person's own notes keep their
-   * words, with the line added after them, since they asked for it.
+   * words, with the line added after them, since they asked for it. A line that would take the notes past their limit is
+   * not written at all (the notes stay as they are, word for word); the notice says by how much to shorten them.
    */
   function addToNotes(line: string) {
     const current = form.getValues("notes") ?? ""
     if (current.split("\n").some((existing) => existing.trim() === line)) return
-    if (current !== "" && current !== copied.text) {
-      form.setValue("notes", `${current.trimEnd()}\n${line}`)
+    const next = notesWith(current, line)
+    if (next.length > NOTES_LIMIT) {
+      setRefusedLine(line)
+      return
+    }
+    setRefusedLine(null)
+    if (!notesAreTheDialogs(current)) {
+      form.setValue("notes", next)
       return
     }
     const lines = [...noteLines, line]
     setNoteLines(lines)
     copyDescriptionIntoNotes(lines)
   }
+
+  // How far past their limit the refused line would still take the notes as they are now: the notice says so while it does.
+  const notesOver = refusedLine === null ? 0 : notesWith(notes, refusedLine).length - NOTES_LIMIT
 
   function back() {
     book.reset()
@@ -704,6 +737,7 @@ function BookingFlow({
     triage.reset()
     setCopied({ text: "", description: false })
     setNoteLines([])
+    setRefusedLine(null)
     setBooked(null)
     goTo(1)
   }
@@ -768,6 +802,7 @@ function BookingFlow({
                   current={{ serviceTypeId, date }}
                   notesHaveOwnText={notes !== "" && notes !== copied.text}
                   notes={notes}
+                  notesRefusal={refusedLine !== null && notesOver > 0 ? { line: refusedLine, over: notesOver } : null}
                   onAddToNotes={addToNotes}
                   onUse={applySuggestion}
                 />
@@ -1366,7 +1401,7 @@ function StepTwo({
                 {...field}
                 value={field.value ?? ""}
                 rows={2}
-                maxLength={1000}
+                maxLength={NOTES_LIMIT}
                 aria-invalid={fieldState.invalid || undefined}
                 aria-describedby={notesFrom ? `${headingId}-notes-copied` : undefined}
                 placeholder="For example: customer waiting in the lounge"

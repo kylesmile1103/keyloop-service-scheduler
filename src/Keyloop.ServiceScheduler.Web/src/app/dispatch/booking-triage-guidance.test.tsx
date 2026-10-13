@@ -295,6 +295,132 @@ describe("what else the description mentioned", () => {
   })
 })
 
+describe("Add to Notes within the 1000 characters Notes can hold", () => {
+  // 40 characters, written after the person's own notes with a line break: their notes plus 41.
+  const line = "Also mentioned: accident or body damage."
+  const crashAnswer = () =>
+    triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType))
+  const ownNotes = (length: number) => "Customer waiting. ".repeat(60).slice(0, length)
+  const tooLong = (over: number) =>
+    `Notes must be shortened by ${over} ${over === 1 ? "character" : "characters"} to add this line. Notes can be at most 1000 characters.`
+
+  /** The person's own notes typed on step 2, then back on step 1 where the notice is. */
+  async function writeOwnNotes(scope: HTMLElement, text: string) {
+    fireEvent.click(await within(scope).findByRole("button", { name: "Use this" }))
+    fireEvent.click(await within(scope).findByRole("radio", { name: /^10:15/ }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    fireEvent.change(await within(scope).findByRole("textbox", { name: "Notes for the workshop" }), { target: { value: text } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Back" }))
+  }
+
+  it.each([
+    { own: 958, total: 999 },
+    { own: 959, total: 1000 },
+  ])("adds its line when the notes then hold $total characters, and books with them", async ({ own, total }) => {
+    const api = mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: crashAnswer })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed it, and the AC will not switch on")
+    await writeOwnNotes(scope, ownNotes(own))
+
+    const add = await within(scope).findByRole("button", { name: "Add to Notes" })
+    add.focus()
+    fireEvent.click(add)
+    await waitFor(() => expect(add).toHaveAccessibleName("Added to Notes"))
+    expect(add).toHaveFocus()
+    expect(within(scope).queryByText(/Notes must be shortened/)).not.toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    const notes = await within(scope).findByRole("textbox", { name: "Notes for the workshop" })
+    expect(notes).toHaveValue(`${ownNotes(own)}\n${line}`)
+    expect((notes as HTMLTextAreaElement).value).toHaveLength(total)
+    fillCustomerAndVehicle(scope)
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+    await screen.findByText("Booked")
+    expect((await bookingBody(api.requests)).notes).toHaveLength(total)
+  })
+
+  it.each([
+    { own: 960, over: 1 },
+    { own: 1000, over: 41 },
+  ])(
+    "writes nothing when the line would take the notes $over over, keeps the person's words and says so in the notice",
+    async ({ own, over }) => {
+      mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: crashAnswer })
+      renderBoard(readingBoard)
+      const scope = await openDialog()
+      await describeAndSuggest(scope, "Crashed it, and the AC will not switch on")
+      await writeOwnNotes(scope, ownNotes(own))
+
+      const add = await within(scope).findByRole("button", { name: "Add to Notes" })
+      add.focus()
+      fireEvent.click(add)
+      // Said in the notice's polite region, tied to the button, which keeps focus and stays available for when there is room.
+      const refusal = await within(scope).findByText(tooLong(over))
+      expect(refusal.closest("[aria-live='polite']")).not.toBeNull()
+      expect(refusal.closest("[role='alert']")).toBeNull()
+      expect(add).toHaveAccessibleName("Add to Notes")
+      expect(add).toHaveAccessibleDescription(tooLong(over))
+      expect(add).toHaveFocus()
+      expectAvailable(add)
+
+      fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+      expect(await within(scope).findByRole("textbox", { name: "Notes for the workshop" })).toHaveValue(ownNotes(own))
+    }
+  )
+
+  it("adds the line once the person has shortened their notes enough", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: crashAnswer })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await describeAndSuggest(scope, "Crashed it, and the AC will not switch on")
+    await writeOwnNotes(scope, ownNotes(1000))
+    fireEvent.click(await within(scope).findByRole("button", { name: "Add to Notes" }))
+    expect(await within(scope).findByText(tooLong(41))).toBeInTheDocument()
+
+    // Shortened, but not enough: back on step 1 the notice says how much is still to go.
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    fireEvent.change(await within(scope).findByRole("textbox", { name: "Notes for the workshop" }), { target: { value: ownNotes(970) } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Back" }))
+    expect(await within(scope).findByText(tooLong(11))).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    fireEvent.change(await within(scope).findByRole("textbox", { name: "Notes for the workshop" }), { target: { value: ownNotes(959) } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Back" }))
+    const add = await within(scope).findByRole("button", { name: "Add to Notes" })
+    expect(within(scope).queryByText(/Notes must be shortened/)).not.toBeInTheDocument()
+    fireEvent.click(add)
+    await waitFor(() => expect(add).toHaveAccessibleName("Added to Notes"))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    expect(await within(scope).findByRole("textbox", { name: "Notes for the workshop" })).toHaveValue(`${ownNotes(959)}\n${line}`)
+  })
+
+  it("counts the copied description too, where the status allows a description that long", async () => {
+    mockBoardApi({ triageStatus: () => ({ ...triageEnabled, maxDescriptionLength: 1000 }), serviceTypes: catalogue, triage: crashAnswer })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    // The copy is the description, then the line: 960 + 1 + 40.
+    await describeAndSuggest(scope, ownNotes(960))
+    const add = await within(scope).findByRole("button", { name: "Add to Notes" })
+    fireEvent.click(add)
+    expect(await within(scope).findByText(tooLong(1))).toBeInTheDocument()
+    expect(add).toHaveAccessibleName("Add to Notes")
+
+    // One character less in the description, and the line fits: the description and the line, 1000 characters.
+    fireEvent.change(within(scope).getByRole("textbox", { name: "Describe the issue" }), { target: { value: ownNotes(959) } })
+    fireEvent.click(within(scope).getByRole("button", { name: "Suggest a service" }))
+    const again = await within(scope).findByRole("button", { name: "Add to Notes" })
+    await waitFor(() => expectAvailable(again))
+    expect(within(scope).queryByText(/Notes must be shortened/)).not.toBeInTheDocument()
+    fireEvent.click(again)
+    await waitFor(() => expect(again).toHaveAccessibleName("Added to Notes"))
+    fireEvent.click(within(scope).getByRole("button", { name: "Use this" }))
+    fireEvent.click(await within(scope).findByRole("radio", { name: /^10:15/ }))
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    expect(await within(scope).findByRole("textbox", { name: "Notes for the workshop" })).toHaveValue(`${ownNotes(959)}\n${line}`)
+  })
+})
+
 describe("the copy for the candidates the API returns", () => {
   it("reads naturally for a single likely service", async () => {
     mockBoardApi({ triageStatus: () => triageEnabled, serviceTypes: catalogue, triage: () => triageAnswer("suggest", [[diagnosticsServiceType, 0.53]]) })

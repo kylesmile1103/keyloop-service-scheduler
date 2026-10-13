@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import type { ServiceTypeResponse, TriageUncoveredCategory } from "@/api/types.gen"
 import { diagnosticsServiceType } from "@/test/triage"
 
-import { alsoMentioned, inspectionService, noticeApplies, notesLine, phraseOf, uncoveredPhrases } from "./triage-copy"
+import { alsoMentioned, inspectionService, noticeApplies, notesLine, notesTooLong, phraseOf, uncoveredPhrases } from "./triage-copy"
 
 const web = path.resolve(__dirname, "../../../..")
 
@@ -54,6 +54,11 @@ describe("the fixed phrases for what else a description mentioned (Task 32a's cl
       "Also mentioned: accident or body damage, which Diagnostic Fault Finding does not cover. One appointment books one service: add it to Notes or book it separately."
     )
     expect(notesLine("AIR_CONDITIONING")).toBe("Also mentioned: air conditioning.")
+  })
+
+  it("says by how much Notes must be shortened when the line does not fit, in the words of the notes rule", () => {
+    expect(notesTooLong(1)).toBe("Notes must be shortened by 1 character to add this line. Notes can be at most 1000 characters.")
+    expect(notesTooLong(41)).toBe("Notes must be shortened by 41 characters to add this line. Notes can be at most 1000 characters.")
   })
 
   it("belongs beside the service it is outside, or beside any choice when that is not known", () => {
