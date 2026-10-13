@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
 
-it.each(["success", "contract-drift", "unmasked", "cf-error"])("runs the smoke shell offline: %s", mode => {
+it.each(["success", "schema-not-ready", "contract-drift", "unmasked", "cf-error"])("runs the smoke shell offline: %s", mode => {
   const directory = mkdtempSync(join(process.cwd(), "build/github-smoke-"));
   const bin = join(directory, "bin");
   const edge = join(directory, "deploy/cloudflare");
@@ -37,13 +37,14 @@ it.each(["success", "contract-drift", "unmasked", "cf-error"])("runs the smoke s
       const path = new URL(args.at(-1)).pathname;
       let data;
       if (path === '/') data = '<html>fixture</html>';
+      else if (path === '/api/ready') data = '';
       else if (path === '/api/v1/dealerships') data = JSON.stringify([{name:'Keyloop Motors Reading',id:'00000000-0000-0000-0000-000000000001',timeZoneId:'Europe/London'}]);
       else if (path === '/api/v1/features') data = '{"vehicleAwareRequirements":false}';
       else if (path === '/openapi/v1.json') data = process.env.MOCK_MODE === 'contract-drift' ? '{"drift":true}' : '{"fixture":"contract"}';
       else if (path.endsWith('/schedule')) data = JSON.stringify({bays:[{appointments:[{customerName:process.env.MOCK_MODE==='unmasked'?'Alice Smith':'AS',vin:'***********123456',registration:'*******'}]}]});
       else process.exit(1);
       fs.writeFileSync(args[args.indexOf('--output') + 1], data);
-      process.stdout.write('200');
+      process.stdout.write(path === '/api/ready' && process.env.MOCK_MODE === 'schema-not-ready' ? '503' : '200');
     `, { mode: 0o700 });
     const result = spawnSync("/bin/bash", [join(process.cwd(), "scripts/verify-github-deploy.sh")], {
       cwd: directory, encoding: "utf8", timeout: 15_000,
@@ -61,6 +62,7 @@ it.each(["success", "contract-drift", "unmasked", "cf-error"])("runs the smoke s
       expect(result.status, result.stderr).toBe(1);
       expect(result.stdout).not.toContain("PASS:");
       const reason = mode === "contract-drift" ? "Deployed OpenAPI differs"
+        : mode === "schema-not-ready" ? "schema readiness did not return 200"
         : mode === "unmasked" ? "Deployment response verification failed" : "Container instance inspection failed";
       expect(result.stderr).toContain(reason);
     }

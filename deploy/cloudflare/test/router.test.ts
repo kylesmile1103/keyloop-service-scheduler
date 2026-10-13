@@ -3,6 +3,48 @@ import { routeRequest } from "../src/router";
 import { edgeRequest, fakeEnv } from "./helpers";
 
 describe("API routing and ADR-024", () => {
+  it.each([200, 503, 500, 429, 302])("returns only schema readiness status for health HTTP %s", async status => {
+    const { env, mocks } = fakeEnv();
+    mocks.API.get().fetch.mockResolvedValue(new Response("private database/migration diagnostic", {
+      status, headers: { "x-internal-diagnostic": "private", "content-type": "text/plain" },
+    }));
+    const result = await routeRequest(edgeRequest("/api/ready?path=/api/v1/dealerships"), env);
+    expect(result.status).toBe(status === 200 ? 200 : 503);
+    expect(await result.text()).toBe("");
+    expect([...result.headers]).toEqual([["cache-control", "no-store"]]);
+    const upstream: Request = mocks.API.get().fetch.mock.calls[0]![0];
+    expect(new URL(upstream.url).pathname).toBe("/health");
+    expect(new URL(upstream.url).search).toBe("");
+    expect(upstream.method).toBe("GET");
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it("allows anonymous HEAD readiness and rejects writes before contacting the container", async () => {
+    const { env, mocks } = fakeEnv();
+    const head = await routeRequest(edgeRequest("/api/ready", { method: "HEAD" }), env);
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    const upstream: Request = mocks.API.get().fetch.mock.calls[0]![0];
+    expect(upstream.headers.has("cookie")).toBe(false);
+    expect(upstream.headers.has("cf-access-jwt-assertion")).toBe(false);
+    mocks.API.get.mockClear();
+    const write = await routeRequest(edgeRequest("/api/ready", { method: "POST", body: "private" }), env);
+    expect(write.status).toBe(405);
+    expect(write.headers.get("allow")).toBe("GET, HEAD");
+    expect(mocks.API.get).not.toHaveBeenCalled();
+  });
+
+  it("returns bare unavailable readiness when the container cannot be reached", async () => {
+    const { env, mocks } = fakeEnv();
+    mocks.API.get().fetch.mockRejectedValue(new Error("private connection details"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await routeRequest(edgeRequest("/api/ready"), env);
+    expect(result.status).toBe(503);
+    expect(result.headers.get("cache-control")).toBe("no-store");
+    expect(await result.text()).toBe("");
+  });
+
   it.each(["/api", "/api/", "/api/v1/dealerships", "/api/v1/missing?x=1"])("forwards %s including navigations with a WEUR hint", async path => {
     const { env, mocks } = fakeEnv();
     const request = edgeRequest(path, { headers: { "sec-fetch-mode": "navigate" } });
@@ -75,8 +117,40 @@ describe("API routing and ADR-024", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const result = await routeRequest(edgeRequest("/api"), env);
     expect(result.status).toBe(503);
+    expect(result.headers.get("content-type")).toBe("application/problem+json");
+    expect(result.headers.get("retry-after")).toBe("3");
+    expect(result.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(2);
     expect(await result.text()).not.toContain("local-sensitive-value");
     expect(log.mock.calls.flat().join()).not.toContain("local-sensitive-value");
+    expect(log.mock.calls).toEqual([[JSON.stringify({ event: "ApiUnavailable" })]]);
     expect(mocks.ASSETS.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a write when the Durable Object binding throws", async () => {
+    const { env, mocks } = fakeEnv();
+    mocks.API.get().fetch.mockRejectedValue(new Error("rollout exit"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const requestId = "01234567-89ab-cdef-0123-456789abcdef";
+    const response = await routeRequest(edgeRequest("/api/v1/appointments", {
+      method: "POST", body: "private write", headers: { "idempotency-key": "one", "x-request-id": requestId },
+    }), env);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+    expect(await response.json()).toMatchObject({ traceId: requestId, instance: "/api/v1/appointments" });
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual([[JSON.stringify({ event: "ApiUnavailable" })]]);
+  });
+
+  it("passes through an API 500 without changing its body or headers", async () => {
+    const { env, mocks } = fakeEnv();
+    const response = Response.json({ type: "https://api.keyloop.example/problems/internal-error", status: 500 }, {
+      status: 500, headers: { "content-type": "application/problem+json", "x-request-id": "api-generated" },
+    });
+    mocks.API.get().fetch.mockResolvedValue(response);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await routeRequest(edgeRequest("/api/v1/dealerships"), env)).toBe(response);
+    expect(mocks.API.get().fetch).toHaveBeenCalledTimes(1);
+    expect(log).not.toHaveBeenCalled();
   });
 });

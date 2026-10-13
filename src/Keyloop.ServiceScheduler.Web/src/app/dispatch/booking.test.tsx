@@ -436,11 +436,19 @@ describe("booking an appointment", () => {
     expect(within(alert).getByText("Idempotency-Key must be 1 to 64 letters, digits, '-' or '_'.")).toBeInTheDocument()
   })
 
-  it("says when the server failed, and tries again safely with the same booking and key", async () => {
+  it.each(["bare response", "edge problem"])("handles a 503 %s and tries again safely with the same booking and key", async shape => {
     let attempts = 0
     const api = mockBoardApi({
       book: (_, body) =>
-        ++attempts === 1 ? new Response("", { status: 503, statusText: "Service Unavailable" }) : bookedFrom(body),
+        ++attempts === 1
+          ? shape === "bare response"
+            ? new Response("", { status: 503, statusText: "Service Unavailable" })
+            : problemResponse(503, {
+                type: "https://api.keyloop.example/problems/service-unavailable", title: "Service unavailable", status: 503,
+                detail: "The scheduler is temporarily unavailable. Please try again in a moment.",
+                instance: "/api/v1/dealerships/reading/appointments", traceId: "edge-request-id",
+              })
+          : bookedFrom(body),
     })
     renderBoard(readingBoard)
     const scope = await openDialog()
@@ -451,6 +459,8 @@ describe("booking an appointment", () => {
     expect(await screen.findByText("Couldn’t book the appointment", { selector: "[data-slot=toast-title]" })).toBeInTheDocument()
     expect(screen.getByText(/The server answered 503\./)).toBeInTheDocument()
     const alert = await within(scope).findByRole("alert")
+    if (shape === "edge problem") expect(alert).toHaveTextContent("Please try again in a moment.")
+    expect(bookingRequests(api.requests)).toHaveLength(1)
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }))
 
     await screen.findByText("Booked")
@@ -1005,6 +1015,64 @@ describe("the booking dialog's two columns", () => {
     expect(await within(times).findByRole("radiogroup", { name: "Start time" })).toBeInTheDocument()
     // The note on what the starts are counted for sits with them.
     expect(within(times).getByText(/^Counted for a vehicle of unknown powertrain/)).toBeInTheDocument()
+  })
+
+  it("sets the stepper in the header over the second column, and parts the columns with a rule", async () => {
+    mockBoardApi()
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+
+    // One band: the title over the job, the stepper level with it over the start times (and, on step 2, the vehicle).
+    const header = within(scope).getByRole("list", { name: "Booking steps" }).closest("header")!
+    expect(header).toHaveClass("grid", "grid-cols-2", "gap-x-8")
+    expect(within(header).getByText("Book appointment")).toBeInTheDocument()
+    // The rule is the section's background, in the middle of the columns' gap, from the header to the footer.
+    const section = within(scope).getByRole("group", { name: "Service and date" }).parentElement!
+    expect(section).toHaveClass("grid-cols-2", "gap-x-8", "bg-[length:1px_100%]", "bg-center", "bg-no-repeat")
+    expect(section).not.toHaveClass("relative")
+  })
+
+  it("keeps the photo limits behind Limits in the job column, still read with the field", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, features: () => vehicleAwareOn })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    const job = await within(scope).findByRole("group", { name: "Service and vehicle" })
+    const input = await within(job).findByLabelText("Photos or paperwork (optional)")
+    const limitsText = "Up to 4 PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour."
+
+    const limits = within(job).getByRole("button", { name: "Limits" })
+    const help = within(job).getByText(limitsText)
+    expect(limits).toHaveAttribute("aria-expanded", "false")
+    expect(limits).toHaveAttribute("aria-controls", help.id)
+    expect(help).not.toBeVisible()
+    // Closed, the limits are still the input's description: a screen reader hears them with the field.
+    expect(input).toHaveAccessibleDescription(limitsText)
+    // What to photograph stays in view, in the panel's one row, before Add photos.
+    expect(within(job).getByText("A photo of the warning light, the damage or the paperwork helps find the right service.")).toBeVisible()
+
+    fireEvent.click(limits)
+    expect(limits).toHaveAttribute("aria-expanded", "true")
+    expect(help).toBeVisible()
+    fireEvent.click(limits)
+    expect(limits).toHaveAttribute("aria-expanded", "false")
+    expect(help).not.toBeVisible()
+
+    // In reading order: the label, Limits, then the photos' input, then Suggest a service.
+    expect(before(limits, input)).toBe(true)
+    expect(before(input, within(job).getByRole("button", { name: "Suggest a service" }))).toBe(true)
+  })
+
+  it("shows the photo limits as before in one column, with no Limits", async () => {
+    viewportOf(1024)
+    mockBoardApi({ triageStatus: () => triageEnabled })
+    renderBoard(readingBoard)
+    fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+    const scope = await dialog()
+    await within(scope).findByLabelText("Photos or paperwork (optional)")
+
+    expect(within(scope).queryByRole("button", { name: "Limits" })).not.toBeInTheDocument()
+    expect(within(scope).getByText(/^Up to 4 PNG, JPEG or WebP photos/)).toBeVisible()
+    expect(within(scope).getByRole("list", { name: "Booking steps" }).closest("header")).not.toHaveClass("grid")
   })
 
   it.each([

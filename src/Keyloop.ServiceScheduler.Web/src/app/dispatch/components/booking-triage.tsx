@@ -1,6 +1,18 @@
 import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
-import { CalendarDays, CalendarX2, Check, CircleAlert, ImagePlus, Info, LoaderCircle, MessageSquareText, NotebookPen, ScanSearch } from "lucide-react"
+import {
+  CalendarDays,
+  CalendarX2,
+  Check,
+  ChevronDown,
+  CircleAlert,
+  ImagePlus,
+  Info,
+  LoaderCircle,
+  MessageSquareText,
+  NotebookPen,
+  ScanSearch,
+} from "lucide-react"
 import { type DragEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import type { DealershipResponse, ServiceTypeResponse, TriageBookingResponse, TriageServiceCandidate, TriageUncoveredIssue } from "@/api/types.gen"
@@ -55,6 +67,13 @@ interface BookingTriageProps {
    * service and the photos are then unavailable and name it (UI_DESIGN 11.20). Nothing is uploaded or asked meanwhile.
    */
   blockedBy?: string
+  /**
+   * In the wide dialog's job column (UI_DESIGN 11.14): the same fields, denser, so the column holds the whole job at 1440 x
+   * 900. The frame keeps 12 px of padding, the description box opens at two lines with no spare height, the photo panel is
+   * one row (the picture, what to photograph, then *Add photos*) with the limits behind a *Limits* disclosure, and the
+   * provider's line sits under the buttons it explains.
+   */
+  compact?: boolean
 }
 
 /**
@@ -77,6 +96,7 @@ export function BookingTriageIntake({
   onAddToNotes,
   onUse,
   blockedBy,
+  compact = false,
 }: BookingTriageProps) {
   const ids = { description: useId(), help: useId(), count: useId(), error: useId() }
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
@@ -104,7 +124,10 @@ export function BookingTriageIntake({
   const describedBy = [ids.help, ids.count, descriptionError ? ids.error : null].filter(Boolean).join(" ")
 
   return (
-    <section aria-label="Suggest a service from the issue" className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:p-4">
+    <section
+      aria-label="Suggest a service from the issue"
+      className={cn("flex flex-col gap-3 rounded-xl border border-border p-3", !compact && "sm:p-4")}
+    >
       <Field data-invalid={descriptionError ? true : undefined} className="gap-1.5">
         <FieldLabel htmlFor={ids.description}>Describe the issue</FieldLabel>
         <Textarea
@@ -118,7 +141,7 @@ export function BookingTriageIntake({
           aria-invalid={descriptionError ? true : undefined}
           aria-describedby={describedBy}
           placeholder="For example: brakes squeal, it's an EV, need it Thursday"
-          className="min-h-16 scroll-mt-24"
+          className={cn("scroll-mt-24", compact ? "min-h-14" : "min-h-16")}
         />
         <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
           <p id={ids.help}>In the customer’s own words, with the day they want if they said one.</p>
@@ -135,33 +158,36 @@ export function BookingTriageIntake({
         )}
       </Field>
 
-      {triage.imagesEnabled && <PhotoField triage={triage} pending={pending} blockedBy={blockedBy} />}
+      {triage.imagesEnabled && <PhotoField triage={triage} pending={pending} blockedBy={blockedBy} compact={compact} />}
 
-      <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <Button
-          ref={suggestRef}
-          type="button"
-          variant="outline"
-          onClick={suggest}
-          // Focusable while it asks (or waits out a rate limit): it was just pressed, and focus must stay in the dialog.
-          disabled={pending || waiting > 0 || Boolean(blockedBy)}
-          focusableWhenDisabled
-          aria-busy={pending || undefined}
-          aria-describedby={blockedBy}
-          className="self-start"
-        >
-          {pending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <ScanSearch aria-hidden="true" />}
-          {pending ? "Suggesting…" : waiting > 0 ? `Suggest a service (in ${waiting} s)` : "Suggest a service"}
-        </Button>
-        <Label className="flex min-h-9 cursor-pointer items-center gap-2.5 font-normal max-md:min-h-11 pointer-coarse:min-h-11">
-          <Checkbox checked={triage.copyToNotes} onCheckedChange={(checked) => triage.setCopyToNotes(checked)} />
-          Copy the description into Notes
-        </Label>
+      {/* Compact, the provider's line is the caption of the buttons above it. */}
+      <div className={cn("flex flex-col", compact ? "gap-1.5" : "gap-3")}>
+        <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <Button
+            ref={suggestRef}
+            type="button"
+            variant="outline"
+            onClick={suggest}
+            // Focusable while it asks (or waits out a rate limit): it was just pressed, and focus must stay in the dialog.
+            disabled={pending || waiting > 0 || Boolean(blockedBy)}
+            focusableWhenDisabled
+            aria-busy={pending || undefined}
+            aria-describedby={blockedBy}
+            className="self-start"
+          >
+            {pending ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <ScanSearch aria-hidden="true" />}
+            {pending ? "Suggesting…" : waiting > 0 ? `Suggest a service (in ${waiting} s)` : "Suggest a service"}
+          </Button>
+          <Label className="flex min-h-9 cursor-pointer items-center gap-2.5 font-normal max-md:min-h-11 pointer-coarse:min-h-11">
+            <Checkbox checked={triage.copyToNotes} onCheckedChange={(checked) => triage.setCopyToNotes(checked)} />
+            Copy the description into Notes
+          </Label>
+        </div>
+        {notesHaveOwnText && triage.copyToNotes && triage.description.trim() !== "" && (
+          <p className="text-xs text-muted-foreground">Notes already has other text, so the description is not copied into it.</p>
+        )}
+        <p className="text-xs text-pretty text-muted-foreground">Suggestions by {triage.provider}. Check before booking.</p>
       </div>
-      {notesHaveOwnText && triage.copyToNotes && triage.description.trim() !== "" && (
-        <p className="text-xs text-muted-foreground">Notes already has other text, so the description is not copied into it.</p>
-      )}
-      <p className="text-xs text-pretty text-muted-foreground">Suggestions by {triage.provider}. Check before booking.</p>
 
       {/* Always on the page, so what each answer says is read out as it arrives. */}
       <p role="status" className="sr-only">
@@ -210,6 +236,8 @@ interface PhotoFieldProps {
   pending: boolean
   /** As Suggest a service's: the id of the reason this account cannot ask any more; no photo is added meanwhile. */
   blockedBy?: string
+  /** The wide dialog's one-row panel, with the limits behind *Limits* (`BookingTriageProps.compact`). */
+  compact: boolean
 }
 
 /**
@@ -220,12 +248,15 @@ interface PhotoFieldProps {
  * unavailable it is still kept from the browser, which would otherwise leave the page to open the file. Before the first
  * photo the dashed panel says what is worth photographing, beside the picture of it; after, it is the slim row that adds
  * more. The input keeps its place in the panel either way, so the element the file picker returns focus to is never
- * replaced when the photos arrive.
+ * replaced when the photos arrive. Compact, the panel is one row (the picture, the line, then *Add photos* over "or drop
+ * them here") and the limits open from *Limits* at the end of the label's line; closed, they are still the input's
+ * description, so a screen reader hears them with the field.
  */
-function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
+function PhotoField({ triage, pending, blockedBy, compact }: PhotoFieldProps) {
   const ids = { input: useId(), help: useId(), error: useId() }
   const disabled = pending || Boolean(blockedBy)
   const [dragging, setDragging] = useState(false)
+  const [limitsOpen, setLimitsOpen] = useState(false)
   // Enter and leave fire for every child the pointer crosses: the highlight goes only when the drag has left the field.
   const depth = useRef(0)
   const noPhotos = triage.photos.length === 0
@@ -264,12 +295,39 @@ function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
       onDragLeave={leave}
       onDrop={drop}
     >
-      <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
+      {compact ? (
+        <div className="flex items-center justify-between gap-3">
+          <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
+          {/*
+            A quiet disclosure, as *Why this allocation* is (UI_DESIGN 11.14): words and a turning chevron, its text level
+            with the panel's edge; 24 px tall (44 px on touch, reaching into the space around the line, not widening it).
+          */}
+          <button
+            type="button"
+            aria-expanded={limitsOpen}
+            aria-controls={ids.help}
+            onClick={() => setLimitsOpen((open) => !open)}
+            className="-mr-1 flex min-h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:-my-2.5 pointer-coarse:min-h-11"
+          >
+            Limits
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("size-3.5 transition-transform duration-150 motion-reduce:transition-none", limitsOpen && "rotate-180")}
+            />
+          </button>
+        </div>
+      ) : (
+        <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
+      )}
       <div
         className={cn(
           "rounded-lg border border-dashed border-input transition-colors duration-100",
           "group-data-dragging/photos:border-signal group-data-dragging/photos:bg-signal/10",
-          noPhotos ? "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 p-3" : "px-3 py-2"
+          !noPhotos
+            ? "px-3 py-2"
+            : compact
+              ? "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2.5"
+              : "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 p-3"
         )}
       >
         {noPhotos && (
@@ -279,13 +337,18 @@ function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
             width={1200}
             height={900}
             draggable={false}
-            className="pointer-events-none h-auto w-20 select-none sm:row-span-2 sm:w-24"
+            className={cn("pointer-events-none h-auto select-none", compact ? "w-16" : "w-20 sm:row-span-2 sm:w-24")}
           />
         )}
         {noPhotos && (
           <p className="text-sm text-pretty">A photo of the warning light, the damage or the paperwork helps find the right service.</p>
         )}
-        <div className={cn("relative flex flex-wrap items-center gap-x-3 gap-y-1", noPhotos && "col-span-2 sm:col-span-1 sm:col-start-2")}>
+        <div
+          className={cn(
+            "relative flex flex-wrap items-center gap-x-3 gap-y-1",
+            noPhotos && (compact ? "flex-col items-end" : "col-span-2 sm:col-span-1 sm:col-start-2")
+          )}
+        >
           <input
             id={ids.input}
             type="file"
@@ -320,7 +383,7 @@ function PhotoField({ triage, pending, blockedBy }: PhotoFieldProps) {
           </span>
         </div>
       </div>
-      <p id={ids.help} className="text-xs text-muted-foreground">
+      <p id={ids.help} hidden={compact && !limitsOpen} className="text-xs text-muted-foreground">
         Up to {triage.maxImages} PNG, JPEG or WebP photos, 4 MiB and 16 megapixels each, 8 MiB total. Uploads expire after one hour.
       </p>
       {triage.imageError && <FieldError id={ids.error}>{triage.imageError}</FieldError>}

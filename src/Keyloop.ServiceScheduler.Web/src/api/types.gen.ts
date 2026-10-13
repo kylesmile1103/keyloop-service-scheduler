@@ -1005,7 +1005,10 @@ export type ServiceTypeResponse = {
     requiredCertifications: Array<Certification>;
     /**
      * True when the dealership has at least one active bay with every required capability and at least one active technician with
-     * every required certification. It says the service can ever be booked there, not that a slot is free on a given day.
+     * every required certification when vehicle-aware requirements are off. When on, some powertrain/class profile the booking dialog
+     * can submit must satisfy the latest dealership policy on today's dealership-local date, including inclusive HV expiry, without
+     * requiring the legacy HV certificate. Busy time, opening hours and the booking window are excluded; availability checks the chosen
+     * vehicle and appointment date.
      */
     bookable: boolean;
 };
