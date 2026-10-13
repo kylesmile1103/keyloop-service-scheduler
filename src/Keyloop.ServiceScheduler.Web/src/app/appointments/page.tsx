@@ -51,6 +51,7 @@ import {
   filterOptions,
 } from "./lib/appointments"
 import { type OpenAppointment, OpenAppointmentContext, type RowIntent } from "./lib/row-actions"
+import { useListParams } from "./lib/use-list-params"
 
 /** Stable empties: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: AppointmentRow[] = []
@@ -191,6 +192,7 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const facets = useMemo<Facet[]>(() => FACETS.map((facet) => ({ ...facet, options: options[facet.id] })), [options])
 
   const columnVisibility = useColumnVisibility()
+  const listParams = useListParams()
 
   const table = useTable({
     features: dataTableFeatures,
@@ -199,7 +201,9 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
     getRowId: (row) => row.id,
     columns: appointmentColumns,
     initialState: { sorting: [{ id: "time", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
-    state: { columnVisibility: columnVisibility.state },
+    state: { columnVisibility: columnVisibility.state, globalFilter: listParams.globalFilter, columnFilters: listParams.columnFilters },
+    onGlobalFilterChange: listParams.onGlobalFilterChange,
+    onColumnFiltersChange: listParams.onColumnFiltersChange,
     onColumnVisibilityChange: columnVisibility.onChange,
     globalFilterFn: searchFilter,
     getColumnCanGlobalFilter: canSearchColumn,
