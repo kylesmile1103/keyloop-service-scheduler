@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, CarFront, ChevronDown, ClipboardList, LoaderCircle, type LucideIcon, Route, StickyNote, UserRound, XIcon } from "lucide-react"
-import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { type FormEvent, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import {
   cancelAppointmentMutation,
@@ -144,6 +144,7 @@ export function AppointmentDetails({
   })
   const hvNeeded = allocation ? hvLevelOf(allocation.minimumHvLevel) : null
   const unmasked = detailsAccess === "allowed"
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   const refreshBoard = () => {
     void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date } }) })
@@ -154,6 +155,25 @@ export function AppointmentDetails({
     // Every range read of the dealership (the Overview and the Calendar), whatever its dates.
     void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
   }
+
+  const { refs: cancellationRefs, ...cancellation } = useCancellation({
+    access: writeAccess,
+    appointment,
+    status,
+    timeZone,
+    reasonRef,
+    bodyRef,
+    confirming,
+    onCancelled: (cancelled) => {
+      queryClient.setQueryData(getAppointmentQueryKey({ path }), cancelled)
+      refreshBoard()
+      onDone()
+    },
+    onConflict: () => {
+      refreshBoard()
+      void queryClient.invalidateQueries({ queryKey: getAppointmentQueryKey({ path }) })
+    },
+  })
 
   return (
     <>
@@ -167,8 +187,8 @@ export function AppointmentDetails({
         onClose={onClose}
       />
 
-      {/* The scrolling part carries no padding of its own, so in a short window it can give up all its height to the actions. */}
-      <div data-slot="details-body" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      {/* The one scrolling part, between the pinned header and the pinned buttons: the cards, then the cancellation's words. */}
+      <div ref={bodyRef} data-slot="details-body" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="flex min-h-full flex-col gap-3 p-4">
           <DetailsCard title="Job" icon={ClipboardList}>
             {warning && (
@@ -321,26 +341,20 @@ export function AppointmentDetails({
               <CopyButton value={appointment.id} label="Copy appointment reference" copiedLabel="Reference copied" />
             </dd>
           </dl>
+
+          <CancelPrompt
+            cancellation={cancellation}
+            appointment={appointment}
+            timeZone={timeZone}
+            reasonRef={reasonRef}
+            confirmRef={cancellationRefs.confirm}
+            fieldRef={cancellationRefs.field}
+            problemRef={cancellationRefs.problem}
+          />
         </div>
       </div>
 
-      <CancelActions
-        access={writeAccess}
-        appointment={appointment}
-        status={status}
-        timeZone={timeZone}
-        reasonRef={reasonRef}
-        confirming={confirming}
-        onCancelled={(cancelled) => {
-          queryClient.setQueryData(getAppointmentQueryKey({ path }), cancelled)
-          refreshBoard()
-          onDone()
-        }}
-        onConflict={() => {
-          refreshBoard()
-          void queryClient.invalidateQueries({ queryKey: getAppointmentQueryKey({ path }) })
-        }}
-      />
+      <CancelActions cancellation={cancellation} startRef={cancellationRefs.start} />
     </>
   )
 }
@@ -368,11 +382,12 @@ function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, 
       <span className="whitespace-nowrap">{`${timeRange(appointment, timeZone)} (${timeZone})`}</span>
     </>
   )
-  const titleClass = "font-heading text-lg leading-snug font-semibold text-balance text-foreground outline-none"
+  // Clear of the close button in the corner (the inspector's, or the sheet's own), which only the title's line meets.
+  const titleClass = "pr-10 font-heading text-lg leading-snug font-semibold text-balance text-foreground outline-none"
   const inspector = presentation === "inspector"
 
   return (
-    <div data-slot="details-header" className={cn("flex shrink-0 items-start gap-3 border-b p-4", !inspector && "pr-12")}>
+    <div data-slot="details-header" className="relative flex shrink-0 items-start gap-3 border-b p-4">
       <span aria-hidden="true" className={cn("inline-flex size-9 shrink-0 items-center justify-center", classes.tile)}>
         <StatusIcon className="size-5" />
       </span>
@@ -386,12 +401,18 @@ function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, 
             {appointment.serviceType.name}
           </SheetTitle>
         )}
-        {inspector ? (
-          <p className="text-sm text-pretty text-muted-foreground tabular-nums">{when}</p>
-        ) : (
-          <SheetDescription className="text-pretty tabular-nums">{when}</SheetDescription>
-        )}
-        <StatusBadge status={status} className="mt-1.5" />
+        {/* The day, the times and the status wrap as one line under the title, the status after the times when it fits:
+            the description (the day and times only) lays out its two pieces as this line's own. The side sheet is wide
+            enough for the whole date on its first line, which would then run under the close button. */}
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground tabular-nums",
+            presentation === "right" && "pr-10"
+          )}
+        >
+          {inspector ? <p className="contents">{when}</p> : <SheetDescription className="contents">{when}</SheetDescription>}
+          <StatusBadge status={status} />
+        </div>
       </div>
       {inspector && onClose && (
         <Tooltip>
@@ -403,7 +424,7 @@ function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, 
                 size="icon-sm"
                 aria-label="Close"
                 onClick={onClose}
-                className="-mt-1 -mr-1 cursor-pointer text-muted-foreground hover:text-foreground"
+                className="absolute top-3 right-3 cursor-pointer text-muted-foreground hover:text-foreground"
               />
             }
           >
@@ -496,38 +517,51 @@ const cancelBookingClasses =
 
 type CancelVariables = Parameters<NonNullable<ReturnType<typeof cancelAppointmentMutation>["mutationFn"]>>[0]
 
-interface CancelActionsProps {
+/**
+ * What the details offer for cancelling: nothing for a visitor (the sign-in panel above covers it); a line saying why when
+ * the status cannot be cancelled; *Cancel booking…* unavailable, with the reason, for a role that may not cancel (or while
+ * `/me` has not answered); else *Cancel booking…* and, once it is pressed, the confirm.
+ */
+type CancelOffer = "none" | "not-cancellable" | "unavailable" | "start" | "confirm"
+
+interface CancellationOptions {
   /** Whether this account may cancel: the action for Admin and Service advisor, the reason for any other role. */
   access: WriteAccess
   appointment: BoardAppointment
   status: BoardAppointment["status"]
   timeZone: string
   reasonRef: RefObject<HTMLTextAreaElement | null>
+  /** The details' one scrolling part: scrolled (never the page) to bring the confirm, or a problem, into view. */
+  bodyRef: RefObject<HTMLDivElement | null>
   /** The confirm starts open (opened to cancel). */
   confirming: boolean
   onCancelled: (cancelled: AppointmentResponse) => void
   onConflict: () => void
 }
 
+type Cancellation = Omit<ReturnType<typeof useCancellation>, "refs">
+type CancellationRefs = ReturnType<typeof useCancellation>["refs"]
+
 /**
- * The action row: *Cancel booking…* opens a short confirm in place (what it frees, the reason with its counter, *Keep
- * booking* and *Cancel appointment*); nothing is sent until *Cancel appointment*. Focus goes to the reason as the confirm
- * opens and back to *Cancel booking…* when it is kept.
+ * The cancellation, shared by the details' two parts: what it says sits at the foot of the scrolling cards
+ * (`CancelPrompt`: the confirm's prompt, what it frees, the reason with its counter and a refusal, or why cancelling is
+ * unavailable), and its buttons are in the pinned action row (`CancelActions`), so the details never scroll in two places.
+ * Nothing is sent until *Cancel appointment*. As the confirm opens, focus goes to the reason and the cards scroll to bring
+ * the confirm into view; *Keep booking* closes it, drops the reason and puts focus back on *Cancel booking…*.
  */
-function CancelActions({ access, appointment, status, timeZone, reasonRef, confirming, onCancelled, onConflict }: CancelActionsProps) {
-  const reasonId = useId()
-  const errorId = useId()
-  const countId = useId()
-  const deniedId = useId()
-  const promptId = useId()
+function useCancellation({ access, appointment, status, timeZone, reasonRef, bodyRef, confirming, onCancelled, onConflict }: CancellationOptions) {
+  const ids = { reason: useId(), error: useId(), count: useId(), denied: useId(), prompt: useId(), form: useId() }
   const [open, setOpen] = useState(confirming)
   const [reason, setReason] = useState("")
   const [missingReason, setMissingReason] = useState(false)
   const startRef = useRef<HTMLButtonElement>(null)
-  const fieldsRef = useRef<HTMLDivElement>(null)
-  // Where focus goes once the confirm has drawn or gone: the reason as it opens, Cancel booking… once it is kept. Not on
-  // the first render: opened to cancel, the sheet itself puts focus on the reason.
-  const focusNext = useRef<"reason" | "start" | null>(null)
+  const confirmRef = useRef<HTMLFormElement>(null)
+  const fieldRef = useRef<HTMLDivElement>(null)
+  const problemRef = useRef<HTMLDivElement>(null)
+  // What follows once the confirm has drawn or gone: on opening, the confirm brought into view and focus on the reason; on
+  // keeping the booking, focus on Cancel booking…. Opened to cancel, the confirm is in view from the first frame, and the
+  // sheet itself puts focus on the reason.
+  const next = useRef<{ focus: "reason" | "start" | null; reveal: boolean }>({ focus: null, reveal: confirming })
   const generated = cancelAppointmentMutation()
   // Bound to the account the details were drawn for and sent only while the cache names it (checked last as the request
   // leaves, `write.fetch`), and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a reason
@@ -549,27 +583,82 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
     },
   })
 
-  useEffect(() => {
-    if (focusNext.current === "reason") {
-      reasonRef.current?.focus()
-      // In view within the details, whatever the window's height (the action row scrolls when the confirm outgrows it).
-      reasonRef.current?.scrollIntoView?.({ block: "nearest" })
-    } else if (focusNext.current === "start") startRef.current?.focus()
-    focusNext.current = null
-  }, [open, reasonRef])
-
-  useEffect(() => {
-    // A refusal is drawn under the reason: bring it into view where the confirm's fields scroll in a short window.
-    const fields = fieldsRef.current
-    if (cancel.isError && fields) fields.scrollTop = fields.scrollHeight
-  }, [cancel.isError])
-
   const problem = parseProblem(cancel.error)
-  const refusedStatus = failureStatus(cancel.error)
   const serverReasonError = problem && problemSlug(problem) === "validation-error" ? fieldErrors(problem, { reason: "Reason" }).reason : undefined
   const reasonError = missingReason ? "Say why the appointment is cancelled." : serverReasonError
-  const conflict = problem?.status === 409
   const showProblem = cancel.isError && !serverReasonError
+  const offer: CancelOffer = !canCancel(status)
+    ? "not-cancellable"
+    : access.state === "sign-in"
+      ? "none"
+      : access.state !== "allowed"
+        ? "unavailable"
+        : open
+          ? "confirm"
+          : "start"
+
+  useLayoutEffect(() => {
+    const { focus, reveal } = next.current
+    next.current = { focus: null, reveal: false }
+    // Without scrolling: the reveal below scrolls the cards alone, where `focus()` would also scroll the page to it.
+    if (focus === "reason") reasonRef.current?.focus({ preventScroll: true })
+    else if (focus === "start") startRef.current?.focus()
+    // Smoothly when the person asked for it, at once when the details open on it.
+    if (reveal) revealIn(bodyRef.current, confirmSpans(confirmRef.current, fieldRef.current, null), focus === "reason")
+  }, [open, reasonRef, bodyRef])
+
+  useEffect(() => {
+    // A reason asked for, or a refusal, is drawn under the reason (or, with no confirm open, at the foot of the cards): bring
+    // it into view, with as much of the confirm above it as the cards have room for.
+    if (reasonError || showProblem) {
+      revealIn(bodyRef.current, confirmSpans(confirmRef.current, fieldRef.current, showProblem ? problemRef.current : null), true)
+    }
+  }, [reasonError, showProblem, bodyRef])
+
+  useEffect(() => {
+    // The confirm sits at the foot of the cards, so it moves when they change height (the whole record arriving after it
+    // opened: opened to cancel, the record is read as the details open), and it can drop out of view when the scrolling
+    // part gets shorter (the docked inspector fits itself to the window as the page scrolls or settles). While the person
+    // is in the confirm (the reason, or its buttons), keep it in view. Its own growth (a long reason) is left to the
+    // browser, which keeps the caret in view.
+    const body = bodyRef.current
+    const content = body?.firstElementChild
+    if (offer !== "confirm" || !body || !content || typeof ResizeObserver === "undefined") return
+    const topOf = () => (confirmRef.current ? confirmRef.current.getBoundingClientRect().top - content.getBoundingClientRect().top : 0)
+    let top = topOf()
+    let room = body.clientHeight
+    const observer = new ResizeObserver(() => {
+      const changed = topOf() !== top || body.clientHeight !== room
+      top = topOf()
+      room = body.clientHeight
+      const confirm = confirmRef.current
+      const active = document.activeElement as HTMLButtonElement | null
+      if (changed && confirm && active?.form === confirm) {
+        revealIn(body, confirmSpans(confirm, fieldRef.current, showProblem ? problemRef.current : null), false)
+      }
+    })
+    observer.observe(content)
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [offer, showProblem, bodyRef])
+
+  function start() {
+    next.current = { focus: "reason", reveal: true }
+    setOpen(true)
+  }
+
+  function keep() {
+    setOpen(false)
+    setReason("")
+    setMissingReason(false)
+    cancel.reset()
+    next.current = { focus: "start", reveal: false }
+  }
+
+  function changeReason(value: string) {
+    setReason(value)
+    if (missingReason && value.trim()) setMissingReason(false)
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -579,136 +668,228 @@ function CancelActions({ access, appointment, status, timeZone, reasonRef, confi
     const trimmed = reason.trim()
     if (!trimmed) {
       setMissingReason(true)
-      reasonRef.current?.focus()
+      reasonRef.current?.focus({ preventScroll: true })
       return
     }
     setMissingReason(false)
     send({ path: { appointmentId: appointment.id }, body: { reason: trimmed } })
   }
 
-  function keep() {
-    setOpen(false)
-    setReason("")
-    setMissingReason(false)
-    cancel.reset()
-    focusNext.current = "start"
+  return {
+    access,
+    status,
+    offer,
+    ids,
+    reason,
+    reasonError,
+    showProblem,
+    problem,
+    cancel,
+    start,
+    keep,
+    changeReason,
+    submit,
+    /** For the elements they name, apart from the state: the prompt's form, field and refusal, and *Cancel booking…*. */
+    refs: { start: startRef, confirm: confirmRef, field: fieldRef, problem: problemRef },
   }
+}
 
-  // A visitor who is not signed in has the sign-in panel above, which covers cancelling.
-  if (access.state === "sign-in" && canCancel(status)) return null
-  // With the confirm open, a refusal shows inside it, under the reason and next to the buttons (scrolled into view there).
-  const confirmShown = open && access.state === "allowed" && canCancel(status)
+/** How far a revealed part keeps from the scrolling part's edges, room permitting: the cards' own padding (`p-4`). */
+const REVEAL_MARGIN = 16
 
-  const alert = showProblem && (
-    <ProblemAlert
-      title={
-        refusedStatus === 401 || refusedStatus === 403
-          ? authRefusalTitle(refusedStatus, "cancel the appointment")
-          : (problem?.title ?? "Couldn’t cancel the appointment")
-      }
-      error={cancel.error}
-      tone={conflict || refusedStatus === 401 || refusedStatus === 403 ? "warning" : "error"}
-    />
+type Span = HTMLElement | null | [HTMLElement | null, HTMLElement | null]
+
+/**
+ * What of the confirm to keep in view, the most first: all of it; else its prompt (its title and what it frees) down to
+ * the reason, or, with a refusal, the reason down to the refusal; else the reason, or the refusal, alone. With no confirm
+ * open, the refusal alone.
+ */
+function confirmSpans(confirm: HTMLElement | null, field: HTMLElement | null, problem: HTMLElement | null): Span[] {
+  const prompt = confirm?.firstElementChild instanceof HTMLElement ? confirm.firstElementChild : null
+  return problem ? [confirm, [field, problem], problem] : [confirm, [prompt, field], field]
+}
+
+/**
+ * Scrolls the details' scrolling part, and only it (`scrollIntoView` would scroll the page too), the least distance that
+ * shows the first of `spans` that fits (an element, or the stretch from one element's top to another's foot), with a margin
+ * where there is room; when none fits, the top of the last. Smoothly unless reduced motion is asked for, and not at all
+ * when it is already in view.
+ */
+function revealIn(body: HTMLElement | null, spans: Span[], smooth: boolean) {
+  if (!body) return
+  const room = body.clientHeight
+  const offset = body.getBoundingClientRect().top - body.scrollTop
+  const stretches = spans.flatMap((span) => {
+    const [from, to] = Array.isArray(span) ? span : [span, span]
+    return from && to ? [{ top: from.getBoundingClientRect().top - offset, bottom: to.getBoundingClientRect().bottom - offset }] : []
+  })
+  const stretch = stretches.find(({ top, bottom }) => bottom - top <= room) ?? stretches.at(-1)
+  if (!stretch) return
+  const margin = Math.max(0, Math.min(REVEAL_MARGIN, (room - (stretch.bottom - stretch.top)) / 2))
+  const lowest = stretch.bottom + margin - room
+  const highest = stretch.top - margin
+  const wanted = lowest <= highest ? Math.min(Math.max(body.scrollTop, lowest), highest) : highest
+  const scrollTop = Math.round(Math.max(0, Math.min(wanted, body.scrollHeight - room)))
+  if (scrollTop === Math.round(body.scrollTop)) return
+  const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  if (typeof body.scrollTo === "function") body.scrollTo({ top: scrollTop, behavior: smooth && !reduced ? "smooth" : "instant" })
+  else body.scrollTop = scrollTop
+}
+
+/**
+ * The cancellation's words, at the foot of the scrolling cards, right above its buttons: the confirm (a form named by its
+ * prompt, what it frees, the reason with its `n/500` counter beside its label, the error under it, and a refusal), or why
+ * cancelling is unavailable (the status, or the role's reason, which names *Cancel booking…*). A refusal that leaves no
+ * confirm open (a conflict that changed the status) shows here too.
+ */
+function CancelPrompt({
+  cancellation: c,
+  appointment,
+  timeZone,
+  reasonRef,
+  confirmRef,
+  fieldRef,
+  problemRef,
+}: {
+  cancellation: Cancellation
+  appointment: BoardAppointment
+  timeZone: string
+  reasonRef: RefObject<HTMLTextAreaElement | null>
+  confirmRef: CancellationRefs["confirm"]
+  fieldRef: CancellationRefs["field"]
+  problemRef: CancellationRefs["problem"]
+}) {
+  const refusedStatus = failureStatus(c.cancel.error)
+  const alert = c.showProblem && (
+    <div ref={problemRef} className="shrink-0">
+      <ProblemAlert
+        title={
+          refusedStatus === 401 || refusedStatus === 403
+            ? authRefusalTitle(refusedStatus, "cancel the appointment")
+            : (c.problem?.title ?? "Couldn’t cancel the appointment")
+        }
+        error={c.cancel.error}
+        tone={c.problem?.status === 409 || refusedStatus === 401 || refusedStatus === 403 ? "warning" : "error"}
+      />
+    </div>
   )
 
+  if (c.offer !== "confirm") {
+    return (
+      <>
+        {alert}
+        {c.offer === "not-cancellable" && (
+          <p className="shrink-0 text-sm text-muted-foreground">
+            {c.status === "Cancelled" ? "This appointment is cancelled." : "Only a confirmed or checked-in appointment can be cancelled."}
+          </p>
+        )}
+        {c.offer === "unavailable" && c.access.state === "denied" && <WriteReason id={c.ids.denied} reason={c.access.reason} className="shrink-0" />}
+      </>
+    )
+  }
+
   return (
-    // Pinned under the cards. The cards give up their height first (a shrink weight a thousandth of theirs); only when they
-    // have none left, with the confirm open in a short window, does the action row shrink too: the confirm's prompt and
-    // reason then scroll inside it, its buttons staying in view.
+    <form
+      ref={confirmRef}
+      id={c.ids.form}
+      noValidate
+      aria-labelledby={c.ids.prompt}
+      onSubmit={c.submit}
+      // Set apart from the reference line above by space alone: a rule here would double the header's when it sits under it.
+      className="mt-2 flex shrink-0 flex-col gap-3"
+    >
+      <div className="flex flex-col gap-0.5">
+        <p id={c.ids.prompt} className="font-heading text-sm font-semibold">
+          Cancel this booking?
+        </p>
+        <p className="text-sm text-pretty text-muted-foreground">
+          {`${appointment.bay.name} and ${appointment.technician.name} become free at ${formatLocalTime(appointment.startUtc, timeZone)}.`}
+        </p>
+      </div>
+      <Field ref={fieldRef} data-invalid={Boolean(c.reasonError) || undefined} className="gap-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <FieldLabel htmlFor={c.ids.reason}>Reason</FieldLabel>
+          <span id={c.ids.count} className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {`${c.reason.length}/${REASON_LIMIT}`}
+            <span className="sr-only"> characters</span>
+          </span>
+        </div>
+        <Textarea
+          ref={reasonRef}
+          id={c.ids.reason}
+          value={c.reason}
+          maxLength={REASON_LIMIT}
+          rows={2}
+          disabled={c.cancel.isPending}
+          placeholder="For example: the customer rang to rearrange"
+          aria-invalid={Boolean(c.reasonError) || undefined}
+          aria-describedby={`${c.reasonError ? `${c.ids.error} ` : ""}${c.ids.count}`}
+          onChange={(event) => c.changeReason(event.target.value)}
+          className="max-h-40 min-h-14 bg-background"
+        />
+        <FieldError id={c.ids.error}>{c.reasonError}</FieldError>
+      </Field>
+      {alert}
+    </form>
+  )
+}
+
+/**
+ * The action row, pinned under the scrolling cards and holding only buttons: *Cancel booking…* (unavailable for a role
+ * that may not cancel, named by the reason above it), or the confirm's *Keep booking* and *Cancel appointment*, which
+ * submits the confirm's form from here. None for a visitor or a status that cannot be cancelled.
+ */
+function CancelActions({ cancellation: c, startRef }: { cancellation: Cancellation; startRef: CancellationRefs["start"] }) {
+  if (c.offer === "none" || c.offer === "not-cancellable") return null
+  return (
     <div
       data-slot="details-actions"
-      className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t bg-muted/30 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [flex-shrink:0.001]"
+      className={cn(
+        "flex shrink-0 gap-2 border-t bg-muted/30 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+        c.offer === "confirm" ? "flex-col-reverse sm:flex-row sm:justify-end" : "flex-col sm:items-end"
+      )}
     >
-      {!confirmShown && alert}
-      {!canCancel(status) ? (
-        <p className="text-sm text-muted-foreground">
-          {status === "Cancelled" ? "This appointment is cancelled." : "Only a confirmed or checked-in appointment can be cancelled."}
-        </p>
-      ) : access.state !== "allowed" ? (
-        // A role that cannot cancel (or `/me` not answered yet): the action, unavailable, with the reason on screen.
-        <div className="flex flex-col gap-3">
-          {access.state === "denied" && <WriteReason id={deniedId} reason={access.reason} />}
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            focusableWhenDisabled
-            aria-describedby={access.state === "denied" ? deniedId : undefined}
-            className={cn(cancelBookingClasses, "self-stretch sm:self-end")}
-          >
-            Cancel booking…
-          </Button>
-        </div>
-      ) : open ? (
-        <form noValidate aria-labelledby={promptId} onSubmit={submit} className="flex min-h-0 flex-col gap-4">
-          {/* Inset by the focus ring's width, so the reason's ring is not clipped where this part scrolls. */}
-          <div ref={fieldsRef} data-slot="cancel-confirm-fields" className="-m-1 flex min-h-0 flex-col gap-3 overflow-y-auto p-1">
-            <div className="flex flex-col gap-0.5">
-              <p id={promptId} className="font-heading text-sm font-semibold">
-                Cancel this booking?
-              </p>
-              <p className="text-sm text-pretty text-muted-foreground">
-                {`${appointment.bay.name} and ${appointment.technician.name} become free at ${formatLocalTime(appointment.startUtc, timeZone)}.`}
-              </p>
-            </div>
-            <Field data-invalid={Boolean(reasonError) || undefined} className="gap-1.5">
-              <FieldLabel htmlFor={reasonId}>Reason</FieldLabel>
-              <Textarea
-                ref={reasonRef}
-                id={reasonId}
-                value={reason}
-                maxLength={REASON_LIMIT}
-                rows={2}
-                disabled={cancel.isPending}
-                placeholder="For example: the customer rang to rearrange"
-                aria-invalid={Boolean(reasonError) || undefined}
-                aria-describedby={`${reasonError ? `${errorId} ` : ""}${countId}`}
-                onChange={(event) => {
-                  setReason(event.target.value)
-                  if (missingReason && event.target.value.trim()) setMissingReason(false)
-                }}
-                className="max-h-40 min-h-16 bg-background"
-              />
-              <div className="flex items-start justify-between gap-3">
-                <FieldError id={errorId}>{reasonError}</FieldError>
-                <span id={countId} className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {`${reason.length}/${REASON_LIMIT}`}
-                  <span className="sr-only"> characters</span>
-                </span>
-              </div>
-            </Field>
-            {alert}
-          </div>
-          <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={keep} disabled={cancel.isPending} className="cursor-pointer max-md:h-11">
-              Keep booking
-            </Button>
-            <Button
-              type="submit"
-              variant="destructive"
-              disabled={cancel.isPending}
-              // Focus stays on it while it cancels, and on it after a failure.
-              focusableWhenDisabled
-              className="cursor-pointer max-md:h-11"
-            >
-              {cancel.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-              {cancel.isPending ? "Cancelling…" : "Cancel appointment"}
-            </Button>
-          </div>
-        </form>
-      ) : (
+      {c.offer === "unavailable" ? (
         <Button
-          ref={startRef}
           type="button"
           variant="outline"
-          onClick={() => {
-            focusNext.current = "reason"
-            setOpen(true)
-          }}
-          className={cn(cancelBookingClasses, "self-stretch sm:self-end")}
+          disabled
+          focusableWhenDisabled
+          aria-describedby={c.access.state === "denied" ? c.ids.denied : undefined}
+          className={cancelBookingClasses}
         >
           Cancel booking…
         </Button>
+      ) : c.offer === "start" ? (
+        <Button ref={startRef} type="button" variant="outline" onClick={c.start} className={cancelBookingClasses}>
+          Cancel booking…
+        </Button>
+      ) : (
+        <>
+          {/* Of the confirm's form too (`form`), though it submits nothing: focus here is focus in the confirm. */}
+          <Button
+            type="button"
+            form={c.ids.form}
+            variant="outline"
+            onClick={c.keep}
+            disabled={c.cancel.isPending}
+            className="cursor-pointer max-md:h-11"
+          >
+            Keep booking
+          </Button>
+          <Button
+            type="submit"
+            form={c.ids.form}
+            variant="destructive"
+            disabled={c.cancel.isPending}
+            // Focus stays on it while it cancels, and on it after a failure.
+            focusableWhenDisabled
+            className="cursor-pointer max-md:h-11"
+          >
+            {c.cancel.isPending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
+            {c.cancel.isPending ? "Cancelling…" : "Cancel appointment"}
+          </Button>
+        </>
       )}
     </div>
   )

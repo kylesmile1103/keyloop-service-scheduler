@@ -16,10 +16,13 @@ interface AppointmentInspectorProps {
   onCancelled: (appointmentId: string) => void
 }
 
-/** The inspector's `top` once it sticks (Tailwind `top-4`), and the room kept under it: the page's bottom padding and margin. */
+/**
+ * The inspector's `top` once it sticks (Tailwind `top-4`), and as much room under it, from the window's foot. The page's
+ * bottom padding and margin (2rem) bound its cap instead, so it never makes the page longer.
+ */
 const STICKY_TOP_PX = 16
-const BOTTOM_ROOM = "2rem"
-const BOTTOM_ROOM_PX = 32
+const BOTTOM_ROOM = "1rem"
+const PAGE_FOOT_PX = 32
 
 /**
  * The docked inspector (UI_DESIGN 11.14): from 1280 px a booking's details sit on the right of the board, in a
@@ -28,9 +31,9 @@ const BOTTOM_ROOM_PX = 32
  * service's heading when it opens and on each swap; the page returns focus to the booking's block when it closes (or to
  * the board once the block is gone).
  *
- * It ends inside the window wherever the page is scrolled, so its header and its actions are always in view and the cards
- * between them scroll: it starts level with the board's card, sticks 1rem below the top of the window once the page
- * scrolls past that, and is never taller than the window below its top (`useFitToWindow`).
+ * It ends inside the window wherever the page is scrolled, so its header and its buttons are always in view and only the
+ * part between them scrolls (the cards, then the cancellation's confirm): it starts level with the board's card, sticks 1rem
+ * below the top of the window once the page scrolls past that, and ends 1rem above the window's foot (`useFitToWindow`).
  */
 export function AppointmentInspector({ appointment, dealershipId, date, timeZone, onClose, onCancelled }: AppointmentInspectorProps) {
   const asideRef = useRef<HTMLElement>(null)
@@ -55,13 +58,16 @@ export function AppointmentInspector({ appointment, dealershipId, date, timeZone
       aria-label="Appointment details"
       data-slot="appointment-inspector"
       onKeyDown={onKeyDown}
-      // The window's height below the inspector's top, less the page's bottom room, and never past the cap (16rem at least).
-      // A height, not a maximum: a definite height lets the action row's own content (the confirm) shrink and scroll inside
-      // it, its buttons staying in view; short details leave the room under the cards empty.
+      // The window's height below the inspector's top, less 1rem, and never past the cap (16rem at least). A height, not a
+      // maximum: the scrolling part between the header and the buttons takes what is left, and short details leave the
+      // room under the cards empty.
       style={{
         height: `max(16rem, min(calc(100dvh - var(--inspector-offset, 1rem) - ${BOTTOM_ROOM}), var(--inspector-cap, 100dvh)))`,
       }}
-      className="sticky top-4 flex min-w-0 self-start flex-col overflow-hidden rounded-xl bg-card text-sm text-card-foreground shadow-xs ring-1 ring-foreground/10 duration-200 animate-in fade-in-0 slide-in-from-right-2"
+      // `duration-200` times the entrance; `transition-none` keeps it from also easing every later change of the measured
+      // height (a bare duration transitions all properties), which would leave the inspector lagging behind the page's
+      // scroll, its foot out of the window for a moment.
+      className="sticky top-4 flex min-w-0 self-start flex-col overflow-hidden rounded-xl bg-card text-sm text-card-foreground shadow-xs ring-1 ring-foreground/10 transition-none duration-200 animate-in fade-in-0 slide-in-from-right-2"
     >
       <AppointmentDetails
         key={appointment.id}
@@ -82,11 +88,11 @@ export function AppointmentInspector({ appointment, dealershipId, date, timeZone
 
 /**
  * Keeps the inspector inside the window: `--inspector-offset` is where its top is (its place beside the board's card, or
- * the sticky 1rem once the page has scrolled past it), so its height leaves its bottom 2rem above the window's foot, its
- * actions in view without scrolling the page. `--inspector-cap` stops it growing as the page scrolls beyond the larger of
- * the board's height and the room it had with the page at its top, so its height never makes the page longer (the row's
- * height stays what it was) and scrolling never feeds back into itself. Measured again on scroll, resize and any change of
- * the page's layout, once a frame.
+ * the sticky 1rem once the page has scrolled past it), so its height leaves its bottom 1rem above the window's foot, its
+ * buttons in view without scrolling the page. `--inspector-cap` stops it growing as the page scrolls beyond the larger of
+ * the board's height and the room it had with the page at its top (above the page's own 2rem foot), so its height never
+ * makes the page longer (the row's height stays what it was) and scrolling never feeds back into itself. Measured again on
+ * scroll, resize and any change of the page's layout, once a frame.
  */
 function useFitToWindow(aside: RefObject<HTMLElement | null>) {
   useLayoutEffect(() => {
@@ -98,7 +104,7 @@ function useFitToWindow(aside: RefObject<HTMLElement | null>) {
       frame = 0
       const rowTop = row.getBoundingClientRect().top
       const board = row.firstElementChild?.getBoundingClientRect().height ?? 0
-      const roomAtTop = window.innerHeight - (rowTop + window.scrollY) - BOTTOM_ROOM_PX
+      const roomAtTop = window.innerHeight - (rowTop + window.scrollY) - PAGE_FOOT_PX
       element.style.setProperty("--inspector-offset", `${Math.round(Math.max(rowTop, STICKY_TOP_PX))}px`)
       element.style.setProperty("--inspector-cap", `${Math.round(Math.max(board, roomAtTop))}px`)
     }

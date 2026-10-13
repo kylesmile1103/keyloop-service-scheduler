@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AppointmentResponse, CurrentUserResponse } from "@/api/types.gen"
@@ -7,6 +7,7 @@ import { reading } from "@/test/dealerships"
 import { findInspector, queryInspector, startCancelling } from "@/test/details"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { deferred, maskedSchedule, refocus } from "@/test/identity-change"
+import { matchesWidth } from "@/test/media-query"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { appointments, interimDetails, readingTuesday, without } from "@/test/schedules"
 
@@ -200,10 +201,121 @@ describe("cancelling from the details: a short confirm", () => {
     const confirm = within(inspector).getByRole("form", { name: "Cancel this booking?" })
     expect(confirm).toHaveTextContent("Bay 1 - Standard and Amelia Clarke become free at 08:00.")
     expect(within(confirm).getByText("0/500")).toBeInTheDocument()
-    expect(within(confirm).getByRole("button", { name: "Keep booking" })).toBeInTheDocument()
-    expect(within(confirm).getByRole("button", { name: "Cancel appointment" })).toBeInTheDocument()
+    expect(confirm).toContainElement(reason)
+    // The confirm's words scroll with the cards; its buttons are pinned under them and submit its form from there.
+    const { body, actions } = partsOf(inspector)
+    expect(scrollingParts(inspector)).toEqual([body])
+    expect(body).toContainElement(confirm)
+    expect(body.firstElementChild!.lastElementChild).toBe(confirm)
+    expect(body).toContainElement(within(inspector).getByRole("heading", { level: 3, name: "Job" }))
+    const keep = within(inspector).getByRole("button", { name: "Keep booking" })
+    const submit = within(inspector).getByRole<HTMLButtonElement>("button", { name: "Cancel appointment" })
+    expect(actions).toContainElement(keep)
+    expect(actions).toContainElement(submit)
+    expect(body).not.toContainElement(submit)
+    expect(submit.form).toBe(confirm)
     expect(within(inspector).queryByRole("button", { name: "Cancel booking…" })).not.toBeInTheDocument()
     expect(cancels(api.requests)).toHaveLength(0)
+  })
+
+  it.each([
+    { motion: "smooth", reduced: false },
+    { motion: "at once", reduced: true },
+  ])("brings the confirm into view by scrolling the cards alone, $motion", async ({ reduced }) => {
+    mockBoardApi()
+    renderBoard(board)
+    fireEvent.click(await block(interimLabel))
+    const inspector = await findInspector()
+    const { body } = partsOf(inspector)
+    if (reduced) preferReducedMotion(1440)
+    // A short inspector: the cards' part is 160 px tall and scrolled to the top, and the confirm will be drawn at 560 px
+    // in its content, 150 px tall (jsdom has no layout, so the geometry is given).
+    const scrolled = layOut(body, { room: 160, content: 726, confirm: { top: 560, height: 150, field: { top: 52, height: 98 } } })
+    const page = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
+
+    const reason = startCancelling(inspector)
+
+    await waitFor(() => expect(reason).toHaveFocus())
+    // The least scroll that shows all of it, with what room is left split above and below (5 px each side).
+    expect(scrolled).toHaveBeenCalledWith({ top: 555, behavior: reduced ? "instant" : "smooth" })
+    expect(page).not.toHaveBeenCalled()
+  })
+
+  it("shows its prompt down to the reason when the cards have no room for all of it, else the reason alone", async () => {
+    mockBoardApi()
+    renderBoard(board)
+    fireEvent.click(await block(interimLabel))
+    const inspector = await findInspector()
+    // 160 px of room: not enough for the whole confirm (190 px), enough for its prompt down to the reason (52 + 98 px).
+    const scrolled = layOut(partsOf(inspector).body, { room: 160, content: 766, confirm: { top: 560, height: 190, field: { top: 52, height: 98 } } })
+
+    startCancelling(inspector)
+
+    // From the prompt's top (560) to the reason's foot (710), 5 px clear of each edge.
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 555, behavior: "smooth" }))
+  })
+
+  it("keeps the open confirm in view while focus is in it, as the cards above it grow or the part gets shorter", async () => {
+    const observers: ResizeObserverCallback[] = []
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          observers.push(callback)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    )
+    try {
+      mockBoardApi()
+      renderBoard(board)
+      fireEvent.click(await block(interimLabel))
+      const inspector = await findInspector()
+      const geometry: Geometry = { room: 160, content: 726, confirm: { top: 560, height: 150, field: { top: 52, height: 98 } } }
+      const scrolled = layOut(partsOf(inspector).body, geometry)
+      const before = observers.length
+      const resized = () => act(() => observers.slice(before).forEach((notify) => notify([], {} as ResizeObserver)))
+      const reason = startCancelling(inspector)
+      await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 555, behavior: "smooth" }))
+      await waitFor(() => expect(reason).toHaveFocus())
+
+      // The whole record arrives: the cards above grow by 100 px and push the confirm down, out of view.
+      geometry.confirm.top = 660
+      geometry.content = 826
+      resized()
+      expect(scrolled).toHaveBeenLastCalledWith({ top: 655, behavior: "instant" })
+
+      // The part gets 10 px shorter (the page scrolled back up): the confirm's foot would drop out of view.
+      geometry.room = 150
+      resized()
+      expect(scrolled).toHaveBeenLastCalledWith({ top: 660, behavior: "instant" })
+
+      // With focus elsewhere, the cards stay where the person put them.
+      const calls = scrolled.mock.calls.length
+      within(inspector).getByRole("button", { name: "Copy appointment reference" }).focus()
+      geometry.confirm.top = 760
+      geometry.content = 926
+      resized()
+      expect(scrolled).toHaveBeenCalledTimes(calls)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("shows the reason alone when the cards have no room for its prompt as well", async () => {
+    mockBoardApi()
+    renderBoard(board)
+    fireEvent.click(await block(interimLabel))
+    const inspector = await findInspector()
+    // 120 px of room: not enough for the confirm (150 px) nor for its prompt down to the reason (52 + 98 px).
+    const scrolled = layOut(partsOf(inspector).body, { room: 120, content: 726, confirm: { top: 560, height: 150, field: { top: 52, height: 98 } } })
+
+    startCancelling(inspector)
+
+    // The reason's label, counter and field (612 to 710), 11 px clear of each edge: the field to type in comes first.
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 601, behavior: "smooth" }))
   })
 
   it("keeps the booking: the confirm closes, focus returns to Cancel booking… and the reason is not kept", async () => {
@@ -270,7 +382,12 @@ describe("cancelling from the details: a short confirm", () => {
 
     const start = within(inspector).getByRole("button", { name: "Cancel booking…" })
     expect(start).toHaveAttribute("aria-disabled", "true")
-    expect(document.getElementById(start.getAttribute("aria-describedby")!)).toHaveTextContent("Your role can view bookings but not change them.")
+    const why = document.getElementById(start.getAttribute("aria-describedby")!)
+    expect(why).toHaveTextContent("Your role can view bookings but not change them.")
+    // The reason scrolls with the cards, right above the pinned button.
+    const { body, actions } = partsOf(inspector)
+    expect(body).toContainElement(why)
+    expect(actions).toContainElement(start)
     fireEvent.click(start)
     expect(within(inspector).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
     expect(cancels(requests)).toHaveLength(0)
@@ -298,9 +415,79 @@ describe.each([
       expect(within(sheet).getByRole("heading", { level: 3, name: card })).toBeInTheDocument()
     }
     await waitFor(() => expect(startCancelling(sheet)).toHaveFocus())
-    expect(within(sheet).getByRole("button", { name: "Keep booking" })).toBeInTheDocument()
+    // The same parts as the inspector: one scrolling part with the confirm in it, the buttons pinned under it.
+    const { body, actions } = partsOf(sheet)
+    expect(scrollingParts(sheet)).toEqual([body])
+    expect(body).toContainElement(within(sheet).getByRole("form", { name: "Cancel this booking?" }))
+    expect(actions).toContainElement(within(sheet).getByRole("button", { name: "Keep booking" }))
+    expect(actions).toContainElement(within(sheet).getByRole("button", { name: "Cancel appointment" }))
   })
 })
+
+/** The details' scrolling part and its pinned action row. */
+function partsOf(details: HTMLElement) {
+  return {
+    body: details.querySelector<HTMLElement>('[data-slot="details-body"]')!,
+    actions: details.querySelector<HTMLElement>('[data-slot="details-actions"]')!,
+  }
+}
+
+/** Every element of the details that scrolls its content (the reason's own textarea aside): there must be one. */
+function scrollingParts(details: HTMLElement) {
+  return [...details.querySelectorAll<HTMLElement>("*")].filter(
+    (element) => element.tagName !== "TEXTAREA" && /(^|\s)(overflow|overflow-y)-(auto|scroll)(\s|$)/.test(element.className)
+  )
+}
+
+/** From now on, the person asks for reduced motion, on a viewport this wide. */
+function preferReducedMotion(width: number) {
+  vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+    matches: query.includes("(prefers-reduced-motion: reduce)") || matchesWidth(query, width),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }))
+}
+
+interface Geometry {
+  /** The scrolling part's height, and its content's. */
+  room: number
+  content: number
+  /** Where the confirm (a form, and in it its prompt and its reason field) is drawn in that content. */
+  confirm: { top: number; height: number; field: { top: number; height: number } }
+}
+
+/**
+ * Gives the details' scrolling part a layout (jsdom has none), read from `geometry` as it is at each call, so a test can
+ * change it. Returns the part's `scrollTo`, which scrolls it.
+ */
+function layOut(body: HTMLElement, geometry: Geometry) {
+  let scrollTop = 0
+  Object.defineProperty(body, "clientHeight", { configurable: true, get: () => geometry.room })
+  Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => geometry.content })
+  Object.defineProperty(body, "scrollTop", { configurable: true, get: () => scrollTop, set: (value: number) => (scrollTop = value) })
+  const rect = (top: number, height: number) => ({ top, bottom: top + height, height, left: 0, right: 0, width: 0, x: 0, y: top }) as DOMRect
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const { room, content, confirm } = geometry
+    const form = this.closest("form")
+    const start = confirm.top - scrollTop
+    if (this === body) return rect(0, room)
+    if (this === body.firstElementChild) return rect(-scrollTop, content)
+    if (this instanceof HTMLFormElement) return rect(start, confirm.height)
+    if (form && this === form.firstElementChild) return rect(start, 40)
+    if (form && this.getAttribute("data-slot") === "field") return rect(start + confirm.field.top, confirm.field.height)
+    return rect(0, 0)
+  })
+  const scrollTo = vi.fn((options: ScrollToOptions) => {
+    scrollTop = options.top ?? scrollTop
+  })
+  Object.defineProperty(body, "scrollTo", { configurable: true, value: scrollTo })
+  return scrollTo
+}
 
 /** Every docked inspector on the page (there is only ever one). */
 function findAllInspectors() {
