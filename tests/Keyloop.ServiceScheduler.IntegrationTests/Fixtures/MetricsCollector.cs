@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Diagnostics.Metrics;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
@@ -52,7 +53,17 @@ public sealed class MetricsCollector : IDisposable
     /// <summary>Asks every observable instrument (the gauges) for its current value, which is then recorded like any measurement.</summary>
     public void Observe() => _listener.RecordObservableInstruments();
 
-    public void Dispose() => _listener.Dispose();
+    public void Dispose()
+    {
+        _listener.Dispose();
+        // Optional raw timing evidence for local contention comparisons, outside the measured request path.
+        if (Environment.GetEnvironmentVariable("KEYLOOP_TEST_METRICS_DIRECTORY") is { Length: > 0 } directory)
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllLines(Path.Combine(directory, $"{Guid.NewGuid():N}.csv"),
+                _measurements.Select(m => string.Create(CultureInfo.InvariantCulture, $"{m.Instrument},{m.Value:R}")));
+        }
+    }
 
     private void Record(Instrument instrument, double value, ReadOnlySpan<KeyValuePair<string, object?>> tags) =>
         _measurements.Enqueue(new Measurement(instrument.Name, value, tags.ToArray()));

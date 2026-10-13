@@ -30,7 +30,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 /// for the minted id (an earlier run of this request may have committed although its commit reported a failure), looks the key up again
 /// (a concurrent request with it may have committed while this one waited; an expired row is deleted), with vehicle-aware requirements
 /// confirms that the policy version it resolved is still the latest (otherwise it resolves again, ADR-029 Task 30a amendment), re-checks
-/// availability, allocates, and inserts the appointment, its history row and the memoised response.
+/// the current roster with plain reads, re-checks availability, allocates, and inserts the appointment, its history row and the memoised response.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -136,12 +136,12 @@ public sealed class BookAppointmentHandler(
                     SchedulerTelemetry.ProfileSource.Add(1, new KeyValuePair<string, object?>("source", source.ToString()));
                 }
             }
-            var (allBays, allTechnicians, compatibleBays, certifiedTechnicians) = await QualifiedResourcesAsync(dealership.Id, serviceType, requirements, localDate, ct);
+            _ = await QualifiedResourcesAsync(dealership.Id, serviceType, requirements, localDate, ct);
 
             // Minted once per request, never per run: it is how a retried run recognises that an earlier run committed.
             var booking = new Booking(
-                command, fingerprint, Guid.CreateVersion7(clock.GetUtcNow()), dealership, serviceType, slot, window, compatibleBays, certifiedTechnicians,
-                ToCustomer(request.Customer), ToVehicle(request.Vehicle), requirements, profile, localDate, allBays, allTechnicians);
+                command, fingerprint, Guid.CreateVersion7(clock.GetUtcNow()), dealership, serviceType, slot, window,
+                ToCustomer(request.Customer), ToVehicle(request.Vehicle), requirements, profile, localDate);
 
             // 3. The transaction (see the remarks). Another pass happens only when a duplicate key's stored row turns out expired, or when
             //    an Admin published a newer requirement policy while this booking waited for its lock.
@@ -360,6 +360,11 @@ public sealed class BookAppointmentHandler(
             return new BookingAttempt.PolicyChanged();
         }
 
+        // Resource writers commit under this same lock. Plain reads refresh qualification after any wait, without a second lock
+        // or contended version row (ADR-003). The shared check throws exactly the early 422 and disposal rolls back this transaction.
+        var (allBays, allTechnicians, compatibleBays, certifiedTechnicians) = await QualifiedResourcesAsync(
+            dealershipId, booking.ServiceType, booking.Requirements, booking.LocalDate, ct);
+
         // The pre-check: active appointments of this dealership overlapping the slot (half-open), as of the previous holder's commit.
         var (start, end) = (booking.Slot.StartUtc, booking.Slot.EndUtc);
         var busy = await db.Appointments.AsNoTracking()
@@ -368,8 +373,8 @@ public sealed class BookAppointmentHandler(
             .ToListAsync(ct);
         var busyBays = busy.Select(a => a.BayId).ToHashSet();
         var busyTechnicians = busy.Select(a => a.TechnicianId).ToHashSet();
-        var freeBays = booking.CompatibleBays.Where(b => !busyBays.Contains(b.Id)).ToList();
-        var freeTechnicians = booking.CertifiedTechnicians.Where(t => !busyTechnicians.Contains(t.Id)).ToList();
+        var freeBays = compatibleBays.Where(b => !busyBays.Contains(b.Id)).ToList();
+        var freeTechnicians = certifiedTechnicians.Where(t => !busyTechnicians.Contains(t.Id)).ToList();
         if (freeBays.Count == 0 || freeTechnicians.Count == 0)
         {
             await transaction.RollbackAsync(ct);
@@ -382,7 +387,7 @@ public sealed class BookAppointmentHandler(
         AllocationDecision? decision = null;
         if (booking.Requirements is { } resolved)
         {
-            var allocation = AllocationPolicy.Allocate(booking.AllBays, booking.AllTechnicians, resolved, booking.LocalDate, busyBays, busyTechnicians,
+            var allocation = AllocationPolicy.Allocate(allBays, allTechnicians, resolved, booking.LocalDate, busyBays, busyTechnicians,
                 load, request.PreferredBayId, request.PreferredTechnicianId)!;
             bay = allocation.Bay;
             technician = allocation.Technician;
@@ -444,10 +449,10 @@ public sealed class BookAppointmentHandler(
     private async Task<Booking> ReResolveAsync(Booking booking, CancellationToken ct)
     {
         var requirements = await policies.ResolveAsync(booking.Dealership.Id, booking.ServiceType, booking.Profile!, booking.Command.Request.NeedsLiveDiagnosis, ct);
-        var (allBays, allTechnicians, bays, technicians) = await QualifiedResourcesAsync(booking.Dealership.Id, booking.ServiceType, requirements, booking.LocalDate, ct);
+        _ = await QualifiedResourcesAsync(booking.Dealership.Id, booking.ServiceType, requirements, booking.LocalDate, ct);
         return booking with
         {
-            Requirements = requirements, CompatibleBays = bays, CertifiedTechnicians = technicians, AllBays = allBays, AllTechnicians = allTechnicians,
+            Requirements = requirements,
         };
     }
 
@@ -575,11 +580,9 @@ public sealed class BookAppointmentHandler(
         ServiceType ServiceType,
         TimeSlot Slot,
         OperatingWindow Window,
-        IReadOnlyList<ServiceBay> CompatibleBays,
-        IReadOnlyList<Technician> CertifiedTechnicians,
         CustomerDetails Customer,
         VehicleDetails Vehicle,
-        JobRequirements? Requirements, VehicleProfile? Profile, DateOnly LocalDate, IReadOnlyList<ServiceBay> AllBays, IReadOnlyList<Technician> AllTechnicians);
+        JobRequirements? Requirements, VehicleProfile? Profile, DateOnly LocalDate);
 
     /// <summary>The execution strategy's state across runs: whether the current run had reached its commit when it failed.</summary>
     private sealed class BookingRun(Booking booking)

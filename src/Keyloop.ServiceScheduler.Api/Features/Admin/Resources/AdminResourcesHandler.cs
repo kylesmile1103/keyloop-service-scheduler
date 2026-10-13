@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Keyloop.ServiceScheduler.Api.Common.Problems;
 using Keyloop.ServiceScheduler.Api.Common.Serialization;
@@ -51,6 +52,10 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
             var response = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
                 db.ChangeTracker.Clear();
+                // Qualification writes serialize with booking before reading the changed row or replay marker.
+                // No seeding lock here; paths needing both always take seeding, then dealership.
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+                await DealershipLock.AcquireAsync(db, dealershipId, ct);
                 if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct))
                 {
                     return await GetTechnicianAsync(dealershipId, id, ct);
@@ -85,6 +90,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                 db.AdminChanges.Add(Change(changeId, dealershipId, AdminVocabulary.Technician, id, action, before,
                     JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.TechnicianWriteRequest)));
                 await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
                 return AdminResourceMapper.ToResponse(row);
             });
             Count(AdminVocabulary.Technician, action);
@@ -113,6 +119,10 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
             var response = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
                 db.ChangeTracker.Clear();
+                // Qualification writes serialize with booking before reading the changed row or replay marker.
+                // No seeding lock here; paths needing both always take seeding, then dealership.
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+                await DealershipLock.AcquireAsync(db, dealershipId, ct);
                 if (await db.AdminChanges.AnyAsync(a => a.Id == changeId, ct)) { return await GetBayAsync(dealershipId, id, ct); }
                 await EnsureDealershipAsync(dealershipId, ct);
                 ServiceBay row;
@@ -134,6 +144,7 @@ public sealed class AdminResourcesHandler(SchedulerDbContext db, CurrentActor ac
                 db.AdminChanges.Add(Change(changeId, dealershipId, AdminVocabulary.Bay, id, action, before,
                     JsonSerializer.Serialize(AdminResourceMapper.Snapshot(row), SchedulerJsonContext.Default.BayWriteRequest)));
                 await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
                 return AdminResourceMapper.ToResponse(row);
             });
             Count(AdminVocabulary.Bay, action);
