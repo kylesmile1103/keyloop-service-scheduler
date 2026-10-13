@@ -1528,7 +1528,7 @@ export type BookAppointmentErrors = {
      */
     404: ProblemDetails;
     /**
-     * The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day.
+     * The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day. Repeated requirement-policy changes answer `concurrency-conflict`: no booking committed; refresh availability and retry the booking.
      */
     409: ProblemDetails;
     /**

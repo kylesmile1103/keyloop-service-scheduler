@@ -200,8 +200,7 @@ public sealed class BookAppointmentHandler(
                         // Same minted id: the rolled-back run committed nothing. A stricter version can now refuse with the 422 above.
                         if (++policyReResolutions > MaxPolicyReResolutions)
                         {
-                            throw new InvalidOperationException(
-                                $"The requirement policy changed under the dealership lock {policyReResolutions} times while this booking was in flight.");
+                            throw new BookingPolicyChurnException();
                         }
 
                         booking = await ReResolveAsync(booking, ct);
@@ -236,6 +235,11 @@ public sealed class BookAppointmentHandler(
         catch (IdempotencyKeyReuseException)
         {
             outcome = BookingOutcomes.IdempotencyReuse;
+            throw;
+        }
+        catch (BookingPolicyChurnException)
+        {
+            outcome = BookingOutcomes.ConcurrencyConflict;
             throw;
         }
         finally
