@@ -39,7 +39,10 @@ export const getDealerships = <ThrowOnError extends boolean = false>(options?: O
  *
  * The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician
  * certifications each requires. `bookable` is computed for this dealership: at least one active bay and one active
- * technician qualify. Whether a slot is free on a given day is a separate question for the availability route.
+ * technician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies
+ * under the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable
+ * when an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;
+ * catalogue eligibility ignores busy time, opening hours and the booking window.
  */
 export const getServiceTypes = <ThrowOnError extends boolean = false>(options: Options<GetServiceTypesData, ThrowOnError>): RequestResult<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError> => (options.client ?? client).get<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
