@@ -109,8 +109,12 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           mkdir -p build
-          if ! node_modules/.bin/cf containers push --tag "keyloop-scheduler-api:$IMAGE_TAG" > build/github-push.log 2>&1; then
-            echo 'Registry push failed; output withheld to protect account identifiers.' >&2
+          # A push needs no Worker configuration. Run it outside the project, or cf evaluates cloudflare.config.ts,
+          # which requires the build variables that only the build step reads.
+          cf="$PWD/node_modules/.bin/cf"
+          if ! (cd "$RUNNER_TEMP" && "$cf" containers push --tag "keyloop-scheduler-api:$IMAGE_TAG") > build/github-push.log 2>&1; then
+            echo 'Registry push failed. Output with identifiers removed:' >&2
+            bash scripts/print-redacted-error.sh build/github-push.log
             exit 1
           fi
       - name: Build the SPA and edge for the checked SHA
@@ -138,7 +142,8 @@ jobs:
           IMAGE_TAG: ${{ steps.commit.outputs.tag }}
         run: |
           if ! node_modules/.bin/cf deploy --prebuilt --provision=false --dry-run > build/github-dry-run.log 2>&1; then
-            echo 'Deployment dry run failed; private binding output withheld.' >&2
+            echo 'Deployment dry run failed. Output with identifiers removed:' >&2
+            bash scripts/print-redacted-error.sh build/github-dry-run.log
             exit 1
           fi
           node scripts/github-plan-summary.mjs
@@ -252,7 +257,8 @@ jobs:
         run: |
           if ! node_modules/.bin/cf deploy --prebuilt --provision=false \
               --message "$DEPLOY_SHA via GitHub Actions run $GITHUB_RUN_ID" > build/github-deploy.log 2>&1; then
-            echo 'Production deploy failed; private binding output withheld.' >&2
+            echo 'Production deploy failed. Output with identifiers removed:' >&2
+            bash scripts/print-redacted-error.sh build/github-deploy.log
             exit 1
           fi
       - name: Record the expected public flag
