@@ -134,9 +134,15 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         await Expect(journey.Page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
         await Expect(block).ToHaveAttributeAsync("aria-current", "true");
         await Expect(details.GetByText(customer.Email, new() { Exact = true })).ToBeVisibleAsync();
-        await details.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true }).ClickAsync();
+        // The inspector ends inside the window: its action is in view without scrolling the page, and so is the confirm.
+        await Expect(details).ToHaveCSSAsync("position", "sticky");
+        var start = details.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true });
+        await Expect(start).ToBeInViewportAsync(new() { Ratio = 1 });
+        await start.ClickAsync();
         var reason = details.GetByRole(AriaRole.Textbox, new() { Name = "Reason", Exact = true });
         await Expect(reason).ToBeFocusedAsync();
+        await Expect(reason).ToBeInViewportAsync(new() { Ratio = 1 });
+        await Expect(details.GetByRole(AriaRole.Button, new() { Name = "Cancel appointment", Exact = true })).ToBeInViewportAsync(new() { Ratio = 1 });
         await journey.ScanAsync("board-details-confirm");
         await reason.FillAsync(customer.Notes);
         var cancelled = journey.Page.WaitForResponseAsync(r => r.Request.Method == "POST" && r.Url.EndsWith("/cancel", StringComparison.Ordinal));
