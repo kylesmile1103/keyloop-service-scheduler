@@ -571,6 +571,16 @@ export type FeatureSwitchesResponse = {
     vehicleAwareRequirements: boolean;
 };
 
+/**
+ * Transient personal-data search input, supplied only in the body.
+ */
+export type FindReturningCustomersRequest = {
+    /**
+     * Registration, email, phone or name; 2 to 100 characters after trimming.
+     */
+    query: string;
+};
+
 export type HttpValidationProblemDetails = {
     type?: null | string;
     title?: null | string;
@@ -848,6 +858,47 @@ export type ResourceSummary = {
      * Display name.
      */
     name: string;
+};
+
+/**
+ * Customer intake details, visible only to staff authorized to book.
+ */
+export type ReturningCustomerDetails = {
+    name: string;
+    email: string;
+    phone: string;
+};
+
+/**
+ * Intake fields from the most recent booking of a customer-and-vehicle pair; no booking free text or profile.
+ */
+export type ReturningCustomerResponse = {
+    /**
+     * Name and contact details as supplied on that booking.
+     */
+    customer: ReturningCustomerDetails;
+    /**
+     * Only the vehicle intake identifiers, make and model.
+     */
+    vehicle: ReturningVehicleDetails;
+    /**
+     * The most recent booking's start UTC, across every status.
+     */
+    lastVisitUtc: string;
+    /**
+     * Number of this dealership's bookings with the same case-insensitive email and VIN, across every status.
+     */
+    visits: number;
+};
+
+/**
+ * Vehicle intake fields only; no profile, provenance or allocation requirements.
+ */
+export type ReturningVehicleDetails = {
+    vin: string;
+    registration: string;
+    make: string;
+    model: string;
 };
 
 /**
@@ -2637,3 +2688,62 @@ export type GetAdminHistoryResponses = {
 };
 
 export type GetAdminHistoryResponse = GetAdminHistoryResponses[keyof GetAdminHistoryResponses];
+
+export type FindReturningCustomersData = {
+    /**
+     * Transient body-only query: registration, email, phone or name, 2..100 trimmed characters.
+     */
+    body: FindReturningCustomersRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * Dealership whose booking history is searched.
+         */
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/customer-lookups';
+};
+
+export type FindReturningCustomersErrors = {
+    /**
+     * query must be 2..100 trimmed characters (validation-error, errors.query); unreadable JSON is also 400.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Authentication required.
+     */
+    401: ProblemDetails;
+    /**
+     * BookingsWrite role required (Admin or ServiceAdvisor).
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership (not-found).
+     */
+    404: ProblemDetails;
+    /**
+     * The request body exceeds the configured limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Too many requests (rate-limited, Retry-After).
+     */
+    429: ProblemDetails;
+};
+
+export type FindReturningCustomersError = FindReturningCustomersErrors[keyof FindReturningCustomersErrors];
+
+export type FindReturningCustomersResponses = {
+    /**
+     * Up to eight customer-and-vehicle pairs, latest visit first; an empty array when nothing matches.
+     */
+    200: Array<ReturningCustomerResponse>;
+};
+
+export type FindReturningCustomersResponse = FindReturningCustomersResponses[keyof FindReturningCustomersResponses];

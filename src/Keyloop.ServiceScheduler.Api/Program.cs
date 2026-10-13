@@ -1,3 +1,4 @@
+using Keyloop.ServiceScheduler.Api.Features.Customers.FindReturningCustomers;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Resources;
 using Keyloop.ServiceScheduler.Api.Features.Admin.Policies;
 using Keyloop.ServiceScheduler.Api.Features.Admin.History;
@@ -135,6 +136,8 @@ builder.Services.AddScoped<GetAvailabilityHandler>();
 builder.Services.AddScoped<IValidator<GetAvailabilityQuery>, GetAvailabilityValidator>();
 builder.Services.AddScoped<BookAppointmentHandler>();
 builder.Services.AddScoped<RequirementPolicyReader>();
+builder.Services.AddScoped<FindReturningCustomersHandler>();
+builder.Services.AddScoped<IValidator<FindReturningCustomersRequest>, FindReturningCustomersValidator>();
 builder.Services.AddScoped<ResolveVehicleProfileHandler>();
 builder.Services.AddScoped<IValidator<ResolveVehicleProfileRequest>, ResolveVehicleProfileValidator>();
 builder.Services.AddScoped<IValidator<BookAppointmentRequest>, BookAppointmentValidator>();
