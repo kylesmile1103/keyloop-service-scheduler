@@ -122,6 +122,7 @@ read -rs NEON_OWNER_PW   # the owner role's password (hidden)
 
 ```sh
 dotnet tool restore
+dotnet restore src/Keyloop.ServiceScheduler.Api   # a fresh checkout has no restored assets for dotnet ef to read
 KEYLOOP_BUILD_MIGRATION_BUNDLE=true dotnet ef migrations bundle --project src/Keyloop.ServiceScheduler.Infrastructure \
   --startup-project src/Keyloop.ServiceScheduler.Api --configuration Release \
   --self-contained --target-runtime osx-arm64 --output artifacts/keyloop-efbundle-osx-arm64 --force
