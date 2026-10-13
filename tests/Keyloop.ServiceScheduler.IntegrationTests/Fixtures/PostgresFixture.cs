@@ -1,5 +1,6 @@
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 using Npgsql;
+using DotNet.Testcontainers.Images;
 using Testcontainers.PostgreSql;
 using Xunit.Sdk;
 using Xunit.v3;
@@ -22,6 +23,11 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17")
+        // Shared local Docker verification may forbid pulls; fresh CI runners retain the normal missing-image policy.
+        .WithImagePullPolicy(Environment.GetEnvironmentVariable("KEYLOOP_TEST_CACHED_IMAGES_ONLY") == "true"
+            ? PullPolicy.Never : PullPolicy.Missing)
+        .WithResourceMapping(Path.Combine(AppContext.BaseDirectory, "Fixtures/runtime-role.sql"), "/grants/")
+        .WithResourceMapping(Path.Combine(AppContext.BaseDirectory, "Fixtures/verify-runtime-role.sql"), "/grants/")
         .WithDatabase("schedulerdb")
         .WithUsername("scheduler")
         .WithPassword("scheduler-test")
@@ -36,6 +42,15 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     public async ValueTask DisposeAsync() => await _container.DisposeAsync();
+
+    /// <summary>Executes the actual deployment script with psql as owner in this fixture's disposable container.</summary>
+    public async Task RunGrantScriptAsync(string database, bool verifyOnly, CancellationToken ct, bool succeeds = true)
+    {
+        var result = await _container.ExecAsync(["psql", "--no-psqlrc", "-U", "scheduler", "-d", database,
+            "-v", "ON_ERROR_STOP=1", "-f", verifyOnly ? "/grants/verify-runtime-role.sql" : "/grants/runtime-role.sql"], ct);
+        if (succeeds) { result.ExitCode.ShouldBe(0, result.Stderr); }
+        else { result.ExitCode.ShouldNotBe(0, "the postcondition must reject excess grants"); }
+    }
 
     private async Task WaitUntilReachableFromHostAsync(TimeSpan timeout)
     {

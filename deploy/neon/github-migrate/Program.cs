@@ -46,6 +46,9 @@ try
     grants.Environment["PGSSLROOTCERT"] = "system";
     grants.Environment["PGCHANNELBINDING"] = "require";
     await RunAsync(grants);
+    // Check the postcondition independently of the grant script, including forbidden audit/appointment privileges.
+    grants.ArgumentList[^1] = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[1]))!, "verify-runtime-role.sql");
+    await RunAsync(grants);
     Console.WriteLine("Idempotent runtime-role grants applied and verified.");
     return 0;
 }
