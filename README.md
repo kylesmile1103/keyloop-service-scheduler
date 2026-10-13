@@ -4,7 +4,15 @@ A dealership appointment needs a compatible service bay and a certified technici
 
 **Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Clef-flash through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. When it is on, the dispatch board's booking dialog offers it in its first step: describe the issue, get suggested services, and use one to fill in the service and day.
 
-**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** complete Task 17b Chrome QA, the final whole-branch review, the clean-clone verification with coverage and screenshots, and record a hosted CI run. Public deployment is a separate stakeholder gate.
+**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. **`TODO(final-gate)`:** Task 17b Chrome QA, the final whole-branch review, and the clean-clone verification with coverage and screenshots. The public demo is live (see [Live demo](#live-demo)) and GitHub Actions runs CI on every push and pull request.
+
+## Live demo
+
+**https://keyloop.kylesmile.me** runs the `main` branch: a Cloudflare Worker with the web app's static assets in front of the .NET API in a Cloudflare Container, and Neon PostgreSQL 17 in Frankfurt. Every merge to `main` deploys through [Deploy public demo](.github/workflows/deploy.yml) once CI has passed (see [Deployment](#deployment)).
+
+- **Without signing in** you can browse the dispatch board, calendar, overview and appointments, with customer names, VINs and registrations masked, and read the API reference.
+- **Keyloop reviewers:** choose **Sign in** and enter your `@keyloop.com` work email. Cloudflare Access emails a one-time code: there is no password and no account to create. These addresses have the Admin role, so you can book and cancel, search returning customers, and use the admin area (technicians, bays, requirement policy, change history). Other addresses can be added on request.
+- The data is fictitious (seeded `@example.com` customers) and email notifications are off. A sign-in lasts an hour and the app renews it on its own while the Cloudflare session (24 hours) holds ([ADR-027](docs/ADR-027.md)).
 
 ## Submission deliverables
 
@@ -382,7 +390,7 @@ unset API_IMAGE WEB_IMAGE POSTGRES_PASSWORD WEB_BASE ACCESS_TEAM_DOMAIN ACCESS_A
 
 The required manual inputs are `API_IMAGE`, `WEB_IMAGE`, `POSTGRES_PASSWORD`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUDIENCE`. Demo validates Access configuration and has no Development bypass. Anonymous local Compose viewing works; authenticated use additionally needs an Access-compatible ingress and externally supplied role membership. Aspire emits `WEB_IMAGE` from the web Dockerfile and injects nginx's `API_UPSTREAM` from the API HTTP endpoint, rendered as `http://api:8080`. Web publishes a dynamic host port targeting 8080 and proxies `/api`, `/auth`, `/openapi` and `/scalar` with their URI unchanged. It serves the static app with CSP, frame protection, `nosniff`, referrer and permissions policies, and COOP. Browser dashboard credentials are excluded from production builds.
 
-Demo creates `schedulerdb` on an empty data directory, migrates and seeds, and serves Scalar over plain HTTP. Its API trusts only `172.30.14.0/24`, matching the generated Compose network. The API stays unpublished because that trusted subnet includes the host-port bridge gateway; nginx supplies the trusted last forwarding hop. Never use or remove `keyloop-scheduler-pgdata` for verification. UAT/Production still require configured ingress trust and a separately generated EF migration bundle. Public deployment remains `TODO(deployment)`.
+Demo creates `schedulerdb` on an empty data directory, migrates and seeds, and serves Scalar over plain HTTP. Its API trusts only `172.30.14.0/24`, matching the generated Compose network. The API stays unpublished because that trusted subnet includes the host-port bridge gateway; nginx supplies the trusted last forwarding hop. Never use or remove `keyloop-scheduler-pgdata` for verification. UAT/Production still require configured ingress trust and a separately generated EF migration bundle. The public demo is deployed separately, as [Deployment](#deployment) describes.
 
 ## Observability
 
@@ -455,7 +463,7 @@ It is intentionally deferred. A compiled model must be regenerated whenever the 
 
 ## Deployment
 
-**`TODO(deployment)`:** provision the approved Neon PostgreSQL, Secrets Store inputs, DNS and Cloudflare resources, publish an API image, and rehearse sleep/wake, forwarding trust and controlled email delivery with the stakeholder. The [edge implementation and deployment runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define Worker/static assets, the .NET Container, PostgreSQL and the credential boundary. The hostname `keyloop.kylesmile.me` is the intended target, with rollout still pending.
+The public demo is deployed at `keyloop.kylesmile.me` ([Live demo](#live-demo)): Neon PostgreSQL 17 (Frankfurt, a DML-only runtime role and an owner role for migrations), a Cloudflare Worker with static assets in front of the API in a Cloudflare Container, Cloudflare Secrets Store for credentials and Cloudflare Access for sign-in. The [edge implementation and deployment runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define Worker/static assets, the .NET Container, PostgreSQL and the credential boundary. Email delivery stays off in the demo; controlled delivery is still to rehearse with the stakeholder.
 
 ### CI/CD
 
