@@ -6,6 +6,7 @@ import * as React from "react"
 import backdropDark from "@/assets/illustrations/backdrop-dark.webp"
 import backdropLight from "@/assets/illustrations/backdrop-light.webp"
 import { AppSidebar } from "@/components/app-sidebar"
+import { SessionBanner } from "@/components/auth/session-banner"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -60,6 +61,7 @@ export function BaseLayout({ children, title, documentTitle, description, action
       <SidebarInset className="isolate">
         {band && <HeaderBand />}
         <SiteHeader />
+        <SessionBanner />
         <div id="content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">

@@ -365,7 +365,7 @@ describe("appointments list: actions", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "View details" }))
 
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    expect(within(sheet).getByText("Tuesday 13 October 2026, 08:00–09:00 (Europe/London)")).toBeInTheDocument()
+    expect(sheet).toHaveAccessibleDescription("Tuesday 13 October 2026, 08:00–09:00 (Europe/London)")
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
     // The row whose details are open is highlighted, as the board's block is.
     expect(selectedRows()).toEqual([appointments.interim.id])

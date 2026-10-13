@@ -4,6 +4,7 @@
 import { RotateCw } from "lucide-react"
 import { isRouteErrorResponse, Outlet, useNavigation, useRouteError } from "react-router-dom"
 
+import { SessionRenewalProvider } from "@/components/auth/session-banner"
 import { SessionWatch } from "@/components/auth/session-watch"
 import { IllustratedState } from "@/components/illustrated-state"
 import { TraceIdRow } from "@/components/problem-alert"
@@ -26,12 +27,13 @@ function RouteProgress() {
 export function RootLayout() {
   const navigation = useNavigation()
   return (
-    <>
+    // One session renewal for the tab, whose banner each page shows under its header (components/auth/session-banner).
+    <SessionRenewalProvider>
       {navigation.state === "loading" && <RouteProgress />}
       <Outlet />
       {/* After the routes: its effects run after the pages' own (see SessionWatch). */}
       <SessionWatch />
-    </>
+    </SessionRenewalProvider>
   )
 }
 

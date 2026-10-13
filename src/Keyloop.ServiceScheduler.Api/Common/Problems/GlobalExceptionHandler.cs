@@ -84,6 +84,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
             [new("suggestedSlots", conflict.Suggestions.ToArray()), new("conflictingResource", conflict.ConflictingResource)]),
         IdempotencyKeyReuseException reuse => Problem(StatusCodes.Status422UnprocessableEntity, ProblemTypes.IdempotencyKeyReuse, reuse.Message),
         PolicyPreviewOutdatedException outdated => Problem(StatusCodes.Status409Conflict, ProblemTypes.PolicyPreviewOutdated, outdated.Message),
+        BookingPolicyChurnException churn => Problem(StatusCodes.Status409Conflict, ProblemTypes.ConcurrencyConflict, churn.Message),
         DbUpdateConcurrencyException => Problem(
             StatusCodes.Status409Conflict, ProblemTypes.ConcurrencyConflict, "The resource was changed by another request after it was read. Reload it and retry."),
 

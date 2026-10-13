@@ -580,7 +580,7 @@
             }
           },
           "409": {
-            "description": "The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day.",
+            "description": "The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day. Repeated requirement-policy changes answer `concurrency-conflict`: no booking committed; refresh availability and retry the booking.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -1815,7 +1815,7 @@
           "Identity"
         ],
         "summary": "Get the current caller and sign-in/out URLs",
-        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
+        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
         "operationId": "GetCurrentUser",
         "parameters": [
           {
@@ -1832,7 +1832,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.",
+            "description": "The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), the session's expiry, and same-origin loginUrl/logoutUrl.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -4474,6 +4474,203 @@
           }
         ]
       }
+    },
+    "/api/v1/dealerships/{dealershipId}/customer-lookups": {
+      "post": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Find returning customers in this dealership's booking history",
+        "description": "Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.\nAt least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,\nselects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single\nnational trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward\nprefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,\nwhitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix\nof some name word, in any order; shorter words are ignored, and no eligible words disables name search).\nPrefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN\nwithin this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all\nbookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.\nOnly customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.",
+        "operationId": "FindReturningCustomers",
+        "parameters": [
+          {
+            "name": "dealershipId",
+            "in": "path",
+            "description": "Dealership whose booking history is searched.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "45fa64a1-baa9-8c61-b11a-ee9d7572ae3e"
+          },
+          {
+            "name": "X-Request-Id",
+            "in": "header",
+            "description": "Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.",
+            "schema": {
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Transient body-only query: registration, email, phone or name, 2..100 trimmed characters.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindReturningCustomersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Up to eight customer-and-vehicle pairs, latest visit first; an empty array when nothing matches.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReturningCustomerResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "query must be 2..100 trimmed characters (validation-error, errors.query); unreadable JSON is also 400.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "BookingsWrite role required (Admin or ServiceAdvisor).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown dealership (not-found).",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds the configured limit.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (rate-limited, Retry-After).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying (RFC 9110 delay-seconds); the problem's retryAfterSeconds carries the same value.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "CloudflareAccess": [ ]
+          },
+          {
+            "AccessCookie": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5378,36 +5575,51 @@
           "displayName",
           "roles",
           "loginUrl",
-          "logoutUrl"
+          "logoutUrl",
+          "expiresAtUtc"
         ],
         "type": "object",
         "properties": {
           "authenticated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the API verified the caller's identity."
           },
           "email": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The verified email; null when not authenticated."
           },
           "displayName": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The verified name, else null."
           },
           "roles": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "API roles in the order Admin, ServiceAdvisor, Viewer; empty without one."
           },
           "loginUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The same-origin Access login path, returning to `/`."
           },
           "logoutUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The hostname's Access logout path."
+          },
+          "expiresAtUtc": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "When the verified Access token expires (its `exp`, UTC); null for an anonymous caller and for the Development identity, which has no expiry. Access issues no refresh token: renew before then by navigating to loginUrl.",
+            "format": "date-time"
           }
         },
         "description": "The caller's verified identity and API roles. URLs are same-origin Access navigation targets."
@@ -5584,6 +5796,22 @@
           }
         },
         "description": "Environment-wide switches a client needs to decide which controls to render. Identical for every caller."
+      },
+      "FindReturningCustomersRequest": {
+        "required": [
+          "query"
+        ],
+        "type": "object",
+        "properties": {
+          "query": {
+            "examples": [
+              "AB12 CDE"
+            ],
+            "type": "string",
+            "description": "Registration, email, phone or name; 2 to 100 characters after trimming."
+          }
+        },
+        "description": "Transient personal-data search input, supplied only in the body."
       },
       "HttpValidationProblemDetails": {
         "required": [
@@ -6175,6 +6403,80 @@
           }
         },
         "description": "A bay or a technician, by id and display name."
+      },
+      "ReturningCustomerDetails": {
+        "required": [
+          "name",
+          "email",
+          "phone"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        },
+        "description": "Customer intake details, visible only to staff authorized to book."
+      },
+      "ReturningCustomerResponse": {
+        "required": [
+          "customer",
+          "vehicle",
+          "lastVisitUtc",
+          "visits"
+        ],
+        "type": "object",
+        "properties": {
+          "customer": {
+            "description": "Name and contact details as supplied on that booking.",
+            "$ref": "#/components/schemas/ReturningCustomerDetails"
+          },
+          "vehicle": {
+            "description": "Only the vehicle intake identifiers, make and model.",
+            "$ref": "#/components/schemas/ReturningVehicleDetails"
+          },
+          "lastVisitUtc": {
+            "type": "string",
+            "description": "The most recent booking's start UTC, across every status.",
+            "format": "date-time"
+          },
+          "visits": {
+            "type": "integer",
+            "description": "Number of this dealership's bookings with the same case-insensitive email and VIN, across every status.",
+            "format": "int64"
+          }
+        },
+        "description": "Intake fields from the most recent booking of a customer-and-vehicle pair; no booking free text or profile."
+      },
+      "ReturningVehicleDetails": {
+        "required": [
+          "vin",
+          "registration",
+          "make",
+          "model"
+        ],
+        "type": "object",
+        "properties": {
+          "vin": {
+            "type": "string"
+          },
+          "registration": {
+            "type": "string"
+          },
+          "make": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "description": "Vehicle intake fields only; no profile, provenance or allocation requirements."
       },
       "ScheduledAppointmentResponse": {
         "required": [

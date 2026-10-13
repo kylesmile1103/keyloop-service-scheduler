@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { mockBoardApi } from "@/test/board-api"
 import { munich, reading } from "@/test/dealerships"
+import { startCancelling } from "@/test/details"
 import { renderBoard, phoneViewport } from "@/test/render-board"
 
 // The phone presentation (< 768 px): the same schedule as an agenda of job cards grouped by lane, details in a bottom sheet,
@@ -97,7 +98,8 @@ describe("dispatch board on a phone", () => {
 
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
     expect(sheet).toHaveAttribute("data-side", "bottom")
-    expect(within(sheet).getByRole("textbox", { name: "Reason" })).toBeInTheDocument()
+    expect(screen.queryByRole("complementary", { name: "Appointment details" })).not.toBeInTheDocument()
+    expect(startCancelling(sheet)).toBeInTheDocument()
     expect(within(sheet).getByRole("button", { name: "Cancel appointment" })).toBeInTheDocument()
   })
 

@@ -46,6 +46,7 @@ public static class BookingOutcomes
     public const string Replayed = "replayed";
     public const string SlotUnavailable = "slot_unavailable";
     public const string SlotConflict = "slot_conflict";
+    public const string ConcurrencyConflict = "concurrency_conflict";
     public const string RuleViolation = "rule_violation";
     public const string NotFound = "not_found";
     public const string IdempotencyReuse = "idempotency_reuse";
@@ -56,5 +57,5 @@ public static class BookingOutcomes
 
     /// <summary>The outcomes that are refusals of a well-formed or malformed request, logged as 1002 BookingRejected.</summary>
     public static bool IsRejection(string outcome) =>
-        outcome is SlotUnavailable or SlotConflict or RuleViolation or NotFound or IdempotencyReuse or ValidationFailed;
+        outcome is SlotUnavailable or SlotConflict or ConcurrencyConflict or RuleViolation or NotFound or IdempotencyReuse or ValidationFailed;
 }

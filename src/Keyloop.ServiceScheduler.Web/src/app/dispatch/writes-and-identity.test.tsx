@@ -7,6 +7,7 @@ import { createQueryClient } from "@/lib/query-client"
 import { currentUserQueryKey } from "@/lib/session"
 import { bookedFrom, mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { findInspector, startCancelling } from "@/test/details"
 import { expectUnavailableButFocusable } from "@/test/focus"
 import { admin, anonymous, viewer } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
@@ -153,9 +154,9 @@ describe.each<[string, CurrentUserResponse]>([
     const api = mockBoardApi({ me: () => me, cancel: () => answer.promise })
     const { queryClient } = renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
+    const sheet = await findInspector()
     await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
     await waitFor(() => expect(posts(api.requests, "/cancel")).toHaveLength(1))
 
@@ -296,8 +297,8 @@ describe("a write checked as it is sent", () => {
     const api = mockBoardApi({ me: () => admin })
     const { queryClient } = renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Customer rang" } })
+    const sheet = await findInspector()
+    fireEvent.change(startCancelling(sheet), { target: { value: "Customer rang" } })
 
     queryClient.setQueryData(currentUserQueryKey(), viewer)
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
@@ -567,8 +568,8 @@ describe("the other writes, bound to the account their view was drawn for", () =
     const api = mockBoardApi({ me: () => me })
     const { queryClient } = renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Private reason typed" } })
+    const sheet = await findInspector()
+    fireEvent.change(startCancelling(sheet), { target: { value: "Private reason typed" } })
 
     me = otherAdmin
     queryClient.setQueryData(currentUserQueryKey(), otherAdmin)
@@ -588,8 +589,8 @@ describe("the other writes, bound to the account their view was drawn for", () =
     const api = mockBoardApi({ me: () => me })
     const { queryClient } = renderBoard(board)
     fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
-    const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Reason" }), { target: { value: "Private reason typed" } })
+    const sheet = await findInspector()
+    fireEvent.change(startCancelling(sheet), { target: { value: "Private reason typed" } })
 
     act(() => {
       fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))

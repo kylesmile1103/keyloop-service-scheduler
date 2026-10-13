@@ -4,8 +4,7 @@
     "kind": "counter",
     "unit": "{request}",
     "labels": [
-      "outcome",
-      "dealership_id"
+      "outcome"
     ],
     "source": "scheduler",
     "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
@@ -24,9 +23,7 @@
     "instrument": "scheduler.booking.lock_wait",
     "kind": "histogram",
     "unit": "ms",
-    "labels": [
-      "dealership_id"
-    ],
+    "labels": [],
     "source": "scheduler",
     "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
@@ -52,9 +49,7 @@
     "instrument": "scheduler.availability.duration",
     "kind": "histogram",
     "unit": "ms",
-    "labels": [
-      "dealership_id"
-    ],
+    "labels": [],
     "source": "scheduler",
     "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   },
@@ -238,5 +233,40 @@
     ],
     "source": "scheduler",
     "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; src/Keyloop.ServiceScheduler.Infrastructure/Persistence/AdminVocabulary.cs (closed values); docs/ARCHITECTURE.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.triage.requests",
+    "kind": "counter",
+    "unit": "{request}",
+    "labels": [
+      "outcome",
+      "reason",
+      "uncovered_category"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.triage.duration",
+    "kind": "histogram",
+    "unit": "s",
+    "labels": [
+      "outcome",
+      "reason",
+      "uncovered_category"
+    ],
+    "source": "scheduler",
+    "evidence": "src/Keyloop.ServiceScheduler.Api/Common/Telemetry/SchedulerTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
+  },
+  {
+    "instrument": "scheduler.notifications.suppressed",
+    "kind": "counter",
+    "unit": "{notification}",
+    "labels": [
+      "kind",
+      "reason"
+    ],
+    "source": "notifications",
+    "evidence": "src/Keyloop.ServiceScheduler.Infrastructure/Telemetry/InfrastructureTelemetry.cs; docs/ARCHITECTURE.md section 12.1"
   }
 ]

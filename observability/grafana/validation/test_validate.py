@@ -90,8 +90,16 @@ class Labels(unittest.TestCase):
 
     def test_accepts_catalogued_point_and_resource_labels(self):
         self.check('sum by (outcome) (rate(scheduler_booking_requests_total{job="x", deployment_environment_name="P", outcome="confirmed"}[5m]))')
-        self.check('histogram_quantile(0.95, sum by (le, dealership_id) (rate(scheduler_booking_lock_wait_milliseconds_bucket{job="x"}[5m])))')
+        self.check('histogram_quantile(0.95, sum by (le) (rate(scheduler_booking_lock_wait_milliseconds_bucket{job="x"}[5m])))')
         self.check('count by (instance, service_version) (target_info{job="x", deployment_environment_name=~"P"})')
+
+    def test_rejects_dealership_labels_on_custom_metrics(self):
+        for instrument in ("scheduler_booking_requests_total", "scheduler_booking_lock_wait_milliseconds_bucket",
+                           "scheduler_availability_duration_milliseconds_bucket"):
+            with self.assertRaisesRegex(ValueError, "dealership_id"):
+                self.check(f'sum by (dealership_id) ({instrument}{{job="x"}})')
+            with self.assertRaisesRegex(ValueError, "dealership_id"):
+                self.check(f'{instrument}{{job="x", dealership_id="arbitrary-site"}}')
 
     def test_rejects_unknown_matcher_label(self):
         with self.assertRaisesRegex(ValueError, "outcomes"):

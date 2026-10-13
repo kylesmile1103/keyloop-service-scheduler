@@ -7,9 +7,12 @@ import * as telemetry from "@/lib/telemetry"
 import { bookedFrom, mockBoardApi, requestsTo, scheduledFrom } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
+import { matchesWidth } from "@/test/media-query"
 import { jsonResponse, problemResponse } from "@/test/mock-api"
-import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
+import { phoneViewport, pointerClick, renderBoard, search, viewportOf } from "@/test/render-board"
 import { bays, interimAvailability, interimServiceType, readingTuesday, technicians } from "@/test/schedules"
+import { triageEnabled } from "@/test/triage"
+import { vehicleAwareOn } from "@/test/vehicle"
 
 /** A service that needs a capability and a certification of the same name, as the seeded catalogue's diagnostics does. */
 const diagnosticsServiceType = {
@@ -244,6 +247,38 @@ describe("booking an appointment", () => {
     await screen.findByText("Booked")
     const [first, second] = bookingRequests(api.requests)
     expect((await bodyOf(second)).startUtc).toBe("2026-10-13T09:30:00Z")
+    expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+  })
+
+  it("refreshes availability after policy churn and retries the same booking with the same idempotency key", async () => {
+    const conflict = {
+      type: `${problems}concurrency-conflict`,
+      title: "Concurrency conflict",
+      status: 409,
+      detail: "The requirement policy changed repeatedly while this booking was being prepared. Refresh availability and retry the booking.",
+      traceId: "policy-churn-trace",
+    }
+    let attempts = 0
+    const api = mockBoardApi({
+      book: (_, body) => (++attempts === 1 ? problemResponse(409, conflict) : bookedFrom(body)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    const availabilityReads = requestsTo(api.requests, "/availability").length
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const alert = await within(scope).findByRole("alert")
+    expect(alert).toHaveAttribute("data-tone", "warning")
+    expect(within(alert).getByText(conflict.detail)).toBeInTheDocument()
+    expect(within(alert).getByText(conflict.traceId)).toBeInTheDocument()
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityReads))
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }))
+
+    await screen.findByText("Booked")
+    const [first, second] = bookingRequests(api.requests)
+    expect(await bodyOf(second)).toEqual(await bodyOf(first))
     expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
   })
 
@@ -893,5 +928,144 @@ describe("booking an appointment on a phone", () => {
     const keys = bookingRequests(api.requests).map((request) => request.headers.get("Idempotency-Key"))
     expect(keys).toHaveLength(2)
     expect(keys[0]).not.toBe(keys[1])
+  })
+})
+
+// Task 33: from 1280 px the dialog is about 1100 px wide, step 1 puts the job beside its start times and step 2 the customer
+// beside the vehicle; narrower, and on a phone, it is one column as before. jsdom draws no layout: the columns are seen
+// through their names, what each holds, the reading (and so Tab) order and the dialog's width class.
+describe("the booking dialog's two columns", () => {
+  /** The order the step's fields come in, which is the order Tab takes through them. */
+  const fieldOrder = (scope: HTMLElement) =>
+    within(scope)
+      .getAllByRole("textbox")
+      .concat(within(scope).getAllByRole("combobox"))
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((field) => field.getAttribute("aria-label") ?? (field as HTMLInputElement | HTMLButtonElement).labels?.[0]?.textContent ?? field.id)
+
+  const before = (first: Element, second: Element) => Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+  // The returning-customer search heads the customer column (Task 39b), so Tab meets it before the fields it fills in.
+  const stepTwoOrder = [
+    "Returning customer",
+    "Name",
+    "Email",
+    "Phone",
+    "VIN",
+    "Registration",
+    "Make",
+    "Model",
+    "Preferred bay",
+    "Preferred technician",
+    "Notes for the workshop",
+  ]
+
+  it("puts the job on the left and its start times on the right from 1280 px, in reading order", async () => {
+    mockBoardApi()
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    expect(scope).toHaveClass("sm:max-w-[68.75rem]")
+
+    // Without the vehicle step the left column holds the service and the day.
+    const job = within(scope).getByRole("group", { name: "Service and date" })
+    const times = within(scope).getByRole("group", { name: "Start time" })
+    expect(within(job).getByRole("heading", { name: "Service and time" })).toBeInTheDocument()
+    expect(within(job).getByRole("combobox", { name: "Service" })).toBeInTheDocument()
+    expect(within(job).getByRole("button", { name: /^Date, / })).toBeInTheDocument()
+    expect(within(times).getByText("Choose a service to see its free start times.")).toBeInTheDocument()
+
+    await chooseInterimAt1015(scope)
+    const grid = within(times).getByRole("radiogroup", { name: "Start time" })
+    expect(within(grid).getByRole("radio", { name: "10:15, 4 bays and 3 technicians free" })).toBeChecked()
+    // Left column top to bottom, then the right one, then the footer.
+    expect(before(job, times)).toBe(true)
+    expect(before(within(job).getByRole("button", { name: /^Date, / }), grid)).toBe(true)
+    expect(before(grid, within(scope).getByRole("button", { name: "Next" }))).toBe(true)
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    await within(scope).findByRole("heading", { name: "Customer and vehicle" })
+    // The customer beside the vehicle, the fields in the order they always had.
+    expect(fieldOrder(scope)).toEqual(stepTwoOrder)
+    expect(within(scope).queryByRole("group", { name: "Start time" })).not.toBeInTheDocument()
+  })
+
+  it("keeps the triage block and the vehicle step in the left column", async () => {
+    mockBoardApi({ triageStatus: () => triageEnabled, features: () => vehicleAwareOn })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+
+    const job = await within(scope).findByRole("group", { name: "Service and vehicle" })
+    expect(await within(job).findByRole("textbox", { name: "Describe the issue" })).toBeInTheDocument()
+    expect(within(job).getByRole("group", { name: "Vehicle" })).toBeInTheDocument()
+    expect(within(job).getByRole("combobox", { name: "Powertrain" })).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Service" }))
+    pointerClick(await screen.findByRole("option", { name: /^Interim Service/ }))
+    const times = within(scope).getByRole("group", { name: "Start time" })
+    expect(await within(times).findByRole("radiogroup", { name: "Start time" })).toBeInTheDocument()
+    // The note on what the starts are counted for sits with them.
+    expect(within(times).getByText(/^Counted for a vehicle of unknown powertrain/)).toBeInTheDocument()
+  })
+
+  it.each([
+    { viewport: "a 1024 px tablet", width: 1024 },
+    { viewport: "a 390 px phone", width: 390 },
+  ])("stays one column on $viewport", async ({ width }) => {
+    viewportOf(width)
+    mockBoardApi()
+    renderBoard(readingBoard)
+    fireEvent.click(await screen.findByRole("button", { name: "Book appointment" }))
+    const scope = await dialog()
+    if (width >= 768) {
+      expect(scope).toHaveClass("sm:max-w-2xl")
+      expect(scope).not.toHaveClass("sm:max-w-[68.75rem]")
+    } else expect(scope).toHaveAttribute("data-side", "bottom")
+
+    await chooseInterimAt1015(scope)
+    expect(within(scope).queryByRole("group", { name: /^Service and/ })).not.toBeInTheDocument()
+    expect(within(scope).queryByRole("group", { name: "Start time" })).not.toBeInTheDocument()
+    expect(within(scope).getByRole("radiogroup", { name: "Start time" })).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole("button", { name: "Next" }))
+    await within(scope).findByRole("heading", { name: "Customer and vehicle" })
+    expect(fieldOrder(scope)).toEqual(stepTwoOrder)
+  })
+
+  it("keeps the chosen start and its focus when the window crosses 1280 px", async () => {
+    // A viewport whose width can change, telling the breakpoint hooks as a browser would.
+    let width = 1440
+    const listeners = new Set<() => void>()
+    vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+      matches: matchesWidth(query, width),
+      media: query,
+      onchange: null,
+      addEventListener: (_: string, listener: EventListenerOrEventListenerObject) => listeners.add(listener as () => void),
+      removeEventListener: (_: string, listener: EventListenerOrEventListenerObject) => listeners.delete(listener as () => void),
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }))
+    const resize = (to: number) => {
+      width = to
+      act(() => listeners.forEach((listener) => listener()))
+    }
+    mockBoardApi()
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await chooseInterimAt1015(scope)
+    const chip = within(scope).getByRole("radio", { name: "10:15, 4 bays and 3 technicians free" })
+    chip.focus()
+
+    resize(1024)
+    expect(within(scope).queryByRole("group", { name: "Start time" })).not.toBeInTheDocument()
+    expect(scope).toHaveClass("sm:max-w-2xl")
+    // The same chip, still chosen and focused: nothing was mounted again.
+    expect(within(scope).getByRole("radio", { name: "10:15, 4 bays and 3 technicians free" })).toBe(chip)
+    expect(chip).toBeChecked()
+    expect(chip).toHaveFocus()
+
+    resize(1440)
+    expect(within(within(scope).getByRole("group", { name: "Start time" })).getByRole("radio", { checked: true })).toBe(chip)
+    expect(chip).toHaveFocus()
   })
 })

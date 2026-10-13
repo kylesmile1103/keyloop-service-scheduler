@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 
 import type { BoardAppointment, Lane, LaneMode } from "../lib/schedule"
 import { BoardMessage, BoardPanel, BoardPlaceholder } from "./board-placeholder"
+import type { BlockDetails } from "./appointment-block"
 import { ScheduleAgenda } from "./schedule-agenda"
 import { StatusLegend } from "./status-legend"
 import { TimelineGrid } from "./timeline-grid"
@@ -41,7 +42,15 @@ interface ScheduleBoardProps {
   /** The phone presentation: an agenda instead of the timeline. */
   agenda: boolean
   now: Date
+  /** The booking whose details are open: its block is marked. */
   selectedId: string | null
+  /**
+   * How a block shows its details: a sheet over the board (a dialog), or the inspector docked beside it (from 1280 px),
+   * where the chosen block is the current one.
+   */
+  details?: BlockDetails
+  /** The docked inspector takes room beside the board: the timeline's lane column narrows to the tablet's 160 px. */
+  narrow?: boolean
   /** A booking just made, whose block or card draws the booked halo. */
   bookedId?: string | null
   /** The empty day's one action (Book appointment, once booking is wired). */
@@ -74,6 +83,8 @@ export function ScheduleBoard({
   agenda,
   now,
   selectedId,
+  details = "sheet",
+  narrow = false,
   bookedId = null,
   emptyAction,
   onSelect,
@@ -194,6 +205,8 @@ export function ScheduleBoard({
           timeZone={dealership.timeZoneId}
           now={now}
           selectedId={selectedId}
+          details={details}
+          narrow={narrow}
           onSelect={onSelect}
         />
         <div className="border-t">{message}</div>
@@ -221,6 +234,8 @@ export function ScheduleBoard({
         timeZone={dealership.timeZoneId}
         now={now}
         selectedId={selectedId}
+        details={details}
+        narrow={narrow}
         bookedId={bookedId}
         onSelect={onSelect}
       />

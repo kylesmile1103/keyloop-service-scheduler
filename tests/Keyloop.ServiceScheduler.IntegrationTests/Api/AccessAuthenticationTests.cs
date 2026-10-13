@@ -89,6 +89,18 @@ public sealed class AccessAuthenticationTests(PostgresFixture pg) : IAsyncLifeti
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         body.RootElement.GetProperty("authenticated").GetBoolean().ShouldBe(authenticated);
         body.RootElement.GetProperty("roles").EnumerateArray().Select(item => item.GetString()).ShouldBe(authenticated ? ["ServiceAdvisor"] : []);
+        // The verified token's exp (Token(): five minutes after the fake clock), for the web app's renewal; nothing for anyone else.
+        var expiresAt = body.RootElement.GetProperty("expiresAtUtc");
+        if (authenticated)
+        {
+            expiresAt.GetDateTime().ShouldBe(_factory.Clock.GetUtcNow().UtcDateTime.AddSeconds(300));
+            expiresAt.GetString().ShouldEndWith("Z");
+        }
+        else
+        {
+            expiresAt.ValueKind.ShouldBe(JsonValueKind.Null);
+        }
+
         jwks.Calls.ShouldBe(authenticated ? 1 : 0);
     }
 
@@ -129,6 +141,8 @@ public sealed class AccessAuthenticationTests(PostgresFixture pg) : IAsyncLifeti
         me.RootElement.GetProperty("authenticated").GetBoolean().ShouldBe(authenticated);
         me.RootElement.GetProperty("email").GetString().ShouldBe(authenticated ? "developer@keyloop.test" : null);
         me.RootElement.GetProperty("roles").EnumerateArray().Select(item => item.GetString()).ShouldBe(authenticated ? new[] { role } : []);
+        // The configured identity has no session to expire, so the web app schedules no renewal.
+        me.RootElement.GetProperty("expiresAtUtc").ValueKind.ShouldBe(JsonValueKind.Null);
         using var details = await client.GetAsync("/api/v1/appointments/11111111-1111-1111-1111-111111111111", Ct);
         ((int)details.StatusCode).ShouldBe(status);
     }

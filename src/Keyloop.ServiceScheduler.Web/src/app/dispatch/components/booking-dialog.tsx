@@ -25,6 +25,7 @@ import type {
   DealershipResponse,
   GetAvailabilityData,
   Powertrain,
+  ReturningCustomerResponse,
   ServiceTypeResponse,
   VehicleClass,
   VehicleProfile,
@@ -49,8 +50,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
 import { useCountdown } from "@/hooks/use-countdown"
 import { useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-current-user"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
@@ -86,9 +89,11 @@ import {
   toBookingRequest,
   undeclaredProfile,
 } from "../lib/booking-schema"
+import { RETURNING_FIELDS, type ReturningValues, returningValues } from "../lib/returning-customer"
 import { AllocationExplanationView } from "./allocation-explanation"
 import { AvailabilityChips, SuggestedSlotChips } from "./availability-chips"
 import { BookingTriageIntake } from "./booking-triage"
+import { ReturningCustomerSearch } from "./returning-customer-search"
 import {
   DeclaredVehicle,
   type Lookup,
@@ -125,6 +130,12 @@ export interface BookingDialogProps {
 }
 
 /**
+ * From 1280 px (the sidebar's wide layout) the dialog is about 1100 px wide and each step uses two columns: the job beside
+ * its start times, the customer beside the vehicle (UI_DESIGN 11.14). Narrower, one column as before; phones, the sheet.
+ */
+const TWO_COLUMNS = "(min-width: 1280px)"
+
+/**
  * Book appointment: step 1 picks the service, the day and a free start (slot chips from `GET /availability`), optionally
  * from services suggested for the issue's description when booking intake triage is on (`BookingTriageIntake`); step 2 takes
  * the customer and the vehicle, with an optional preferred bay and technician. A dialog on wide screens, a full-screen
@@ -140,6 +151,7 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: Book
   useQuery(featureSwitchesQuery())
   const queryClient = useQueryClient()
   const owner = useCurrentUser().writer
+  const columns = useMediaQuery(TWO_COLUMNS)
   // The phone's success state, kept here so a discard knows a booking had been made.
   const [booked, setBooked] = useState<AppointmentResponse | null>(null)
   // The booking being entered belongs to the account that opened the dialog (`CurrentUser.writer`). When the identity
@@ -169,15 +181,20 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: Book
           // auto height, 85dvh cap and radius (a bare `h-dvh` loses to the variant's `h-auto` on specificity).
           className="gap-0 overflow-clip p-0 data-[side=bottom]:h-dvh data-[side=bottom]:max-h-dvh data-[side=bottom]:rounded-none *:data-[slot=sheet-close]:top-2 *:data-[slot=sheet-close]:right-2"
         >
-          <BookingFlow key={draft.key} {...flow} layout="sheet" onClose={() => onOpenChange(false)} />
+          <BookingFlow key={draft.key} {...flow} layout="sheet" columns={false} onClose={() => onOpenChange(false)} />
         </SheetContent>
       </Sheet>
     )
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 shadow-xl sm:max-w-2xl">
-        <BookingFlow key={draft.key} {...flow} layout="dialog" onClose={() => onOpenChange(false)} />
+      <DialogContent
+        className={cn(
+          "flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 shadow-xl",
+          columns ? "sm:max-w-[68.75rem]" : "sm:max-w-2xl"
+        )}
+      >
+        <BookingFlow key={draft.key} {...flow} layout="dialog" columns={columns} onClose={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )
@@ -189,6 +206,8 @@ type Step = 1 | 2
 
 interface BookingFlowProps extends Omit<BookingDialogProps, "open" | "onOpenChange" | "fullScreen"> {
   layout: Layout
+  /** The wide dialog's two columns (`TWO_COLUMNS`); never on the sheet. */
+  columns: boolean
   onClose: () => void
   /** Why the booking being entered was discarded while the dialog was open, if it was. */
   discard: Discard | null
@@ -266,6 +285,7 @@ function BookingFlow({
   initialDate,
   today,
   layout,
+  columns,
   onBooked,
   onViewOnBoard,
   onClose,
@@ -333,6 +353,8 @@ function BookingFlow({
 
   // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
   const triage = useBookingTriage(dealershipId)
+  // A booking being entered is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(!booked && (form.formState.isDirty || triage.description.trim() !== "" || triage.photos.length > 0))
   // What the dialog last wrote into Notes (the description's copy and the lines added from the suggestions), and whether the
   // description was part of it: notes that still read exactly that are the dialog's, not the person's own words, so they can
   // follow the description (or go when the box is unticked); anything else is never written over.
@@ -382,16 +404,48 @@ function BookingFlow({
           : { state: "idle" }
   const decoded = resolvedHere ? knownManufacturer(resolvedHere.manufacturer) : null
 
-  function lookUp(trigger: "button" | "blur") {
+  /** Look up: the button, leaving the field with a whole VIN, or a returning customer's VIN filled in (`fill`). */
+  function lookUp(trigger: "button" | "blur" | "fill") {
     if (blocked || lookupWaiting > 0) return
     const value = form.getValues("vehicle.vin").trim().toUpperCase()
     if (!WHOLE_VIN.test(value)) {
       if (trigger === "button") void form.trigger("vehicle.vin", { shouldFocus: true })
       return
     }
-    // Leaving the field looks up a VIN once; the button always asks again.
-    if (trigger === "blur" && ((resolve.isPending && resolveForThisVin) || (resolved?.vin === value && resolved.identity === current.identity))) return
+    // Leaving the field, or filling it, looks up a VIN once; the button always asks again.
+    const asked = (resolve.isPending && resolve.variables?.body.vin === value) || (resolved?.vin === value && resolved.identity === current.identity)
+    if (trigger !== "button" && asked) return
     resolve.mutate({ body: { vin: value } })
+  }
+
+  // The returning customer chosen on step 2 (Task 39b): what it filled in, and the start of the booking it came from, for
+  // the note under the search and its Clear. Part of the booking being entered, so it goes with it.
+  const [filled, setFilled] = useState<{ from: string; values: ReturningValues } | null>(null)
+
+  /**
+   * A returning customer chosen: their latest booking's customer and vehicle fill the fields (each still editable, checked
+   * as it is filled), and with vehicle-aware requirements on the VIN is looked up as Look up would.
+   */
+  function chooseReturning(match: ReturningCustomerResponse) {
+    const values = returningValues(match)
+    for (const path of RETURNING_FIELDS) {
+      const value = values[path]
+      if (value !== undefined) form.setValue(path, value, { shouldDirty: true, shouldValidate: true })
+    }
+    setFilled({ from: match.lastVisitUtc, values })
+    if (vehicleAware) lookUp("fill")
+  }
+
+  /** The note's Clear: empties the fields the choice filled, except one changed since (the person's own words stay). */
+  function clearReturning() {
+    if (!filled) return
+    for (const path of RETURNING_FIELDS) {
+      const value = filled.values[path]
+      if (value === undefined || form.getValues(path) !== value) continue
+      form.setValue(path, "", { shouldDirty: true })
+      form.clearErrors(path)
+    }
+    setFilled(null)
   }
 
   // A declared manufacturer that disagrees with the VIN: "Use decoded data" holds for the VIN, the declaration and the decoded
@@ -502,8 +556,8 @@ function BookingFlow({
           description: `${status ? `The server answered ${status}. ` : ""}${describeFailure(error).summary} Trying again is safe: it cannot book twice.`,
         })
       }
-      if (slug === "slot-unavailable" || slug === "slot-conflict") {
-        // Someone took the slot: the chips are stale too.
+      if (slug === "slot-unavailable" || slug === "slot-conflict" || slug === "concurrency-conflict") {
+        // Refresh starts after changes to booked capacity or the requirement policy.
         void queryClient.invalidateQueries({
           queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date } as GetAvailabilityData["query"] }),
         })
@@ -738,6 +792,7 @@ function BookingFlow({
     setCopied({ text: "", description: false })
     setNoteLines([])
     setRefusedLine(null)
+    setFilled(null)
     setBooked(null)
     goTo(1)
   }
@@ -757,7 +812,14 @@ function BookingFlow({
         {!booked && <Stepper step={step} />}
       </header>
 
-      <div className={cn("flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6", booked && "flex flex-col justify-center")}>
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6",
+          booked && "flex flex-col justify-center",
+          // Step 1 in two columns fills the body, and each column scrolls on its own, between the header and the footer.
+          !booked && columns && step === 1 && "flex flex-col py-0"
+        )}
+      >
         {booked ? (
           <BookedState
             appointment={booked}
@@ -769,6 +831,7 @@ function BookingFlow({
         ) : step === 1 ? (
           <StepOne
             form={form}
+            columns={columns}
             headingRef={stepHeading}
             dealership={dealership}
             today={today}
@@ -812,6 +875,7 @@ function BookingFlow({
         ) : (
           <StepTwo
             form={form}
+            columns={columns}
             headingRef={stepHeading}
             problemRef={problemRef}
             service={service}
@@ -820,6 +884,18 @@ function BookingFlow({
             timeZone={timeZone}
             notesFrom={copied.text !== "" && notes === copied.text ? (copied.description ? "description" : "suggestions") : null}
             onChangeTime={back}
+            returning={
+              // Keyed by who is signed in: any change of caller starts the search empty, its matches gone (ARCHITECTURE §15).
+              <ReturningCustomerSearch
+                key={current.identity}
+                dealershipId={dealershipId}
+                timeZone={timeZone}
+                blockedBy={blocked ? blockedId : undefined}
+                filledFrom={filled?.from ?? null}
+                onChoose={chooseReturning}
+                onClear={clearReturning}
+              />
+            }
             vehicleStep={
               vehicleAware
                 ? {
@@ -1028,6 +1104,8 @@ type BookingFormApi = ReturnType<typeof useForm<BookingFormInput, unknown, Booki
 
 interface StepOneProps {
   form: BookingFormApi
+  /** The job on the left and its start times on the right (`TWO_COLUMNS`). */
+  columns: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
   dealership: DealershipResponse
   today: string
@@ -1068,6 +1146,7 @@ const dayLabels = {
 
 function StepOne({
   form,
+  columns,
   headingRef,
   dealership,
   today,
@@ -1090,182 +1169,224 @@ function StepOne({
   const startError = form.formState.errors.startUtc?.message
 
   return (
-    <section aria-labelledby={`${ids.service}-heading`} className="flex flex-col gap-5">
-      <h3 id={`${ids.service}-heading`} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
-        Service and time
-      </h3>
-      {intake}
-      <FieldGroup className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Controller
-          control={form.control}
-          name="serviceTypeId"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid || undefined} className="gap-1.5">
-              <FieldLabel htmlFor={ids.service}>Service</FieldLabel>
-              {serviceTypesError ? (
-                <ProblemAlert
-                  title="Couldn’t load the services"
-                  error={serviceTypesError}
-                  onRetry={onRetryServiceTypes}
-                  retrying={serviceTypesRetrying}
-                />
-              ) : serviceTypesLoading ? (
-                <Skeleton className="h-10 w-full rounded-lg" />
-              ) : (
-                <Select
-                  items={items}
-                  value={field.value || null}
-                  onValueChange={(value) => {
-                    field.onChange(value ?? "")
-                    // A start belongs to one service's availability.
-                    form.setValue("startUtc", "")
-                  }}
-                >
-                  <SelectTrigger
-                    id={ids.service}
-                    ref={field.ref}
-                    aria-invalid={fieldState.invalid || undefined}
-                    className="w-full cursor-pointer"
-                  >
-                    <SelectValue placeholder="Choose a service" />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      {(serviceTypes ?? []).map((candidate) => (
-                        <SelectItem key={candidate.id} value={candidate.id} disabled={!candidate.bookable} className="py-2">
-                          <span className="flex min-w-0 flex-col gap-1 whitespace-normal">
-                            <span className="flex items-baseline gap-2">
-                              <span className="font-medium">{candidate.name}</span>
-                              <span className="text-xs text-muted-foreground tabular-nums">{`${candidate.durationMinutes} min`}</span>
-                            </span>
-                            {serviceHelp(candidate.code) && (
-                              <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(candidate.code)}</span>
-                            )}
-                            {candidate.bookable ? (
-                              <CapabilityBadges
-                                capabilities={candidate.requiredBayCapabilities}
-                                certifications={candidate.requiredCertifications}
-                                distinctiveOnly
-                                label="Needs"
-                                max={3}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Not offered here: no qualified bay or technician</span>
-                            )}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-              {service && (
-                <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="tabular-nums">{`${service.durationMinutes} min`}</span>
-                  <CapabilityBadges
-                    capabilities={service.requiredBayCapabilities}
-                    certifications={service.requiredCertifications}
-                    label="Needs"
-                    max={4}
+    <section
+      aria-labelledby={`${ids.service}-heading`}
+      className={columns ? "grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] gap-x-8" : "flex flex-col gap-5"}
+    >
+      {/* What the job is, then when: in reading order, so Tab goes down the left column before the start times. */}
+      <Column columns={columns} label={vehicle?.section ? "Service and vehicle" : "Service and date"} className="flex flex-col gap-5">
+        <h3 id={`${ids.service}-heading`} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
+          Service and time
+        </h3>
+        {intake}
+        <FieldGroup className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <Controller
+            control={form.control}
+            name="serviceTypeId"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid || undefined} className="gap-1.5">
+                <FieldLabel htmlFor={ids.service}>Service</FieldLabel>
+                {serviceTypesError ? (
+                  <ProblemAlert
+                    title="Couldn’t load the services"
+                    error={serviceTypesError}
+                    onRetry={onRetryServiceTypes}
+                    retrying={serviceTypesRetrying}
                   />
-                </span>
-              )}
-              {serviceHelp(service?.code) && <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(service?.code)}</span>}
-              <FormError message={fieldState.error?.message} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={form.control}
-          name="date"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid || undefined} className="gap-1.5">
-              <FieldLabel htmlFor={ids.date}>Date</FieldLabel>
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      id={ids.date}
-                      ref={field.ref}
-                      type="button"
-                      variant="outline"
-                      aria-label={`Date, ${formatDay(field.value, "long")}`}
-                      className="w-full cursor-pointer justify-start font-normal tabular-nums"
-                    />
-                  }
-                >
-                  <CalendarDays aria-hidden="true" className="text-muted-foreground" />
-                  {formatDay(field.value, "short")}
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto max-w-[calc(100vw-1rem)] p-0">
-                  <PopoverTitle className="sr-only">Choose the day</PopoverTitle>
-                  <Calendar
-                    mode="single"
-                    selected={toPickerDate(field.value)}
-                    defaultMonth={toPickerDate(field.value)}
-                    today={toPickerDate(today)}
-                    disabled={[{ before: toPickerDate(today) }, isClosed]}
-                    onSelect={(picked) => {
-                      if (!picked) return
-                      field.onChange(fromPickerDate(picked))
+                ) : serviceTypesLoading ? (
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                ) : (
+                  <Select
+                    items={items}
+                    value={field.value || null}
+                    onValueChange={(value) => {
+                      field.onChange(value ?? "")
+                      // A start belongs to one service's availability.
                       form.setValue("startUtc", "")
-                      setCalendarOpen(false)
                     }}
-                    modifiers={{ closed: isClosed }}
-                    modifiersClassNames={{ closed: "[&_button]:line-through" }}
-                    labels={dayLabels}
-                    className="w-full [&_button]:cursor-pointer max-md:[--cell-size:--spacing(10)]"
-                  />
-                  <p className="w-0 min-w-full border-t px-3 py-2 text-xs text-pretty text-muted-foreground">
-                    {`Struck-through days are closed. Dates follow ${dealership.timeZoneId}.`}
-                  </p>
-                </PopoverContent>
-              </Popover>
-              <FormError message={fieldState.error?.message} />
-            </Field>
+                  >
+                    <SelectTrigger
+                      id={ids.service}
+                      ref={field.ref}
+                      aria-invalid={fieldState.invalid || undefined}
+                      className="w-full cursor-pointer"
+                    >
+                      <SelectValue placeholder="Choose a service" />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {(serviceTypes ?? []).map((candidate) => (
+                          <SelectItem key={candidate.id} value={candidate.id} disabled={!candidate.bookable} className="py-2">
+                            <span className="flex min-w-0 flex-col gap-1 whitespace-normal">
+                              <span className="flex items-baseline gap-2">
+                                <span className="font-medium">{candidate.name}</span>
+                                <span className="text-xs text-muted-foreground tabular-nums">{`${candidate.durationMinutes} min`}</span>
+                              </span>
+                              {serviceHelp(candidate.code) && (
+                                <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(candidate.code)}</span>
+                              )}
+                              {candidate.bookable ? (
+                                <CapabilityBadges
+                                  capabilities={candidate.requiredBayCapabilities}
+                                  certifications={candidate.requiredCertifications}
+                                  distinctiveOnly
+                                  label="Needs"
+                                  max={3}
+                                />
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Not offered here: no qualified bay or technician</span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+                {service && (
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="tabular-nums">{`${service.durationMinutes} min`}</span>
+                    <CapabilityBadges
+                      capabilities={service.requiredBayCapabilities}
+                      certifications={service.requiredCertifications}
+                      label="Needs"
+                      max={4}
+                    />
+                  </span>
+                )}
+                {serviceHelp(service?.code) && <span className="text-xs text-pretty text-muted-foreground">{serviceHelp(service?.code)}</span>}
+                <FormError message={fieldState.error?.message} />
+              </Field>
+            )}
+          />
+          <Controller
+            control={form.control}
+            name="date"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid || undefined} className="gap-1.5">
+                <FieldLabel htmlFor={ids.date}>Date</FieldLabel>
+                <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        id={ids.date}
+                        ref={field.ref}
+                        type="button"
+                        variant="outline"
+                        aria-label={`Date, ${formatDay(field.value, "long")}`}
+                        className="w-full cursor-pointer justify-start font-normal tabular-nums"
+                      />
+                    }
+                  >
+                    <CalendarDays aria-hidden="true" className="text-muted-foreground" />
+                    {formatDay(field.value, "short")}
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-auto max-w-[calc(100vw-1rem)] p-0">
+                    <PopoverTitle className="sr-only">Choose the day</PopoverTitle>
+                    <Calendar
+                      mode="single"
+                      selected={toPickerDate(field.value)}
+                      defaultMonth={toPickerDate(field.value)}
+                      today={toPickerDate(today)}
+                      disabled={[{ before: toPickerDate(today) }, isClosed]}
+                      onSelect={(picked) => {
+                        if (!picked) return
+                        field.onChange(fromPickerDate(picked))
+                        form.setValue("startUtc", "")
+                        setCalendarOpen(false)
+                      }}
+                      modifiers={{ closed: isClosed }}
+                      modifiersClassNames={{ closed: "[&_button]:line-through" }}
+                      labels={dayLabels}
+                      className="w-full [&_button]:cursor-pointer max-md:[--cell-size:--spacing(10)]"
+                    />
+                    <p className="w-0 min-w-full border-t px-3 py-2 text-xs text-pretty text-muted-foreground">
+                      {`Struck-through days are closed. Dates follow ${dealership.timeZoneId}.`}
+                    </p>
+                  </PopoverContent>
+                </Popover>
+                <FormError message={fieldState.error?.message} />
+              </Field>
+            )}
+          />
+        </FieldGroup>
+
+        {vehicle?.dropped && <VehicleInputsDropped unreadable={vehicle.dropped === "unreadable"} />}
+        {vehicle?.section}
+      </Column>
+
+      {/* Level with the left column's first field: the column's 1 rem padding, the heading's 1.5 rem line, the 1.25 rem gap. */}
+      <Column columns={columns} labelledBy={ids.start} className="flex flex-col pt-15">
+        <Controller
+          control={form.control}
+          name="startUtc"
+          render={({ field }) => (
+            <div
+              ref={(element) => field.ref(element?.querySelector("[role=radio]") ?? element)}
+              className={cn("flex flex-col gap-2", columns && "flex-1")}
+            >
+              <span id={ids.start} className="text-sm font-medium">
+                Start time
+              </span>
+              <AvailabilityChips
+                dealershipId={dealership.id}
+                serviceType={service}
+                date={date}
+                value={startUtc}
+                onValueChange={(value) => field.onChange(value)}
+                labelledBy={ids.start}
+                describedBy={startError ? ids.startError : undefined}
+                invalid={Boolean(startError)}
+                nextDate={nextOpenDate(dealership, date)}
+                onDateChange={(next) => {
+                  form.setValue("date", next)
+                  form.setValue("startUtc", "")
+                }}
+                focusRequest={startFocusRequest}
+                vehicle={vehicle?.availability ?? undefined}
+                onVehicleRefused={vehicle?.onRefused}
+                fill={columns}
+              />
+              <FormError id={ids.startError} message={startError} />
+            </div>
           )}
         />
-      </FieldGroup>
-
-      {vehicle?.dropped && <VehicleInputsDropped unreadable={vehicle.dropped === "unreadable"} />}
-      {vehicle?.section}
-
-      <Controller
-        control={form.control}
-        name="startUtc"
-        render={({ field }) => (
-          <div ref={(element) => field.ref(element?.querySelector("[role=radio]") ?? element)} className="flex flex-col gap-2">
-            <span id={ids.start} className="text-sm font-medium">
-              Start time
-            </span>
-            <AvailabilityChips
-              dealershipId={dealership.id}
-              serviceType={service}
-              date={date}
-              value={startUtc}
-              onValueChange={(value) => field.onChange(value)}
-              labelledBy={ids.start}
-              describedBy={startError ? ids.startError : undefined}
-              invalid={Boolean(startError)}
-              nextDate={nextOpenDate(dealership, date)}
-              onDateChange={(next) => {
-                form.setValue("date", next)
-                form.setValue("startUtc", "")
-              }}
-              focusRequest={startFocusRequest}
-              vehicle={vehicle?.availability ?? undefined}
-              onVehicleRefused={vehicle?.onRefused}
-            />
-            <FormError id={ids.startError} message={startError} />
-          </div>
-        )}
-      />
+      </Column>
     </section>
+  )
+}
+
+interface ColumnProps {
+  columns: boolean
+  label?: string
+  labelledBy?: string
+  className?: string
+  children: ReactNode
+}
+
+/**
+ * One of step 1's two columns: a named group that scrolls on its own from the header to the footer (with the body's
+ * padding inside it, and room at its sides for the focus rings it would otherwise clip). In one column it adds nothing
+ * (`display: contents`), and the same element stays either way, so crossing the breakpoint keeps every field mounted,
+ * with its focus and its state.
+ */
+function Column({ columns, label, labelledBy, className, children }: ColumnProps) {
+  return (
+    <div
+      role={columns ? "group" : undefined}
+      aria-label={columns ? label : undefined}
+      aria-labelledby={columns ? labelledBy : undefined}
+      className={columns ? cn("-mx-1 min-h-0 overflow-y-auto overscroll-contain px-1 py-4", className) : "contents"}
+    >
+      {children}
+    </div>
   )
 }
 
 interface StepTwoProps {
   form: BookingFormApi
+  /** The customer on the left and the vehicle on the right (`TWO_COLUMNS`). */
+  columns: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
   problemRef: RefObject<HTMLDivElement | null>
   service: ServiceTypeResponse | undefined
@@ -1279,6 +1400,8 @@ interface StepTwoProps {
   notesFrom: "description" | "suggestions" | null
   onChangeTime: () => void
   problem: ReactNode
+  /** The returning-customer search, at the top of the customer section (Task 39b). */
+  returning: ReactNode
   /**
    * With vehicle-aware requirements on: the vehicle as declared on step 1 (in the summary), the VIN with Look up in place of
    * the plain field, and what the VIN said, under it. `null` otherwise: today's step 2.
@@ -1294,6 +1417,7 @@ const ANY = "any"
 
 function StepTwo({
   form,
+  columns,
   headingRef,
   problemRef,
   service,
@@ -1303,6 +1427,7 @@ function StepTwo({
   notesFrom,
   onChangeTime,
   problem,
+  returning,
   vehicleStep,
 }: StepTwoProps) {
   const headingId = useId()
@@ -1327,59 +1452,65 @@ function StepTwo({
         </div>
       )}
 
-      <FieldSet className="gap-4">
-        <FieldLegend variant="label">Customer</FieldLegend>
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-          <TextField form={form} name="customer.name" label="Name" autoComplete="name" className="sm:col-span-2" />
-          <TextField form={form} name="customer.email" label="Email" type="email" inputMode="email" autoComplete="email" />
-          <TextField form={form} name="customer.phone" label="Phone" type="tel" inputMode="tel" autoComplete="tel" />
-        </FieldGroup>
-      </FieldSet>
+      {/* Side by side in two columns, in the same order, so Tab still goes through the customer before the vehicle. */}
+      <div className={columns ? "grid grid-cols-2 items-start gap-x-8" : "contents"}>
+        <FieldSet className="gap-4">
+          <FieldLegend variant="label">Customer</FieldLegend>
+          {returning}
+          {/* One field to a line in a column, which also keeps the customer about as tall as the vehicle beside it. */}
+          <FieldGroup className={cn("grid gap-4", !columns && "sm:grid-cols-2")}>
+            <TextField form={form} name="customer.name" label="Name" autoComplete="name" className={columns ? undefined : "sm:col-span-2"} />
+            <TextField form={form} name="customer.email" label="Email" type="email" inputMode="email" autoComplete="email" />
+            <TextField form={form} name="customer.phone" label="Phone" type="tel" inputMode="tel" autoComplete="tel" />
+          </FieldGroup>
+        </FieldSet>
 
-      <FieldSet className="gap-4">
-        <FieldLegend variant="label">Vehicle</FieldLegend>
-        <FieldGroup className="grid gap-4 sm:grid-cols-6">
-          {vehicleStep ? (
-            <>
-              {vehicleStep.vin}
-              {vehicleStep.facts}
-            </>
-          ) : (
+        <FieldSet className="gap-4">
+          <FieldLegend variant="label">Vehicle</FieldLegend>
+          <FieldGroup className="grid gap-4 sm:grid-cols-6">
+            {vehicleStep ? (
+              <>
+                {vehicleStep.vin}
+                {vehicleStep.facts}
+              </>
+            ) : (
+              <TextField
+                form={form}
+                name="vehicle.vin"
+                label="VIN"
+                autoCapitalize="characters"
+                spellCheck={false}
+                autoComplete="off"
+                maxLength={17}
+                upperCase
+                description="17 characters, no I, O or Q"
+                inputClassName="font-mono tracking-wide uppercase"
+                className="sm:col-span-6"
+              />
+            )}
             <TextField
               form={form}
-              name="vehicle.vin"
-              label="VIN"
+              name="vehicle.registration"
+              label="Registration"
               autoCapitalize="characters"
               spellCheck={false}
               autoComplete="off"
-              maxLength={17}
+              maxLength={16}
               upperCase
-              description="17 characters, no I, O or Q"
               inputClassName="font-mono tracking-wide uppercase"
-              className="sm:col-span-6"
+              className="sm:col-span-2"
             />
-          )}
-          <TextField
-            form={form}
-            name="vehicle.registration"
-            label="Registration"
-            autoCapitalize="characters"
-            spellCheck={false}
-            autoComplete="off"
-            maxLength={16}
-            upperCase
-            inputClassName="font-mono tracking-wide uppercase"
-            className="sm:col-span-2"
-          />
-          <TextField form={form} name="vehicle.make" label="Make" autoComplete="off" className="sm:col-span-2" />
-          <TextField form={form} name="vehicle.model" label="Model" autoComplete="off" className="sm:col-span-2" />
-        </FieldGroup>
-      </FieldSet>
+            <TextField form={form} name="vehicle.make" label="Make" autoComplete="off" className="sm:col-span-2" />
+            <TextField form={form} name="vehicle.model" label="Model" autoComplete="off" className="sm:col-span-2" />
+          </FieldGroup>
+        </FieldSet>
+      </div>
 
       <FieldSet className="gap-4">
         <FieldLegend variant="label">Preferences (optional)</FieldLegend>
         {schedule && (
-          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          // Under the customer and the vehicle in two columns, on the same lines.
+          <FieldGroup className={cn("grid gap-4 sm:grid-cols-2", columns && "gap-x-8")}>
             <ResourceSelect form={form} name="preferredBayId" label="Preferred bay" anyLabel="Any free bay" options={bays} />
             <ResourceSelect
               form={form}
@@ -1722,6 +1853,10 @@ function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPi
   // Signed out or refused for the role: the app's session prompt says what to do (components/auth/session-watch.tsx).
   if (status === 401 || status === 403) {
     return <ProblemAlert tone="warning" title={authRefusalTitle(status, "book")} error={error} focusRef={alertRef} />
+  }
+
+  if (slug === "concurrency-conflict") {
+    return <ProblemAlert tone="warning" title={problem?.title ?? "Concurrency conflict"} error={error} onRetry={onRetry} retrying={busy} focusRef={alertRef} />
   }
 
   if (status !== undefined && status < 500) {

@@ -378,8 +378,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         await SaveAsync(workshop.Book(TestData.LondonTime(9)));
-        var dealershipId = workshop.Dealership.Id.ToString();
-
         var spans = new ConcurrentQueue<Activity>();
         using var activities = new ActivityListener
         {
@@ -388,7 +386,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
             ActivityStopped = spans.Enqueue,
         };
         ActivitySource.AddActivityListener(activities);
-        var durations = new ConcurrentQueue<(double Value, string? DealershipId)>();
+        var durations = new ConcurrentQueue<(double Value, KeyValuePair<string, object?>[] Tags)>();
         var slotCounts = new ConcurrentQueue<long>();
         using var meters = new MeterListener
         {
@@ -401,7 +399,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
             },
         };
         meters.SetMeasurementEventCallback<double>((_, value, tags, _) =>
-            durations.Enqueue((value, tags.ToArray().SingleOrDefault(t => t.Key == "dealership.id").Value as string)));
+            durations.Enqueue((value, tags.ToArray())));
         meters.SetMeasurementEventCallback<long>((_, value, _, _) => slotCounts.Enqueue(value));
         meters.Start();
 
@@ -413,7 +411,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         span.GetTagItem("availability.candidates_technicians").ShouldBe(2);
         span.GetTagItem("availability.slots_returned").ShouldBe(availability.Slots.Count);
         var duration = durations.ShouldHaveSingleItem();
-        duration.DealershipId.ShouldBe(dealershipId);
+        duration.Tags.ShouldBeEmpty("dealership ids belong to spans and logs, never metric labels");
         duration.Value.ShouldBeGreaterThan(0, "a latency is real elapsed time, not the injected (here frozen) business clock");
         slotCounts.ShouldBe([availability.Slots.Count]);
     }

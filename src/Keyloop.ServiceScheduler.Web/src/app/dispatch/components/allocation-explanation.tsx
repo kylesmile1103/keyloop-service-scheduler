@@ -16,8 +16,13 @@ interface AllocationExplanationViewProps {
   /** The service's own needs (the catalogue's), for the skills the sentence names. */
   service: Pick<ServiceTypeResponse, "requiredCertifications" | "requiredBayCapabilities"> | undefined
   roster: Roster | undefined
-  /** The vehicle's profile and its declaration (who and why): the details sheet shows it, the booked state does not. */
+  /** The vehicle's profile and its declaration (who and why): the details show it, the booked state does not. */
   showProfile?: boolean
+  /**
+   * Its own hairline frame and heading (the booked state). The appointment's details show it inside the Job card's
+   * disclosure instead, which names it: no frame, no heading, the section named "Why this allocation" all the same.
+   */
+  framed?: boolean
   className?: string
 }
 
@@ -27,7 +32,15 @@ interface AllocationExplanationViewProps {
  * level the job needed and the rules that set it, and why a preferred bay or technician was not chosen. Private: it comes
  * from the role-protected record or the booking's own answer, never from the public schedule.
  */
-export function AllocationExplanationView({ appointment, allocation, service, roster, showProfile = false, className }: AllocationExplanationViewProps) {
+export function AllocationExplanationView({
+  appointment,
+  allocation,
+  service,
+  roster,
+  showProfile = false,
+  framed = true,
+  className,
+}: AllocationExplanationViewProps) {
   const headingId = useId()
   const explained = explainBooking(appointment, allocation, service, roster)
   const level = hvLevelOf(allocation.minimumHvLevel)
@@ -36,14 +49,17 @@ export function AllocationExplanationView({ appointment, allocation, service, ro
 
   return (
     <section
-      aria-labelledby={headingId}
+      aria-labelledby={framed ? headingId : undefined}
+      aria-label={framed ? undefined : "Why this allocation"}
       data-slot="allocation-explanation"
-      className={cn("flex flex-col gap-3 rounded-xl border border-border p-3 text-sm", className)}
+      className={cn("flex flex-col gap-3 text-sm", framed && "rounded-xl border border-border p-3", className)}
     >
-      <h3 id={headingId} className="flex items-center gap-2 font-heading text-sm font-semibold">
-        <Route aria-hidden="true" className="size-4 text-muted-foreground" />
-        Why this allocation
-      </h3>
+      {framed && (
+        <h3 id={headingId} className="flex items-center gap-2 font-heading text-sm font-semibold">
+          <Route aria-hidden="true" className="size-4 text-muted-foreground" />
+          Why this allocation
+        </h3>
+      )}
       <div className="flex flex-col gap-1.5 text-pretty">
         <p>{explained.technician}</p>
         <p className="text-muted-foreground">{explained.bay}</p>
@@ -79,7 +95,13 @@ export function AllocationExplanationView({ appointment, allocation, service, ro
       {showProfile && profile && (
         <div className="flex flex-col gap-2 border-t pt-3">
           <p className="text-xs font-semibold">Vehicle as booked</p>
-          <dl className="grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-sm">
+          <dl
+            className={cn(
+              "grid items-center gap-x-3 gap-y-1.5 text-sm",
+              // Inside the details' Job card its values line up with the card's own rows.
+              framed ? "grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)]" : "grid-cols-[6rem_minmax(0,1fr)]"
+            )}
+          >
             <dt className="text-muted-foreground">Powertrain</dt>
             <dd className="flex flex-wrap items-center gap-1.5">
               {profile.powertrain === "Unknown" ? "Unknown, planned as high-voltage" : powertrainLabels[profile.powertrain]}

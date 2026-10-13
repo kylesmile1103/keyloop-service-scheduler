@@ -98,6 +98,36 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("cloudflare_enabled", "Notifications:Provider", "Cloudflare", true, "Cloudflare email adapter is not implemented yet")]
+    [InlineData("cloudflare_disabled", "Notifications:Provider", "Cloudflare", false, "Cloudflare email adapter is not implemented yet")]
+    [InlineData("validation", "Scheduling:SlotGranularityMinutes", "90", false, "SlotGranularityMinutes")]
+    [InlineData("binding", "Scheduling:SlotGranularityMinutes", "abc", false, "Scheduling:SlotGranularityMinutes")]
+    public async Task Startup_failure_remains_clear_when_the_factory_is_slow_to_start(
+        string name, string key, string value, bool notificationsEnabled, string expectedMessage)
+    {
+        var connectionString = await pg.CreateEmptyDatabaseAsync($"slow_startup_{name}", Ct);
+        await using var factory = new SchedulerApiFactory(connectionString, TestData.Clock(), hostStartDelay: TimeSpan.FromSeconds(1))
+            .WithWebHostBuilder(builder => builder.UseSetting(key, value)
+                .UseSetting("Notifications:Enabled", notificationsEnabled.ToString()));
+
+        var failure = Should.Throw<Exception>(() => factory.CreateClient());
+
+        Find<ObjectDisposedException>(failure).ShouldBeNull(failure.ToString());
+        failure.ToString().ShouldContain(expectedMessage);
+        if (name == "validation")
+        {
+            Find<OptionsValidationException>(failure).ShouldNotBeNull(failure.ToString()).OptionsType.ShouldBe(typeof(SchedulingOptions));
+        }
+
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(Ct);
+        await using var command = new NpgsqlCommand("""
+            SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL OR to_regclass('notification_outbox') IS NOT NULL
+            """, connection);
+        ((bool)(await command.ExecuteScalarAsync(Ct))!).ShouldBeFalse("startup failure precedes migrations and notification database work");
+    }
+
+    [Theory]
     [InlineData("application/json")]
     [InlineData("text/plain")]
     public async Task Rate_limited_request_is_429_with_Retry_After_whatever_the_client_accepts(string accept)

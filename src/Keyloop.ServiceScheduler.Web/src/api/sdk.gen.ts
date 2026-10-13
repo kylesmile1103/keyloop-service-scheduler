@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, ConfirmTechnicianHvLevelData, ConfirmTechnicianHvLevelErrors, ConfirmTechnicianHvLevelResponses, CreateBayData, CreateBayErrors, CreateBayResponses, CreateTechnicianData, CreateTechnicianErrors, CreateTechnicianResponses, EditBayData, EditBayErrors, EditBayResponses, EditRequirementPolicyData, EditRequirementPolicyErrors, EditRequirementPolicyResponses, EditTechnicianData, EditTechnicianErrors, EditTechnicianResponses, GetAdminBayData, GetAdminBayErrors, GetAdminBayResponses, GetAdminHistoryData, GetAdminHistoryErrors, GetAdminHistoryResponses, GetAdminTechnicianData, GetAdminTechnicianErrors, GetAdminTechnicianResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetFeaturesData, GetFeaturesErrors, GetFeaturesResponses, GetRequirementPolicyData, GetRequirementPolicyErrors, GetRequirementPolicyResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAdminBaysData, ListAdminBaysErrors, ListAdminBaysResponses, ListAdminTechniciansData, ListAdminTechniciansErrors, ListAdminTechniciansResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, ConfirmTechnicianHvLevelData, ConfirmTechnicianHvLevelErrors, ConfirmTechnicianHvLevelResponses, CreateBayData, CreateBayErrors, CreateBayResponses, CreateTechnicianData, CreateTechnicianErrors, CreateTechnicianResponses, EditBayData, EditBayErrors, EditBayResponses, EditRequirementPolicyData, EditRequirementPolicyErrors, EditRequirementPolicyResponses, EditTechnicianData, EditTechnicianErrors, EditTechnicianResponses, FindReturningCustomersData, FindReturningCustomersErrors, FindReturningCustomersResponses, GetAdminBayData, GetAdminBayErrors, GetAdminBayResponses, GetAdminHistoryData, GetAdminHistoryErrors, GetAdminHistoryResponses, GetAdminTechnicianData, GetAdminTechnicianErrors, GetAdminTechnicianResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetFeaturesData, GetFeaturesErrors, GetFeaturesResponses, GetRequirementPolicyData, GetRequirementPolicyErrors, GetRequirementPolicyResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAdminBaysData, ListAdminBaysErrors, ListAdminBaysResponses, ListAdminTechniciansData, ListAdminTechniciansErrors, ListAdminTechniciansResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -238,7 +238,7 @@ export const uploadBookingTriageImage = <ThrowOnError extends boolean = false>(o
 /**
  * Get the current caller and sign-in/out URLs
  *
- * Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ * Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
  */
 export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentUserData, ThrowOnError>): RequestResult<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -458,4 +458,33 @@ export const getAdminHistory = <ThrowOnError extends boolean = false>(options: O
         }],
     url: '/api/v1/dealerships/{dealershipId}/admin-history',
     ...options
+});
+
+/**
+ * Find returning customers in this dealership's booking history
+ *
+ * Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.
+ * At least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,
+ * selects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single
+ * national trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward
+ * prefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,
+ * whitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix
+ * of some name word, in any order; shorter words are ignored, and no eligible words disables name search).
+ * Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
+ * within this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all
+ * bookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.
+ * Only customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.
+ */
+export const findReturningCustomers = <ThrowOnError extends boolean = false>(options: Options<FindReturningCustomersData, ThrowOnError>): RequestResult<FindReturningCustomersResponses, FindReturningCustomersErrors, ThrowOnError> => (options.client ?? client).post<FindReturningCustomersResponses, FindReturningCustomersErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/customer-lookups',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });

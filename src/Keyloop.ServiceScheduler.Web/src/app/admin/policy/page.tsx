@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "@/components/ui/toast"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { authRefusalTitle, failureStatus, parseProblem, problemSlug } from "@/lib/problem-details"
 import { cachedCapabilities } from "@/lib/session"
@@ -106,6 +107,8 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const services = catalogue.data
 
   const [draft, setDraft] = useState<Draft | null>(null)
+  // An unpublished draft is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(draft !== null)
   const [discarded, setDiscarded] = useState(false)
   const [preview, setPreview] = useState<{ key: string; result: PolicyEditResponse } | null>(null)
   const [conflict, setConflict] = useState<{ opened: AdminPolicyResponse; current: AdminPolicyResponse; mine: RequirementRuleInput[] } | null>(null)

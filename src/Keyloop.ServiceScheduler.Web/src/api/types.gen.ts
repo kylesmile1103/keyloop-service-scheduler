@@ -457,12 +457,34 @@ export type CompetenceWarningResponse = {
  * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
  */
 export type CurrentUserResponse = {
+    /**
+     * Whether the API verified the caller's identity.
+     */
     authenticated: boolean;
+    /**
+     * The verified email; null when not authenticated.
+     */
     email: null | string;
+    /**
+     * The verified name, else null.
+     */
     displayName: null | string;
+    /**
+     * API roles in the order Admin, ServiceAdvisor, Viewer; empty without one.
+     */
     roles: Array<string>;
+    /**
+     * The same-origin Access login path, returning to `/`.
+     */
     loginUrl: string;
+    /**
+     * The hostname's Access logout path.
+     */
     logoutUrl: string;
+    /**
+     * When the verified Access token expires (its `exp`, UTC); null for an anonymous caller and for the Development identity, which has no expiry. Access issues no refresh token: renew before then by navigating to loginUrl.
+     */
+    expiresAtUtc: null | string;
 };
 
 /**
@@ -569,6 +591,16 @@ export type FeatureSwitchesResponse = {
      * Whether vehicle-aware booking inputs, availability filters and allocation explanations are enabled. Changes require an API restart.
      */
     vehicleAwareRequirements: boolean;
+};
+
+/**
+ * Transient personal-data search input, supplied only in the body.
+ */
+export type FindReturningCustomersRequest = {
+    /**
+     * Registration, email, phone or name; 2 to 100 characters after trimming.
+     */
+    query: string;
 };
 
 export type HttpValidationProblemDetails = {
@@ -848,6 +880,47 @@ export type ResourceSummary = {
      * Display name.
      */
     name: string;
+};
+
+/**
+ * Customer intake details, visible only to staff authorized to book.
+ */
+export type ReturningCustomerDetails = {
+    name: string;
+    email: string;
+    phone: string;
+};
+
+/**
+ * Intake fields from the most recent booking of a customer-and-vehicle pair; no booking free text or profile.
+ */
+export type ReturningCustomerResponse = {
+    /**
+     * Name and contact details as supplied on that booking.
+     */
+    customer: ReturningCustomerDetails;
+    /**
+     * Only the vehicle intake identifiers, make and model.
+     */
+    vehicle: ReturningVehicleDetails;
+    /**
+     * The most recent booking's start UTC, across every status.
+     */
+    lastVisitUtc: string;
+    /**
+     * Number of this dealership's bookings with the same case-insensitive email and VIN, across every status.
+     */
+    visits: number;
+};
+
+/**
+ * Vehicle intake fields only; no profile, provenance or allocation requirements.
+ */
+export type ReturningVehicleDetails = {
+    vin: string;
+    registration: string;
+    make: string;
+    model: string;
 };
 
 /**
@@ -1528,7 +1601,7 @@ export type BookAppointmentErrors = {
      */
     404: ProblemDetails;
     /**
-     * The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day.
+     * The slot is taken: every qualified bay or technician is busy (`slot-unavailable`), or the database's overlap backstop fired (`slot-conflict`, with `conflictingResource`); both carry `suggestedSlots`, the nearest bookable starts that day. Repeated requirement-policy changes answer `concurrency-conflict`: no booking committed; refresh availability and retry the booking.
      */
     409: ProblemDetails;
     /**
@@ -1889,7 +1962,7 @@ export type GetCurrentUserError = GetCurrentUserErrors[keyof GetCurrentUserError
 
 export type GetCurrentUserResponses = {
     /**
-     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.
+     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), the session's expiry, and same-origin loginUrl/logoutUrl.
      */
     200: CurrentUserResponse;
 };
@@ -2637,3 +2710,62 @@ export type GetAdminHistoryResponses = {
 };
 
 export type GetAdminHistoryResponse = GetAdminHistoryResponses[keyof GetAdminHistoryResponses];
+
+export type FindReturningCustomersData = {
+    /**
+     * Transient body-only query: registration, email, phone or name, 2..100 trimmed characters.
+     */
+    body: FindReturningCustomersRequest;
+    headers?: {
+        /**
+         * Optional request correlation UUID (36 characters, hyphenated). Missing, malformed or multiple values generate a new UUID; the response echoes the accepted or generated id.
+         */
+        'X-Request-Id'?: string;
+    };
+    path: {
+        /**
+         * Dealership whose booking history is searched.
+         */
+        dealershipId: string;
+    };
+    query?: never;
+    url: '/api/v1/dealerships/{dealershipId}/customer-lookups';
+};
+
+export type FindReturningCustomersErrors = {
+    /**
+     * query must be 2..100 trimmed characters (validation-error, errors.query); unreadable JSON is also 400.
+     */
+    400: HttpValidationProblemDetails;
+    /**
+     * Authentication required.
+     */
+    401: ProblemDetails;
+    /**
+     * BookingsWrite role required (Admin or ServiceAdvisor).
+     */
+    403: ProblemDetails;
+    /**
+     * Unknown dealership (not-found).
+     */
+    404: ProblemDetails;
+    /**
+     * The request body exceeds the configured limit.
+     */
+    413: ProblemDetails;
+    /**
+     * Too many requests (rate-limited, Retry-After).
+     */
+    429: ProblemDetails;
+};
+
+export type FindReturningCustomersError = FindReturningCustomersErrors[keyof FindReturningCustomersErrors];
+
+export type FindReturningCustomersResponses = {
+    /**
+     * Up to eight customer-and-vehicle pairs, latest visit first; an empty array when nothing matches.
+     */
+    200: Array<ReturningCustomerResponse>;
+};
+
+export type FindReturningCustomersResponse = FindReturningCustomersResponses[keyof FindReturningCustomersResponses];

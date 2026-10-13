@@ -36,10 +36,11 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
             ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.LiveDiagnosis == true));
 
         // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
+        Activity.Current?.SetTag("dealership.id", query.DealershipId.ToString());
         var started = Stopwatch.GetTimestamp();
         var response = await ComputeAsync(query, serviceTypeId, date, ct);
         SchedulerTelemetry.AvailabilityDuration.Record(
-            Stopwatch.GetElapsedTime(started).TotalMilliseconds, new KeyValuePair<string, object?>("dealership.id", query.DealershipId.ToString()));
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         SchedulerTelemetry.AvailabilitySlotsReturned.Record(response.Slots.Count);
         return response;
     }

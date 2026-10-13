@@ -7,6 +7,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "cn"
 
+import { SessionNoticeInModal } from "@/components/auth/session-banner"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -62,6 +63,8 @@ function DialogContent({
         {...props}
       >
         {children}
+        {/* When the sign-in is about to end while this is open (UI_DESIGN 11.20): the page's session banner is behind it. */}
+        <SessionNoticeInModal />
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
