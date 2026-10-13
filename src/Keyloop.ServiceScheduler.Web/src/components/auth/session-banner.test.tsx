@@ -6,9 +6,10 @@ import type { CurrentUserResponse } from "@/api/types.gen"
 import { browserNavigation } from "@/lib/session-renewal"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
+import { startCancelling } from "@/test/details"
 import { admin, anonymous, expiringAt, serviceAdvisor } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
-import { pointerClick, renderBoard } from "@/test/render-board"
+import { pointerClick, renderBoard, viewportOf } from "@/test/render-board"
 
 // Keeping a signed-in user signed in (Task 36, lib/session-renewal.ts): Access issues no refresh token, so a tab renews its
 // sign-in by navigating through the API's login path two minutes before `/me`'s expiresAtUtc, unless work is open, and says
@@ -22,6 +23,8 @@ const board = `/dispatch?dealership=${reading.id}`
 /** The page the browser shows (the memory router leaves window.location alone, and the renewal reads it), with a hash. */
 const here = `${board}#timeline`
 const renewal = `/auth/login?returnTo=${encodeURIComponent(here)}`
+/** Below 1280 px a booking's details open as the sheet, a modal over the page. */
+const SHEET_WIDTH = 1024
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed"
 /** A one-hour Access token issued at the tests' 08:30 UTC: renewed at 09:28. */
 const END = "2026-10-13T09:30:00Z"
@@ -60,11 +63,15 @@ function refocus() {
   })
 }
 
-/** Opens the Interim Service's details on the board and types a cancellation reason: work a navigation would lose. */
+/**
+ * Opens the Interim Service's details on the board and types a cancellation reason: work a navigation would lose. The
+ * caller renders the board below 1280 px (`viewportOf(SHEET_WIDTH)`), where the details are the modal sheet that covers the
+ * page's banner; wider, they dock beside the board and the banner stays in view (UI_DESIGN 11.14).
+ */
 async function typeCancellationReason() {
   fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
   const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
-  const reason = within(sheet).getByRole("textbox", { name: "Reason" })
+  const reason = startCancelling(sheet)
   fireEvent.change(reason, { target: { value: "Customer rang to rearrange" } })
   act(() => reason.focus())
   return { sheet, reason }
@@ -109,6 +116,7 @@ describe("session renewal", () => {
 
   it("with work open, says when the sign-in ends and offers Stay signed in, without taking focus or renewing on its own", async () => {
     mockBoardApi({ me: () => expiringAt(serviceAdvisor, END) })
+    viewportOf(SHEET_WIDTH)
     renderBoard(board)
     const { sheet, reason } = await typeCancellationReason()
 
@@ -138,6 +146,7 @@ describe("session renewal", () => {
 
   it("hides on Not now, then says the sign-in ended when it does, with Sign in again, and reads /me again once the API agrees", async () => {
     const api = mockBoardApi({ me: () => expiringAt(serviceAdvisor, END) })
+    viewportOf(SHEET_WIDTH)
     renderBoard(board)
     await typeCancellationReason()
     await until("2026-10-13T09:28:00Z")
@@ -186,6 +195,7 @@ describe("session renewal", () => {
         })
       },
     })
+    viewportOf(SHEET_WIDTH)
     renderBoard(board)
     const { sheet } = await typeCancellationReason()
     fireEvent.click(within(sheet).getByRole("button", { name: "Cancel appointment" }))
