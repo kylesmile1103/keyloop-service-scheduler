@@ -33,16 +33,17 @@ env:
 
 jobs:
   plan:
-    # Repository copies are necessary here: a job without an environment cannot read production secrets/variables.
-    # The repository token grants registry push and instance read, never Workers deploy or Secrets Store access.
+    # Main-only environment without reviewers; its separate token permits registry push and instance read.
+    # Workers deploy and Secrets Store permissions belong only to the production token.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event != 'pull_request' &&
+       github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.path == '.github/workflows/ci.yml' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: plan
     permissions:
       contents: read
       actions: read # Check CI evidence and the repository's production reviewer rule.
@@ -61,20 +62,6 @@ jobs:
       KEYLOOP_EMAIL_ACCOUNT_ID: ${{ secrets.KEYLOOP_EMAIL_ACCOUNT_ID }}
       KEYLOOP_EMAIL_ALLOWED_ADDRESSES: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_ADDRESSES }}
       KEYLOOP_EMAIL_ALLOWED_DOMAINS: ${{ secrets.KEYLOOP_EMAIL_ALLOWED_DOMAINS }}
-      KEYLOOP_ACCESS_TEAM_DOMAIN: ${{ vars.KEYLOOP_ACCESS_TEAM_DOMAIN }}
-      KEYLOOP_TRIAGE_ENABLED: ${{ vars.KEYLOOP_TRIAGE_ENABLED }}
-      KEYLOOP_TRIAGE_GATEWAY_ID: ${{ vars.KEYLOOP_TRIAGE_GATEWAY_ID }}
-      KEYLOOP_TRIAGE_BUCKET: ${{ vars.KEYLOOP_TRIAGE_BUCKET }}
-      KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: ${{ vars.KEYLOOP_VEHICLE_AWARE_REQUIREMENTS }}
-      KEYLOOP_API_OTLP_ENABLED: ${{ vars.KEYLOOP_API_OTLP_ENABLED }}
-      KEYLOOP_GRAFANA_OTLP_ENDPOINT: ${{ vars.KEYLOOP_GRAFANA_OTLP_ENDPOINT }}
-      KEYLOOP_GRAFANA_INSTANCE_ID: ${{ vars.KEYLOOP_GRAFANA_INSTANCE_ID }}
-      KEYLOOP_NOTIFICATIONS_ENABLED: ${{ vars.KEYLOOP_NOTIFICATIONS_ENABLED }}
-      KEYLOOP_EMAIL_SENDING_ENABLED: ${{ vars.KEYLOOP_EMAIL_SENDING_ENABLED }}
-      KEYLOOP_OTLP_RELAY_ENABLED: ${{ vars.KEYLOOP_OTLP_RELAY_ENABLED }}
-      KEYLOOP_EMAIL_TRANSPORT: ${{ vars.KEYLOOP_EMAIL_TRANSPORT }}
-      KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY: ${{ vars.KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY }}
-      KEYLOOP_EMAIL_MAX_PER_DAY: ${{ vars.KEYLOOP_EMAIL_MAX_PER_DAY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,7 +82,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=main&status=completed&per_page=100" \
               | jq -e --arg sha "$sha" --arg repo "$GITHUB_REPOSITORY" '
                   any(.workflow_runs[]; .head_sha == $sha and .head_branch == "main" and
-                    .head_repository.full_name == $repo and .event != "pull_request" and .conclusion == "success")
+                    .head_repository.full_name == $repo and .event == "push" and .conclusion == "success")
                 ' > /dev/null || { echo 'This SHA has no successful main CI run.' >&2; exit 1; }
           fi
           printf 'sha=%s\ntag=%s\n' "$sha" "${sha:0:12}" >> "$GITHUB_OUTPUT"
@@ -127,6 +114,22 @@ jobs:
             exit 1
           fi
       - name: Build the SPA and edge for the checked SHA
+        # Read environment variables on the runner after plan is declared.
+        env:
+          KEYLOOP_ACCESS_TEAM_DOMAIN: ${{ vars.KEYLOOP_ACCESS_TEAM_DOMAIN }}
+          KEYLOOP_TRIAGE_ENABLED: ${{ vars.KEYLOOP_TRIAGE_ENABLED }}
+          KEYLOOP_TRIAGE_GATEWAY_ID: ${{ vars.KEYLOOP_TRIAGE_GATEWAY_ID }}
+          KEYLOOP_TRIAGE_BUCKET: ${{ vars.KEYLOOP_TRIAGE_BUCKET }}
+          KEYLOOP_VEHICLE_AWARE_REQUIREMENTS: ${{ vars.KEYLOOP_VEHICLE_AWARE_REQUIREMENTS }}
+          KEYLOOP_API_OTLP_ENABLED: ${{ vars.KEYLOOP_API_OTLP_ENABLED }}
+          KEYLOOP_GRAFANA_OTLP_ENDPOINT: ${{ vars.KEYLOOP_GRAFANA_OTLP_ENDPOINT }}
+          KEYLOOP_GRAFANA_INSTANCE_ID: ${{ vars.KEYLOOP_GRAFANA_INSTANCE_ID }}
+          KEYLOOP_NOTIFICATIONS_ENABLED: ${{ vars.KEYLOOP_NOTIFICATIONS_ENABLED }}
+          KEYLOOP_EMAIL_SENDING_ENABLED: ${{ vars.KEYLOOP_EMAIL_SENDING_ENABLED }}
+          KEYLOOP_OTLP_RELAY_ENABLED: ${{ vars.KEYLOOP_OTLP_RELAY_ENABLED }}
+          KEYLOOP_EMAIL_TRANSPORT: ${{ vars.KEYLOOP_EMAIL_TRANSPORT }}
+          KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY: ${{ vars.KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY }}
+          KEYLOOP_EMAIL_MAX_PER_DAY: ${{ vars.KEYLOOP_EMAIL_MAX_PER_DAY }}
         run: bash deploy/cloudflare/scripts/build-github-edge.sh
       - name: Validate prebuilt deployment and write safe plan summary
         working-directory: deploy/cloudflare
@@ -265,10 +268,10 @@ jobs:
     needs: [plan, deploy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: plan
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      KEYLOOP_CONTAINER_APPLICATION_ID: ${{ vars.KEYLOOP_CONTAINER_APPLICATION_ID }}
       EXPECTED_VEHICLE_AWARE_REQUIREMENTS: ${{ needs.deploy.outputs.vehicle-aware }}
     steps:
       - uses: actions/checkout@v4
@@ -284,4 +287,6 @@ jobs:
         working-directory: deploy/cloudflare
         run: npm ci --no-audit --no-fund
       - name: Verify live rollout and public demo (six-minute deadline)
+        env:
+          KEYLOOP_CONTAINER_APPLICATION_ID: ${{ vars.KEYLOOP_CONTAINER_APPLICATION_ID }}
         run: bash deploy/cloudflare/scripts/verify-github-deploy.sh

@@ -11,17 +11,26 @@ reviewer=${2:?Supply the stakeholder GitHub login}
 command -v gh > /dev/null
 command -v jq > /dev/null
 
-# Required-reviewer protection is repository configuration, not a workflow setting.
+# Environment protections are repository configuration, not workflow settings.
 reviewer_id=$(gh api "users/$reviewer" --jq '.id')
-jq -n --argjson id "$reviewer_id" '{wait_timer: 0, prevent_self_review: false,
-  reviewers: [{type: "User", id: $id}],
-  deployment_branch_policy: {protected_branches: false, custom_branch_policies: true}}' \
-  | gh api --method PUT "repos/$repo/environments/production" --input - > /dev/null
-policies=$(gh api "repos/$repo/environments/production/deployment-branch-policies" --paginate --slurp)
-if ! jq -e 'any(.[].branch_policies[]; .name == "main" and .type == "branch")' <<< "$policies" > /dev/null; then
-  gh api --method POST "repos/$repo/environments/production/deployment-branch-policies" \
-    -f name=main -f type=branch > /dev/null
-fi
+for environment in plan production; do
+  jq -n --arg environment "$environment" --argjson id "$reviewer_id" \
+    '{wait_timer: 0, prevent_self_review: false,
+      reviewers: (if $environment == "production" then [{type: "User", id: $id}] else [] end),
+      deployment_branch_policy: {protected_branches: false, custom_branch_policies: true}}' \
+    | gh api --method PUT "repos/$repo/environments/$environment" --input - > /dev/null
+  policies=$(gh api "repos/$repo/environments/$environment/deployment-branch-policies" --paginate --slurp)
+  if ! jq -e 'any(.[].branch_policies[]; .name == "main" and .type == "branch")' <<< "$policies" > /dev/null; then
+    gh api --method POST "repos/$repo/environments/$environment/deployment-branch-policies" \
+      -f name=main -f type=branch > /dev/null
+  fi
+  # Enforce main only even when a prior configuration allowed other branches or tags.
+  policy_ids=$(jq -r '.[].branch_policies[] | select(.name != "main" or .type != "branch") | .id' <<< "$policies")
+  while IFS= read -r policy_id; do
+    [[ -n "$policy_id" ]] || continue
+    gh api --method DELETE "repos/$repo/environments/$environment/deployment-branch-policies/$policy_id" > /dev/null
+  done <<< "$policy_ids"
+done
 
 variables=(
   KEYLOOP_ACCESS_TEAM_DOMAIN KEYLOOP_TRIAGE_ENABLED KEYLOOP_TRIAGE_GATEWAY_ID KEYLOOP_TRIAGE_BUCKET
@@ -51,7 +60,7 @@ for name in "${variables[@]}"; do
   esac
   # stdin is also used for variables. Empty optional values mean the settings.ts default.
   printf '%s' "$value" | gh variable set "$name" --repo "$repo" --env production > /dev/null
-  printf '%s' "$value" | gh variable set "$name" --repo "$repo" > /dev/null
+  printf '%s' "$value" | gh variable set "$name" --repo "$repo" --env plan > /dev/null
 done
 
 for name in "${secrets[@]}"; do
@@ -68,20 +77,20 @@ for name in "${secrets[@]}"; do
   esac
   printf '%s' "$value" | gh secret set "$name" --repo "$repo" --env production > /dev/null
   if [[ "$name" == CLOUDFLARE_API_TOKEN ]]; then
-    # The ungated plan gets a separate token. Do not give it the production Worker's deploy permissions.
+    # The plan environment gets a separate token without the production Worker's deploy permissions.
     plan_token=${CLOUDFLARE_PLAN_API_TOKEN-}
     if [[ -z "$plan_token" ]]; then
       printf 'CLOUDFLARE_PLAN_API_TOKEN (registry push and instance read only, hidden): ' > /dev/tty
       IFS= read -r -s plan_token < /dev/tty
       printf '\n' > /dev/tty
     fi
-    [[ -n "$plan_token" ]] || { echo 'The repository plan token is required.' >&2; exit 1; }
-    printf '%s' "$plan_token" | gh secret set "$name" --repo "$repo" > /dev/null
+    [[ -n "$plan_token" ]] || { echo 'The plan environment token is required.' >&2; exit 1; }
+    printf '%s' "$plan_token" | gh secret set "$name" --repo "$repo" --env plan > /dev/null
     unset plan_token
   elif [[ "$name" != NEON_OWNER_CONNECTION ]]; then
-    printf '%s' "$value" | gh secret set "$name" --repo "$repo" > /dev/null
+    printf '%s' "$value" | gh secret set "$name" --repo "$repo" --env plan > /dev/null
   fi
   unset value
 done
-echo 'Production reviewer and main policy configured; environment inputs and repository plan copies set.'
-echo 'In Settings, disable administrator bypass, remove old non-main branch policies, and confirm required review is active.'
+echo 'Plan and production main-only policies configured; production reviewer and both environment inputs set.'
+echo 'In Settings, disable production administrator bypass, confirm its required review, and remove any old repository input copies.'
