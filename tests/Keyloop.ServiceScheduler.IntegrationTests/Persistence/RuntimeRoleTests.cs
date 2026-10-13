@@ -87,6 +87,8 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
         _client?.Dispose();
         if (_host is not null) { await _host.DisposeAsync(); }
         if (_factory is not null) { await _factory.DisposeAsync(); }
+        // Each test has its own database and two pools (owner and runtime); release them so the shared server's connections do not run out.
+        if (_ownerConnection is not null) { await pg.ReleaseDatabaseAsync(_database, _ownerConnection, _runtimeConnection ?? _ownerConnection); }
     }
 
     [Fact]

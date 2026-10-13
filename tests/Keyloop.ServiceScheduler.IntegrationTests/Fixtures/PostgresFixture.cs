@@ -73,6 +73,26 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>Creates a new, empty database in the same container (dropping any previous one of that name) and returns its connection string.</summary>
+    /// <summary>
+    /// Releases a per-test database: closes the idle pooled connections of the given connection strings (Npgsql keeps a pool per
+    /// connection string for minutes after its last use, which a disposed host does not close) and drops the database. Tests that
+    /// create a database per test call this from their teardown, so a run never accumulates idle connections up to
+    /// max_connections (53300 "too many clients").
+    /// </summary>
+    public async Task ReleaseDatabaseAsync(string name, params string[] connectionStrings)
+    {
+        foreach (var connectionString in connectionStrings)
+        {
+            await using var pooled = new NpgsqlConnection(connectionString);
+            NpgsqlConnection.ClearPool(pooled);
+        }
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        var quoted = new NpgsqlCommandBuilder().QuoteIdentifier(name);
+        await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {quoted} WITH (FORCE)", connection);
+        await drop.ExecuteNonQueryAsync();
+    }
+
     public async Task<string> CreateEmptyDatabaseAsync(string name, CancellationToken ct)
     {
         await using var connection = new NpgsqlConnection(ConnectionString);
