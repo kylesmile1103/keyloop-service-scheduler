@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CalendarRange,
   ClipboardList,
+  History,
   LayoutDashboard,
   ListChecks,
   Scale,
@@ -71,6 +72,7 @@ const data = {
         { title: "Services", url: "/resources/services", icon: ListChecks, carry: [DEALERSHIP_PARAM] },
         // The Admin's pages (Task 30b): the API answers only an Admin, so only an Admin is shown them.
         { title: "Requirement policy", url: "/resources/policy", icon: Scale, carry: [DEALERSHIP_PARAM], adminOnly: true },
+        { title: "Change history", url: "/resources/history", icon: History, carry: [DEALERSHIP_PARAM], adminOnly: true },
       ],
     },
     {
