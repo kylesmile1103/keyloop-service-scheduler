@@ -1,5 +1,21 @@
 # Unified Service Scheduler
 
+[![CI](https://github.com/kylesmile1103/keyloop-service-scheduler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kylesmile1103/keyloop-service-scheduler/actions/workflows/ci.yml)
+[![Deploy public demo](https://github.com/kylesmile1103/keyloop-service-scheduler/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/kylesmile1103/keyloop-service-scheduler/actions/workflows/deploy.yml)
+[![Live demo](https://img.shields.io/website?url=https%3A%2F%2Fkeyloop.kylesmile.me%2Fapi%2Fready&label=live%20demo&up_message=ready&up_color=1AA7A0&down_message=down&down_color=CC7A20&logo=cloudflare&logoColor=white)](https://keyloop.kylesmile.me)
+[![AI triage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fkeyloop.kylesmile.me%2Fapi%2Fv1%2Fbooking-triage&query=%24.provider&label=AI%20triage&color=3DA5FF&logo=cloudflare&logoColor=white)](#optional-booking-intake-triage)
+[![Concurrency proof](https://img.shields.io/badge/concurrency%20proof-30%20callers%20%C3%97%205%20rounds%20%E2%86%92%201%20winner-1AA7A0?labelColor=11181C)](#run-the-tests)
+
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](global.json)
+[![Aspire 13.6](https://img.shields.io/badge/Aspire-13.6-512BD4?logo=dotnet&logoColor=white)](src/Keyloop.ServiceScheduler.AppHost)
+[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20on%20Neon-4169E1?logo=postgresql&logoColor=white)](docs/ARCHITECTURE.md#7-concurrency-and-data-integrity)
+[![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](src/Keyloop.ServiceScheduler.Web)
+[![Cloudflare Workers + Containers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20Containers-F38020?logo=cloudflare&logoColor=white)](deploy/cloudflare/DEPLOY-RUNBOOK.md)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-traces%20%C2%B7%20metrics%20%C2%B7%20logs-425CC7?logo=opentelemetry&logoColor=white)](#observability)
+[![OpenAPI](https://img.shields.io/badge/API%20reference-Scalar-6BA539?logo=openapiinitiative&logoColor=white)](https://keyloop.kylesmile.me/scalar/v1)
+
+**[Live demo](https://keyloop.kylesmile.me)** · **[API reference](https://keyloop.kylesmile.me/scalar/v1)** · **[System design](docs/SYSTEM_DESIGN.md)** · **[Architecture](docs/ARCHITECTURE.md)** · **[AI collaboration](#ai-collaboration-narrative)**
+
 A dealership appointment needs a compatible service bay and a certified technician for its entire duration. This Keyloop Principal Engineer take-home implements that booking engine with .NET 10, vertical slices and a DDD domain, EF Core and PostgreSQL, plus a React dispatch board for demonstrating bookings, conflicts and cancellations. PostgreSQL owns the overlap invariant; Aspire provides the local application model and correlated telemetry. The backend is the evaluated deliverable, and the board is its demo harness.
 
 **Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Clef-flash through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. When it is on, the dispatch board's booking dialog offers it in its first step: describe the issue, get suggested services, and use one to fill in the service and day.
