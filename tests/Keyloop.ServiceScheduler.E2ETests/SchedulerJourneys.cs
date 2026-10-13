@@ -201,8 +201,18 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     [Fact]
     public Task Electric_battery_work_offers_only_HV3_competence_and_explains_allocation() => Run(nameof(Electric_battery_work_offers_only_HV3_competence_and_explains_allocation), async journey =>
     {
+        // Ben must be free at the start chosen: journeys before this one in the same stack book the day's first slots, and an
+        // Interim Service booked by the browser took him at the first EV slot, so preferring him was rightly answered
+        // "preferred-technician:busy" (Task 37). The first slot the dialog offers a battery electric vehicle with Ben free.
+        static DateTimeOffset At(JsonNode node, string property) => DateTimeOffset.Parse(node.String(property), CultureInfo.InvariantCulture);
+        var benBusy = (await stack.ScheduleAsync()).Appointments().Where(a => a["technician"]!.String("name") == "Ben Okafor")
+            .Select(a => (Start: At(a, "startUtc"), End: At(a, "endUtc"))).ToArray();
+        var battery = stack.Services.OfType<JsonObject>().Single(service => service.String("name") == "EV Battery Health Check");
+        var availability = await stack.GetAsync($"{stack.DealershipPath}/availability?serviceTypeId={battery.String("id")}&date={stack.Date}&powertrain=BatteryElectric&vehicleClass=Unknown");
+        var start = availability["slots"]!.AsArray().OfType<JsonObject>()
+            .First(slot => !benBusy.Any(busy => busy.Start < At(slot, "endUtc") && At(slot, "startUtc") < busy.End));
         await journey.GotoBoardAsync();
-        var dialog = await journey.PrepareBookingAsync(Customer.Unique(), "EV Battery Health Check", electric: true);
+        var dialog = await journey.PrepareBookingAsync(Customer.Unique(), "EV Battery Health Check", electric: true, startLocal: start.String("startLocal")[11..16]);
         await dialog.GetByRole(AriaRole.Combobox, new() { Name = "Preferred technician", Exact = true }).ClickAsync();
         await Expect(journey.Page.GetByRole(AriaRole.Option)).ToHaveCountAsync(2);
         var names = await journey.Page.GetByRole(AriaRole.Option).AllTextContentsAsync();
