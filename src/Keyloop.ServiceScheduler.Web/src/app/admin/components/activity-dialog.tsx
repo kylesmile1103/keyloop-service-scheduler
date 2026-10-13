@@ -1,6 +1,7 @@
 import { useDataProvider } from "@refinedev/core"
 import { LoaderCircle } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { flushSync } from "react-dom"
 
 import type { DealershipResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
@@ -96,6 +97,11 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
   const turningOff = record.isActive
   const { title, action, consequence } = words(record, turningOff)
   const [conflict, setConflict] = useState<Conflict<TRecord> | null>(null)
+  // The footer's action and the comparison's "anyway" take themselves away: focus moves through Cancel, which stays, then to
+  // the comparison (a 412) or back to the action (a retry), so it never falls to the dialog itself (UI_DESIGN 11.24).
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const conflictRef = useRef<HTMLElement>(null)
   const change = useWriteMutation<TRecord, SchedulerHttpError, Variables<TWrite>>({
     writes: "admin",
     mutationFn: async ({ body, ifMatch }, write) => {
@@ -108,7 +114,13 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
       return answer.data as unknown as TRecord
     },
     onSuccess: onDone,
-    onError: (error) => setConflict(conflictOf(shownFailure(error)) as Conflict<TRecord> | null),
+    onError: (error) => {
+      const stale = conflictOf(shownFailure(error)) as Conflict<TRecord> | null
+      if (!stale) return setConflict(null)
+      cancelRef.current?.focus()
+      flushSync(() => setConflict(stale))
+      conflictRef.current?.focus()
+    },
   })
   const opened = writeOf(record)
   const mine = { ...opened, isActive: !turningOff }
@@ -119,7 +131,11 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
     const sendWrite = change.begin()
     if (!sendWrite) return
     const body = from ? reapplied(fields, opened, writeOf(from), mine) : mine
-    setConflict(null)
+    if (conflict) {
+      cancelRef.current?.focus()
+      flushSync(() => setConflict(null))
+      actionRef.current?.focus()
+    }
     sendWrite({ body, ifMatch: resourceTag(from ? from.version : record.version) })
   }
 
@@ -134,6 +150,7 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
       )}
       {conflict && (
         <ConflictPanel
+          ref={conflictRef}
           title={`Someone else changed ${record.name}`}
           rows={conflictRows(fields, opened, writeOf(conflict.current), mine)}
           actions={
@@ -153,11 +170,12 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
         />
       )}
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose} className="cursor-pointer">
+        <Button ref={cancelRef} type="button" variant="outline" onClick={onClose} className="cursor-pointer">
           Cancel
         </Button>
         {!conflict && (
           <Button
+            ref={actionRef}
             type="button"
             variant={turningOff ? "destructive" : "default"}
             disabled={change.isPending}

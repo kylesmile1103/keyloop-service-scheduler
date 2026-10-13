@@ -204,6 +204,31 @@ describe("editing bays, as an Admin", () => {
     await waitFor(async () => expect(rowOf(await table(), "Bay 4 - EV")).toHaveTextContent("Out of service"))
   })
 
+  it("compares when another Admin saved the bay first, keeping focus in the dialog through the action anyway", async () => {
+    const { server, api } = setup()
+
+    await table()
+    await rowAction("Bay 4 - EV", "Take out of service")
+    const dialog = await screen.findByRole("dialog", { name: "Take Bay 4 - EV out of service?" })
+    const now = server.editedElsewhere.bay(bays.ev.id, { name: "Bay 4 - Electric" })
+    const action = within(dialog).getByRole("button", { name: "Take out of service" })
+    action.focus()
+    fireEvent.click(action)
+
+    // The pressed action goes with the comparison's arrival: focus is on the comparison.
+    const conflict = await within(dialog).findByRole("region", { name: "Someone else changed Bay 4 - EV" })
+    expect(conflict).toHaveFocus()
+    fireEvent.click(within(conflict).getByRole("button", { name: "Take out of service anyway" }))
+    // The anyway action goes with the comparison: focus is back on the dialog's action, not the dialog.
+    expect(within(dialog).getByRole("button", { name: "Take out of service" })).toHaveFocus()
+
+    expect(await screen.findByText("Bay taken out of service")).toBeInTheDocument()
+    const [stale, sent] = writes(api.requests, "PUT")
+    expect(stale.headers.get("If-Match")).toBe(etagOf(EV_VERSION))
+    expect(sent.headers.get("If-Match")).toBe(etagOf(now.version))
+    expect(await bodyOf(sent)).toMatchObject({ name: "Bay 4 - Electric", isActive: false })
+  })
+
   it("returns a bay to service", async () => {
     const { api } = setup({ bays: (records) => records.map((record) => (record.id === bays.ev.id ? { ...record, isActive: false } : record)) })
 

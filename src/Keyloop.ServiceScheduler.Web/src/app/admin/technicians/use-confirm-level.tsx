@@ -11,6 +11,7 @@ import { ConflictPanel } from "../components/conflict-panel"
 import { type Conflict, confirmHvLevel, conflictOf, resourceTag } from "../lib/admin-api"
 import { conflictRows, technicianFields, technicianWrite } from "../lib/changes"
 import type { TechnicianRecord } from "../lib/resources"
+import { byLabel, pastConfirmed } from "../lib/focus"
 import { adminRecordOf } from "./admin-record"
 
 interface ConfirmLevel {
@@ -33,6 +34,10 @@ export function useConfirmLevel({ dealership, onDone }: { dealership: Dealership
   const [failure, setFailure] = useState<{ name: string; error: unknown } | null>(null)
   // The row each confirmation was sent for, to compare with the record a 412 returns.
   const rowsById = useRef(new Map<string, TechnicianRecord>())
+  // Who the dialog was about, and whether their level was confirmed through it: on closing, focus goes back to their Confirm
+  // button if it is still there, else (confirmed, so the button and maybe the review note go) past it (UI_DESIGN 11.24).
+  const dialogName = useRef<string | null>(null)
+  const confirmedName = useRef<string | null>(null)
   const confirm = useWriteMutation({
     writes: "admin",
     mutationFn: ({ id, ifMatch }: { id: string; name: string; ifMatch: string }, write) =>
@@ -45,6 +50,7 @@ export function useConfirmLevel({ dealership, onDone }: { dealership: Dealership
         return next
       }),
     onSuccess: (saved) => {
+      confirmedName.current = saved.name
       setStale(null)
       setFailure(null)
       onDone(saved)
@@ -52,7 +58,11 @@ export function useConfirmLevel({ dealership, onDone }: { dealership: Dealership
     onError: (error, variables) => {
       const conflict = conflictOf<AdminTechnicianResponse>(error)
       const row = rowsById.current.get(variables.id)
-      if (conflict && row) setStale({ row, conflict })
+      if (conflict && row) {
+        dialogName.current = row.name
+        confirmedName.current = null
+        setStale({ row, conflict })
+      }
       else setFailure({ name: variables.name, error })
     },
   })
@@ -65,7 +75,15 @@ export function useConfirmLevel({ dealership, onDone }: { dealership: Dealership
   const dialog = (
     <>
       <Dialog open={stale !== null} onOpenChange={(open) => !open && setStale(null)}>
-        <DialogContent className="gap-4 sm:max-w-lg">
+        <DialogContent
+          finalFocus={() => {
+            const name = dialogName.current
+            if (!name) return true
+            const ownButton = [...(byLabel("HV levels to review")?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((button) => button.textContent === `Confirm ${name}'s level`)
+            return (confirmedName.current === name ? pastConfirmed(name) : (ownButton ?? pastConfirmed(name))) ?? true
+          }}
+          className="gap-4 sm:max-w-lg"
+        >
           {stale && (
             <>
               <div className="flex flex-col gap-2">

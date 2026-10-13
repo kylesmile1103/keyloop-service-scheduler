@@ -290,6 +290,8 @@ describe("appointments list", () => {
     fireEvent.click(within(list).getByRole("button", { name: "Reset filters" }))
     expect(bodyRows(list)).toHaveLength(6)
     expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveValue("")
+    // The reset took its own button away: focus is on the search field, not the page.
+    expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveFocus()
   })
 
   it("hides and shows columns from View", async () => {

@@ -142,6 +142,8 @@ describe("editing technicians, as an Admin", () => {
     fireEvent.keyDown(brand, { key: "Enter" })
     expect(within(sheet).getByRole("button", { name: "Remove BMW" })).toBeInTheDocument()
     fireEvent.click(within(sheet).getByRole("button", { name: "Remove VOLKSWAGEN" }))
+    // The chip went with its button: focus is on the brand field.
+    expect(brand).toHaveFocus()
     save(sheet)
 
     await screen.findByText("Technician saved")
@@ -414,6 +416,8 @@ describe("HV levels and deactivation, as an Admin", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm HV 2" }))
 
     expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    // Confirmed through the dialog: it closes onto Ben's row actions, as the review note and its button go.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for Ben Okafor" })).toHaveFocus())
     const posts = requestsTo(api.requests, "/confirm-hv-level")
     expect(posts.map((request) => request.headers.get("If-Match"))).toEqual([etagOf(722), etagOf(now.version)])
   })

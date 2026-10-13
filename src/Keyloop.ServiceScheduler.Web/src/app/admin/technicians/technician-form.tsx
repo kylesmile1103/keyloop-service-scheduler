@@ -1,6 +1,6 @@
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
 import { LoaderCircle, Plus, X } from "lucide-react"
-import { type KeyboardEvent, type RefObject, useId, useRef, useState } from "react"
+import { type KeyboardEvent, type RefObject, useEffect, useId, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Controller, type FieldErrors, type Resolver, useForm, useWatch } from "react-hook-form"
 
@@ -191,6 +191,15 @@ function TechnicianSheetBody(props: BodyProps) {
   // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
   // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
   const [kept, setKept] = useState<AdminTechnicianResponse | null>(null)
+  // Try again (a failed first read) goes when the form is drawn: focus moves to the sheet first, so nothing focused is taken
+  // away, and the form's first field takes it once drawn (UI_DESIGN 11.24).
+  const [retried, setRetried] = useState(false)
+  const retry = () => {
+    const sheet = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>('[role="dialog"]') : null
+    sheet?.focus()
+    setRetried(true)
+    void query?.refetch()
+  }
   if (!kept && query?.data?.data) setKept(query.data.data)
 
   if (editing.mode === "create") return <TechnicianFormBody {...props} base={null} />
@@ -202,7 +211,7 @@ function TechnicianSheetBody(props: BodyProps) {
           <ProblemAlert
             title="Couldn’t load the technician"
             error={shownFailure(query.error)}
-            onRetry={() => void query.refetch()}
+            onRetry={retry}
             retrying={query.isFetching}
           />
         </div>
@@ -214,6 +223,7 @@ function TechnicianSheetBody(props: BodyProps) {
     <TechnicianFormBody
       {...props}
       base={record}
+      focusFirstField={retried}
       onReload={async () => {
         // A failed read keeps the last data it had: only a successful one is the record as it is now.
         const read = await query?.refetch()
@@ -244,11 +254,16 @@ interface FormBodyProps extends BodyProps {
   base: AdminTechnicianResponse | null
   /** Reads the record again (after a 428): the record as it is now, or `null` when the read failed. */
   onReload?: () => Promise<AdminTechnicianResponse | null>
+  /** Drawn after a successful Try again: the first field takes focus. */
+  focusFirstField?: boolean
 }
 
 type SaveVariables = { body: TechnicianWriteRequest; ifMatch?: string }
 
-function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFieldRef, base: opened, onCancel, onSaved, onDiscarded, onReload }: FormBodyProps) {
+function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFieldRef, base: opened, onCancel, onSaved, onDiscarded, onReload, focusFirstField = false }: FormBodyProps) {
+  useEffect(() => {
+    if (focusFirstField) firstFieldRef.current?.focus()
+  }, [focusFirstField, firstFieldRef])
   const ids = {
     name: useId(),
     nameError: useId(),
@@ -633,13 +648,15 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
                         disabled={pending}
                         aria-label={`Remove ${brand}`}
                         className="rounded-full"
-                        onClick={() =>
+                        onClick={() => {
+                          // The chip goes with its button: focus moves to the brand field, which stays, first.
+                          document.getElementById(ids.brand)?.focus()
                           form.setValue(
                             "brandSpecialisms",
                             form.getValues("brandSpecialisms").filter((value) => value !== brand),
                             { shouldDirty: true }
                           )
-                        }
+                        }}
                       >
                         <X aria-hidden="true" />
                       </Button>

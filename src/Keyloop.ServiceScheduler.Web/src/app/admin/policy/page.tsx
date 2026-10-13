@@ -31,6 +31,7 @@ import { requirementPolicyQuery } from "../lib/admin-reads"
 import type { ConflictRow } from "../lib/changes"
 import { useRefreshAfterEdit } from "../lib/refresh"
 import { useAdminAccess } from "../lib/use-admin-access"
+import { useFocusAfterRetry } from "../lib/focus"
 import { PolicyPreview } from "./preview"
 import { RuleDialog } from "./rule-dialog"
 import { blankRule, carriedOnto, inOrder, type RuleChange, ruleChanges, ruleSummary, whenWords } from "./rule-words"
@@ -124,6 +125,8 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
     flushSync(change)
     next?.()?.focus()
   }
+  // A successful Try again (a failed first read) replaces its alert with the rules: focus goes to Add rule (UI_DESIGN 11.24).
+  const armRetryFocus = useFocusAfterRetry(() => addRuleRef.current)
   const inCard = (label: string) => cardRef.current?.querySelector<HTMLElement>(`[aria-label="${label}"]`)
   // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
   // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
@@ -243,7 +246,10 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
     if (policyFailure !== null) {
       return (
         <Card className="py-0">
-          <ProblemAlert title="Couldn’t load the requirement policy" error={policyFailure} onRetry={() => void policy.refetch()} retrying={policy.isFetching} className="m-4" />
+          <ProblemAlert title="Couldn’t load the requirement policy" error={policyFailure} onRetry={() => {
+              armRetryFocus()
+              void policy.refetch()
+            }} retrying={policy.isFetching} className="m-4" />
         </Card>
       )
     }

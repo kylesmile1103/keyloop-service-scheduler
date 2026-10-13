@@ -2,7 +2,7 @@ import { Radio } from "@base-ui/react/radio"
 import { RadioGroup } from "@base-ui/react/radio-group"
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BadgeCheck, History, type LucideIcon, Pencil, Plus, Power, PowerOff, RotateCw, Scale } from "lucide-react"
-import { useEffect, useId, useRef } from "react"
+import { useId, useRef } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 
 import { getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
@@ -25,6 +25,7 @@ import { adminHistoryPages } from "../lib/admin-reads"
 import { historyHref } from "../lib/history-link"
 import { useAdminAccess } from "../lib/use-admin-access"
 import { ruleChanges, ruleChangeWords } from "../policy/rule-words"
+import { useFocusAfterRetry, useLastPageFocus } from "../lib/focus"
 
 type Kind = AdminHistoryItem["resourceKind"]
 const KINDS: ReadonlyArray<{ value: Kind | "all"; label: string }> = [
@@ -85,17 +86,20 @@ function HistoryFeed({ dealership }: ResourceScope) {
     enabled: () => cachedCapabilities(queryClient).isAdmin,
   })
   const feedRef = useRef<HTMLDivElement>(null)
-  // The last page takes Show older changes away: focus goes to the first change it loaded, not to the page. The page can
-  // arrive before or after React draws it, so the hand-off is tried at once and again after each commit until it lands.
-  const focusFrom = useRef<number | null>(null)
-  const focusLoaded = () => {
-    const index = focusFrom.current
-    const article = index === null ? undefined : feedRef.current?.querySelectorAll<HTMLElement>("article")[index]
-    if (!article) return
-    focusFrom.current = null
-    article.focus()
-  }
-  useEffect(focusLoaded)
+  // Show older changes, when the last page takes it away, hands focus to the first change it loaded; a successful Try again
+  // to the first change, else the kinds' chosen option, else Show every change (UI_DESIGN 11.24).
+  const loadOlder = useLastPageFocus(feedRef)
+  const filterRef = useRef<HTMLDivElement>(null)
+  const armRetryFocus = useFocusAfterRetry(() => {
+    // Nothing until the changes have loaded (the first commit after Try again is the skeleton).
+    if (!history.data) return null
+    return (
+      feedRef.current?.querySelector<HTMLElement>("article") ??
+      filterRef.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ??
+      [...document.querySelectorAll<HTMLElement>("a")].find((link) => link.textContent === "Show every change")
+    )
+  })
+
   const items = history.data?.pages.flatMap((page) => page.items) ?? []
   const resourceName = resourceId ? (items.map(nameOf).find(Boolean) ?? (kind === "bay" ? "This bay" : "This technician")) : null
 
@@ -122,6 +126,7 @@ function HistoryFeed({ dealership }: ResourceScope) {
         )}
         {!resourceName && (
           <RadioGroup
+            ref={filterRef}
             value={kind ?? "all"}
             onValueChange={(next) => typeof next === "string" && choose(next)}
             aria-labelledby={filterId}
@@ -145,7 +150,10 @@ function HistoryFeed({ dealership }: ResourceScope) {
 
       {!history.data && history.error ? (
         <Card className="py-0">
-          <ProblemAlert title="Couldn’t load the change history" error={history.error} onRetry={() => void history.refetch()} retrying={history.isFetching} className="m-4" />
+          <ProblemAlert title="Couldn’t load the change history" error={history.error} onRetry={() => {
+            armRetryFocus()
+            void history.refetch()
+          }} retrying={history.isFetching} className="m-4" />
         </Card>
       ) : !history.data ? (
         <div aria-busy="true" className="flex flex-col gap-2">
@@ -177,13 +185,7 @@ function HistoryFeed({ dealership }: ResourceScope) {
           className="cursor-pointer self-start"
           disabled={history.isFetchingNextPage}
           focusableWhenDisabled
-          onClick={async () => {
-            const loaded = items.length
-            const result = await history.fetchNextPage()
-            if (result.hasNextPage) return
-            focusFrom.current = loaded
-            focusLoaded()
-          }}
+          onClick={() => void loadOlder(items.length, () => history.fetchNextPage())}
         >
           <RotateCw aria-hidden="true" className={history.isFetchingNextPage ? "animate-spin motion-reduce:animate-none" : undefined} />
           Show older changes

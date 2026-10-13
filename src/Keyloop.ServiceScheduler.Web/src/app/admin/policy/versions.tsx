@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { History, RotateCw } from "lucide-react"
-import { useId } from "react"
+import { useId, useRef } from "react"
 
 import type { AdminHistoryItem, AdminPolicyResponse, DealershipResponse, ServiceTypeResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
@@ -13,6 +13,7 @@ import { cachedCapabilities } from "@/lib/session"
 import { declarerName } from "@/lib/vehicle-aware"
 
 import { adminHistoryPages } from "../lib/admin-reads"
+import { useFocusAfterRetry, useLastPageFocus } from "../lib/focus"
 import { ruleChanges, ruleChangeWords } from "./rule-words"
 
 const PAGE = 20
@@ -29,6 +30,10 @@ const isPolicy = (value: AdminHistoryItem["after"] | null): value is AdminPolicy
 export function PolicyVersions({ dealership, current, services }: { dealership: DealershipResponse; current: number | undefined; services: readonly ServiceTypeResponse[] | undefined }) {
   const headingId = useId()
   const queryClient = useQueryClient()
+  // Show older versions, when the last page takes it away, hands focus to the first version it loaded (UI_DESIGN 11.24).
+  const listRef = useRef<HTMLOListElement>(null)
+  const loadOlder = useLastPageFocus(listRef)
+  const armRetryFocus = useFocusAfterRetry(() => listRef.current?.querySelector<HTMLElement>("article"))
   const history = useInfiniteQuery({
     ...adminHistoryPages(dealership.id, { resourceKind: "policy", resourceId: dealership.id, limit: PAGE }),
     enabled: () => cachedCapabilities(queryClient).isAdmin,
@@ -46,7 +51,12 @@ export function PolicyVersions({ dealership, current, services }: { dealership: 
         Versions
       </h2>
       {!history.data && history.error ? (
-        <ProblemAlert title="Couldn’t load the versions" error={history.error} onRetry={() => void history.refetch()} retrying={history.isFetching} />
+        <ProblemAlert title="Couldn’t load the versions" error={history.error} onRetry={() => {
+            armRetryFocus()
+            void history.refetch()
+          }}
+          retrying={history.isFetching}
+        />
       ) : !history.data ? (
         <div aria-busy="true" className="flex flex-col gap-2">
           <p role="status" className="sr-only">
@@ -56,7 +66,7 @@ export function PolicyVersions({ dealership, current, services }: { dealership: 
           <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       ) : (
-        <ol className="flex flex-col gap-2">
+        <ol ref={listRef} className="flex flex-col gap-2">
           {publications.map((item) => {
             const after = item.after as AdminPolicyResponse
             const before = isPolicy(item.before) ? item.before : null
@@ -90,7 +100,7 @@ export function PolicyVersions({ dealership, current, services }: { dealership: 
           className="cursor-pointer self-start"
           disabled={history.isFetchingNextPage}
           focusableWhenDisabled
-          onClick={() => void history.fetchNextPage()}
+          onClick={() => void loadOlder(listRef.current?.querySelectorAll("article").length ?? 0, () => history.fetchNextPage())}
         >
           <RotateCw aria-hidden="true" className={history.isFetchingNextPage ? "animate-spin" : undefined} />
           Show older versions
@@ -114,7 +124,7 @@ function changeLines(before: AdminPolicyResponse["rules"], after: AdminPolicyRes
 function Version({ version, inUse, line, changes }: { version: number; inUse: boolean; line: string; changes: Array<{ code: string; words: string }> }) {
   const headingId = useId()
   return (
-    <article aria-labelledby={headingId} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 text-sm sm:p-4">
+    <article aria-labelledby={headingId} tabIndex={-1} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:p-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h3 id={headingId} className="font-heading text-base font-semibold tabular-nums">{`Version ${version}`}</h3>
         {inUse && (

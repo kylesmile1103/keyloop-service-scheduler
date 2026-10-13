@@ -1,6 +1,6 @@
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
 import { LoaderCircle } from "lucide-react"
-import { type RefObject, useId, useRef, useState } from "react"
+import { type RefObject, useEffect, useId, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Controller, type FieldErrors, type Resolver, useForm, useWatch } from "react-hook-form"
 
@@ -128,6 +128,15 @@ function BaySheetBody(props: BodyProps) {
   // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
   // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
   const [kept, setKept] = useState<AdminBayResponse | null>(null)
+  // Try again (a failed first read) goes when the form is drawn: focus moves to the sheet first, so nothing focused is taken
+  // away, and the form's first field takes it once drawn (UI_DESIGN 11.24).
+  const [retried, setRetried] = useState(false)
+  const retry = () => {
+    const sheet = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>('[role="dialog"]') : null
+    sheet?.focus()
+    setRetried(true)
+    void query?.refetch()
+  }
   if (!kept && query?.data?.data) setKept(query.data.data)
 
   if (editing.mode === "create") return <BayFormBody {...props} base={null} />
@@ -136,7 +145,7 @@ function BaySheetBody(props: BodyProps) {
     if (query?.error) {
       return (
         <div className="flex-1 overflow-y-auto p-4">
-          <ProblemAlert title="Couldn’t load the bay" error={shownFailure(query.error)} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+          <ProblemAlert title="Couldn’t load the bay" error={shownFailure(query.error)} onRetry={retry} retrying={query.isFetching} />
         </div>
       )
     }
@@ -155,6 +164,7 @@ function BaySheetBody(props: BodyProps) {
     <BayFormBody
       {...props}
       base={record}
+      focusFirstField={retried}
       onReload={async () => {
         // A failed read keeps the last data it had: only a successful one is the record as it is now.
         const read = await query?.refetch()
@@ -176,7 +186,12 @@ function BayFormBody({
   onSaved,
   onDiscarded,
   onReload,
-}: BodyProps & { base: AdminBayResponse | null; onReload?: () => Promise<AdminBayResponse | null> }) {
+  focusFirstField = false,
+}: BodyProps & { base: AdminBayResponse | null; onReload?: () => Promise<AdminBayResponse | null>; focusFirstField?: boolean }) {
+  // Drawn after a successful Try again: the first field takes focus.
+  useEffect(() => {
+    if (focusFirstField) firstFieldRef.current?.focus()
+  }, [focusFirstField, firstFieldRef])
   const ids = { name: useId(), nameError: useId(), active: useId(), activeHelp: useId() }
   const dataProvider = useDataProvider()
   const [base, setBase] = useState(opened)

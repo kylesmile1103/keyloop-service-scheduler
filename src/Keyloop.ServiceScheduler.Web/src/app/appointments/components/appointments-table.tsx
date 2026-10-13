@@ -6,7 +6,7 @@ import { use, type MouseEvent } from "react"
 import type { AppointmentStatus } from "@/api/types.gen"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { type DataTableFeatures, resetFilters } from "@/lib/data-table"
+import { type DataTableFeatures, resetFiltersFrom } from "@/lib/data-table"
 import { cn } from "@/lib/utils"
 
 import type { AppointmentRow } from "../lib/appointments"
@@ -118,7 +118,7 @@ export function AppointmentsTable({ table, selectedId }: AppointmentsTableProps)
             <TableCell colSpan={columnCount} className="h-32 text-center whitespace-normal">
               <div className="flex flex-col items-center gap-2">
                 <p className="text-sm text-muted-foreground">No appointments match the search and filters.</p>
-                <Button type="button" variant="outline" size="sm" className="cursor-pointer" onClick={() => resetFilters(table)}>
+                <Button type="button" variant="outline" size="sm" className="cursor-pointer" onClick={(event) => resetFiltersFrom(table, event.currentTarget)}>
                   Reset filters
                 </Button>
               </div>
