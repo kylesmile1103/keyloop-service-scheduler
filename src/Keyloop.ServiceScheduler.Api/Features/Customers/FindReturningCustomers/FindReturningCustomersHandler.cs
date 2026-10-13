@@ -18,16 +18,18 @@ public sealed class FindReturningCustomersHandler(SchedulerDbContext db, ILogger
         }
         var query = request.Query.Trim();
         var kind = CustomerLookupQuery.Kind(query);
+        var nameWords = CustomerLookupQuery.NameWords(query);
         var results = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await db.Database.OpenConnectionAsync(ct);
             try
             {
                 await using var command = db.Database.GetDbConnection().CreateCommand();
-                command.CommandText = Sql(kind, query.Length >= 3);
+                command.CommandText = Sql(kind, nameWords.Length > 0);
                 command.CommandTimeout = db.Database.GetCommandTimeout() ?? 30;
                 command.Parameters.Add(new NpgsqlParameter("dealership", dealershipId));
                 command.Parameters.Add(new NpgsqlParameter("query", query));
+                command.Parameters.Add(new NpgsqlParameter("nameWords", nameWords));
                 command.Parameters.Add(new NpgsqlParameter("prefix", CustomerLookupQuery.Prefix(kind == CustomerLookupKind.Phone
                     ? CustomerLookupQuery.Digits(query) : kind == CustomerLookupKind.Email ? query : string.Concat(query.Where(c => !char.IsWhiteSpace(c))))));
                 command.Parameters.Add(new NpgsqlParameter("reversePrefix", CustomerLookupQuery.Prefix(string.Concat(CustomerLookupQuery.Digits(query).Reverse()))));
@@ -59,7 +61,17 @@ public sealed class FindReturningCustomersHandler(SchedulerDbContext db, ILogger
                 SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
                 WHERE dealership_id = @dealership AND lower(customer_email) LIKE lower(@prefix) ESCAPE '\'
                 """,
+            // Retain the digit-only branches for legacy country-inclusive partial prefixes, such as 447700.
             CustomerLookupKind.Phone => """
+                SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
+                WHERE dealership_id = @dealership AND length(public.customer_lookup_phone_key(@query)) >= 6
+                    AND public.customer_lookup_phone_key(@query) <> regexp_replace(@query, '[^0-9]', '', 'g')
+                    AND public.customer_lookup_phone_key(customer_phone) LIKE public.customer_lookup_phone_key(@query) || '%'
+                UNION
+                SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
+                WHERE dealership_id = @dealership AND length(public.customer_lookup_phone_key(@query)) >= 6
+                    AND reverse(public.customer_lookup_phone_key(customer_phone)) LIKE reverse(public.customer_lookup_phone_key(@query)) || '%'
+                UNION
                 SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
                 WHERE dealership_id = @dealership AND regexp_replace(customer_phone, '[^0-9]', '', 'g') LIKE @prefix
                 UNION
@@ -73,7 +85,8 @@ public sealed class FindReturningCustomersHandler(SchedulerDbContext db, ILogger
 
                 UNION
                 SELECT lower(customer_email) AS email, vehicle_vin AS vin FROM appointments
-                WHERE dealership_id = @dealership AND public.customer_lookup_name_prefixes(customer_name) @> ARRAY[lower(@query)]
+                WHERE dealership_id = @dealership AND public.customer_lookup_name_prefixes(customer_name)
+                    @> ARRAY(SELECT lower(word) FROM unnest(@nameWords::text[]) AS word)
                 """ : ""),
         };
         return $$"""

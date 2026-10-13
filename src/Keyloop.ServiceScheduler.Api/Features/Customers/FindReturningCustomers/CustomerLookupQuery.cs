@@ -19,6 +19,10 @@ internal static class CustomerLookupQuery
 
     internal static string Digits(string value) => string.Concat(value.Where(char.IsAsciiDigit));
 
+    // Keep casing for PostgreSQL lower(), matching the name index's collation. An empty array disables the name branch.
+    internal static string[] NameWords(string query) => query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+        .Where(word => word.Length >= 3).ToArray();
+
     internal static string Prefix(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal)
         .Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
 }

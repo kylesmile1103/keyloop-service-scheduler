@@ -64,6 +64,99 @@ public sealed class CustomerLookupTests(PostgresFixture pg) : IAsyncLifetime
         (await FindAsync(query)).ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("Grace Hopper")]
+    [InlineData("grace hop")]
+    [InlineData("Hopper Grace")]
+    [InlineData("  HOP\tGrAcE  ")]
+    [InlineData("grace x hop")]
+    [InlineData("grace grace hop")]
+    public async Task Multi_word_names_require_every_long_word_prefix_in_any_order(string query)
+    {
+        await SeedAsync(name: "Grace Hopper");
+        await SeedAsync(hour: 10, name: "Grace Murray", email: "murray@example.com");
+        await SeedAsync(hour: 11, name: "Ada Hopper", email: "ada@example.com");
+        (await FindAsync(query)).ShouldHaveSingleItem().Customer.Name.ShouldBe("Grace Hopper");
+    }
+
+    [Theory]
+    [InlineData("Grace Ada")]
+    [InlineData("race hop")]
+    [InlineData("grace hoppers")]
+    [InlineData("gr ho")]
+    [InlineData("grace hop%")]
+    public async Task Missing_prefixes_and_queries_with_only_short_words_do_not_match_names(string query)
+    {
+        await SeedAsync(name: "Grace Hopper");
+        (await FindAsync(query)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Short_name_words_are_ignored_and_registration_uses_the_whole_query()
+    {
+        await SeedAsync(name: "Grace Hopper");
+        await SeedAsync(hour: 10, name: "Grace Murray", email: "murray@example.com", registration: "GR HO123");
+        (await FindAsync("grace ho")).Select(r => r.Customer.Name).ShouldBe(["Grace Murray", "Grace Hopper"]);
+        (await FindAsync("gr ho")).ShouldHaveSingleItem().Customer.Name.ShouldBe("Grace Murray");
+    }
+
+    [Fact]
+    public async Task Name_words_must_match_one_booking_before_pair_history_is_projected()
+    {
+        await SeedAsync(name: "Grace Murray");
+        await SeedAsync(hour: 10, name: "Ada Hopper");
+        (await FindAsync("grace hop")).ShouldBeEmpty();
+        (await FindAsync("grace mur")).ShouldHaveSingleItem().Customer.Name.ShouldBe("Ada Hopper");
+    }
+
+    [Theory]
+    [InlineData("+44 (7700) 900-123", "07700 900123")]
+    [InlineData("07700 900123", "+44 (7700) 900-123")]
+    [InlineData("0044 (7700) 900-123", "07700 900123")]
+    [InlineData("07700 900123", "0044 (7700) 900-123")]
+    [InlineData("+44 7700 900123", "0044 7700 900123")]
+    [InlineData("0044 7700 900123", "+44 7700 900123")]
+    [InlineData("+49 (151) 2345-6789", "0151 23456789")]
+    [InlineData("0151 23456789", "+49 (151) 2345-6789")]
+    [InlineData("0049 (151) 2345-6789", "0151 23456789")]
+    [InlineData("0151 23456789", "0049 (151) 2345-6789")]
+    [InlineData("+49 151 23456789", "0049 151 23456789")]
+    [InlineData("0049 151 23456789", "+49 151 23456789")]
+    [InlineData("+44 7700 900123", "0770090")]
+    [InlineData("07700 900123", "+44 770090")]
+    [InlineData("+49 151 23456789", "0151234")]
+    [InlineData("0151 23456789", "+49 151234")]
+    public async Task Uk_and_german_national_and_international_phones_match_both_ways(string stored, string query)
+    {
+        await SeedAsync(phone: stored);
+        (await FindAsync(query)).ShouldHaveSingleItem().Customer.Phone.ShouldBe(stored);
+    }
+
+    [Theory]
+    [InlineData("+44 (7700) 900-123", "900123")]
+    [InlineData("07700 900123", "900123")]
+    [InlineData("0044 7700 900123", "900123")]
+    [InlineData("+49 (151) 2345-6789", "456789")]
+    [InlineData("0151 23456789", "456789")]
+    [InlineData("0049 151 23456789", "456789")]
+    public async Task Partial_phone_suffix_keeps_matching_every_supported_format(string stored, string query)
+    {
+        await SeedAsync(phone: stored);
+        (await FindAsync(query)).ShouldHaveSingleItem().Customer.Phone.ShouldBe(stored);
+    }
+
+    [Theory]
+    [InlineData("90012")]
+    [InlineData("+44 770")]
+    [InlineData("07700")]
+    [InlineData("012345")]
+    public async Task Phone_matching_keeps_six_digit_minimum(string query)
+    {
+        await SeedAsync(phone: "+44 7700 900123");
+        await SeedAsync(hour: 10, phone: "+44 12345 678901", email: "short@example.com");
+        (await FindAsync(query)).ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task Literal_email_wildcards_and_name_punctuation_match_without_expansion()
     {

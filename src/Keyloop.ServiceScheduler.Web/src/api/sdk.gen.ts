@@ -465,9 +465,12 @@ export const getAdminHistory = <ThrowOnError extends boolean = false>(options: O
  *
  * Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.
  * At least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,
- * selects phone: compare digits only, matching either end of the stored number. Otherwise search both registration
- * (uppercase, whitespace removed, prefix) and name (case-insensitive prefix of any whitespace-separated word, at least
- * three characters). Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
+ * selects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single
+ * national trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward
+ * prefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,
+ * whitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix
+ * of some name word, in any order; shorter words are ignored, and no eligible words disables name search).
+ * Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
  * within this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all
  * bookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.
  * Only customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.
