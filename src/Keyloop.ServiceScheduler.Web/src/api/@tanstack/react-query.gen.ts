@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { bookAppointment, cancelAppointment, confirmTechnicianHvLevel, createBay, createTechnician, editBay, editRequirementPolicy, editTechnician, getAdminBay, getAdminHistory, getAdminTechnician, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getFeatures, getRequirementPolicy, getServiceTypes, getWorkshopSchedule, listAdminBays, listAdminTechnicians, listAppointments, type Options, resolveVehicleProfile, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
-import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, ConfirmTechnicianHvLevelData, ConfirmTechnicianHvLevelError, ConfirmTechnicianHvLevelResponse, CreateBayData, CreateBayError, CreateBayResponse, CreateTechnicianData, CreateTechnicianError, CreateTechnicianResponse, EditBayData, EditBayError, EditBayResponse, EditRequirementPolicyData, EditRequirementPolicyError, EditRequirementPolicyResponse, EditTechnicianData, EditTechnicianError, EditTechnicianResponse, GetAdminBayData, GetAdminBayError, GetAdminBayResponse, GetAdminHistoryData, GetAdminHistoryError, GetAdminHistoryResponse, GetAdminTechnicianData, GetAdminTechnicianError, GetAdminTechnicianResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetFeaturesData, GetFeaturesError, GetFeaturesResponse, GetRequirementPolicyData, GetRequirementPolicyError, GetRequirementPolicyResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAdminBaysData, ListAdminBaysError, ListAdminBaysResponse, ListAdminTechniciansData, ListAdminTechniciansError, ListAdminTechniciansResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, ResolveVehicleProfileData, ResolveVehicleProfileError, ResolveVehicleProfileResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
+import { bookAppointment, cancelAppointment, confirmTechnicianHvLevel, createBay, createTechnician, editBay, editRequirementPolicy, editTechnician, findReturningCustomers, getAdminBay, getAdminHistory, getAdminTechnician, getAppointment, getAvailability, getBookingTriageStatus, getCurrentUser, getDealerships, getFeatures, getRequirementPolicy, getServiceTypes, getWorkshopSchedule, listAdminBays, listAdminTechnicians, listAppointments, type Options, resolveVehicleProfile, triageBookingRequest, uploadBookingTriageImage } from '../sdk.gen';
+import type { BookAppointmentData, BookAppointmentError, BookAppointmentResponse, CancelAppointmentData, CancelAppointmentError, CancelAppointmentResponse, ConfirmTechnicianHvLevelData, ConfirmTechnicianHvLevelError, ConfirmTechnicianHvLevelResponse, CreateBayData, CreateBayError, CreateBayResponse, CreateTechnicianData, CreateTechnicianError, CreateTechnicianResponse, EditBayData, EditBayError, EditBayResponse, EditRequirementPolicyData, EditRequirementPolicyError, EditRequirementPolicyResponse, EditTechnicianData, EditTechnicianError, EditTechnicianResponse, FindReturningCustomersData, FindReturningCustomersError, FindReturningCustomersResponse, GetAdminBayData, GetAdminBayError, GetAdminBayResponse, GetAdminHistoryData, GetAdminHistoryError, GetAdminHistoryResponse, GetAdminTechnicianData, GetAdminTechnicianError, GetAdminTechnicianResponse, GetAppointmentData, GetAppointmentError, GetAppointmentResponse, GetAvailabilityData, GetAvailabilityError, GetAvailabilityResponse, GetBookingTriageStatusData, GetBookingTriageStatusError, GetBookingTriageStatusResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetDealershipsData, GetDealershipsError, GetDealershipsResponse, GetFeaturesData, GetFeaturesError, GetFeaturesResponse, GetRequirementPolicyData, GetRequirementPolicyError, GetRequirementPolicyResponse, GetServiceTypesData, GetServiceTypesError, GetServiceTypesResponse, GetWorkshopScheduleData, GetWorkshopScheduleError, GetWorkshopScheduleResponse, ListAdminBaysData, ListAdminBaysError, ListAdminBaysResponse, ListAdminTechniciansData, ListAdminTechniciansError, ListAdminTechniciansResponse, ListAppointmentsData, ListAppointmentsError, ListAppointmentsResponse, ResolveVehicleProfileData, ResolveVehicleProfileError, ResolveVehicleProfileResponse, TriageBookingRequestData, TriageBookingRequestError, TriageBookingRequestResponse, UploadBookingTriageImageData, UploadBookingTriageImageError, UploadBookingTriageImageResponse2 } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -617,4 +617,30 @@ export const getAdminHistoryInfiniteOptions = (options: Options<GetAdminHistoryD
         queryKey: getAdminHistoryInfiniteQueryKey(options)
     });
     return opts as Omit<typeof opts, 'initialData'>;
+};
+
+/**
+ * Find returning customers in this dealership's booking history
+ *
+ * Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.
+ * At least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,
+ * selects phone: compare digits only, matching either end of the stored number. Otherwise search both registration
+ * (uppercase, whitespace removed, prefix) and name (case-insensitive prefix of any whitespace-separated word, at least
+ * three characters). Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
+ * within this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all
+ * bookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.
+ * Only customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.
+ */
+export const findReturningCustomersMutation = (options?: Partial<Options<FindReturningCustomersData>>): UseMutationOptions<FindReturningCustomersResponse, FindReturningCustomersError, Options<FindReturningCustomersData>> => {
+    const mutationOptions: UseMutationOptions<FindReturningCustomersResponse, FindReturningCustomersError, Options<FindReturningCustomersData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await findReturningCustomers({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
 };

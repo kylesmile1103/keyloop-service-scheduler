@@ -27,7 +27,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
-        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures", "ListAdminTechnicians", "CreateTechnician", "GetAdminTechnician", "EditTechnician", "ConfirmTechnicianHvLevel", "ListAdminBays", "CreateBay", "GetAdminBay", "EditBay", "GetRequirementPolicy", "EditRequirementPolicy", "GetAdminHistory"];
+        ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures", "ListAdminTechnicians", "CreateTechnician", "GetAdminTechnician", "EditTechnician", "ConfirmTechnicianHvLevel", "ListAdminBays", "CreateBay", "GetAdminBay", "EditBay", "GetRequirementPolicy", "EditRequirementPolicy", "GetAdminHistory", "FindReturningCustomers"];
 
     /// <summary>
     /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
@@ -35,6 +35,9 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     /// </summary>
     private static readonly JsonTypeInfo[] ResponseTypes =
     [
+        SchedulerJsonContext.Default.ReturningCustomerResponse,
+        SchedulerJsonContext.Default.ReturningCustomerDetails,
+        SchedulerJsonContext.Default.ReturningVehicleDetails,
         SchedulerJsonContext.Default.AdminTechnicianResponse,
         SchedulerJsonContext.Default.AdminBayResponse,
         SchedulerJsonContext.Default.AdminPolicyResponse,
@@ -138,7 +141,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         foreach (var (_, operation) in Operations(document))
         {
             var protectedRoute = Text(operation["operationId"]) is "BookAppointment" or "CancelAppointment" or "GetAppointment" or "TriageBookingRequest"
-                or "UploadBookingTriageImage" or "ResolveVehicleProfile"
+                or "UploadBookingTriageImage" or "ResolveVehicleProfile" or "FindReturningCustomers"
                 or "ListAdminTechnicians" or "CreateTechnician" or "GetAdminTechnician" or "EditTechnician" or "ConfirmTechnicianHvLevel" or "ListAdminBays" or "CreateBay" or "GetAdminBay" or "EditBay" or "GetRequirementPolicy" or "EditRequirementPolicy" or "GetAdminHistory";
             var security = operation["security"].ShouldNotBeNull().AsArray();
             security.Any(item => item!.AsObject().Count == 0).ShouldBe(!protectedRoute);
@@ -237,6 +240,23 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     private static IEnumerable<string> Strings(JsonNode? values) => values.ShouldNotBeNull().AsArray().Select(v => v!.GetValue<string>());
+
+    [Fact]
+    public async Task Customer_lookup_is_body_only_with_an_explicit_intake_projection()
+    {
+        var document = await ServedAsync();
+        var operation = Operations(document).Single(o => Text(o.Operation["operationId"]) == "FindReturningCustomers").Operation;
+        operation["parameters"]!.AsArray().Select(p => Text(p!["in"])).ShouldNotContain("query");
+        operation["requestBody"]!["required"]!.GetValue<bool>().ShouldBeTrue();
+        var schemas = document["components"]!["schemas"]!;
+        Required(schemas["FindReturningCustomersRequest"]!).ShouldBe(["query"]);
+        Text(schemas["FindReturningCustomersRequest"]!["properties"]!["query"]!["examples"]![0]).ShouldBe("AB12 CDE");
+        Required(schemas["ReturningCustomerResponse"]!).ShouldBe(["customer", "vehicle", "lastVisitUtc", "visits"]);
+        Required(schemas["ReturningCustomerDetails"]!).ShouldBe(["name", "email", "phone"]);
+        Required(schemas["ReturningVehicleDetails"]!).ShouldBe(["vin", "registration", "make", "model"]);
+        Text(schemas["ReturningCustomerResponse"]!["properties"]!["lastVisitUtc"]!["format"]).ShouldBe("date-time");
+        Text(schemas["ReturningCustomerResponse"]!["properties"]!["visits"]!["format"]).ShouldBe("int64");
+    }
 
     [Fact]
     public async Task Policy_preview_token_is_optional_nullable_on_writes_and_required_on_responses()
@@ -345,6 +365,12 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/admin-history", "404"),
                 ("GET /api/v1/dealerships/{dealershipId}/admin-history", "429"),
                 ("GET /api/v1/dealerships/{dealershipId}/admin-history", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "400"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "401"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "403"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "404"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "413"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "429"),
                 ("GET /api/v1/me", "429"),
                 ("GET /api/v1/features", "429"),
                 ("POST /api/v1/vehicle-profiles/resolve", "400"),
@@ -448,6 +474,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             ("CreateBay", "Complete bay state. Existing appointments are preserved."),
             ("EditBay", "Complete bay state. Existing appointments are preserved."),
             ("EditRequirementPolicy", "Typed replacement policy, dry-run flag, local preview date and confirmed preview token for publication."),
+            ("FindReturningCustomers", "Transient body-only query: registration, email, phone or name, 2..100 trimmed characters."),
         ]);
     }
 
@@ -489,6 +516,7 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
                 ("GET /api/v1/dealerships/{dealershipId}/requirement-policy", "200", "AdminPolicyResponse"),
                 ("PUT /api/v1/dealerships/{dealershipId}/requirement-policy", "200", "PolicyEditResponse"),
                 ("GET /api/v1/dealerships/{dealershipId}/admin-history", "200", "AdminHistoryResponse"),
+                ("POST /api/v1/dealerships/{dealershipId}/customer-lookups", "200", "ReturningCustomerResponse[]"),
 
             ]);
 
