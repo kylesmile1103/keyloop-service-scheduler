@@ -6,8 +6,6 @@ import { Link, useLocation } from "react-router-dom"
 
 import { getDealershipsOptions, getServiceTypesOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { DealershipResponse, WorkshopScheduleResponse } from "@/api/types.gen"
-import { useListParams } from "./lib/use-list-params"
-
 import { AppointmentSheet } from "@/app/dispatch/components/appointment-sheet"
 import { DateNavigator } from "@/app/dispatch/components/date-navigator"
 import { useBoardParams } from "@/app/dispatch/hooks/use-board-params"
@@ -53,6 +51,7 @@ import {
   filterOptions,
 } from "./lib/appointments"
 import { type OpenAppointment, OpenAppointmentContext, type RowIntent } from "./lib/row-actions"
+import { useListParams } from "./lib/use-list-params"
 
 /** Stable empties: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: AppointmentRow[] = []
