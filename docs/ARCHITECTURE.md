@@ -476,6 +476,7 @@ SELECT pg_advisory_xact_lock(:dealership_lock_key);           -- queue here, ms-
 SELECT ... FROM appointments WHERE id = :minted_id;           -- an earlier run of THIS request committed? answer with it (lost ack)
 SELECT ... FROM idempotency_keys WHERE key = :key;            -- only with a key: live ⇒ replay or 422; expired ⇒ the DELETE below
 DELETE FROM idempotency_keys WHERE key = :key AND expires_at_utc <= :now;   -- only for an expired row (§7.5)
+-- revalidate NEW booking against the current clock: lead time / past start / horizon (422, rollback)
 SELECT ... FROM service_bays WHERE dealership_id = :dealership; -- current roster, plain read
 SELECT ... FROM technicians WHERE dealership_id = :dealership;  -- current competence, plain read
 -- reject with 422 no-qualified-resources if the current roster cannot qualify
@@ -487,6 +488,8 @@ INSERT INTO appointment_history (...) VALUES (...);
 INSERT INTO notification_outbox (...) VALUES (...);            -- fresh primary key, unique (appointment_id, kind)
 COMMIT;                                                       -- lock released
 ```
+
+The lock-free booking-window check remains for early refusal. After acquiring the lock, committed-id recovery and live idempotency-key replay still answer an earlier success first. Only a new booking runs the same `BookingWindowPolicy.EnsureBookable` again against the current injected clock: a start now in the past or inside the lead time is `422 lead-time-not-met` with the current `earliestStartUtc`; a start beyond the current horizon is `422 beyond-booking-horizon` with `latestStartUtc` (including a backward clock correction during the wait). Disposal rolls back any expired-key deletion with the refusal, and no appointment, history, outbox or new key survives. This adds no database command, lock or contended row (ADR-003). Creation time and key lifetime use a clock sample taken after the lock wait.
 
 The retrying execution strategy re-runs the whole transaction after a transient failure. A failure *during* `COMMIT` may be a lost acknowledgement of a commit that happened, so the strategy first asks whether the minted appointment exists (EF Core's `verifySucceeded`) and, if it does, answers with it instead of booking again; the existence check at the top of each run is a second guard behind that. Because the id is minted once per request, not once per run, a committed run is always recognisable. The run's audit events (§5.6) are then *in doubt* and reach the observers exactly once: when the verification finds the appointment, or else when the next run's check under the lock does. A verification that finds nothing settles nothing, since it takes no lock and may read before the commit is visible; the check under the lock is conclusive, because the earlier run held that lock until its transaction ended. One exception holds for booking and cancellation alike: if the strategy runs out of retries before any read settles the doubt, the request answers `500 internal-error` (logged at Error) and the in-doubt events are never notified. A change that did commit then lacks its log line (`1001`/`1010`) and its counter; its `appointment_history` row, written in the same transaction, remains the record of it.
 
@@ -527,7 +530,7 @@ Lock granularity trade-off: a per-dealership lock serialises *all* bookings at a
 1. Compute `fingerprint = SHA-256(dealershipId + "\n" + canonical JSON body)` (the body re-serialised through the source-generated context, so formatting does not matter).
 2. **Before any rule or availability check, without a lock**, read the key's row. Unexpired with the same fingerprint → replay the stored `201` body with `Location` and `Idempotent-Replayed: true`; unexpired with another fingerprint → `422 idempotency-key-reuse`; expired or missing → continue. This is what makes a sequential retry safe: it never reaches the availability check, where its own committed appointment would make the slot look busy, nor the lead-time rule, which time may since have broken.
 3. **Inside the booking transaction, immediately after the dealership lock** (and the check for this request's own minted appointment, §7.3), read the row again with the same rules: a concurrent request with the same key may have committed while this one waited for the lock, and under `READ COMMITTED` this statement sees that commit. An expired row is deleted in this transaction, so the new row cannot collide with it.
-4. Only then the availability re-check, allocation, and the inserts (appointment, history, `(key, fingerprint, 201, body, resource_id, expires_at = now + 24 h)`) and commit.
+4. Only then the current-clock booking-window recheck (§7.3), availability re-check, allocation, and the inserts (appointment, history, `(key, fingerprint, 201, body, resource_id, expires_at = now + 24 h)`) and commit.
 5. **Backstop**: a `23505` on `idempotency_keys` can now only mean the same key was used concurrently at *another* dealership (whose lock does not serialise with ours); the handler rolls back, re-reads the committed row and applies the rules of step 2 (the fingerprint includes the dealership, so the answer is `422`). A row that is already expired by this instance's clock (only possible when instances' clocks are a day apart) is not replayed: the key is free, so the booking runs once more and step 3 deletes the row.
 6. **Only successful (`2xx`) outcomes are memoised**: any `4xx` booking rolled back its transaction (including the key row), so a failed booking may be retried with the same key. This keeps the design to one transaction and avoids memoising transient conflicts.
 
@@ -743,6 +746,7 @@ sequenceDiagram
     Note over H,DB: queued behind any concurrent booking at this dealership (ms)
     H->>DB: SELECT appointment with the minted id (an earlier run of this request committed?)
     H->>DB: SELECT idempotency_keys row again (a same-key request may have committed while we waited)
+    H->>D: EnsureBookable with the current clock for a new booking (else 422 and rollback)
     H->>DB: SELECT current bays and technicians (plain reads), recheck qualification
     H->>DB: SELECT active appointments overlapping [start,end) for candidate resources
     H->>D: AvailabilityCalculator.IsFeasible(start) -> candidates, AllocationPolicy.Choose
