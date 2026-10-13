@@ -62,6 +62,13 @@ public static class DatabaseInitializer
                 db.ChangeTracker.Clear();
                 await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
                 await SeedingLock.AcquireAsync(db, token);
+                // Startup can publish policy or create qualifying resources while another instance serves bookings.
+                // Match publication/reseed order: seeding first, dealership locks before qualification reads and writes.
+                var sites = await db.Dealerships.Select(d => d.Id).ToListAsync(token);
+                foreach (var site in sites.Concat(new[] { ReferenceDataSeed.ReadingDealershipId, ReferenceDataSeed.MunichDealershipId }).Distinct().Order())
+                {
+                    await DealershipLock.AcquireAsync(db, site, token);
+                }
                 var reference = await ReferenceDataSeed.EnsureSeededAsync(db, clock, token);
                 var appointments = await DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, clock, token);
                 await transaction.CommitAsync(token);

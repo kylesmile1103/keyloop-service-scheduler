@@ -250,6 +250,38 @@ describe("booking an appointment", () => {
     expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
   })
 
+  it("refreshes availability after policy churn and retries the same booking with the same idempotency key", async () => {
+    const conflict = {
+      type: `${problems}concurrency-conflict`,
+      title: "Concurrency conflict",
+      status: 409,
+      detail: "The requirement policy changed repeatedly while this booking was being prepared. Refresh availability and retry the booking.",
+      traceId: "policy-churn-trace",
+    }
+    let attempts = 0
+    const api = mockBoardApi({
+      book: (_, body) => (++attempts === 1 ? problemResponse(409, conflict) : bookedFrom(body)),
+    })
+    renderBoard(readingBoard)
+    const scope = await openDialog()
+    await goToStepTwo(scope)
+    fillCustomerAndVehicle(scope)
+    const availabilityReads = requestsTo(api.requests, "/availability").length
+    fireEvent.click(within(scope).getByRole("button", { name: "Book" }))
+
+    const alert = await within(scope).findByRole("alert")
+    expect(alert).toHaveAttribute("data-tone", "warning")
+    expect(within(alert).getByText(conflict.detail)).toBeInTheDocument()
+    expect(within(alert).getByText(conflict.traceId)).toBeInTheDocument()
+    await waitFor(() => expect(requestsTo(api.requests, "/availability").length).toBeGreaterThan(availabilityReads))
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }))
+
+    await screen.findByText("Booked")
+    const [first, second] = bookingRequests(api.requests)
+    expect(await bodyOf(second)).toEqual(await bodyOf(first))
+    expect(second.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"))
+  })
+
   it("explains a refused business rule and names what the dealership is missing", async () => {
     mockBoardApi({
       book: () =>

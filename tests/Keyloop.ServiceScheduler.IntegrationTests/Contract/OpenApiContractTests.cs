@@ -567,6 +567,17 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     private async Task<JsonNode> ServedAsync() => JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
 
     [Fact]
+    public async Task Booking_409_documents_retryable_policy_churn_and_refreshing_availability()
+    {
+        var document = await ServedAsync();
+        var response = document["paths"]!["/api/v1/dealerships/{dealershipId}/appointments"]!["post"]!["responses"]!["409"]!;
+        var description = Text(response["description"]).ShouldNotBeNull();
+        description.ShouldContain("concurrency-conflict");
+        description.ShouldContain("no booking committed");
+        description.ShouldContain("refresh availability and retry the booking");
+    }
+
+    [Fact]
     public async Task Feature_discovery_documents_the_switch_example_and_success_cache_header()
     {
         var document = await ServedAsync();

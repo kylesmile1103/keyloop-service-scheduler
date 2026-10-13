@@ -53,7 +53,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             var nextRules = Rules(dealershipId, next, normalizedRules);
             var oldRules = Rules(dealershipId, current.Version, current.Rules);
             // Take the existing publication lock before reading consequences, so a wait behind a booking cannot age the snapshot.
-            // A dry-run never takes it. Resource edits take no advisory lock; their read-to-commit window is documented in ADR-029.
+            // A dry-run never takes it. Resource edits take this same lock, so the publication roster is stable until commit.
             // No resource row is updated, and a booking never takes the seeding lock, so the order stays cycle-free.
             if (!request.DryRun) { await DealershipLock.AcquireAsync(db, dealershipId, ct); }
             var roster = await new DayScheduleReader(db).ReadResourcesAsync(dealershipId, ct);

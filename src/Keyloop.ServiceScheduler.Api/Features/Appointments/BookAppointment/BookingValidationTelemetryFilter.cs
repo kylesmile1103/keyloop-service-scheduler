@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -21,10 +22,10 @@ public sealed class BookingValidationTelemetryFilter(ILogger<BookingValidationTe
         {
             // The route constraint ({dealershipId:guid}) guarantees the only Guid argument, the dealership id, is bound.
             var dealershipId = context.Arguments.OfType<Guid>().First();
+            Activity.Current?.SetTag("dealership.id", dealershipId.ToString());
             SchedulerTelemetry.BookingRequests.Add(
                 1,
-                new KeyValuePair<string, object?>("outcome", BookingOutcomes.ValidationFailed),
-                new KeyValuePair<string, object?>("dealership.id", dealershipId.ToString()));
+                new KeyValuePair<string, object?>("outcome", BookingOutcomes.ValidationFailed));
             logger.BookingRejected(BookingOutcomes.ValidationFailed, dealershipId, serviceCode: null);
         }
 

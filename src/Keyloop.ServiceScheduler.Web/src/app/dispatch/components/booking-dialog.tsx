@@ -518,8 +518,8 @@ function BookingFlow({
           description: `${status ? `The server answered ${status}. ` : ""}${describeFailure(error).summary} Trying again is safe: it cannot book twice.`,
         })
       }
-      if (slug === "slot-unavailable" || slug === "slot-conflict") {
-        // Someone took the slot: the chips are stale too.
+      if (slug === "slot-unavailable" || slug === "slot-conflict" || slug === "concurrency-conflict") {
+        // Refresh starts after changes to booked capacity or the requirement policy.
         void queryClient.invalidateQueries({
           queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date } as GetAvailabilityData["query"] }),
         })
@@ -1798,6 +1798,10 @@ function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPi
   // Signed out or refused for the role: the app's session prompt says what to do (components/auth/session-watch.tsx).
   if (status === 401 || status === 403) {
     return <ProblemAlert tone="warning" title={authRefusalTitle(status, "book")} error={error} focusRef={alertRef} />
+  }
+
+  if (slug === "concurrency-conflict") {
+    return <ProblemAlert tone="warning" title={problem?.title ?? "Concurrency conflict"} error={error} onRetry={onRetry} retrying={busy} focusRef={alertRef} />
   }
 
   if (status !== undefined && status < 500) {

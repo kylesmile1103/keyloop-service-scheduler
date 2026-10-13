@@ -39,3 +39,7 @@ public sealed class IdempotencyKeyReuseException() : Exception("The Idempotency-
 /// <summary>409 <c>policy-preview-outdated</c>: publication no longer matches the preview the Admin confirmed.</summary>
 public sealed class PolicyPreviewOutdatedException()
     : Exception("The roster or date consequences changed since the preview. Run the preview again before publishing.");
+
+/// <summary>409 <c>concurrency-conflict</c>: repeated policy publications exhausted this booking's re-resolution budget.</summary>
+public sealed class BookingPolicyChurnException()
+    : Exception("The requirement policy changed repeatedly while this booking was being prepared. Refresh availability and retry the booking.");

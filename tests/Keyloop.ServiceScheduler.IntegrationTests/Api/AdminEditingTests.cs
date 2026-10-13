@@ -163,9 +163,9 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     /// <summary>
-    /// Deterministic form of the race above: both edits pass the If-Match pre-check with the same ETag, and the second commits between the
-    /// first one's check and its UPDATE. Only the xmin-conditional update can refuse the first, so this pins the concurrency token and the
-    /// DbUpdateConcurrencyException path (412 with the winner's state and ETag, no audit row for the loser).
+    /// An out-of-band writer commits between an Admin edit's If-Match check and its UPDATE. Ordinary Admin writes now serialize under
+    /// the dealership lock and cannot interleave there. The xmin-conditional update still protects against bypass writers, producing
+    /// 412 with the current state and ETag and rolling back the Admin audit.
     /// </summary>
     [Theory]
     [InlineData("technician")]
@@ -180,9 +180,19 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         HttpResponseMessage? winner = null;
         var race = new BeforeResourceUpdate(kind == "technician" ? "technicians" : "service_bays", async ct =>
         {
-            var second = body.DeepClone();
-            second["name"] = "Winning edit";
-            winner = await SendAsync(client, HttpMethod.Put, path, second.ToJsonString(), etag, ct);
+            var id = body["id"]!.GetValue<Guid>();
+            await _factory.WithDbAsync(async db =>
+            {
+                if (kind == "technician")
+                {
+                    await db.Technicians.Where(t => t.Id == id).ExecuteUpdateAsync(setters => setters.SetProperty(t => t.Name, "Winning edit"), ct);
+                }
+                else
+                {
+                    await db.ServiceBays.Where(b => b.Id == id).ExecuteUpdateAsync(setters => setters.SetProperty(b => b.Name, "Winning edit"), ct);
+                }
+            });
+            winner = await client.GetAsync(path, ct);
         });
         using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true")
             .ConfigureTestServices(s => s.AddDbContext<SchedulerDbContext>((_, options) => options.AddInterceptors(race))));
@@ -202,8 +212,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
             problem["currentETag"]!.GetValue<string>().ShouldBe(winnerTag);
             loser.Headers.ETag.ShouldNotBeNull().ToString().ShouldBe(winnerTag);
             var changes = await _factory.WithDbAsync(db => db.AdminChanges.AsNoTracking().ToListAsync(Ct));
-            changes.Count.ShouldBe(1);
-            changes[0].After.ShouldContain("Winning edit");
+            changes.ShouldBeEmpty("the bypass writer has no Admin audit, and the rejected Admin write rolled its audit back");
         }
         finally
         {
