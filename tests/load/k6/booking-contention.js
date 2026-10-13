@@ -50,7 +50,7 @@ export function setup() {
     const available = mustRead(availability(context, date, 'setup'), 'Fresh-slot availability');
     const reserved = available.slots[available.slots.length - 1];
     for (const slot of available.slots) {
-      if (slot.freeBays !== 1 || slot.freeTechnicians !== 1 || activeOverlaps(board, context, slot).length !== 0) continue;
+      if (slot.freeBays !== 1 || slot.freeTechnicians < 1 || activeOverlaps(board, context, slot).length !== 0) continue;
       if (context.slots.some((chosen) => Date.parse(chosen.startUtc) < Date.parse(slot.endUtc) &&
         Date.parse(chosen.endUtc) > Date.parse(slot.startUtc))) continue;
       // Preserve one full alternative per day, so later rounds cannot exhaust
@@ -108,7 +108,7 @@ export function teardown(context) {
       const stored = json(response);
       const matches = check(response, { 'winner detail matches slot and qualified resources': () =>
         response.status === 200 && stored?.id === winners[0].id && stored.status === 'Confirmed' &&
-        stored.bay.id === context.bayId && stored.technician.id === context.technicianId &&
+        stored.bay.id === context.bayId && typeof stored.technician?.id === 'string' &&
         Date.parse(stored.startUtc) === Date.parse(slot.startUtc) && Date.parse(stored.endUtc) === Date.parse(slot.endUtc) &&
         stored.customer.name.startsWith(`${context.runId}-`) }, tags);
       if (matches) verified.add(1, tags);

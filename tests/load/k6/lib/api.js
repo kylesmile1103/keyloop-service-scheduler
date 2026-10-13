@@ -154,14 +154,15 @@ export function discover(singleCapacity = false) {
     if (singleCapacity) {
       const board = mustRead(schedule(context, context.dates[0], 'setup'), 'Resource discovery');
       const bays = board.bays.filter((b) => b.isActive && service.requiredBayCapabilities.every((c) => b.capabilities.includes(c)));
-      const technicians = board.technicians.filter((t) => t.isActive && service.requiredCertifications.every((c) => t.certifications.includes(c)));
-      if (bays.length !== 1 || technicians.length !== 1) continue;
+      // The single qualified bay is the contended resource: every contender needs it, so exactly one can win however many
+      // technicians qualify. With vehicle-aware requirements on, technicians qualify by HV level rather than the legacy
+      // certification, so more than one can (Development), and availability then reports two free technicians.
+      if (bays.length !== 1) continue;
       context.bayId = bays[0].id;
-      context.technicianId = technicians[0].id;
     }
     return context;
   }
-  throw new Error(`No eligible dealership for ${code}${singleCapacity ? ' with exactly one qualified bay and technician' : ''}`);
+  throw new Error(`No eligible dealership for ${code}${singleCapacity ? ' with exactly one qualified bay' : ''}`);
 }
 
 export function bookingBody(context, slot, suffix = '') {
@@ -216,6 +217,6 @@ export function cancel(id, second = false, phase = 'workload') {
 export function activeOverlaps(board, context, slot) {
   return board.bays.flatMap((bay) => bay.appointments.filter((a) =>
     ['Confirmed', 'CheckedIn', 'InProgress'].includes(a.status) &&
-    (bay.id === context.bayId || a.technician.id === context.technicianId) &&
+    bay.id === context.bayId &&
     Date.parse(a.startUtc) < Date.parse(slot.endUtc) && Date.parse(a.endUtc) > Date.parse(slot.startUtc)));
 }
