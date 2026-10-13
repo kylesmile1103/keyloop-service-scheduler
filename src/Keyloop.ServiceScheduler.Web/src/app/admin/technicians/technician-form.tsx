@@ -129,7 +129,7 @@ interface TechnicianSheetProps {
 /**
  * Adding or editing a technician (Task 30b, UI_DESIGN 11.24), in the edit sheet. The record is read through Refine core's
  * `useForm` (its `useOne`, the data provider's fresh Admin read), once, when the sheet opens; the form is react-hook-form
- * with zod and the app's own fields. Saving sends the whole state through the data provider's `update` (or `create`), as a
+ * with the app's own checks (not zod) and fields. Saving sends the whole state through the data provider's `update` (or `create`), as a
  * write bound to the Admin who opened the form (`useWriteMutation` with `writes: "admin"`), with the version it was read at.
  * Refine's own `onFinish` is not used: its mutation would leave outside that binding.
  */
@@ -187,14 +187,13 @@ function TechnicianSheetBody(props: BodyProps) {
     // by someone else is a 412 to resolve, not a silent rebase).
     queryOptions: { enabled: editing.mode === "edit", refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false, staleTime: Infinity, gcTime: 0 },
   })
-  const [generation, setGeneration] = useState(0)
-  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin) never rebases the
-  // form; Reload, after a 428, starts it again from a fresh read.
+  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
+  // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
   const [kept, setKept] = useState<AdminTechnicianResponse | null>(null)
-  if (!kept && query?.data?.data && generation === 0) setKept(query.data.data)
+  if (!kept && query?.data?.data) setKept(query.data.data)
 
   if (editing.mode === "create") return <TechnicianFormBody {...props} base={null} />
-  const record = generation === 0 ? (kept ?? query?.data?.data) : query?.data?.data
+  const record = kept ?? query?.data?.data
   if (!record) {
     if (query?.error) {
       return (
@@ -212,12 +211,12 @@ function TechnicianSheetBody(props: BodyProps) {
   }
   return (
     <TechnicianFormBody
-      key={generation}
       {...props}
       base={record}
       onReload={async () => {
-        await query?.refetch()
-        setGeneration((value) => value + 1)
+        // A failed read keeps the last data it had: only a successful one is the record as it is now.
+        const read = await query?.refetch()
+        return read && !read.isError ? (read.data?.data ?? null) : null
       }}
     />
   )
@@ -242,8 +241,8 @@ function FormSkeleton() {
 interface FormBodyProps extends BodyProps {
   /** The Admin representation the form was opened with; `null` for a new technician. */
   base: AdminTechnicianResponse | null
-  /** Reads the record again and starts the form from it (after a 428). */
-  onReload?: () => void
+  /** Reads the record again (after a 428): the record as it is now, or `null` when the read failed. */
+  onReload?: () => Promise<AdminTechnicianResponse | null>
 }
 
 type SaveVariables = { body: TechnicianWriteRequest; ifMatch?: string }
@@ -271,6 +270,8 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
   const [base, setBase] = useState(opened)
   const [conflict, setConflict] = useState<(Conflict<AdminTechnicianResponse> & { mine: TechnicianWriteRequest }) | null>(null)
   const [reappliedNote, setReappliedNote] = useState(false)
+  const [reloaded, setReloaded] = useState<"kept" | "failed" | null>(null)
+  const [reloading, setReloading] = useState(false)
   const [brandDraft, setBrandDraft] = useState("")
   const [brandError, setBrandError] = useState<string | null>(null)
   const conflictRef = useRef<HTMLElement>(null)
@@ -327,6 +328,7 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
     const send = save.begin()
     if (!send) return
     setReappliedNote(false)
+    setReloaded(null)
     void form.handleSubmit((checked) => {
       setConflict(null)
       send({ body: bodyOf(checked), ifMatch: base ? resourceTag(base.version) : undefined })
@@ -342,6 +344,28 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
     setReappliedNote(true)
     save.reset()
     requestAnimationFrame(() => saveRef.current?.focus())
+  }
+
+  // Reload after a 428 keeps what the Admin entered (Codex check of Task 30b): read the record again; unchanged since the
+  // form opened, the values stay for another Save with that version; changed, the comparison (opened, now, yours) opens to
+  // reapply them, as after a 412. Nothing entered is dropped without the Admin's Discard.
+  const reload = async () => {
+    if (!onReload || !base) return
+    const mine = bodyOf(form.getValues())
+    setReloading(true)
+    const current = await onReload()
+    setReloading(false)
+    if (!current) return setReloaded("failed")
+    save.reset()
+    if (current.version === base.version) {
+      setBase(current)
+      setReloaded("kept")
+      requestAnimationFrame(() => saveRef.current?.focus())
+      return
+    }
+    setReloaded(null)
+    setConflict({ current, currentETag: resourceTag(current.version), mine })
+    requestAnimationFrame(() => conflictRef.current?.focus())
   }
 
   const addBrand = () => {
@@ -400,7 +424,20 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
           </ConflictPanel>
         )}
         {showFailure && (
-          <FailureAlert failure={failure} action={`save ${editingName}`} onReload={onReload} retrying={save.isPending} onRetry={submit} />
+          <FailureAlert
+            failure={failure}
+            action={`save ${editingName}`}
+            onReload={onReload && (() => void reload())}
+            reloading={reloading}
+            reloadFailed={reloaded === "failed"}
+            retrying={save.isPending}
+            onRetry={submit}
+          />
+        )}
+        {reloaded === "kept" && (
+          <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">
+            {`Read again: nobody has changed ${base?.name ?? editingName} since you opened it, and your changes are kept. Save them now.`}
+          </p>
         )}
         {reappliedNote && (
           <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">

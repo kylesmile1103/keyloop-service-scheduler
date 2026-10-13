@@ -4,6 +4,7 @@ import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { FieldError } from "@/components/ui/field"
 import { authRefusalTitle, failureStatus } from "@/lib/problem-details"
+import { cn } from "@/lib/utils"
 
 import { preconditionMissing } from "../lib/admin-api"
 
@@ -23,6 +24,10 @@ interface FailureAlertProps {
   /** The action in words, for a 401 or 403's title: "save Ben Okafor". */
   action: string
   onReload?: () => void
+  /** Reload's read is under way. */
+  reloading?: boolean
+  /** Reload's read failed: the alert stays, saying so, for another try. */
+  reloadFailed?: boolean
   onRetry: () => void
   retrying: boolean
 }
@@ -31,7 +36,7 @@ interface FailureAlertProps {
  * A save the API refused for a reason other than a field or a conflict (UI_DESIGN 11.16): signed out or another role, in the
  * action's words; an edit sent without its version (`428`, the app's fault), with Reload; anything else with Try again.
  */
-export function FailureAlert({ failure, action, onReload, onRetry, retrying }: FailureAlertProps) {
+export function FailureAlert({ failure, action, onReload, reloading = false, reloadFailed = false, onRetry, retrying }: FailureAlertProps) {
   const status = failureStatus(failure)
   if (preconditionMissing(failure)) {
     return (
@@ -41,13 +46,16 @@ export function FailureAlert({ failure, action, onReload, onRetry, retrying }: F
         tone="warning"
         actions={
           onReload && (
-            <Button type="button" variant="outline" size="sm" onClick={onReload} className="cursor-pointer text-foreground">
-              <RotateCw aria-hidden="true" />
+            <Button type="button" variant="outline" size="sm" onClick={onReload} disabled={reloading} focusableWhenDisabled className="cursor-pointer text-foreground">
+              <RotateCw aria-hidden="true" className={cn(reloading && "animate-spin motion-reduce:animate-none")} />
               Reload
             </Button>
           )
         }
-      />
+      >
+        <p>Reload reads it again and keeps what you entered.</p>
+        {reloadFailed && <p className="font-medium">Couldn’t read it again. Check the connection, then reload once more.</p>}
+      </ProblemAlert>
     )
   }
   if (status === 401 || status === 403) {

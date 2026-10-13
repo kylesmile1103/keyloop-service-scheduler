@@ -113,14 +113,16 @@ function HistoryFeed({ dealership }: ResourceScope) {
             value={kind ?? "all"}
             onValueChange={(next) => typeof next === "string" && choose(next)}
             aria-labelledby={filterId}
-            className="inline-flex h-10 w-fit max-w-full flex-wrap items-center gap-0.5 rounded-lg bg-muted p-[3px] pointer-coarse:h-auto"
+            // No fixed heights: the options size the group. On a phone they sit two by two (a wrapped row of a fixed-height
+            // segmented control overlapped the feed at 375 px, Codex check of Task 30b); from sm up, one row.
+            className="grid w-full grid-cols-2 gap-0.5 rounded-lg bg-muted p-[3px] sm:inline-flex sm:w-fit sm:max-w-full sm:flex-wrap"
           >
             {KINDS.map((option) => (
               <Radio.Root
                 key={option.value}
                 value={option.value}
                 aria-label={option.label}
-                className="h-full cursor-pointer rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:not-data-checked:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-signal data-checked:text-signal-foreground data-checked:shadow-xs pointer-coarse:min-h-11"
+                className="inline-flex min-h-[34px] cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:not-data-checked:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-signal data-checked:text-signal-foreground data-checked:shadow-xs pointer-coarse:min-h-11"
               >
                 {option.label}
               </Radio.Root>

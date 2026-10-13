@@ -131,6 +131,8 @@ export interface AdminServerOptions {
   history?: AdminHistoryItem[]
   /** Answers a write in its place (a 400 with field errors, a 503), after the precondition checks. */
   refuse?: (request: Request) => Response | undefined
+  /** Answers an Admin read in its place (a 503 for a read again after a 428). */
+  refuseRead?: (request: Request) => Response | undefined
 }
 
 /** A request's JSON body, read from a copy so the recorded request stays readable for assertions. */
@@ -197,6 +199,8 @@ export function adminServer(options: AdminServerOptions = {}) {
     if (!me().roles.includes("Admin")) return forbidden()
     const [, , kind, id, confirm] = match
     const method = request.method
+    const readRefused = method === "GET" ? options.refuseRead?.(request) : undefined
+    if (readRefused) return readRefused
 
     if (kind === "admin-history") {
       const resourceKind = url.searchParams.get("resourceKind")

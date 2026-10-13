@@ -3,10 +3,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { AppointmentListItemResponse, CurrentUserResponse } from "@/api/types.gen"
 import { currentUserQueryKey } from "@/lib/session"
-import { adminServer, type AdminServerOptions, etagOf } from "@/test/admin-api"
+import { ADMIN_TRACE_ID, adminServer, type AdminServerOptions, etagOf } from "@/test/admin-api"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { admin, serviceAdvisor, viewer } from "@/test/identities"
+import { problemResponse } from "@/test/mock-api"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { bodyRows } from "@/test/resource-list"
 import { appointments, bays, technicians } from "@/test/schedules"
@@ -140,6 +141,38 @@ describe("editing bays, as an Admin", () => {
     const reapplied = writes(api.requests, "PUT")[1]
     expect(reapplied.headers.get("If-Match")).toBe(etagOf(now.version))
     expect(await bodyOf(reapplied)).toEqual({ name: "Bay 4 - Electric", capabilities: ["StandardLift"], isActive: true })
+  })
+
+  it("keeps what was entered when Reload after a 428 finds the bay unchanged, and saves it with its version", async () => {
+    let refused = 0
+    const { api } = setup({
+      refuse: (request) =>
+        request.method === "PUT" && refused++ === 0
+          ? problemResponse(428, {
+              type: "https://api.keyloop.example/problems/precondition-required",
+              title: "Precondition required",
+              status: 428,
+              detail: "Send the ETag from the resource read in If-Match.",
+              traceId: ADMIN_TRACE_ID,
+            })
+          : undefined,
+    })
+
+    const sheet = await editForm("Bay 4 - EV")
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "Bay 4 - Electric" } })
+    save(sheet)
+    const alert = await within(sheet).findByRole("alert")
+    expect(alert).toHaveTextContent("Reload reads it again and keeps what you entered.")
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }))
+
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("nobody has changed Bay 4 - EV since you opened it, and your changes are kept")
+    expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Bay 4 - Electric")
+    save(sheet)
+
+    expect(await screen.findByText("Bay saved")).toBeInTheDocument()
+    const sent = writes(api.requests, "PUT")[1]
+    expect(sent.headers.get("If-Match")).toBe(etagOf(EV_VERSION))
+    expect(await bodyOf(sent)).toMatchObject({ name: "Bay 4 - Electric" })
   })
 
   it("previews the upcoming appointments that would be flagged before taking a bay out of service", async () => {

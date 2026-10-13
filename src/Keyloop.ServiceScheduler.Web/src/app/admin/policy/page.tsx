@@ -76,7 +76,7 @@ interface Draft {
   rules: RequirementRuleInput[]
 }
 
-type WriteVariables = { rules: RequirementRuleInput[]; dryRun: boolean; ifMatch: string; previewDate: string; key: string }
+type WriteVariables = { identity: string; rules: RequirementRuleInput[]; dryRun: boolean; ifMatch: string; previewDate: string; key: string }
 
 const changeLabel: Record<RuleChange, string> = { added: "New", changed: "Changed", removed: "Removed" }
 
@@ -94,22 +94,31 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const catalogue = useQuery(getServiceTypesOptions({ path: { dealershipId: dealership.id } }))
   const services = catalogue.data
 
-  // The draft belongs to the Admin who made it: dropped in the render a change of who is signed in arrives in.
   const [draft, setDraft] = useState<Draft | null>(null)
   const [discarded, setDiscarded] = useState(false)
-  if (draft && draft.identity !== identity) {
-    setDraft(null)
-    setDiscarded(true)
-  }
   const [preview, setPreview] = useState<{ key: string; result: PolicyEditResponse } | null>(null)
   const [conflict, setConflict] = useState<{ opened: AdminPolicyResponse; current: AdminPolicyResponse; mine: RequirementRuleInput[] } | null>(null)
   const [editing, setEditing] = useState<{ rule: RequirementRuleInput; isNew: boolean } | null>(null)
+  // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
+  // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
+  // of it in the render the change arrives in (React's pattern for state that follows a prop), never painting for the next
+  // caller; the last write's failure and progress show only for the Admin it was sent for (below).
+  const [shownFor, setShownFor] = useState(identity)
+  if (shownFor !== identity) {
+    setShownFor(identity)
+    if (draft || conflict || editing) setDiscarded(true)
+    setDraft(null)
+    setPreview(null)
+    setConflict(null)
+    setEditing(null)
+  }
 
   const base = draft?.base ?? policy.data
   const rules = inOrder(draft?.rules ?? base?.rules ?? [])
   const changes = base ? ruleChanges(base.rules, rules) : new Map<string, RuleChange>()
   const removed = base ? inOrder(base.rules.filter((rule) => changes.get(rule.code) === "removed")) : []
-  const draftKey = base ? `${base.version}|${JSON.stringify(rules)}` : ""
+  // A preview counts only for the Admin, version and rules it was made for.
+  const draftKey = base ? `${identity}|${base.version}|${JSON.stringify(rules)}` : ""
   const previewed = preview?.key === draftKey ? preview.result : null
 
   const write = useWriteMutation<PolicyEditResponse, unknown, WriteVariables>({
@@ -152,7 +161,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
     const sendWrite = write.begin()
     if (!sendWrite) return
     setConflict(null)
-    sendWrite({ rules, dryRun, ifMatch: policyTag(base.version), previewDate: previewed?.previewDate ?? today, key: draftKey })
+    sendWrite({ identity, rules, dryRun, ifMatch: policyTag(base.version), previewDate: previewed?.previewDate ?? today, key: draftKey })
   }
   const keepMine = () => {
     if (!conflict) return
@@ -190,7 +199,10 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
     )
   }
 
-  const failure = write.error && !conflict ? write.error : null
+  // The last write's outcome is its Admin's: a failure (or a send under way) from before a change of caller is not shown.
+  const ownWrite = write.variables?.identity === identity
+  const pending = write.isPending && ownWrite
+  const failure = write.error && !conflict && ownWrite ? write.error : null
   const failureTitle = (() => {
     const status = failureStatus(failure)
     if (status === 401 || status === 403) return authRefusalTitle(status, "change the policy")
@@ -260,7 +272,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
                   write.reset()
                 }}
                 className="cursor-pointer max-sm:h-11"
-                disabled={write.isPending}
+                disabled={pending}
               >
                 Discard changes
               </Button>
@@ -268,23 +280,23 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
                 type="button"
                 variant={previewed ? "outline" : "default"}
                 onClick={() => send(true)}
-                disabled={write.isPending}
+                disabled={pending}
                 focusableWhenDisabled
                 className="cursor-pointer max-sm:h-11"
               >
-                {write.isPending && write.variables?.dryRun && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
+                {pending && write.variables?.dryRun && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
                 Preview changes
               </Button>
               <Button
                 type="button"
                 variant={previewed ? "default" : "outline"}
                 onClick={() => send(false)}
-                disabled={!previewed || write.isPending}
+                disabled={!previewed || pending}
                 focusableWhenDisabled
                 aria-describedby={previewed ? undefined : pendingReasonId}
                 className="cursor-pointer max-sm:h-11"
               >
-                {write.isPending && write.variables?.dryRun === false && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
+                {pending && write.variables?.dryRun === false && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
                 {`Publish version ${nextVersion}`}
               </Button>
             </div>

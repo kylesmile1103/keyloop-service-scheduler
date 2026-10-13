@@ -124,14 +124,13 @@ function BaySheetBody(props: BodyProps) {
     redirect: false,
     queryOptions: { enabled: editing.mode === "edit", refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false, staleTime: Infinity, gcTime: 0 },
   })
-  const [generation, setGeneration] = useState(0)
-  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin) never rebases the
-  // form; Reload, after a 428, starts it again from a fresh read.
+  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
+  // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
   const [kept, setKept] = useState<AdminBayResponse | null>(null)
-  if (!kept && query?.data?.data && generation === 0) setKept(query.data.data)
+  if (!kept && query?.data?.data) setKept(query.data.data)
 
   if (editing.mode === "create") return <BayFormBody {...props} base={null} />
-  const record = generation === 0 ? (kept ?? query?.data?.data) : query?.data?.data
+  const record = kept ?? query?.data?.data
   if (!record) {
     if (query?.error) {
       return (
@@ -153,12 +152,12 @@ function BaySheetBody(props: BodyProps) {
   }
   return (
     <BayFormBody
-      key={generation}
       {...props}
       base={record}
       onReload={async () => {
-        await query?.refetch()
-        setGeneration((value) => value + 1)
+        // A failed read keeps the last data it had: only a successful one is the record as it is now.
+        const read = await query?.refetch()
+        return read && !read.isError ? (read.data?.data ?? null) : null
       }}
     />
   )
@@ -176,12 +175,14 @@ function BayFormBody({
   onSaved,
   onDiscarded,
   onReload,
-}: BodyProps & { base: AdminBayResponse | null; onReload?: () => void }) {
+}: BodyProps & { base: AdminBayResponse | null; onReload?: () => Promise<AdminBayResponse | null> }) {
   const ids = { name: useId(), nameError: useId(), active: useId(), activeHelp: useId() }
   const dataProvider = useDataProvider()
   const [base, setBase] = useState(opened)
   const [conflict, setConflict] = useState<(Conflict<AdminBayResponse> & { mine: BayWriteRequest }) | null>(null)
   const [reappliedNote, setReappliedNote] = useState(false)
+  const [reloaded, setReloaded] = useState<"kept" | "failed" | null>(null)
+  const [reloading, setReloading] = useState(false)
   const conflictRef = useRef<HTMLElement>(null)
   const saveRef = useRef<HTMLButtonElement>(null)
 
@@ -234,6 +235,7 @@ function BayFormBody({
     const send = save.begin()
     if (!send) return
     setReappliedNote(false)
+    setReloaded(null)
     void form.handleSubmit((checked) => {
       setConflict(null)
       send({ body: bodyOf(checked), ifMatch: base ? resourceTag(base.version) : undefined })
@@ -249,6 +251,27 @@ function BayFormBody({
     setReappliedNote(true)
     save.reset()
     requestAnimationFrame(() => saveRef.current?.focus())
+  }
+
+  // Reload after a 428 keeps what the Admin entered: the technician form's rule (unchanged, kept for another Save; changed,
+  // the comparison to reapply).
+  const reload = async () => {
+    if (!onReload || !base) return
+    const mine = bodyOf(form.getValues())
+    setReloading(true)
+    const current = await onReload()
+    setReloading(false)
+    if (!current) return setReloaded("failed")
+    save.reset()
+    if (current.version === base.version) {
+      setBase(current)
+      setReloaded("kept")
+      requestAnimationFrame(() => saveRef.current?.focus())
+      return
+    }
+    setReloaded(null)
+    setConflict({ current, currentETag: resourceTag(current.version), mine })
+    requestAnimationFrame(() => conflictRef.current?.focus())
   }
 
   return (
@@ -282,7 +305,20 @@ function BayFormBody({
           </ConflictPanel>
         )}
         {failure !== null && conflict === null && !fieldRefusal && (
-          <FailureAlert failure={failure} action={`save ${name}`} onReload={onReload} retrying={pending} onRetry={submit} />
+          <FailureAlert
+            failure={failure}
+            action={`save ${name}`}
+            onReload={onReload && (() => void reload())}
+            reloading={reloading}
+            reloadFailed={reloaded === "failed"}
+            retrying={pending}
+            onRetry={submit}
+          />
+        )}
+        {reloaded === "kept" && (
+          <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">
+            {`Read again: nobody has changed ${base?.name ?? name} since you opened it, and your changes are kept. Save them now.`}
+          </p>
         )}
         {reappliedNote && (
           <p role="status" className="rounded-lg bg-info-subtle px-3 py-2 text-sm text-pretty text-foreground">

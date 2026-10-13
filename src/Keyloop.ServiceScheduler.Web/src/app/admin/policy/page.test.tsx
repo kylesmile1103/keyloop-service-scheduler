@@ -267,6 +267,66 @@ describe("the requirement policy, as an Admin", () => {
     expect(policyWrites(api.requests)).toHaveLength(0)
   })
 
+  // Everything the editor holds is the Admin's it was made for (Codex check of Task 30b): a 412's comparison (whose Keep
+  // would carry the rules into the next Admin's draft), an open rule and the last write's failure go with the draft.
+  const signInAs = async (session: { me: CurrentUserResponse }, queryClient: { setQueryData: (key: readonly unknown[], data: unknown) => unknown }) => {
+    const other = { ...admin, email: "another.admin@keyloop.test" }
+    session.me = other
+    act(() => void queryClient.setQueryData(currentUserQueryKey(), other))
+  }
+
+  it("drops a conflict's comparison when another Admin signs in, so its rules never carry over", async () => {
+    const { server, api, session, queryClient } = setup()
+
+    await setLevel("hv-routine", "Level 4, Live working")
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+    await screen.findByRole("region", { name: "What version 3 would change" })
+    server.editedElsewhere.policy(defaultRules.map((rule) => (rule.code === "hv-aircon" ? { ...rule, minimumHvLevel: 4 } : rule)))
+    fireEvent.click(publish())
+    await screen.findByRole("region", { name: "Version 3 was published while you were editing" })
+
+    await signInAs(session, queryClient)
+
+    expect(await screen.findByText("Your unpublished changes were discarded: who is signed in changed.")).toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: /was published while you were editing/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^Keep my changes/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: /would change$/ })).not.toBeInTheDocument()
+    await waitFor(async () => expect(ruleRow(await rulesTable(), "hv-routine")).toHaveTextContent("HV 2"))
+    expect(screen.queryByRole("button", { name: /^Publish version/ })).not.toBeInTheDocument()
+    expect(policyWrites(api.requests)).toHaveLength(2)
+  })
+
+  it("closes an open rule without saving it when another Admin signs in", async () => {
+    const { api, session, queryClient } = setup()
+
+    fireEvent.click(within(ruleRow(await rulesTable(), "hv-routine")).getByRole("button", { name: "Edit hv-routine" }))
+    const dialog = await screen.findByRole("dialog", { name: "Edit rule hv-routine" })
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Level 4, Live working" }))
+
+    await signInAs(session, queryClient)
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit rule hv-routine" })).not.toBeInTheDocument())
+    expect(await screen.findByText("Your unpublished changes were discarded: who is signed in changed.")).toBeInTheDocument()
+    expect(ruleRow(await rulesTable(), "hv-routine")).toHaveTextContent("HV 2")
+    expect(policyWrites(api.requests)).toHaveLength(0)
+  })
+
+  it("does not show the previous Admin's failed preview to the next", async () => {
+    const { session, queryClient } = setup({
+      refuse: (request) =>
+        request.method === "PUT" ? new Response(JSON.stringify({ title: "Service unavailable", status: 503 }), { status: 503, headers: { "Content-Type": "application/problem+json" } }) : undefined,
+    })
+
+    await setLevel("hv-routine", "Level 4, Live working")
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+    expect(await screen.findByText("Couldn’t preview the changes")).toBeInTheDocument()
+
+    await signInAs(session, queryClient)
+
+    expect(await screen.findByText("Your unpublished changes were discarded: who is signed in changed.")).toBeInTheDocument()
+    expect(screen.queryByText("Couldn’t preview the changes")).not.toBeInTheDocument()
+  })
+
   it("fits a phone: the rules as cards", async () => {
     viewportOf(390)
     setup()

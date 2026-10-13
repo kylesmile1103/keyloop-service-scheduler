@@ -286,6 +286,89 @@ describe("editing technicians, as an Admin", () => {
     expect(alert).toHaveTextContent(ADMIN_TRACE_ID)
     expect(within(alert).getByRole("button", { name: "Reload" })).toBeInTheDocument()
   })
+
+  // Reload after a 428 keeps what the Admin entered (Codex check of Task 30b): it reads the record again, and only a
+  // change by someone else turns it into the comparison; nothing entered is dropped without Discard.
+  const missingVersionOnce = () => {
+    let refused = 0
+    return (request: Request) =>
+      request.method === "PUT" && refused++ === 0
+        ? problemResponse(428, {
+            type: "https://api.keyloop.example/problems/precondition-required",
+            title: "Precondition required",
+            status: 428,
+            detail: "Send the ETag from the resource read in If-Match.",
+            traceId: ADMIN_TRACE_ID,
+          })
+        : undefined
+  }
+
+  it("keeps what was entered when Reload finds the technician unchanged, and saves it with its version", async () => {
+    const { api } = setup({ refuse: missingVersionOnce() })
+
+    const sheet = await editForm("Ben Okafor")
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "Benjamin Okafor" } })
+    save(sheet)
+    const alert = await within(sheet).findByRole("alert")
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }))
+
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("nobody has changed Ben Okafor since you opened it, and your changes are kept")
+    expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor")
+    expect(within(sheet).queryByRole("alert")).not.toBeInTheDocument()
+    save(sheet)
+
+    expect(await screen.findByText("Technician saved")).toBeInTheDocument()
+    const [refused, sent] = writes(api.requests, "PUT")
+    expect(refused.headers.get("If-Match")).toBe(etagOf(722))
+    expect(sent.headers.get("If-Match")).toBe(etagOf(722))
+    expect(await bodyOf(sent)).toMatchObject({ name: "Benjamin Okafor" })
+  })
+
+  it("opens the comparison when Reload finds the technician changed by someone else, keeping what was entered", async () => {
+    const { server, api } = setup({ refuse: missingVersionOnce() })
+
+    const sheet = await editForm("Ben Okafor")
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "Benjamin Okafor" } })
+    save(sheet)
+    const alert = await within(sheet).findByRole("alert")
+    const now = server.editedElsewhere.technician(ben.id, { hvLevel: 2 })
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }))
+
+    const conflict = await within(sheet).findByRole("region", { name: "Someone else changed Ben Okafor" })
+    expect(within(conflict).getByRole("row", { name: /HV level HV 3 HV 2/ })).toBeInTheDocument()
+    expect(within(conflict).getByRole("row", { name: /Name Ben Okafor Ben Okafor Benjamin Okafor/ })).toBeInTheDocument()
+    await waitFor(() => expect(conflict).toHaveFocus())
+    fireEvent.click(within(conflict).getByRole("button", { name: "Reapply my changes" }))
+    await waitFor(() => expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor"))
+    save(sheet)
+
+    expect(await screen.findByText("Technician saved")).toBeInTheDocument()
+    const sent = writes(api.requests, "PUT").at(-1)!
+    expect(sent.headers.get("If-Match")).toBe(etagOf(now.version))
+    expect(await bodyOf(sent)).toMatchObject({ name: "Benjamin Okafor", hvLevel: 2 })
+  })
+
+  it("says so when Reload cannot read the technician, keeping the form and the way to try again", async () => {
+    const reads = { refuse: false }
+    setup({
+      refuse: missingVersionOnce(),
+      refuseRead: (request) =>
+        reads.refuse && new URL(request.url).pathname.endsWith(`/technicians/${ben.id}`)
+          ? problemResponse(503, { type: "about:blank", title: "Service unavailable", status: 503, traceId: ADMIN_TRACE_ID })
+          : undefined,
+    })
+
+    const sheet = await editForm("Ben Okafor")
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "Benjamin Okafor" } })
+    save(sheet)
+    const alert = await within(sheet).findByRole("alert")
+    reads.refuse = true
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }))
+
+    expect(await within(alert).findByText("Couldn’t read it again. Check the connection, then reload once more.")).toBeInTheDocument()
+    expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor")
+    expect(within(alert).getByRole("button", { name: "Reload" })).toBeEnabled()
+  })
 })
 
 describe("HV levels and deactivation, as an Admin", () => {
