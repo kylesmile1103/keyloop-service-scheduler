@@ -41,7 +41,7 @@ import { client } from "@/lib/api-client"
 
 /**
  * The Admin operations of Task 30a, sent through the app's generated client exactly as the generated SDK functions send
- * them (`src/api/sdk.gen.ts`: the operation's URL template, the same security schemes, a JSON body's content type), but
+ * them (`src/api/sdk.gen.ts`: the operation's URL pattern, the same security schemes, a JSON body's content type), but
  * from the admin area's own code. The generated SDK module is shared with the dispatch board, and a module goes into one
  * chunk with every export any page uses, so calling its Admin functions would put them in the board's first load
  * (ARCHITECTURE §15, measured at Task 30b). Every request is typed by the generated `...Data`, `...Responses` and
