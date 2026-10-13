@@ -21,6 +21,9 @@ public sealed class SecurityOptions : IValidatableObject
     [ValidateObjectMembers]
     public ForwardedHeadersSettings ForwardedHeaders { get; set; } = new();
 
+    [ValidateObjectMembers]
+    public HttpsRedirectionSettings HttpsRedirection { get; set; } = new();
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         for (var index = 0; index < AllowedOrigins.Length; index++)
@@ -38,6 +41,28 @@ public sealed class SecurityOptions : IValidatableObject
         Uri.TryCreate(origin, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
         && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && !origin.EndsWith('/');
+
+    /// <summary>
+    /// Explicit opt-in for an API HTTP listener with a reachable HTTPS destination. TLS-terminating deployments enforce
+    /// HTTPS at ingress; local HTTP proxies and SystemTest leave this off. Enabled redirection never discovers a port at runtime.
+    /// </summary>
+    public sealed class HttpsRedirectionSettings : IValidatableObject
+    {
+        public bool Enabled { get; set; }
+
+        [Range(1, 65535)]
+        public int? HttpsPort { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (Enabled && HttpsPort is null)
+            {
+                yield return new ValidationResult(
+                    "HttpsRedirection is enabled without HttpsPort. Supply Security__HttpsRedirection__HttpsPort for the reachable HTTPS listener.",
+                    [nameof(HttpsPort)]);
+            }
+        }
+    }
 
     /// <summary>Sliding-window limits per verified email, otherwise client IP; <see cref="Enabled"/> is false only in SystemTest.</summary>
     public sealed class RateLimitingOptions
