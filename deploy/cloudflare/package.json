@@ -21,7 +21,7 @@
     "vitest": "4.1.11",
     "miniflare": "5.20261006.1-alpha",
     "esbuild": "0.25.12",
-    "@types/node": "22.19.15",
+    "@types/node": "26.6.5",
     "@cloudflare/workers-types": "5.20261012.1",
     "@scalar/api-reference": "1.72.2"
   }
