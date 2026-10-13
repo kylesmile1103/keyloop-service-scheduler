@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from "react"
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { cn } from "@/lib/utils"
 
 interface EditSheetProps {
@@ -23,6 +24,8 @@ interface EditSheetProps {
  * the bottom. Base UI traps focus, closes on Escape and gives focus back on close.
  */
 export function EditSheet({ open, onOpenChange, phone, title, description, initialFocus, returnFocus, children }: EditSheetProps) {
+  // An open edit is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(open)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent

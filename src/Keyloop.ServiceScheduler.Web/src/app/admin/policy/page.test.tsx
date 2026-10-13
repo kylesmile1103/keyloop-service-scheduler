@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { CurrentUserResponse, PolicyBookabilityChange, PolicyWriteRequest, RequirementRuleInput } from "@/api/types.gen"
 import { currentUserQueryKey } from "@/lib/session"
+import { hasUnsavedWork } from "@/lib/unsaved-work"
 import { adminServer, type AdminServerOptions, defaultRules, policyETagOf } from "@/test/admin-api"
 import { mockBoardApi, requestsTo } from "@/test/board-api"
 import { readingCatalogue } from "@/test/catalogue"
@@ -271,6 +272,21 @@ describe("the requirement policy, as an Admin", () => {
       policyETagOf(3),
       policyETagOf(3),
     ])
+  })
+
+  it("holds off a silent session renewal while a rule is open and while the draft is unpublished", async () => {
+    setup()
+
+    fireEvent.click(within(ruleRow(await rulesTable(), "hv-routine")).getByRole("button", { name: "Edit hv-routine" }))
+    const dialog = await screen.findByRole("dialog", { name: "Edit rule hv-routine" })
+    expect(hasUnsavedWork()).toBe(true)
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Level 4, Live working" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save rule" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    expect(hasUnsavedWork()).toBe(true)
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }))
+    await waitFor(() => expect(hasUnsavedWork()).toBe(false))
   })
 
   it("discards the draft when asked", async () => {

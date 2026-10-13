@@ -209,7 +209,7 @@ cf zero-trust access policies create --body "$(cat deploy/cloudflare/build/acces
 
 Note the policy `id`.
 
-4. **REQUIRES USER CONFIRMATION:** the application. In `build/access/application.template.json`, replace `__ONE_TIME_PIN_IDP_ID__` and `__REVIEWERS_POLICY_ID__`. The body selects: self-hosted on `keyloop.kylesmile.me/auth/*` only (the board, assets and `/api/v1/*` stay public at Access), session 1 hour, one-time PIN as the only allowed IdP with automatic redirect, Cookie Path Attribute **disabled** (`path_cookie_attribute: false`, so the cookie reaches `/api/v1/*`), `HttpOnly`, `SameSite=Lax`, binding cookie off, hidden from the App Launcher.
+4. **REQUIRES USER CONFIRMATION:** the application. In `build/access/application.template.json`, replace `__ONE_TIME_PIN_IDP_ID__` and `__REVIEWERS_POLICY_ID__`. The body selects: self-hosted on `keyloop.kylesmile.me/auth/*` only (the board, assets and `/api/v1/*` stay public at Access), session 1 hour (short on purpose: the API validates this bearer token offline until its expiry; the web app renews it through the 24-hour Access account session before it ends, ADR-027 "Session duration and renewal"), one-time PIN as the only allowed IdP with automatic redirect, Cookie Path Attribute **disabled** (`path_cookie_attribute: false`, so the cookie reaches `/api/v1/*`), `HttpOnly`, `SameSite=Lax`, binding cookie off, hidden from the App Launcher.
 
 ```sh
 cf zero-trust access applications create --body "$(cat deploy/cloudflare/build/access/application.template.json)"

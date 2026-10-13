@@ -52,6 +52,7 @@ import { useCurrentUser, type WriteAccess, writeAccessOf } from "@/hooks/use-cur
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useMutationFailure } from "@/hooks/use-mutation-failure"
 import { useQueryFailure } from "@/hooks/use-query-failure"
+import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { rangeReadsOf } from "@/lib/appointment-range"
 import { formatDay, fromPickerDate, toPickerDate, weekdayOf } from "@/lib/calendar-date"
@@ -349,6 +350,8 @@ function BookingFlow({
 
   // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
   const triage = useBookingTriage(dealershipId)
+  // A booking being entered is work a session renewal's navigation would lose (hooks/use-unsaved-work).
+  useUnsavedWork(!booked && (form.formState.isDirty || triage.description.trim() !== "" || triage.photos.length > 0))
   // What the dialog last wrote into Notes (the description's copy and the lines added from the suggestions), and whether the
   // description was part of it: notes that still read exactly that are the dialog's, not the person's own words, so they can
   // follow the description (or go when the box is unticked); anything else is never written over.

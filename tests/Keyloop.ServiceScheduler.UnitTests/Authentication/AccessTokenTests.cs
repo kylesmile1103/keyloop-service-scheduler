@@ -43,13 +43,30 @@ public sealed class AccessTokenTests : IDisposable
         using var client = new HttpClient(transport);
         using var keys = new AccessSigningKeys(client, Options.Create(_settings), _clock);
         var validator = new AccessTokenValidator(keys, Options.Create(_settings), _clock);
-        var identity = await validator.ValidateAsync(Token(variant), TestContext.Current.CancellationToken);
-        (identity is not null).ShouldBe(accepted);
-        if (identity is not null)
+        var result = await validator.ValidateAsync(Token(variant), TestContext.Current.CancellationToken);
+        (result is not null).ShouldBe(accepted);
+        if (result is not null)
         {
-            identity.FindFirst(ClaimTypes.Email)!.Value.ShouldBe("advisor@keyloop.test");
-            identity.FindAll(ClaimTypes.Role).ShouldBeEmpty("roles supplied by the JWT must never grant API roles");
+            result.Identity.FindFirst(ClaimTypes.Email)!.Value.ShouldBe("advisor@keyloop.test");
+            result.Identity.FindAll(ClaimTypes.Role).ShouldBeEmpty("roles supplied by the JWT must never grant API roles");
         }
+    }
+
+    [Theory]
+    [InlineData("valid", 300)]
+    // Accepted inside the clock skew, so its expiry is already behind the API's clock: the web app counts the session as ended.
+    [InlineData("expired-inside-skew", -29)]
+    public async Task Reports_the_token_expiry_for_session_renewal(string variant, int secondsFromNow)
+    {
+        using var transport = new JwksHandler(Jwks("key-one"));
+        using var client = new HttpClient(transport);
+        using var keys = new AccessSigningKeys(client, Options.Create(_settings), _clock);
+        var validator = new AccessTokenValidator(keys, Options.Create(_settings), _clock);
+        var result = await validator.ValidateAsync(Token(variant), TestContext.Current.CancellationToken);
+        result.ShouldNotBeNull();
+        result.ExpiresUtc.ShouldBe(_clock.GetUtcNow().UtcDateTime.AddSeconds(secondsFromNow));
+        result.ExpiresUtc.Kind.ShouldBe(DateTimeKind.Utc);
+        result.Identity.FindFirst("exp").ShouldBeNull("the expiry is a property of the session, not a claim of the principal");
     }
 
     [Fact]

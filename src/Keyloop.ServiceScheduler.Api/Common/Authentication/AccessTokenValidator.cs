@@ -5,12 +5,15 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Authentication;
 
+/// <summary>A verified Access identity and the token's <c>exp</c> (UTC), which <c>/me</c> reports so the web app can renew in time.</summary>
+internal sealed record AccessIdentity(ClaimsIdentity Identity, DateTime ExpiresUtc);
+
 /// <summary>Microsoft's token validator owns JOSE/signatures. Project only verified human identity claims, never token-supplied roles.</summary>
 public sealed class AccessTokenValidator(AccessSigningKeys keys, IOptions<AuthOptions> options, TimeProvider clock)
 {
     private readonly JsonWebTokenHandler _handler = new() { MapInboundClaims = false, MaximumTokenSizeInBytes = 16 * 1024 };
 
-    internal async Task<ClaimsIdentity?> ValidateAsync(string token, CancellationToken ct)
+    internal async Task<AccessIdentity?> ValidateAsync(string token, CancellationToken ct)
     {
         if (!_handler.CanReadToken(token))
         {
@@ -70,6 +73,7 @@ public sealed class AccessTokenValidator(AccessSigningKeys keys, IOptions<AuthOp
             identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, subject.Value));
         }
 
-        return identity;
+        // RequireExpirationTime guarantees exp; it is a property of the session, not a claim of the principal.
+        return new AccessIdentity(identity, result.SecurityToken.ValidTo);
     }
 }

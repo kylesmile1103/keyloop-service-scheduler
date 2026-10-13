@@ -1815,7 +1815,7 @@
           "Identity"
         ],
         "summary": "Get the current caller and sign-in/out URLs",
-        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
+        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
         "operationId": "GetCurrentUser",
         "parameters": [
           {
@@ -1832,7 +1832,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.",
+            "description": "The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), the session's expiry, and same-origin loginUrl/logoutUrl.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -5575,36 +5575,51 @@
           "displayName",
           "roles",
           "loginUrl",
-          "logoutUrl"
+          "logoutUrl",
+          "expiresAtUtc"
         ],
         "type": "object",
         "properties": {
           "authenticated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the API verified the caller's identity."
           },
           "email": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The verified email; null when not authenticated."
           },
           "displayName": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The verified name, else null."
           },
           "roles": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "API roles in the order Admin, ServiceAdvisor, Viewer; empty without one."
           },
           "loginUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The same-origin Access login path, returning to `/`."
           },
           "logoutUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The hostname's Access logout path."
+          },
+          "expiresAtUtc": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "When the verified Access token expires (its `exp`, UTC); null for an anonymous caller and for the Development identity, which has no expiry. Access issues no refresh token: renew before then by navigating to loginUrl.",
+            "format": "date-time"
           }
         },
         "description": "The caller's verified identity and API roles. URLs are same-origin Access navigation targets."
