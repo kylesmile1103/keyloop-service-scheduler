@@ -146,9 +146,12 @@ describe("the requirement policy, as an Admin", () => {
     await waitFor(() => expect(again).toHaveFocus())
     expect(screen.queryByText("Policy version 3 published")).not.toBeInTheDocument()
 
+    again.focus()
     fireEvent.click(again)
     await screen.findByRole("region", { name: "What version 3 would change" })
     expect(screen.queryByText("The preview is out of date")).not.toBeInTheDocument()
+    // Preview again went with its alert; focus is on the next step, not lost to the page.
+    expect(publish()).toHaveFocus()
     fireEvent.click(publish())
     expect(await screen.findByText("Policy version 3 published")).toBeInTheDocument()
 

@@ -112,6 +112,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   // bar asks for a new one, for that draft only.
   const [outdated, setOutdated] = useState<string | null>(null)
   const previewAgainRef = useRef<HTMLButtonElement>(null)
+  const publishRef = useRef<HTMLButtonElement>(null)
   // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
   // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
   // of it in the render the change arrives in (React's pattern for state that follows a prop), never painting for the next
@@ -141,6 +142,8 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
       writePolicy({ dealershipId: dealership.id, body: { rules: sent, dryRun, previewDate, previewToken }, ifMatch, fetch: bound.fetch() }),
     onSuccess: (result, variables) => {
       if (variables.dryRun) {
+        // Preview again goes with its alert: focus moves first to what comes next, Publish, so it is not lost to the page.
+        if (previewAgainRef.current !== null && previewAgainRef.current === document.activeElement) publishRef.current?.focus()
         setPreview({ key: variables.key, result })
         setOutdated(null)
         return
@@ -323,6 +326,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
                 Preview changes
               </Button>
               <Button
+                ref={publishRef}
                 type="button"
                 variant={previewed ? "default" : "outline"}
                 onClick={() => send(false)}

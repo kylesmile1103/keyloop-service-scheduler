@@ -1,6 +1,7 @@
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
 import { LoaderCircle } from "lucide-react"
 import { type RefObject, useId, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 import { Controller, type FieldErrors, type Resolver, useForm, useWatch } from "react-hook-form"
 
 import type { AdminBayResponse, BayCapability, BayWriteRequest, DealershipResponse } from "@/api/types.gen"
@@ -262,16 +263,21 @@ function BayFormBody({
     const current = await onReload()
     setReloading(false)
     if (!current) return setReloaded("failed")
+    // Focus leaves Reload before the alert holding it goes: a focused element removed from the sheet sends focus to the
+    // sheet itself (Base UI restores it to the popup on the next frame, after anything this form asked for).
+    saveRef.current?.focus()
     save.reset()
     if (current.version === base.version) {
       setBase(current)
       setReloaded("kept")
-      requestAnimationFrame(() => saveRef.current?.focus())
       return
     }
-    setReloaded(null)
-    setConflict({ current, currentETag: resourceTag(current.version), mine })
-    requestAnimationFrame(() => conflictRef.current?.focus())
+    // The comparison is drawn at once and then focused: a frame's wait can come before React commits it.
+    flushSync(() => {
+      setReloaded(null)
+      setConflict({ current, currentETag: resourceTag(current.version), mine })
+    })
+    conflictRef.current?.focus()
   }
 
   return (

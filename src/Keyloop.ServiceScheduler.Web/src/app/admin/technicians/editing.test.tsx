@@ -313,6 +313,7 @@ describe("editing technicians, as an Admin", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Reload" }))
 
     expect(await within(sheet).findByRole("status")).toHaveTextContent("nobody has changed Ben Okafor since you opened it, and your changes are kept")
+    expect(within(sheet).getByRole("button", { name: "Save changes" })).toHaveFocus()
     expect(within(sheet).getByRole("textbox", { name: "Name" })).toHaveValue("Benjamin Okafor")
     expect(within(sheet).queryByRole("alert")).not.toBeInTheDocument()
     save(sheet)
