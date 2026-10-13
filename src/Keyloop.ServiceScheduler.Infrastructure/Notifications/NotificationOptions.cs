@@ -49,8 +49,7 @@ public sealed class NotificationOptions : IValidatableObject
         {
             yield return new ValidationResult("ReplyTo must be a single email address without display text or line breaks.", [nameof(ReplyTo)]);
         }
-        // Typed comparisons, not [Range(typeof(TimeSpan), ...)]: that constructor converts through a TypeConverter, which is not
-        // trim-safe (IL2026; ledger ruling under Task 18/18a). The generated validator calls this method.
+        // Use typed comparisons instead of [Range(typeof(TimeSpan), ...)] to remain trim-safe (IL2026).
         if (OutOfRange(IdleInterval, TimeSpan.FromSeconds(1), TimeSpan.FromHours(1)))
         {
             yield return new ValidationResult("IdleInterval must be between 00:00:01 and 01:00:00.", [nameof(IdleInterval)]);

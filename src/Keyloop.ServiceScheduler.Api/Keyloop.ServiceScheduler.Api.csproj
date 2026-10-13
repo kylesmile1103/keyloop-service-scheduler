@@ -6,18 +6,14 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- Reflection budget (ADR-016, Addendum A §A1): build-time request delegates and configuration binding, and no reflection
-         fallback for JSON, so a type missing from SchedulerJsonContext fails fast. -->
+    <!-- Source-generated request delegates, configuration binding, and JSON serialization without reflection fallback. -->
     <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
     <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.Http.Generated</InterceptorsNamespaces>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- Build-time OpenAPI (ADR-008, Addendum B §B1): every build writes the v1 document to contracts/openapi/v1.json, which is committed
-         and from which the web client is generated. Program.cs skips database work while BuildTimeOpenApi.IsActive. -->
-    <!-- EF bundles publish a self-contained target: the document tool cannot load that target assembly. CI already checks the
-         committed contract. Disable generation only for the explicit bundle build, keeping ordinary builds unchanged. -->
+    <!-- Generate contracts/openapi/v1.json on build, except during self-contained EF migration bundle builds. -->
     <OpenApiGenerateDocumentsOnBuild Condition="'$(KEYLOOP_BUILD_MIGRATION_BUNDLE)' != 'true'">true</OpenApiGenerateDocumentsOnBuild>
     <OpenApiGenerateDocumentsOnBuild Condition="'$(KEYLOOP_BUILD_MIGRATION_BUNDLE)' == 'true'">false</OpenApiGenerateDocumentsOnBuild>
     <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../../contracts/openapi</OpenApiDocumentsDirectory>
@@ -36,11 +32,9 @@
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
-    <!-- Build tooling only: generates the OpenAPI document after compilation. -->
     <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" PrivateAssets="all" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="FluentValidation" />
-    <!-- Compile-time mapping generator only (Addendum A §A1/§A6). -->
     <PackageReference Include="Riok.Mapperly" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
   <ItemGroup>

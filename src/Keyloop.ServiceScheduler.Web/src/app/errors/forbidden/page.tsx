@@ -5,10 +5,7 @@ import { nameOf } from "@/lib/session"
 
 import { DispatchBoardLink, ErrorPage } from "../components/error-page"
 
-/**
- * 403 (`/errors/forbidden`), also shown in place by the Resources area to an account without a role: the signed-in
- * account's role does not include the page, and roles come from the workshop administrator.
- */
+/** 403 error page shown when the signed-in account lacks the required role. */
 export default function ForbiddenPage() {
   const { user } = useCurrentUser()
   return (

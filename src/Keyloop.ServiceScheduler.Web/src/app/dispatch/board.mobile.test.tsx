@@ -6,15 +6,14 @@ import { munich, reading } from "@/test/dealerships"
 import { startCancelling } from "@/test/details"
 import { renderBoard, phoneViewport } from "@/test/render-board"
 
-// The phone presentation (< 768 px): the same schedule as an agenda of job cards grouped by lane, details in a bottom sheet,
-// and the toolbar's secondary controls in a Filters sheet (task 16 controller addendum: responsive and mobile view).
+// Mobile presentation (< 768 px): agenda of job cards grouped by lane, bottom-sheet details, and Filters sheet.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")
 })
 
 const readingBoard = `/dispatch?dealership=${reading.id}`
-// A job card names the customer as well as the technician, as its visible text does (UI_DESIGN 11.13).
+// Job card accessible label includes customer and technician names.
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed"
 const section = (name: string) => screen.findByRole("region", { name: new RegExp(`^${name}`) })
 

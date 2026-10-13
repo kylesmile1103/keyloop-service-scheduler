@@ -9,9 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The must-be-zero HV signal (ADR-029). The allocator's hard filter makes a hit impossible, so nothing in the booking path can
-/// produce one; this proves the check itself counts and logs what the alert and its runbook need, so a miswired counter cannot leave
-/// the alert permanently silent.
+/// Verifies that technician HV level violations are counted and logged critically.
 /// </summary>
 public sealed class AllocationSafetyTests
 {

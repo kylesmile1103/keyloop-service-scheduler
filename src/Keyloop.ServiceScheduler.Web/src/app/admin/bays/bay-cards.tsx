@@ -10,11 +10,7 @@ import { BAY_WORDS } from "./columns"
 
 const APPOINTMENTS = { one: "appointment today", other: "appointments today" }
 
-/**
- * The bays on a phone, one card per bay in the table's order: the name, whether it is in service, its equipment, and
- * today's appointments with the bay's load as a meter of the opening hours; an Admin's card ends with the row's menu. Each
- * name is a heading.
- */
+/** Mobile card list for service bays with equipment and today's load. */
 export function BayCards({ rows, actions }: { rows: readonly BayRecord[]; actions?: (row: BayRecord) => ReactNode }) {
   return (
     <ol aria-label="Bays" className="flex flex-col gap-2">

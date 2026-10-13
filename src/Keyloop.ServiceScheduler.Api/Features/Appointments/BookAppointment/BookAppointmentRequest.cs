@@ -4,14 +4,8 @@ using Keyloop.ServiceScheduler.Api.Features.Vehicles.ResolveVehicleProfile;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
-// The request records declare their properties explicitly (initialised from the positional parameters) because the OpenAPI XML
-// comment generator copies a record's <param> descriptions onto its properties but not their examples: an <example> on the property
-// itself is what reaches the schema (as JSON Schema `examples`), and Scalar's "Test request" body is built from those (Addendum B §B2).
-// Optional members have defaults, so they are not `required` in the schema either.
-
 /// <summary>
-/// The body of <c>POST /dealerships/{dealershipId}/appointments</c>: one service at one start time for one customer's vehicle. The
-/// examples form a valid booking at the seeded Keyloop Motors Reading dealership.
+/// Request body for <c>POST /dealerships/{dealershipId}/appointments</c>.
 /// </summary>
 public sealed record BookAppointmentRequest(
     Guid ServiceTypeId,
@@ -32,10 +26,7 @@ public sealed record BookAppointmentRequest(
     /// <example>3153f30d-5700-8f07-a25d-4a4ea44dfeef</example>
     public Guid ServiceTypeId { get; init; } = ServiceTypeId;
 
-    /// <summary>
-    /// Start time in UTC with <c>Z</c> and no seconds: a start offered by the availability route, inside the dealership's opening hours,
-    /// on its slot grid, and between the minimum lead time and the booking horizon from now.
-    /// </summary>
+    /// <summary>Start time in UTC (<c>Z</c>, whole minutes) aligned to the dealership's operating hours and slot grid.</summary>
     /// <example>2026-10-13T09:00:00Z</example>
     public DateTime StartUtc { get; init; } = StartUtc;
 
@@ -45,14 +36,11 @@ public sealed record BookAppointmentRequest(
     /// <summary>The vehicle to be serviced.</summary>
     public VehicleRequest Vehicle { get; init; } = Vehicle;
 
-    /// <summary>
-    /// Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy
-    /// chooses (the example is the seeded Reading Bay 1 - Standard).
-    /// </summary>
+    /// <summary>Optional preferred bay ID, honoured when free and compatible with the service.</summary>
     /// <example>29c9f970-e13d-879e-a949-a553839cf25e</example>
     public Guid? PreferredBayId { get; init; } = PreferredBayId;
 
-    /// <summary>Optional: a technician to assign when free and certified; otherwise ignored (the example is the seeded Amelia Clarke at Reading).</summary>
+    /// <summary>Optional preferred technician ID, honoured when free and certified.</summary>
     /// <example>bd559b63-ceea-83dd-9a48-f2bc7a515dcd</example>
     public Guid? PreferredTechnicianId { get; init; } = PreferredTechnicianId;
 
@@ -80,11 +68,7 @@ public sealed record CustomerRequest(string Name, string Email, string Phone)
 /// <summary>The vehicle to be serviced.</summary>
 public sealed record VehicleRequest(string Vin, string Registration, string Make, string Model, VehicleProfileRequest? Profile = null)
 {
-    /// <summary>
-    /// Optional advisor declaration, for example <c>{"powertrain":"Ice","declarationReason":"Engine checked at intake"}</c>. Omission keeps
-    /// powertrain Unknown; the server resolves manufacturer from VIN. Only with vehicle-aware requirements enabled: otherwise any profile
-    /// is refused (422 <c>vehicle-aware-requirements-disabled</c>), which is why the example request sends none.
-    /// </summary>
+    /// <summary>Optional advisor vehicle profile declaration when vehicle-aware requirements are enabled.</summary>
     /// <example>null</example>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public VehicleProfileRequest? Profile { get; init; } = Profile;

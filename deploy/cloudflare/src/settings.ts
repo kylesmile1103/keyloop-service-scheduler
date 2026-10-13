@@ -2,8 +2,7 @@ import { accessSettings } from "./auth.ts";
 import { apiOtlpSettings, emailCaps, recipientAllowlist, triageSettings } from "./container-env.ts";
 import { grafanaTracesUrl } from "./otlp.ts";
 
-// cloudflare.config.ts evaluates this, so a misconfigured deployment fails `cf build` instead of the first cold start,
-// send or trace export. The Worker and the container start keep their own checks. An empty value means unset.
+// Evaluated by cloudflare.config.ts at build time; empty strings are treated as unset.
 type Source = Readonly<Record<string, string | undefined>>;
 
 function setting(source: Source, name: string, fallback: string): string {

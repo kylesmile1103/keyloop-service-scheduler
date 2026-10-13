@@ -5,10 +5,7 @@ using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 
-/// <summary>
-/// The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.
-/// A projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again.
-/// </summary>
+/// <summary>The dispatch board for one dealership on one local date, including all bays, their appointments, and all technicians.</summary>
 /// <param name="Dealership">The dealership, with the time zone every <c>…Local</c> value is expressed in.</param>
 /// <param name="Date">The local calendar date asked for, in the dealership's time zone.</param>
 /// <param name="OperatingWindow">Opening to closing time that day; null when the dealership is closed on that weekday, and every bay's <c>appointments</c> is then empty.</param>
@@ -34,10 +31,7 @@ public sealed record DealershipSummary(Guid Id, string Name, string TimeZoneId);
 /// <param name="Name">Display name.</param>
 /// <param name="Capabilities">What the bay is equipped for, in the enumeration's declared order.</param>
 /// <param name="IsActive">False when the bay is out of service: it takes no new bookings, but the appointments it already holds stay listed under it.</param>
-/// <param name="Appointments">
-/// Its appointments overlapping that day's opening hours, in every status except <c>Cancelled</c>, ordered by start. Empty when
-/// the dealership is closed that day.
-/// </param>
+/// <param name="Appointments">Appointments overlapping that day's opening hours in every status except <c>Cancelled</c>, ordered by start.</param>
 public sealed record BayScheduleResponse(
     Guid Id, string Name, IReadOnlyList<BayCapability> Capabilities, bool IsActive, IReadOnlyList<ScheduledAppointmentResponse> Appointments);
 
@@ -50,7 +44,7 @@ public sealed record BayScheduleResponse(
 /// <param name="HvLevel">Vehicle-aware competence level 0..4; absent when the flag is off or the caller has no API role (the four competence fields are employee data).</param>
 /// <param name="HvLevelValidUntil">Inclusive local-date expiry; omitted when unlimited or the flag is off.</param>
 /// <param name="HvLevelConfirmed">False includes migrated levels, which still count.</param>
-/// <param name="BrandSpecialisms">Normalized OEM codes; data only in Phase 1.</param>
+/// <param name="BrandSpecialisms">Normalized OEM codes.</param>
 public sealed record TechnicianResponse(Guid Id, string Name, string EmployeeNumber, IReadOnlyList<Certification> Certifications, bool IsActive,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? HvLevel = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateOnly? HvLevelValidUntil = null,
@@ -63,19 +57,12 @@ public sealed record TechnicianResponse(Guid Id, string Name, string EmployeeNum
 /// <param name="EndUtc">End (exclusive), UTC.</param>
 /// <param name="StartLocal">Start as the dealership's local time with offset, <c>yyyy-MM-ddTHH:mm±hh:mm</c> (e.g. <c>2026-10-13T10:00+01:00</c>), for display.</param>
 /// <param name="EndLocal">End as the dealership's local time with offset, <c>yyyy-MM-ddTHH:mm±hh:mm</c>, for display.</param>
-/// <param name="Status">
-/// Lifecycle state: <c>Confirmed</c>, <c>CheckedIn</c> or <c>InProgress</c>, which hold the bay and the technician, or <c>Completed</c>
-/// or <c>NoShow</c>. Cancelled appointments are not on the board.
-/// </param>
+/// <param name="Status">Lifecycle state (<c>Confirmed</c>, <c>CheckedIn</c>, <c>InProgress</c>, <c>Completed</c>, or <c>NoShow</c>); cancelled appointments are excluded.</param>
 /// <param name="ServiceType">The booked service.</param>
 /// <param name="Technician">The technician reserved for it, one of the schedule's <c>technicians</c>.</param>
 /// <param name="Vin">The vehicle's 17-character VIN, upper case, for callers with an API role; every other caller receives eleven asterisks and its last six characters, for example <c>***********123456</c>.</param>
 /// <param name="Registration">The vehicle's registration plate, upper case, for callers with an API role; every other caller receives it fully masked as <c>*******</c>, whatever the plate, so no character or length is revealed.</param>
-/// <param name="CompetenceWarning">
-/// Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role,
-/// and only on <c>Confirmed</c>, <c>CheckedIn</c> and <c>InProgress</c> appointments, which still hold their bay and technician; never on
-/// <c>Completed</c> or <c>NoShow</c>.
-/// </param>
+/// <param name="CompetenceWarning">Computed review warning and bounded reason codes against recorded requirements for active appointments; omitted when clean, non-active, or unauthorized.</param>
 /// <param name="CustomerName">The customer's name. Callers with an API role (Admin, ServiceAdvisor or Viewer) receive it in full; every other caller receives one upper-case initial per whitespace-separated part, from its first letter, for example <c>ALS</c> for Alice Louise Smith.</param>
 public sealed record ScheduledAppointmentResponse(
     Guid Id,

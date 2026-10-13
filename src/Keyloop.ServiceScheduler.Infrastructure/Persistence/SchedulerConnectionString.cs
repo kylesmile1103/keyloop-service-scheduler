@@ -3,10 +3,7 @@ using Npgsql;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// Parses the <c>schedulerdb</c> connection string during the composition root's startup check (Program.cs), before any database
-/// work. Npgsql otherwise parses it on first use, and its <see cref="ArgumentException"/> quotes the whole value, password included,
-/// which the runtime then prints as the unhandled exception: a PostgreSQL URI (<c>postgresql://user:password@host/db</c>, the form
-/// Neon shows by default) reached the container log that way. The replacement message names the expected form, never the value.
+/// Validates the <c>schedulerdb</c> connection string at startup without echoing credentials in exception messages.
 /// </summary>
 public static class SchedulerConnectionString
 {

@@ -9,11 +9,8 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 /// <summary>Builds an <see cref="AppointmentResponse"/> from the aggregate and the entities it references by id (Mapperly does the copying).</summary>
 public static class AppointmentResponseMapper
 {
-    /// <summary>
-    /// The response, with <c>startLocal</c>/<c>endLocal</c> in <paramref name="zone"/> (the dealership's). The service type, bay and
-    /// technician must be the ones the appointment references.
-    /// </summary>
-    /// <exception cref="ArgumentException">A service type, bay or technician other than the appointment's (a programming error).</exception>
+    /// <summary>Maps an <see cref="Appointment"/> and its referenced service type, bay, and technician to an <see cref="AppointmentResponse"/>.</summary>
+    /// <exception cref="ArgumentException">Thrown when a provided entity ID does not match the appointment's reference.</exception>
     public static AppointmentResponse Map(Appointment appointment, TimeZoneInfo zone, ServiceType serviceType, ServiceBay bay, Technician technician)
     {
         ArgumentNullException.ThrowIfNull(appointment);

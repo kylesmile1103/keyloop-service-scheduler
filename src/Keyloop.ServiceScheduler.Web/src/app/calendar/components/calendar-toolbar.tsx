@@ -1,6 +1,6 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` (its
-// header) and `src/app/calendar/components/calendar-sidebar.tsx` (its new-event action), Copyright (c) 2025 ShadcnStore,
-// MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` and
+// `src/app/calendar/components/calendar-sidebar.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in
+// the README's licence section).
 import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import type { ReactNode } from "react"
 
@@ -14,29 +14,20 @@ import type { CalendarView } from "../lib/calendar"
 interface CalendarToolbarProps {
   dealershipSelect: ReactNode
   view: CalendarView
-  /** The range's title ("12–18 October 2026"), the calendar's `h2`. */
   title: string
   titleId: string
-  /** The range holds today, so Today has nothing to do. */
   showsToday: boolean
   onStep: (step: -1 | 1) => void
   onToday: () => void
-  /** New appointment, on wide screens; a phone has the floating action instead. */
   onNew?: () => void
   bookState: BookState
   phone: boolean
 }
 
-/** Touch layouts get 44 px targets (UI_DESIGN 14). */
 const touch = "max-md:h-11 pointer-coarse:h-11"
 const touchIcon = "max-md:size-11 pointer-coarse:size-11"
 
-/**
- * The Calendar's controls (the template calendar's header): the dealership, previous and next week or month with Today
- * between, the range as the calendar's heading, the Week / Month view (the page's `Tabs` list, 11.5) and New appointment,
- * the view's one primary action. Wide screens keep them on one or two rows; a phone stacks the select, the steps and the
- * view, then the title.
- */
+/** Toolbar controls for dealership selection, date navigation, view switching, and new appointments. */
 export function CalendarToolbar({ dealershipSelect, view, title, titleId, showsToday, onStep, onToday, onNew, bookState, phone }: CalendarToolbarProps) {
   const unit = view === "week" ? "week" : "month"
   const steps = (
@@ -44,7 +35,6 @@ export function CalendarToolbar({ dealershipSelect, view, title, titleId, showsT
       <Button type="button" variant="outline" size="icon" className={cn("cursor-pointer", touchIcon)} aria-label={`Previous ${unit}`} onClick={() => onStep(-1)}>
         <ChevronLeft aria-hidden="true" />
       </Button>
-      {/* Focusable once it has done its job: pressed, it disables itself, which would drop keyboard focus. */}
       <Button type="button" variant="outline" className={cn("cursor-pointer", touch)} disabled={showsToday} focusableWhenDisabled onClick={onToday}>
         Today
       </Button>

@@ -90,17 +90,13 @@ export interface UnconfirmedLevel {
 
 interface UnconfirmedLevelsNoteProps {
   levels: readonly UnconfirmedLevel[]
-  /** An Admin confirms each from the note (Task 30b); anyone else is told who can. */
+  /** Callback for an Admin to confirm a technician's migrated HV level. */
   onConfirm?: (id: string) => void
   /** Technicians whose confirmation is being sent. */
   pending?: ReadonlySet<string>
 }
 
-/**
- * Above the roster when a level nobody confirmed is on it: who, why (the migration carried the old high-voltage certificate
- * over as level 3 and every other technician as level 0), and that it still counts when booking. An Admin gets a Confirm
- * button per technician, one action each (Task 30b, UI_DESIGN 11.24); a Service advisor or a Viewer is told an Admin can.
- */
+/** Banner listing technicians with unconfirmed migrated HV levels, with one-click confirmation for Admins. */
 export function UnconfirmedLevelsNote({ levels, onConfirm, pending = new Set() }: UnconfirmedLevelsNoteProps) {
   if (levels.length === 0) return null
   const names = levels.map((level) => level.name)

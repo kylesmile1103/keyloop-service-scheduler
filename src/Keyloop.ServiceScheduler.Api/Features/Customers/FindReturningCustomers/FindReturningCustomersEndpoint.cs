@@ -39,17 +39,8 @@ public sealed class FindReturningCustomersEndpoint : IEndpoint
 
     /// <summary>Find returning customers in this dealership's booking history</summary>
     /// <remarks>
-    /// Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.
-    /// At least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,
-    /// selects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single
-    /// national trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward
-    /// prefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,
-    /// whitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix
-    /// of some name word, in any order; shorter words are ignored, and no eligible words disables name search).
-    /// Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
-    /// within this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all
-    /// bookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.
-    /// Only customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.
+    /// Searches the dealership's booking history by email prefix, phone number, registration prefix, or customer name word prefixes,
+    /// returning up to eight customer-and-vehicle pairs ordered by most recent visit.
     /// </remarks>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">Dealership whose booking history is searched.</param>
     /// <param name="request">Transient search body.</param>

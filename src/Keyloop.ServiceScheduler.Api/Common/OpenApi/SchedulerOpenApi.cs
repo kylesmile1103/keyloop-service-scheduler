@@ -17,7 +17,7 @@ using Microsoft.OpenApi;
 
 namespace Keyloop.ServiceScheduler.Api.Common.OpenApi;
 
-/// <summary>The fixed operation tags (Addendum B §B2). Every endpoint declares exactly one with <c>.WithTags(ApiTags.…)</c>.</summary>
+/// <summary>Fixed OpenAPI operation tags.</summary>
 public static class ApiTags
 {
     public const string Dealerships = "Dealerships";
@@ -29,12 +29,7 @@ public static class ApiTags
     public const string Admin = "Admin";
 }
 
-/// <summary>
-/// The <c>v1</c> OpenAPI document: fixed info, tags in a fixed order with descriptions, no <c>servers</c> (Scalar uses the
-/// current origin, and the build-time document must not depend on the host), <c>format: date</c> on date parameters bound as text,
-/// string-typed enums, the <c>traceId</c> every problem carries, documented response headers, and request bodies described by their
-/// own parameter. The same document is written at build time to <c>contracts/openapi/v1.json</c>, from which the web client is generated.
-/// </summary>
+/// <summary>Configures the <c>v1</c> OpenAPI document and its schema and operation transformers.</summary>
 internal static class SchedulerOpenApi
 {
     public const string DocumentName = "v1";
@@ -83,8 +78,6 @@ internal static class SchedulerOpenApi
         "The request's W3C trace context (traceparent form, e.g. 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01). Quote it "
         + "when reporting a problem: it finds the request's trace and logs.";
 
-    // The XML-comment generator's transformers are registered before these (it intercepts AddOpenApi and adds its own first), so
-    // these run after them and can correct what they write (DescribeRequestBody).
     public static IServiceCollection AddSchedulerOpenApi(this IServiceCollection services) =>
         services.AddOpenApi(DocumentName, options => options
             .AddDocumentTransformer(TransformDocument)
@@ -100,7 +93,6 @@ internal static class SchedulerOpenApi
 
     internal static Task DocumentAccessSecurity(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
-        // Deny by default (SchedulerAuthentication's fallback policy): only an explicitly anonymous operation is public.
         var protectedRoute = !context.Description.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any();
         operation.Security =
         [
@@ -114,7 +106,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>Adds the response headers endpoints declare with <see cref="ResponseHeaderExtensions.WithResponseHeader"/> (e.g. <c>Location</c> on a 201).</summary>
+    /// <summary>Adds response headers declared with <see cref="ResponseHeaderExtensions.WithResponseHeader"/>.</summary>
     internal static Task AddResponseHeaders(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
         foreach (var header in context.Description.ActionDescriptor.EndpointMetadata.OfType<ResponseHeaderMetadata>())
@@ -136,7 +128,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>Documents the middleware's optional UUID input and mandatory echo on every declared response, including problems.</summary>
+    /// <summary>Documents the optional request correlation header parameter and response header on every operation.</summary>
     internal static Task DocumentRequestCorrelation(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
         operation.Parameters ??= [];
@@ -160,12 +152,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Puts back the request body's own description. Microsoft.AspNetCore.OpenApi 10.0's XML-comment transformer copies the text of
-    /// every <c>&lt;param&gt;</c> that names no operation parameter - the body, but also injected services, the cancellation token and a
-    /// header bound under another name - onto the request body, so whichever such tag comes last describes it. The description comes
-    /// from the body parameter's <c>[Description]</c> attribute instead; a body without one fails document generation, and so the build.
-    /// </summary>
+    /// <summary>Sets the request body description from the body parameter's <see cref="DescriptionAttribute"/>.</summary>
     internal static Task DescribeRequestBody(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
         if (operation.RequestBody is not { } requestBody)
@@ -181,11 +168,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Adds <c>type: string</c> to enum schemas. Enums are written by name (<c>UseStringEnumConverter</c> on <c>SchedulerJsonContext</c>)
-    /// and their schemas list the names, but Microsoft.AspNetCore.OpenApi leaves out the type; a schema whose values are not all
-    /// strings (an enum written as a number) is left alone.
-    /// </summary>
+    /// <summary>Adds <c>type: string</c> to string enum schemas.</summary>
     internal static Task TypeStringEnums(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
         if (context.JsonTypeInfo.Type.IsEnum && schema.Enum is { Count: > 0 } values && values.All(v => v?.GetValueKind() == JsonValueKind.String))
@@ -196,11 +179,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// A request property read by <see cref="ExactEnumNameConverter{TEnum}"/> is still the string enum it was: Microsoft.AspNetCore.OpenApi
-    /// cannot see through a custom converter and would leave the schema untyped, so the type and the member names are written here
-    /// (with <c>null</c> as well for a nullable property).
-    /// </summary>
+    /// <summary>Populates string enum schema types and member names for properties using <see cref="ExactEnumNameConverter{TEnum}"/>.</summary>
     internal static Task DescribeExactEnumNames(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
         if (context.JsonPropertyInfo is { AttributeProvider: { } arrayMember, PropertyType.IsArray: true } arrayProperty
@@ -215,7 +194,6 @@ internal static class SchedulerOpenApi
             };
         }
 
-        // The attribute, not the converter instance: a nullable property's converter is the framework's wrapper around ours.
         if (context.JsonPropertyInfo is { AttributeProvider: { } member } property
             && member.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false).OfType<JsonConverterAttribute>()
                 .Any(a => a.ConverterType is { IsGenericType: true } converter && converter.GetGenericTypeDefinition() == typeof(ExactEnumNameConverter<>)))
@@ -224,7 +202,7 @@ internal static class SchedulerOpenApi
             var values = Enum.GetNames(underlying ?? property.PropertyType).Select(name => (JsonNode)JsonValue.Create(name)).ToList();
             if (underlying is not null)
             {
-                values.Add(null!); // JSON null, as the framework lists it for a nullable enum
+                values.Add(null!);
             }
 
             schema.Type = underlying is null ? JsonSchemaType.String : JsonSchemaType.String | JsonSchemaType.Null;
@@ -234,11 +212,7 @@ internal static class SchedulerOpenApi
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Documents <c>traceId</c>, as required, on <c>ProblemDetails</c> and <c>HttpValidationProblemDetails</c>: every problem this API
-    /// writes carries it (ARCHITECTURE §8.7; the problem-details service adds it), but the framework's schemas list only the RFC 9457
-    /// members, so a generated client would not know it is there.
-    /// </summary>
+    /// <summary>Documents <c>traceId</c> and problem extension properties on <see cref="ProblemDetails"/> schemas.</summary>
     internal static Task DocumentProblemTraceId(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
         if (typeof(ProblemDetails).IsAssignableFrom(context.JsonTypeInfo.Type))
@@ -293,13 +267,7 @@ internal static class SchedulerOpenApi
     /// <summary>The custom <see cref="DataTypeAttribute"/> name that documents a text parameter as a boolean.</summary>
     public const string BooleanDataType = "boolean";
 
-    /// <summary>
-    /// A parameter marked <c>[DataType(DataType.Date)]</c> is documented as an RFC 3339 full-date (<c>type: string, format: date</c>),
-    /// as a <see cref="DateOnly"/> parameter would be; one marked <c>[EnumDataType(typeof(T))]</c> as the string enum of
-    /// <c>T</c>'s member names; one marked <c>[DataType(BooleanDataType)]</c> as a boolean. Such parameters bind as text so that the
-    /// validator can reject any other form with a field error (e.g. <c>GetAvailabilityQuery.Date</c>, <c>.Powertrain</c>,
-    /// <c>.NeedsLiveDiagnosis</c>); Microsoft.AspNetCore.OpenApi does not map these attributes itself.
-    /// </summary>
+    /// <summary>Maps <see cref="DataTypeAttribute"/> and <see cref="EnumDataTypeAttribute"/> on text-bound query parameters to their OpenAPI schemas.</summary>
     internal static Task TransformParameterSchema(OpenApiSchema schema, OpenApiSchemaTransformerContext context, CancellationToken cancellationToken)
     {
         if (context.ParameterDescription?.ParameterDescriptor is not IParameterInfoParameterDescriptor { ParameterInfo: var parameter })
@@ -313,7 +281,6 @@ internal static class SchedulerOpenApi
             schema.Format = "date";
         }
 
-        // Text parameters the validator parses strictly (GetAvailabilityQuery): an enum's member names, and a boolean.
         if (dataTypes.OfType<EnumDataTypeAttribute>().FirstOrDefault() is { EnumType: { IsEnum: true } enumType })
         {
             schema.Type = JsonSchemaType.String;
@@ -354,7 +321,6 @@ internal static class SchedulerOpenApi
             },
         };
 
-        // Add cross-schema unions after all endpoint schemas exist. A schema transform runs before later endpoints are generated.
         foreach (var name in new[] { "ProblemDetails", "HttpValidationProblemDetails" })
         {
             if (document.Components.Schemas is { } problemSchemas && problemSchemas.TryGetValue(name, out var problemSchema) && problemSchema is OpenApiSchema problem)
@@ -383,8 +349,6 @@ internal static class SchedulerOpenApi
                     new OpenApiSchemaReference("AdminPolicyResponse", document)],
             };
         }
-        // Closed vocabularies the API writes as plain strings, enumerated from their single source, so a rename or a new value changes the
-        // contract and the generated client (OpenApiContractTests pins each enum against that source).
         if (document.Components.Schemas is { } schemas)
         {
             if (schemas.TryGetValue("CompetenceWarningResponse", out var warning) && warning is OpenApiSchema { Properties: { } warningProperties }
@@ -397,7 +361,6 @@ internal static class SchedulerOpenApi
                 if (itemProperties.TryGetValue("resourceKind", out var kind) && kind is OpenApiSchema kindSchema) { kindSchema.Enum = Strings(AdminVocabulary.ResourceKinds); }
                 if (itemProperties.TryGetValue("action", out var action) && action is OpenApiSchema actionSchema) { actionSchema.Enum = Strings(AdminVocabulary.Actions); }
             }
-            // AdminHistoryItem's before/after unions above replaced the only use of JsonElement; drop the empty, unreferenced component.
             schemas.Remove("JsonElement");
         }
         if (document.Paths?.Values.SelectMany(path => path.Operations?.Values ?? Enumerable.Empty<OpenApiOperation>())
@@ -407,8 +370,6 @@ internal static class SchedulerOpenApi
             kindFilter.Enum = Strings(AdminVocabulary.ResourceKinds);
         }
 
-        // The order is explicit (a sorted set ranked by the fixed list), not a hash set's enumeration order, so the build-time document
-        // is byte-stable. A tag outside the list (a review miss) is kept after the fixed ones, by name, rather than silently dropped.
         var tags = new SortedSet<OpenApiTag>(TagOrder.Instance);
         foreach (var (name, description) in Tags)
         {
@@ -417,7 +378,7 @@ internal static class SchedulerOpenApi
 
         foreach (var extra in document.Tags ?? Enumerable.Empty<OpenApiTag>())
         {
-            tags.Add(extra); // a fixed tag compares equal to its listed entry, which is kept
+            tags.Add(extra);
         }
 
         document.Tags = tags;

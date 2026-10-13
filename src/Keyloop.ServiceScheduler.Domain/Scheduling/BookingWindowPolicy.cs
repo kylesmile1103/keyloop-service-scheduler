@@ -60,8 +60,7 @@ public sealed class BookingWindowPolicy(TimeProvider clock, TimeSpan minimumLead
             OutsideOperatingHours,
             $"The slot {Local(slot.StartUtc)} to {Local(slot.EndUtc)} is outside the operating hours of {dealership.Name} " +
             $"({Local(window.StartUtc)} to {Local(window.EndUtc)}, {dealership.TimeZoneId}).",
-            // A named value (not an anonymous object) so the source-generated JSON context can register it (ADR-016);
-            // it serialises as { "startUtc", "endUtc" } under the camelCase policy.
+            // Use a named value type so the source-generated JSON context can serialize it.
             new Dictionary<string, object?> { ["operatingWindow"] = window });
     }
 

@@ -6,12 +6,7 @@ using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Records every measurement of the scheduler's own instruments (<see cref="SchedulerTelemetry.Meter"/>) from construction to
-/// disposal. Dealership filters use test-only span correlation while Tags retain the raw exported labels, so the unchanged
-/// contention assertions remain meaningful without unbounded metric labels. The meter is static and the listener process-wide, so this sees every host in the test process; the integration tests
-/// run one class at a time (<c>ParallelMode.None</c>), so a collector created by a test sees only that test's work.
-/// </summary>
+/// <summary>Records measurements of <see cref="SchedulerTelemetry.Meter"/> from construction to disposal, with span-based dealership correlation for filters.</summary>
 public sealed class MetricsCollector : IDisposable
 {
     private readonly MeterListener _listener = new();

@@ -150,7 +150,6 @@ public sealed class CatalogueQualificationParityTests(PostgresFixture pg) : IAsy
         var availabilityPath = path + $"/availability?serviceTypeId={service.Id}&date=2026-10-13";
         if (vehicleAware && iceOnly)
         {
-            // Catalogue eligibility is existential: Unknown has an HV gap, but the advisor can declare ICE.
             using var unknown = await client.GetAsync(availabilityPath, Ct);
             var unknownBody = await unknown.Content.ReadJsonAsync(SchedulerJsonContext.Default.AvailabilityResponse, Ct);
             unknownBody.Slots.ShouldBeEmpty();
@@ -189,7 +188,6 @@ public sealed class CatalogueQualificationParityTests(PostgresFixture pg) : IAsy
 
             if (vehicleAware && scenario == "expiry-today")
             {
-                // Today's inclusive eligibility does not promise competence on a later appointment date.
                 using var tomorrow = await client.GetAsync(path + $"/availability?serviceTypeId={service.Id}&date=2026-10-14", Ct);
                 var tomorrowStarts = await tomorrow.Content.ReadJsonAsync(SchedulerJsonContext.Default.AvailabilityResponse, Ct);
                 tomorrowStarts.Slots.ShouldBeEmpty();

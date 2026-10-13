@@ -14,14 +14,9 @@ interface SignInActionProps extends Omit<ComponentProps<"a">, "href" | "children
   ref?: Ref<HTMLAnchorElement>
 }
 
-/**
- * The Sign in action: a link styled as a button, so signing in is a plain top-level navigation to the API's login path on
- * this origin (never a form, never a request made by script), returning to the current page with its dealership and day.
- * On the development server, whose identity is configuration, it is "How to sign in", to Settings > Account.
- */
+/** Button-styled link that navigates to the API sign-in path (or Settings > Account in configuration mode). */
 export function SignInAction({ returnTo, variant = "default", size = "default", className, ref, ...props }: SignInActionProps) {
   const target = useSignInTarget({ returnTo })
-  // Merged, so the variant's border and fill replace the base's transparent ones (cva only concatenates).
   const classes = cn(buttonVariants({ variant, size }), className)
   if (target.source === "configuration") {
     return (

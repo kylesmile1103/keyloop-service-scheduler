@@ -20,8 +20,7 @@ internal sealed partial class TriageJsonContext : JsonSerializerContext
 }
 
 internal sealed record ClefEnvelope(ClefResult? Result, Dictionary<string, ClefAnswer>? Answers, ClefUsage? Usage, bool? Success);
-// Retain the legacy completed-run wrapper captured from Jev on 2026-10-12. Native Clef also accepts the single-wrapped
-// and bare model bodies documented by Workers AI.
+// Supports both bare and wrapped Workers AI Clef response shapes.
 internal sealed record ClefResult(Dictionary<string, ClefAnswer>? Answers, ClefUsage? Usage, string? State, ClefResult? Result);
 public sealed record ClefAnswer(string? Type, string? Choice, double? Confidence, Dictionary<string, double>? Probabilities);
 internal sealed record ClefUsage(int? InputTokens);

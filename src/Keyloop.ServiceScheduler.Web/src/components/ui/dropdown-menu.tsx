@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/dropdown-menu.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/dropdown-menu.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 "use client"
 
 import * as React from "react"
@@ -101,8 +100,6 @@ function DropdownMenuItem({
   )
 }
 
-// Not in the template: Base UI's link item, an `<a>` in the menu (a top-level navigation such as Sign out, or a router
-// `Link` through `render`), styled as an item.
 function DropdownMenuLinkItem({
   className,
   inset,

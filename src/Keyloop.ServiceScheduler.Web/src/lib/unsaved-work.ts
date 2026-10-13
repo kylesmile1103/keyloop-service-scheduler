@@ -1,12 +1,7 @@
-/**
- * Work on screen that a full-page navigation would lose: a booking being entered, an Admin's edit sheet or rule dialog, an
- * unpublished policy draft, a cancellation reason typed. A view holds a claim while it has some (`useUnsavedWork`), and the
- * session renewal (lib/session-renewal.ts) asks before it navigates: with a claim held it offers *Stay signed in* instead of
- * renewing on its own. Kept in memory for this tab only; it decides nothing else.
- */
+/** In-memory registry of active unsaved-work claims for the current tab. */
 const claims = new Set<symbol>()
 
-/** Holds a claim on unsaved work until the returned release is called (calling it again does nothing). */
+/** Registers an unsaved-work claim until the returned release function is called. */
 export function holdUnsavedWork(): () => void {
   const claim = Symbol("unsaved work")
   claims.add(claim)
@@ -15,7 +10,7 @@ export function holdUnsavedWork(): () => void {
   }
 }
 
-/** Whether any view holds unsaved work at this moment. */
+/** Returns true when any view currently holds an unsaved-work claim. */
 export function hasUnsavedWork(): boolean {
   return claims.size > 0
 }

@@ -6,10 +6,7 @@ import { Shortfall } from "./bookable-cell"
 
 const BOOKED = { one: "booked today", other: "booked today" }
 
-/**
- * The catalogue on a phone, one card per service in the table's order: the name and duration, the code, what it needs,
- * and whether this dealership can book it (with what it lacks) next to today's bookings. Read-only; each name is a heading.
- */
+/** Mobile card list for the service catalogue. */
 export function ServiceCards({ rows }: { rows: readonly ServiceRecord[] }) {
   return (
     <ol aria-label="Services" className="flex flex-col gap-2">

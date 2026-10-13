@@ -6,10 +6,7 @@ import { ErrorPage } from "../components/error-page"
 import { RetryAction } from "../components/retry-action"
 import { useErrorPageState } from "../components/use-error-page-state"
 
-/**
- * 500 (`/errors/internal-server-error`, also every other 5xx but 503): the server failed. With the trace id the sending page passed, so the failure
- * can be found in the Aspire dashboard, and Try again on that page.
- */
+/** 500 error page displaying the request trace ID and retry action. */
 export default function InternalServerErrorPage() {
   const { traceId } = useErrorPageState()
   return (

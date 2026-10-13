@@ -1,22 +1,14 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/site-header.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 "use client"
 
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/mode-toggle"
 
-/**
- * Ghost buttons over the header band: when focused they take the work surface's colour and offset their ring, so the 1 px
- * focus border has the background on both sides (3.9:1 light) instead of the band's lavender (2.4:1). UI_DESIGN 12.3.
- */
+/** Offsets focus ring against the work surface background when rendered over the header band. */
 const onBand = "focus-visible:bg-background focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 
-/**
- * The product's header (UI_DESIGN 11.1): the sidebar trigger, the OWNERSHIP domain tag (Keyloop Fusion's aftersales
- * and service domain, this app's signature), the product title, then the "Keyloop" wordmark as plain text (never a link,
- * never a logo image) and the theme toggle. Below 640 px the wordmark moves into the mobile sidebar and the theme choice
- * into its footer, so the title has room.
- */
+/** Application header with sidebar trigger, domain tag, product title, wordmark, and theme toggle. */
 export function SiteHeader() {
   return (
     <header className="relative flex h-(--header-height) shrink-0 items-center gap-2 border-b border-border">

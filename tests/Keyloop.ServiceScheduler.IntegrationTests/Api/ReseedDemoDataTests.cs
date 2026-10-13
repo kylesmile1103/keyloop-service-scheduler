@@ -19,28 +19,16 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// <c>POST /api/v1/admin/demo/reseed</c>, the Aspire dashboard's <em>Reseed demo data</em> command (Addendum C §C3, ADR-019). It
-/// exists only where demo data is seeded and a key is configured, answers a missing or wrong <c>X-Reseed-Key</c> exactly like an
-/// unknown route, stays out of the OpenAPI contract, and replaces the demo dealerships' appointments (with their history and
-/// idempotency keys) by the deterministic demo week in one transaction that waits for bookings in flight. The clock is Monday
-/// 2026-10-12 08:00Z, so the demo week is the one startup seeded, and a reseed books it again under the same ids: a test that must
-/// see that no reseed ran books a marker first (<see cref="BookMarkerAsync"/>), which any reseed deletes.
-/// </summary>
+/// <summary>Tests for <c>POST /api/v1/admin/demo/reseed</c>.</summary>
 public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
 {
     private const string Route = "/api/v1/admin/demo/reseed";
     private const string KeyHeader = "X-Reseed-Key";
-
-    // As long as the key the AppHost generates for each run.
     private const string Key = "0123456789abcdef0123456789abcdef";
 
     private static readonly TimeZoneInfo Berlin = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
 
-    // SystemTest defaults: no demo data and no key, so the route is not mapped.
     private SchedulerApiFactory _factory = null!;
-
-    // Demo data seeded at startup and a key configured, as under the Aspire AppHost.
     private WebApplicationFactory<Program> _demo = null!;
     private HttpClient _client = null!;
 
@@ -53,7 +41,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         _factory = new SchedulerApiFactory(pg.ConnectionString, TestData.Clock());
         await _factory.ResetAsync();
         _demo = Demo(seedDemoData: true, key: Key);
-        _client = _demo.CreateClient(); // starts the host, which seeds the reference data and the demo week
+        _client = _demo.CreateClient();
     }
 
     public async ValueTask DisposeAsync()
@@ -69,7 +57,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         var seeded = await AppointmentIdsAsync();
         seeded.ShouldNotBeEmpty("startup seeded the demo week");
 
-        // What a demo session leaves behind: a cancelled seeded appointment, a keyed booking at Reading and a booking at Munich.
         using (var cancel = await _client.PostJsonAsync(
                    $"/api/v1/appointments/{seeded[0]}/cancel", new CancelAppointmentRequest("Customer rescheduled"), SchedulerJsonContext.Default.CancelAppointmentRequest, Ct))
         {
@@ -91,7 +78,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
 
         await _factory.WithDbAsync(async db =>
         {
-            // The same deterministic week as at startup (the clock has not moved), confirmed again, and nothing else.
             var appointments = await db.Appointments.AsNoTracking().ToListAsync(Ct);
             appointments.Select(a => a.Id).ShouldBe(seeded, ignoreOrder: true);
             appointments.ShouldAllBe(a => a.Status == AppointmentStatus.Confirmed);
@@ -100,14 +86,12 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
             active.SelectMany(a => active.Where(b => b.Id != a.Id && a.Slot.Overlaps(b.Slot) && (a.BayId == b.BayId || a.TechnicianId == b.TechnicianId)))
                 .ShouldBeEmpty();
 
-            // One Booked row per appointment: the cancellation and the deleted bookings left no history behind, nor any key to replay.
             var history = await db.AppointmentHistory.AsNoTracking().ToListAsync(Ct);
             history.Select(h => h.AppointmentId).ShouldBe(seeded, ignoreOrder: true);
             history.ShouldAllBe(h => h.EventType == "Booked");
             (await db.IdempotencyKeys.CountAsync(Ct)).ShouldBe(0);
         });
 
-        // The dispatch board reads the week again.
         using var schedule = await _client.GetAsync(
             $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/schedule?date={TestData.BookingDay:yyyy-MM-dd}", Ct);
         var board = await schedule.Content.ReadJsonAsync(SchedulerJsonContext.Default.WorkshopScheduleResponse, Ct);
@@ -120,7 +104,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("another key")]
     [InlineData("a prefix of the key")]
     [InlineData("the key and more")]
-    [InlineData("the key in upper case")] // keys are case-sensitive
+    [InlineData("the key in upper case")]
     public async Task Missing_or_wrong_key_is_answered_like_an_unknown_route_and_changes_nothing(string attempt)
     {
         var key = attempt switch
@@ -135,7 +119,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         };
         var before = await BookMarkerAsync();
         using var client = _factory.CreateClient();
-        using var unknownRoute = await ReseedAsync(client, Key); // the same request where the route does not exist
+        using var unknownRoute = await ReseedAsync(client, Key);
 
         using var response = await ReseedAsync(_client, key);
 
@@ -150,21 +134,18 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
 
     [Fact]
     public void Route_is_mapped_for_POST_only_with_demo_data_and_a_configured_key() =>
-        // The positive control of the theory below: the same lookup finds the route on the host where it must exist.
         ReseedEndpoints(_demo).ShouldHaveSingleItem().Metadata.GetMetadata<IHttpMethodMetadata>().ShouldNotBeNull().HttpMethods.ShouldBe(["POST"]);
 
     [Theory]
-    [InlineData(false, Key)] // UAT and Production never seed demo data
-    [InlineData(true, null)] // no key configured: nothing could ever call it
-    [InlineData(true, "")]   // an empty value, as an unset environment variable binds, is no key either
+    [InlineData(false, Key)]
+    [InlineData(true, null)]
+    [InlineData(true, "")]
     public async Task Route_exists_only_with_demo_data_and_a_configured_key(bool seedDemoData, string? configuredKey)
     {
         await using var host = Demo(seedDemoData, configuredKey);
         using var client = host.CreateClient();
         var before = await BookMarkerAsync();
 
-        // TestServer drops a header whose only value is empty, so "" arrives as no header here; ReseedDemoDataGuardTests pins that an
-        // empty key never matches, which is what keeps a real empty X-Reseed-Key header out if the route were ever mapped without a key.
         foreach (var presented in new[] { null, "", Key })
         {
             using var response = await ReseedAsync(client, presented);
@@ -173,7 +154,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
 
         (await AppointmentIdsAsync()).ShouldBe(before, "no request reseeded: the marker booking is still there");
 
-        // Not mapped at all, rather than mapped and refusing every key: a 404 cannot tell the two apart, the endpoint table can.
         ReseedEndpoints(host).ShouldBeEmpty();
     }
 
@@ -184,12 +164,12 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
             .UseSetting("Security:RateLimiting:Enabled", "true")
             .UseSetting("Security:RateLimiting:BookingPermitsPerMinute", "1"));
         using var client = host.CreateClient();
-        using (var first = await ReseedAsync(client, Key)) // the minute's one write
+        using (var first = await ReseedAsync(client, Key))
         {
             first.StatusCode.ShouldBe(HttpStatusCode.OK, await first.Content.ReadAsStringAsync(Ct));
         }
 
-        var before = await BookMarkerAsync(); // through the other host's client, which has no limiter
+        var before = await BookMarkerAsync();
 
         using var second = await ReseedAsync(client, Key);
 
@@ -201,7 +181,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Route_is_left_out_of_the_OpenAPI_contract()
     {
-        // Mapped or not, the document is the same: the build-time contract (generated without a key) holds in every environment.
         using var withoutRoute = _factory.CreateClient();
         var served = JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
         var reference = JsonNode.Parse(await withoutRoute.GetStringAsync("/openapi/v1.json", Ct))!;
@@ -214,7 +193,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
     [MemberData(nameof(DemoDealerships))]
     public async Task Reseed_waits_for_a_booking_in_flight_at_either_demo_dealership(Guid dealershipId)
     {
-        // A booking in flight holds its dealership's lock (ADR-003) until it commits.
         await using var booking = new NpgsqlConnection(pg.ConnectionString);
         await booking.OpenAsync(Ct);
         await using var transaction = await booking.BeginTransactionAsync(Ct);
@@ -245,13 +223,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
             configure?.Invoke(builder);
         });
 
-    /// <summary>The reseed route among the endpoints <paramref name="host"/> mapped (none where it is not mapped).</summary>
-    /// <summary>
-    /// An existing developer database keeps its technicians through migration and startup seeding: the legacy HV certification
-    /// becomes level 3 unconfirmed and every other level 0, which leaves Unknown brake and MOT work without a qualified technician
-    /// once vehicle-aware requirements are on. The demo reseed puts the demo back to its starting point, so it restores the seeded,
-    /// confirmed competence of the seeded technicians whose level nobody confirmed; a confirmed level is a person's decision and stays.
-    /// </summary>
     [Fact]
     public async Task Reseed_restores_seeded_competence_only_where_no_level_was_confirmed()
     {
@@ -261,7 +232,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         var hans = ReferenceDataSeed.TechnicianId("M-2002");
         await _factory.WithDbAsync(async db =>
         {
-            // What the migration leaves on a database seeded before Task 31a, and one level a person has since confirmed.
             await db.Database.ExecuteSqlAsync($"""
                 UPDATE technicians SET hv_level = 0, hv_level_valid_until = NULL, hv_level_confirmed = false, brand_specialisms = ARRAY[]::text[] WHERE id IN ({amelia}, {chloe});
                 UPDATE technicians SET hv_level = 3, hv_level_valid_until = NULL, hv_level_confirmed = false, brand_specialisms = ARRAY[]::text[] WHERE id IN ({ben}, {hans});
@@ -313,18 +283,12 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         (await CompetenceAsync(eva)).ShouldBe((1, new DateOnly(2027, 1, 31), true));
     }
 
-    /// <summary>
-    /// Since Task 30a an unconfirmed level or a missing certification can be an Admin's decision, recorded in the audit history. The reseed
-    /// restores only seeded technicians nobody edited through Admin: it never raises a qualification an Admin lowered, so the latest audit
-    /// <c>after</c> still matches the stored technician.
-    /// </summary>
     [Fact]
     public async Task Reseed_keeps_competence_and_certifications_an_Admin_edited()
     {
         var amelia = ReferenceDataSeed.TechnicianId("T-1001");
         var ben = ReferenceDataSeed.TechnicianId("T-1002");
         var eva = ReferenceDataSeed.TechnicianId("T-1005");
-        // Ben looks migrated and nobody edited him, so the reseed still restores his seeded competence.
         await _factory.WithDbAsync(db => db.Database.ExecuteSqlAsync(
             $"UPDATE technicians SET hv_level = 3, hv_level_valid_until = NULL, hv_level_confirmed = false WHERE id = {ben}", Ct));
         await EditTechnicianAsync(amelia, body =>
@@ -361,10 +325,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         saved.StatusCode.ShouldBe(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync(Ct));
     }
 
-    /// <summary>
-    /// The reseed logs <c>1107</c> after its transaction commits, from what the committed attempt published: a first attempt whose commit
-    /// fails rolls back and logs nothing, and the retry logs each version once.
-    /// </summary>
     [Fact]
     public async Task Reseed_logs_each_published_policy_once_after_commit_and_nothing_for_a_rolled_back_attempt()
     {
@@ -373,12 +333,12 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         await using var host = Demo(seedDemoData: true, key: Key, builder => builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<ILoggerProvider>(probe);
-            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss)); // inert until armed
+            services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss));
         }));
         using var client = host.CreateClient();
         await _factory.WithDbAsync(db => PolicyPublicationProbe.RevertToBeforeTask32aAsync(db, Ct));
 
-        loss.Arm(); // the reseed transaction's first commit is the next commit in this host
+        loss.Arm();
         using var response = await ReseedAsync(client, Key);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
@@ -422,11 +382,6 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
     }
 
-    /// <summary>
-    /// Books an appointment outside the demo week (Reading, 16:30 on the booking day) and returns every appointment id. Any reseed
-    /// deletes it, so comparing the ids afterwards shows whether one ran; the demo week alone would not, since a reseed books it again
-    /// under the same ids.
-    /// </summary>
     private async Task<List<Guid>> BookMarkerAsync()
     {
         await BookAsync(ReferenceDataSeed.ReadingDealershipId, TestData.LondonTime(16, 30));

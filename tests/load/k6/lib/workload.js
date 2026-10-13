@@ -43,8 +43,6 @@ export function lifecycle(context, date) {
   if (!original?.id) return;
   let retry, cancelledResponse, secondCancel;
   try {
-    // Identical payload and key, no regeneration. A successful replay must be
-    // the stored 201, including Location and the replay header.
     retry = book(context, body, key);
     const replayValid = check(retry, {
       'retry replays the original 201': () => retry.status === 201 &&
@@ -57,7 +55,6 @@ export function lifecycle(context, date) {
       json(stored)?.id === original.id && json(stored)?.status === 'Confirmed' }, { endpoint: 'GetAppointment' });
     if (!replayValid) return;
   } finally {
-    // Reclaim every acknowledged booking, even if a replay check fails.
     cancelledResponse = cancel(original.id);
     if (cancelledResponse.status === 200) secondCancel = cancel(original.id, true);
   }
@@ -72,8 +69,7 @@ export function lifecycle(context, date) {
 }
 
 export function mixedIteration(context) {
-  // Deterministic 60% availability, 20% lifecycle, 20% schedule. The first
-  // iteration runs a lifecycle, making even a small smoke run exercise writes.
+  // Deterministic 60% availability, 20% lifecycle, 20% schedule mix.
   const index = exec.scenario.iterationInTest;
   const date = context.dates[index % context.dates.length];
   if (index % 5 === 0) lifecycle(context, context.bookingDates[Math.floor(index / 5) % context.bookingDates.length]);
@@ -81,11 +77,7 @@ export function mixedIteration(context) {
   else readAvailability(context, date);
 }
 
-// A lifecycle cancels its own booking in a finally block, but an aborted or
-// interrupted iteration never reaches it. Teardown therefore cancels whatever
-// this run still holds on its booking dates; any such leftover fails the
-// orphans_cancelled gate. Under the Production preset it first waits one full
-// limiter window, because a 429 abort leads straight here.
+// Cancels any bookings left active by interrupted iterations and records them against orphans_cancelled.
 export function cancelLeftoverBookings(context) {
   if (config.production) sleep(65);
   for (const date of context.bookingDates) {
@@ -98,8 +90,6 @@ export function cancelLeftoverBookings(context) {
   }
 }
 
-// ARCHITECTURE 4.2 sets availability p95 < 100 ms and booking p95 < 150 ms.
-// The schedule p95 and every p99 are local budgets with no design target.
 export function readThresholds() {
   return {
     'http_req_duration{endpoint:GetAvailability,phase:workload}': ['p(95)<100', 'p(99)<500'],

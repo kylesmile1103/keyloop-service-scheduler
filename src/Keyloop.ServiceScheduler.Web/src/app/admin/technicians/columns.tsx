@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx` (its column
-// definitions), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { CapabilityBadges } from "@/components/capability-badges"
@@ -15,14 +15,10 @@ type Features = DataTableFeatures
 
 export const TECHNICIAN_WORDS = { active: "Active", inactive: "Inactive" }
 
-/** The list's search: a technician's name or employee number. */
+/** Searches technicians by name or employee number. */
 export const technicianSearch = searchFilter<TechnicianRecord>((row) => [row.name, row.employeeNumber])
 
-/**
- * The roster's columns: the technician (initials avatar and name), employee number (monospace, as identifiers are),
- * certifications as the board's badges, whether they take bookings, and today's appointments and booked time. Every column
- * but the certifications sorts from its header.
- */
+/** Table columns for the technician roster. */
 export const technicianColumns: ColumnDef<Features, TechnicianRecord>[] = [
   {
     id: "name",

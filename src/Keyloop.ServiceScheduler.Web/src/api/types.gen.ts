@@ -260,15 +260,11 @@ export type AvailabilityResponse = {
      */
     slotGranularityMinutes: number;
     /**
-     * Every start on the grid where at least one qualified bay and one qualified technician are free for the whole duration, in
-     * ascending order. Empty when `unavailableReason` is set, when everything is booked, when the service is longer than that
-     * day's opening hours, or on a day whose opening hours fall entirely in a daylight-saving gap.
+     * Bookable start times on the slot grid in ascending order, or empty when closed or fully booked.
      */
     slots: Array<AvailabilitySlotResponse>;
     /**
-     * Why there can be no slots at all that day: `closed` (no opening hours on that weekday) or `no-qualified-resources`
-     * (no active bay with every required capability, or no active technician with every required certification). Null otherwise,
-     * including when every qualified resource is simply busy.
+     * Reason when no slots can exist on the requested date (`closed` or `no-qualified-resources`); otherwise null.
      */
     unavailableReason: null | string;
 };
@@ -286,8 +282,7 @@ export type AvailabilitySlotResponse = {
      */
     endUtc: string;
     /**
-     * Start as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display. In the repeated
-     * hour of an autumn daylight-saving change two slots show the same wall-clock time, and the offset tells them apart.
+     * Start as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display.
      */
     startLocal: string;
     /**
@@ -323,8 +318,7 @@ export type BayScheduleResponse = {
      */
     isActive: boolean;
     /**
-     * Its appointments overlapping that day's opening hours, in every status except `Cancelled`, ordered by start. Empty when
-     * the dealership is closed that day.
+     * Appointments overlapping that day's opening hours in every status except `Cancelled`, ordered by start.
      */
     appointments: Array<ScheduledAppointmentResponse>;
 };
@@ -348,8 +342,7 @@ export type BayWriteRequest = {
 };
 
 /**
- * The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The
- * examples form a valid booking at the seeded Keyloop Motors Reading dealership.
+ * Request body for `POST /dealerships/{dealershipId}/appointments`.
  */
 export type BookAppointmentRequest = {
     /**
@@ -361,8 +354,7 @@ export type BookAppointmentRequest = {
      */
     serviceTypeId: string;
     /**
-     * Start time in UTC with `Z` and no seconds: a start offered by the availability route, inside the dealership's opening hours,
-     * on its slot grid, and between the minimum lead time and the booking horizon from now.
+     * Start time in UTC (`Z`, whole minutes) aligned to the dealership's operating hours and slot grid.
      */
     startUtc: string;
     /**
@@ -374,12 +366,11 @@ export type BookAppointmentRequest = {
      */
     vehicle: VehicleRequest;
     /**
-     * Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy
-     * chooses (the example is the seeded Reading Bay 1 - Standard).
+     * Optional preferred bay ID, honoured when free and compatible with the service.
      */
     preferredBayId?: null | string;
     /**
-     * Optional: a technician to assign when free and certified; otherwise ignored (the example is the seeded Amelia Clarke at Reading).
+     * Optional preferred technician ID, honoured when free and certified.
      */
     preferredTechnicianId?: null | string;
     /**
@@ -431,8 +422,7 @@ export type BookingTriageStatusResponse = {
  */
 export type CancelAppointmentRequest = {
     /**
-     * Why the appointment is cancelled, 1 to 500 characters after trimming. Stored on the appointment (returned as
-     * `cancellationReason`) and in its audit history; never written to logs.
+     * Reason for cancellation, 1 to 500 characters after trimming.
      */
     reason: string;
 };
@@ -809,7 +799,7 @@ export type ProfileProvenance = {
 };
 
 /**
- * Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases.
+ * Per-attribute provenance source.
  */
 export type ProfileSource = 'Unknown' | 'Declared' | 'VinDecoded' | 'RegistryLookup' | 'SuggestedConfirmed';
 
@@ -948,8 +938,7 @@ export type ScheduledAppointmentResponse = {
      */
     endLocal: string;
     /**
-     * Lifecycle state: `Confirmed`, `CheckedIn` or `InProgress`, which hold the bay and the technician, or `Completed`
-     * or `NoShow`. Cancelled appointments are not on the board.
+     * Lifecycle state (`Confirmed`, `CheckedIn`, `InProgress`, `Completed`, or `NoShow`); cancelled appointments are excluded.
      */
     status: AppointmentStatus;
     /**
@@ -1004,11 +993,7 @@ export type ServiceTypeResponse = {
      */
     requiredCertifications: Array<Certification>;
     /**
-     * True when the dealership has at least one active bay with every required capability and at least one active technician with
-     * every required certification when vehicle-aware requirements are off. When on, some powertrain/class profile the booking dialog
-     * can submit must satisfy the latest dealership policy on today's dealership-local date, including inclusive HV expiry, without
-     * requiring the legacy HV certificate. Busy time, opening hours and the booking window are excluded; availability checks the chosen
-     * vehicle and appointment date.
+     * True when the dealership has active bays and technicians capable of performing the service under the current policy, ignoring busy time and opening hours.
      */
     bookable: boolean;
 };
@@ -1072,7 +1057,7 @@ export type TechnicianResponse = {
      */
     hvLevelConfirmed?: null | boolean;
     /**
-     * Normalized OEM codes; data only in Phase 1.
+     * Normalized OEM codes.
      */
     brandSpecialisms?: null | Array<string>;
 };
@@ -1176,7 +1161,7 @@ export type TriageServiceCandidate = {
 export type TriageUncoveredCategory = 'ACCIDENT_OR_BODY_DAMAGE' | 'LIGHTS_OR_ELECTRICAL_ACCESSORY' | 'AIR_CONDITIONING' | 'TYRES_OR_WHEELS' | 'GLASS' | 'OTHER';
 
 /**
- * A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null.
+ * Additional uncovered issue category with probability and confidence.
  */
 export type TriageUncoveredIssue = {
     /**
@@ -1192,7 +1177,7 @@ export type TriageUncoveredIssue = {
      */
     confidence: number;
     /**
-     * The service type the issue is outside: Clef's most likely service, which need not be the first candidate a person picks. Null when Clef chose none of the bookable services, so the issue is outside the whole catalogue. Show the notice while this service is selected (or whenever it is null), not for another candidate.
+     * The most likely service type that the issue falls outside, or null if outside all bookable services.
      */
     outsideServiceTypeId: null | string;
 };
@@ -1333,8 +1318,7 @@ export type VehicleResponse = {
 };
 
 /**
- * The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.
- * A projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again.
+ * The dispatch board for one dealership on one local date, including all bays, their appointments, and all technicians.
  */
 export type WorkshopScheduleResponse = {
     /**
@@ -1459,7 +1443,7 @@ export type GetAvailabilityData = {
          */
         powertrain?: 'Ice' | 'MildHybrid' | 'FullHybrid' | 'PluginHybrid' | 'BatteryElectric' | 'FuelCell' | 'Unknown';
         /**
-         * Optional OEM code; manufacturer preferences are deferred.
+         * Optional OEM code.
          */
         manufacturer?: string;
         /**
@@ -1612,7 +1596,7 @@ export type BookAppointmentErrors = {
      */
     413: ProblemDetails;
     /**
-     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.
+     * A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand and firedRules.
      */
     422: ProblemDetails;
     /**

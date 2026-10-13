@@ -16,9 +16,6 @@ import {
 import { holdUnsavedWork } from "@/lib/unsaved-work"
 import { expiringAt, serviceAdvisor } from "@/test/identities"
 
-// The renewal's guards (Task 36, review round 1), one controller per page load over its own query cache: a tab keeps its
-// sessionStorage across loads, every tab shares localStorage. Two minutes before 09:30 the sign-in is due for renewal.
-
 const END = "2026-10-13T09:30:00Z"
 
 /**

@@ -1,13 +1,8 @@
 import type { ServiceTypeResponse } from "@/api/types.gen"
 
-/**
- * The seeded service catalogue (ReferenceDataSeed) as GET /dealerships/{id}/service-types answers it, by name, with the real
- * deterministic ids. The catalogue is global; `bookable` is per dealership: Reading has a qualifying active bay and
- * technician for every service, München (three bays, three technicians) for six of the eleven.
- */
+/** Seeded service catalogue with deterministic IDs and per-dealership `bookable` flags. */
 const catalogue: ReadonlyArray<Omit<ServiceTypeResponse, "bookable">> = [
   {
-    // Task 32a: an inspection and estimate after a collision, on a standard lift, by a damage-assessment-certified technician.
     id: "651b016b-c559-8313-9f1c-d22ecd706059",
     code: "ACCIDENT-DAMAGE-ASSESSMENT",
     name: "Accident Damage Assessment",
@@ -97,10 +92,6 @@ const catalogue: ReadonlyArray<Omit<ServiceTypeResponse, "bookable">> = [
   },
 ]
 
-/**
- * The services München can book: it has no MOT, alignment, air-con or diagnostics bay, and no technician with both EV and
- * diagnostics; Hans Richter assesses accident damage (Task 32a).
- */
 const munichBookable = new Set(["ACCIDENT-DAMAGE-ASSESSMENT", "BRAKES-PADS-DISCS", "EV-BATTERY-CHECK", "FULL-SERVICE", "HEAVY-VAN-SERVICE", "INTERIM-SERVICE"])
 
 /** Reading's catalogue: every service can be booked there. */

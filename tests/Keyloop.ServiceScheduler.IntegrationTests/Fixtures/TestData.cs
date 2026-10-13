@@ -40,36 +40,23 @@ public static class TestData
 
     public static VehicleDetails Vehicle(string vin = "WVWZZZ1KZAW123456") => new(Vin.Create(vin), "AB12 CDE", "Volkswagen", "Golf");
 
-    /// <summary>
-    /// A fresh id whose text starts <c>ab12cde0</c>, the hex-legal characters of the fixture plate <c>AB12 CDE</c>. Checks that no plate
-    /// character reaches a masked body use it: a case-insensitive comparison then fails on every run rather than only when a random
-    /// lowercase GUID happens to contain <c>cde</c> or <c>ab12</c>.
-    /// </summary>
+    /// <summary>Generates a GUID starting with <c>ab12cde0</c> to deterministically catch unmasked <c>AB12 CDE</c> registration plates.</summary>
     public static Guid PlateLookalikeId() => Guid.Parse(string.Concat("ab12cde0", Guid.NewGuid().ToString()[8..]));
 
-    /// <summary>
-    /// A customer whose email is on a reserved domain (<c>example.com</c>), which the notification dispatcher never sends to; pass
-    /// <paramref name="email"/> (e.g. <see cref="DeliverableEmail"/>) when a test needs the email to be sent.
-    /// </summary>
+    /// <summary>Creates customer details with a reserved-domain (<c>example.com</c>) email unless <paramref name="email"/> is specified.</summary>
     public static CustomerDetails Customer(int n = 1, string? email = null) =>
         new(
             string.Create(CultureInfo.InvariantCulture, $"Customer {n}"),
             email ?? string.Create(CultureInfo.InvariantCulture, $"customer{n}@example.com"),
             string.Create(CultureInfo.InvariantCulture, $"+44 7700 9{n % 100000:D5}"));
 
-    /// <summary>
-    /// An address the notification dispatcher does send to (not a reserved domain). Tests deliver only to a capturing sender or a
-    /// Mailpit container; <c>.local</c> is the multicast-DNS special-use name (RFC 6762), never resolved on the public internet.
-    /// </summary>
+    /// <summary>Returns a non-reserved <c>.local</c> address that the notification dispatcher will deliver.</summary>
     public static string DeliverableEmail(int n = 1) => string.Create(CultureInfo.InvariantCulture, $"customer{n}@inbox.keyloop.local");
 
     /// <summary>A valid VIN that differs per <paramref name="n"/> (its last six characters are <paramref name="n"/> modulo 10⁶).</summary>
     public static string VinFor(int n) => string.Create(CultureInfo.InvariantCulture, $"WVWZZZ1KZAW{n % 1_000_000:D6}");
 
-    /// <summary>
-    /// A valid <c>POST …/appointments</c> body for <paramref name="customerIndex"/>: distinct customer details and VIN per index, so
-    /// concurrent requests are distinct requests (and distinct idempotency fingerprints).
-    /// </summary>
+    /// <summary>Builds a booking request with a distinct customer and VIN per <paramref name="customerIndex"/>.</summary>
     public static BookAppointmentRequest BookingRequest(
         Guid serviceTypeId, DateTime startUtc, int customerIndex = 1, Guid? preferredBayId = null, Guid? preferredTechnicianId = null, string? notes = null,
         string? email = null)
@@ -85,10 +72,7 @@ public static class TestData
             notes);
     }
 
-    /// <summary>
-    /// A confirmed appointment on <see cref="BookingDay"/> (or the date of <paramref name="startUtc"/>) built through the aggregate, so it raises
-    /// <c>AppointmentBooked</c>, booked at <paramref name="bookedAtUtc"/> (default <see cref="Now"/>), which also dates its outbox row.
-    /// </summary>
+    /// <summary>Creates a confirmed appointment through the aggregate so <c>AppointmentBooked</c> is raised.</summary>
     public static Appointment NewAppointment(
         Dealership dealership, ServiceType serviceType, ServiceBay bay, Technician technician, DateTime startUtc, int customer = 1, string vin = "WVWZZZ1KZAW123456",
         string? email = null, DateTime? bookedAtUtc = null, Guid? id = null)
@@ -101,10 +85,7 @@ public static class TestData
             Customer(customer, email), Vehicle(vin), notes: null, bookedAtUtc ?? Now);
     }
 
-    /// <summary>
-    /// The contention fixture (ARCHITECTURE §14.4): one bay {EvHighVoltage}, one technician {HighVoltageElectrical} and
-    /// <c>EV-BATTERY-CHECK</c> (60 min), open Monday–Saturday 08:00–18:00 Europe/London.
-    /// </summary>
+    /// <summary>Seeds a dealership with a single EV bay, EV technician, and 60-minute <c>EV-BATTERY-CHECK</c> service.</summary>
     public static async Task<(Guid DealershipId, Guid ServiceTypeId, Guid BayId, Guid TechnicianId)> ContentionDealershipAsync(SchedulerDbContext db)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -117,7 +98,7 @@ public static class TestData
         return (dealership.Id, serviceType.Id, bay.Id, technician.Id);
     }
 
-    /// <summary>A dealership with two standard bays, two general technicians and a 60-minute interim service, saved; the shape most persistence tests need.</summary>
+    /// <summary>Seeds a dealership with two standard bays, two general technicians, and a 60-minute interim service.</summary>
     public static async Task<Workshop> WorkshopAsync(SchedulerDbContext db)
     {
         ArgumentNullException.ThrowIfNull(db);

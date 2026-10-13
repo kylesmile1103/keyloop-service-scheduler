@@ -10,8 +10,7 @@ using static Keyloop.ServiceScheduler.Domain.Resources.Certification;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// The reference catalogue: two dealerships with their bays and technicians, and the service types (ARCHITECTURE A-14: ids are
-/// deterministic, <c>DeterministicGuid.Create("&lt;kind&gt;:&lt;slug&gt;")</c>, so demos and tests can address them).
+/// Seeds the reference catalogue (dealerships, bays, technicians, and service types) using deterministic UUIDs.
 /// </summary>
 public static class ReferenceDataSeed
 {
@@ -26,10 +25,7 @@ public static class ReferenceDataSeed
     public static Guid TechnicianId(string employeeNumber) => DeterministicGuid.Create($"technician:{employeeNumber}");
 
     /// <summary>
-    /// Seeds an empty database; on an existing one, adds the missing damage-assessment service and versions the policy upgrade without
-    /// changing existing resources or bookings. The upgrade is one-shot per dealership: once any stored version contains
-    /// <see cref="RequirementRule.PostCollisionRuleCode"/>, a later version without it is a person's decision and stays the latest.
-    /// It logs nothing: the caller logs <see cref="ReferenceSeedResult.LogPublished"/> after its transaction commits.
+    /// Seeds an empty database, or upgrades an existing one with missing service types and requirement policy versions without altering existing bookings.
     /// </summary>
     /// <returns>The rows added (0 when already seeded) and the policy versions published on an existing database.</returns>
     public static async Task<ReferenceSeedResult> EnsureSeededAsync(SchedulerDbContext db, TimeProvider clock, CancellationToken ct)
@@ -157,12 +153,7 @@ public static class ReferenceDataSeed
     private static string[] SeededBrands(Guid dealershipId) => dealershipId == ReadingDealershipId ? ["VOLKSWAGEN"] : ["BMW"];
 
     /// <summary>
-    /// Demo reseed only (never startup): gives each seeded technician whose HV level nobody confirmed the seeded, confirmed competence.
-    /// A database seeded before vehicle-aware requirements keeps its technicians through migration and startup seeding, with the legacy
-    /// HV certification as level 3 unconfirmed and every other level 0, so Unknown brake and MOT work would have no qualified technician
-    /// once the flag is on. A confirmed level is a person's decision and is kept; technicians outside the seed are never touched. Since
-    /// Task 30a an Admin can also save an unconfirmed level deliberately, so a technician with any Admin audit row is a person's decision
-    /// too and is skipped: the reseed never raises a qualification an Admin lowered, and the latest audit <c>after</c> stays true.
+    /// Demo reseed only: restores seeded, confirmed HV competence for seeded technicians whose HV level is unconfirmed and who have no Admin audit history.
     /// </summary>
     /// <returns>The number of technicians restored.</returns>
     public static async Task<int> RestoreSeededCompetenceAsync(SchedulerDbContext db, CancellationToken ct)

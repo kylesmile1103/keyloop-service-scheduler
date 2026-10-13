@@ -14,10 +14,6 @@ public enum ProfileConflictChoice { UseDecoded }
 /// <param name="VehicleClass">Car, light commercial, heavy, or Unknown.</param>
 /// <param name="DeclarationReason">Private audit reason, 1..500 characters after trimming, required for concrete powertrain.</param>
 /// <param name="ConflictChoice">UseDecoded acknowledges a discrepancy and retains decoded values and their provenance.</param>
-/// <remarks>
-/// The enums read exactly one member name (<see cref="ExactEnumNameConverter{TEnum}"/>): the framework converter would OR a comma list
-/// together and read numbers, so <c>"Heavy, LightCommercial"</c> became Unknown and dropped the heavy-vehicle rule.
-/// </remarks>
 public sealed record VehicleProfileRequest(
     [property: JsonConverter(typeof(ExactEnumNameConverter<Powertrain>))] Powertrain Powertrain = Powertrain.Unknown,
     string? Manufacturer = null,

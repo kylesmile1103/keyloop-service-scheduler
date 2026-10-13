@@ -5,8 +5,6 @@ import { describe, expect, it, vi } from "vitest"
 import { ProblemAlert } from "@/components/problem-alert"
 import { expectAvailable, expectUnavailableButFocusable } from "@/test/focus"
 
-// The shared failure alert's retry: it must not drop keyboard focus while it waits (UI_DESIGN 11.16).
-
 const failure = new TypeError("Failed to fetch")
 
 describe("problem alert", () => {

@@ -7,18 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 
 /// <summary>
-/// <c>POST /api/v1/admin/demo/reseed</c>, behind the Aspire dashboard's <em>Reseed demo data</em> command (Addendum C §C3, ADR-019).
+/// <c>POST /api/v1/admin/demo/reseed</c> endpoint for resetting demo appointments, mapped only when demo seeding and <c>Demo:ReseedKey</c> are enabled.
 /// </summary>
-/// <remarks>
-/// <see cref="EndpointRegistry"/> maps it only where demo data is seeded and <c>Demo:ReseedKey</c> is configured, which is the
-/// Development run under Aspire (the AppHost generates the key for each run); UAT and Production seed no demo data. After Admin authorization, a missing or wrong
-/// <see cref="KeyHeader"/> is answered with the same 404 as an unknown route rather than a 401, so the route is not advertised. It is
-/// excluded from the OpenAPI document, keeping the build-time contract identical in every environment, and it is rate-limited by the
-/// write policy like the other state-changing routes.
-/// </remarks>
 public sealed class ReseedDemoDataEndpoint : IEndpoint
 {
-    /// <summary>The header carrying the key.</summary>
     public const string KeyHeader = "X-Reseed-Key";
 
     public static void Map(IEndpointRouteBuilder app) =>

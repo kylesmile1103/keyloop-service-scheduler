@@ -51,13 +51,7 @@ interface ActivityDialogProps<TRecord extends Switchable, TWrite extends { isAct
   onDone: (saved: TRecord) => void
 }
 
-/**
- * Deactivate or reactivate a technician, take a bay out of service or back (UI_DESIGN 11.24): one dialog, the consequence
- * first. Turning a resource off previews the upcoming appointments that would be flagged (they keep it; nothing moves). The
- * change is the whole record as the list showed it with `isActive` turned, sent as a write bound to the Admin with the
- * version the list read. If another Admin saved first, nothing changed: the dialog shows the fields that differ and offers
- * the same action on the record as it is now ("Deactivate anyway").
- */
+/** Confirmation dialog for activating or deactivating a technician or bay, with upcoming-work preview and conflict resolution. */
 export function ActivityDialog<TRecord extends Switchable, TWrite extends { isActive: boolean }>({
   open,
   onOpenChange,
@@ -97,8 +91,7 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
   const turningOff = record.isActive
   const { title, action, consequence } = words(record, turningOff)
   const [conflict, setConflict] = useState<Conflict<TRecord> | null>(null)
-  // The footer's action and the comparison's "anyway" take themselves away: focus moves through Cancel, which stays, then to
-  // the comparison (a 412) or back to the action (a retry), so it never falls to the dialog itself (UI_DESIGN 11.24).
+  // Move focus through Cancel before swapping the action button and conflict panel.
   const cancelRef = useRef<HTMLButtonElement>(null)
   const actionRef = useRef<HTMLButtonElement>(null)
   const conflictRef = useRef<HTMLElement>(null)

@@ -51,7 +51,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     [Fact]
     public Task Returning_customer_found_by_registration_fills_the_next_booking() => Run(nameof(Returning_customer_found_by_registration_fills_the_next_booking), async journey =>
     {
-        // Task 39: staff book a customer, then find them again by registration on the next booking and book from that.
         var customer = Customer.Unique();
         var addresses = new List<string>();
         journey.Page.Request += (_, request) => addresses.Add(request.Url);
@@ -78,7 +77,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
 
         dialog = await journey.OpenStepTwoAsync();
         await Expect(await FindReturningAsync(journey, dialog, customer)).ToContainTextAsync("2 visits");
-        // The search went in request bodies only: no address the page asked for carries the registration.
         var registration = customer.Registration.Replace(" ", "", StringComparison.Ordinal);
         addresses.ShouldNotContain(address => Uri.UnescapeDataString(address).Replace(" ", "", StringComparison.Ordinal).Contains(registration, StringComparison.OrdinalIgnoreCase));
         journey.BrowserErrors.ShouldBeEmpty("no failed request or console error on the way");
@@ -90,7 +88,7 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var customer = Customer.Unique();
         await journey.GotoBoardAsync();
         var dialog = await journey.PrepareBookingAsync(customer, "EV Battery Health Check");
-        // The EV service has just one bay/technician pair. Take it after the dialog read availability and before its POST.
+        // Book the only EV bay/technician pair after availability is read but before the browser submits.
         string? takenStart = null;
         string? bookingKey = null;
         await journey.Page.RouteAsync("**/appointments", async route =>
@@ -125,7 +123,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     {
         await journey.GotoBoardAsync();
         var dialog = await journey.PrepareBookingAsync(Customer.Unique());
-        // Mutate only the outgoing body, then let the real API validate it; no canned ProblemDetails answers.
         await journey.Page.RouteAsync("**/appointments", async route =>
         {
             if (route.Request.Method != "POST") { await route.ContinueAsync(); return; }
@@ -164,13 +161,11 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         await journey.GotoBoardAsync();
         var block = BrowserJourney.Block(journey.Page, appointment);
         await block.ClickAsync();
-        // At 1440 px the details dock beside the board: no dialog, the board stays usable and marks the booking shown.
         var details = journey.Page.GetByRole(AriaRole.Complementary, new() { Name = "Appointment details", Exact = true });
         await Expect(details.GetByRole(AriaRole.Heading, new() { Name = "Interim Service", Exact = true })).ToBeFocusedAsync();
         await Expect(journey.Page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
         await Expect(block).ToHaveAttributeAsync("aria-current", "true");
         await Expect(details.GetByText(customer.Email, new() { Exact = true })).ToBeVisibleAsync();
-        // The inspector ends inside the window: its action is in view without scrolling the page, and so is the confirm.
         await Expect(details).ToHaveCSSAsync("position", "sticky");
         var start = details.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true });
         await Expect(start).ToBeInViewportAsync(new() { Ratio = 1 });
@@ -199,8 +194,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var customer = Customer.Unique();
         await stack.BookAsync(customer: customer);
         await journey.Page.GotoAsync(stack.PageUrl("/appointments"));
-        // Search first: the list shows ten rows a page, and journeys that ran earlier can fill the day, so the new booking may
-        // start on page 2. The search narrows the day to it, wherever it sorts.
         await journey.Page.GetByRole(AriaRole.Searchbox, new() { Name = "Search appointments", Exact = true }).FillAsync(customer.Name);
         await Expect(journey.Page.GetByRole(AriaRole.Row).Filter(new() { HasText = customer.Name })).ToBeVisibleAsync();
         await journey.Page.GetByRole(AriaRole.Button, new() { Name = "Status filter", Exact = true }).ClickAsync();
@@ -255,9 +248,7 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
     [Fact]
     public Task Electric_battery_work_offers_only_HV3_competence_and_explains_allocation() => Run(nameof(Electric_battery_work_offers_only_HV3_competence_and_explains_allocation), async journey =>
     {
-        // Ben must be free at the start chosen: journeys before this one in the same stack book the day's first slots, and an
-        // Interim Service booked by the browser took him at the first EV slot, so preferring him was rightly answered
-        // "preferred-technician:busy" (Task 37). The first slot the dialog offers a battery electric vehicle with Ben free.
+        // Pick the first EV slot where Ben Okafor is not already booked by an earlier journey.
         static DateTimeOffset At(JsonNode node, string property) => DateTimeOffset.Parse(node.String(property), CultureInfo.InvariantCulture);
         var benBusy = (await stack.ScheduleAsync()).Appointments().Where(a => a["technician"]!.String("name") == "Ben Okafor")
             .Select(a => (Start: At(a, "startUtc"), End: At(a, "endUtc"))).ToArray();
@@ -280,7 +271,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         await BrowserJourney.Block(journey.Page, appointment).ClickAsync();
         var details = journey.Page.GetByRole(AriaRole.Complementary, new() { Name = "Appointment details", Exact = true });
         await Expect(details.GetByRole(AriaRole.Heading, new() { Name = "EV Battery Health Check", Exact = true })).ToBeVisibleAsync();
-        // The Job card names the level the job needed; why this technician and bay is a disclosure under it.
         await Expect(details.GetByText("HV 3", new() { Exact = true })).ToBeVisibleAsync();
         await details.GetByRole(AriaRole.Button, new() { Name = "Why this allocation", Exact = true }).ClickAsync();
         var why = details.GetByRole(AriaRole.Region, new() { Name = "Why this allocation", Exact = true });
@@ -294,7 +284,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var customer = Customer.Unique();
         await journey.GotoBoardAsync();
         var appointment = await journey.SubmitBookingAsync(await journey.PrepareBookingAsync(customer));
-        // This test repeats journey 2's browser booking with its own address, so test order is irrelevant.
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         JsonObject? message = null;
@@ -304,7 +293,7 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
             message = inbox["messages"]!.AsArray().OfType<JsonObject>().FirstOrDefault(m => m["To"]!.AsArray().Any(to => to!.String("Address") == customer.Email));
             if (message is null)
             {
-                await Task.Delay(100, deadline.Token); // bounded condition polling, never a browser sleep
+                await Task.Delay(100, deadline.Token);
             }
         }
         var mail = JsonNode.Parse(await stack.Mailpit.GetStringAsync($"/api/v1/message/{message.String("ID")}", deadline.Token))!;
@@ -327,7 +316,6 @@ public sealed partial class SchedulerJourneys(AdminStack stack) : IClassFixture<
         var sheet = journey.Page.GetByRole(AriaRole.Dialog, new() { Name = "Interim Service", Exact = true });
         await Expect(sheet).ToHaveAttributeAsync("data-side", "bottom");
         await Expect(sheet.GetByText(existing["customer"]!.String("name"), new() { Exact = true })).ToBeVisibleAsync();
-        // The same cards as the docked details, and the action row pinned above the home indicator.
         await Expect(sheet.GetByRole(AriaRole.Heading, new() { Name = "Vehicle", Exact = true })).ToBeAttachedAsync();
         await Expect(sheet.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true })).ToBeInViewportAsync();
         await sheet.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();

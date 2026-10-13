@@ -45,9 +45,7 @@ function isRelayMessage(value: unknown): value is RelayMessage {
     (value.replyTo === undefined || value.replyTo === null);
 }
 
-// Once the provider has taken a message, a retryable answer would make the dispatcher send it again, and neither
-// transport has an idempotency key (research-email 8). An acceptance the relay cannot fully confirm is still a 200,
-// logged by notification ID only.
+// Return 200 once the provider accepts the message to avoid duplicate sends without an upstream idempotency key.
 function accepted(messageId: unknown, message: RelayMessage, transport: "binding" | "rest", confirmed: boolean): Response {
   if (!confirmed) console.warn(JSON.stringify({ event: "EmailAcceptedUnconfirmed", transport, notificationId: message.notificationId }));
   return Response.json({ messageId: typeof messageId === "string" && messageId ? messageId : null }, {

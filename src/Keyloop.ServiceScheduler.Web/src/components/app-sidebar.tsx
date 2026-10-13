@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/app-sidebar.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 "use client"
 
 import * as React from "react"
@@ -40,7 +40,6 @@ const data = {
     {
       label: "Workshop",
       items: [
-        // Always today: the link carries the dealership, not the workshop pages' day.
         { title: "Overview", url: "/overview", icon: LayoutDashboard, carry: [DEALERSHIP_PARAM] },
         {
           title: "Dispatch board",
@@ -49,7 +48,6 @@ const data = {
           carry: WORKSHOP_PARAMS,
         },
         {
-          // A week or month around the workshop pages' day: the link carries the dealership and that day.
           title: "Calendar",
           url: "/calendar",
           icon: CalendarDays,
@@ -64,13 +62,11 @@ const data = {
       ],
     },
     {
-      // One dealership's resources, measured today: the links carry the dealership, not the workshop pages' day.
       label: "Resources",
       items: [
         { title: "Technicians", url: "/resources/technicians", icon: UsersRound, carry: [DEALERSHIP_PARAM] },
         { title: "Bays", url: "/resources/bays", icon: Warehouse, carry: [DEALERSHIP_PARAM] },
         { title: "Services", url: "/resources/services", icon: ListChecks, carry: [DEALERSHIP_PARAM] },
-        // The Admin's pages (Task 30b): the API answers only an Admin, so only an Admin is shown them.
         { title: "Requirement policy", url: "/resources/policy", icon: Scale, carry: [DEALERSHIP_PARAM], adminOnly: true },
         { title: "Change history", url: "/resources/history", icon: History, carry: [DEALERSHIP_PARAM], adminOnly: true },
       ],
@@ -85,11 +81,7 @@ const data = {
   ],
 }
 
-/**
- * The app frame's navigation. The brand lives in the header (UI_DESIGN 11.1); only the phone's sidebar sheet, which
- * covers the header, repeats the glyph and the "Keyloop" wordmark (as text, not a link). The footer says plainly what
- * this app is.
- */
+/** Primary application sidebar navigation with role-gated Admin links and API reference link. */
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isMobile } = useSidebar()
   const { isAdmin } = useCurrentUser()
@@ -135,7 +127,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
         <NavUser />
-        {/* Provenance (UI_DESIGN 11.1): not dismissible, so no screenshot or video frame can pass for a Keyloop product. */}
         <p className="px-2 pb-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           Take-home demo · inspired by Keyloop&apos;s public design language · not an official Keyloop product
         </p>

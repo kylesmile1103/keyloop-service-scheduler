@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` (its day
-// number, filled when it is today), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's
-// licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { Plus } from "lucide-react"
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
@@ -13,11 +12,7 @@ import { DATE_PARAM, DEALERSHIP_PARAM } from "@/lib/workshop-params"
 
 import { dayInWords } from "../lib/calendar"
 
-/**
- * New appointment on one day (a day that is today or later and open): an icon button with its name in a tooltip and in
- * `aria-label`. It follows the page's Book rules (UI_DESIGN 11.20): the dialog on that day for a role that books, the
- * sign-in prompt for a visitor, unavailable with the page's reason for any other role.
- */
+/** Icon button for starting a new appointment on a specific day. */
 export function NewOnDay({ date, onNew, bookState }: { date: string; onNew: (date: string) => void; bookState: BookState }) {
   const label = `New appointment on ${dayInWords(date)}`
   return (
@@ -46,15 +41,11 @@ interface DayLinkProps {
   date: string
   today: string
   dealershipId: string
-  /** What the link shows; its name is the day in words, then "dispatch board". */
   children: ReactNode
   className?: string
 }
 
-/**
- * A day's heading as a link to its dispatch board (the day in detail), on this dealership. A touch target of at least
- * 44 by 44 px on a coarse pointer and below `md` (UI_DESIGN 14), whatever it draws (a month's day number is 28 px).
- */
+/** Day header link navigating to that date's dispatch board. */
 export function DayLink({ date, today, dealershipId, children, className }: DayLinkProps) {
   const search = new URLSearchParams({ [DEALERSHIP_PARAM]: dealershipId })
   if (date !== today) search.set(DATE_PARAM, date)
@@ -75,7 +66,7 @@ export function DayLink({ date, today, dealershipId, children, className }: DayL
   )
 }
 
-/** The day of the month, in the template's filled circle when it is today. */
+/** Day-of-month badge, highlighted when `date` is today. */
 export function DayNumber({ date, today, muted = false }: { date: string; today: string; muted?: boolean }) {
   return (
     <span

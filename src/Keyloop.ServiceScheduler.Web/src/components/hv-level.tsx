@@ -1,11 +1,7 @@
 import { cn } from "@/lib/utils"
 import { type HvLevel, hvLevels } from "@/lib/vehicle-aware"
 
-/**
- * A technician's high-voltage competence as a four-step ladder (IMI levels 1 to 4), the steps filled up to the level: a
- * shape that reads at a glance in a table row, in the text's own colour (never a status hue), with the level written next
- * to it wherever it appears. Decorative: the words beside it carry the meaning.
- */
+/** Four-step decorative high-voltage competence ladder (IMI levels 1 to 4). */
 export function HvLadder({ level, className }: { level: HvLevel; className?: string }) {
   return (
     <span aria-hidden="true" data-slot="hv-ladder" data-level={level} className={cn("inline-flex h-3.5 shrink-0 items-end gap-0.5", className)}>

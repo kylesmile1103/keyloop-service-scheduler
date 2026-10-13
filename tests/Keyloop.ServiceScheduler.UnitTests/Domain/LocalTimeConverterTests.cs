@@ -53,8 +53,7 @@ public class LocalTimeConverterTests
     [Fact]
     public void FormatLocal_tells_the_two_occurrences_of_a_repeated_wall_clock_time_apart()
     {
-        // 2026-10-25 in Europe/London: 01:30 happens at 00:30Z (BST, +01:00) and again at 01:30Z (GMT, +00:00). The offset is the
-        // only part of the string that differs, which is why every *Local value in the API carries it.
+        // 2026-10-25 in Europe/London: 01:30 occurs at 00:30Z (+01:00) and again at 01:30Z (+00:00).
         var first = LocalTimeConverter.FormatLocal(new DateTime(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc), London);
         var second = LocalTimeConverter.FormatLocal(new DateTime(2026, 10, 25, 1, 30, 0, DateTimeKind.Utc), London);
 

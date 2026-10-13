@@ -7,23 +7,12 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// At-least-once delivery (ARCHITECTURE §8.9). Claims commit before network I/O; expiring leases recover crashes and claim tokens fence
-/// stale acknowledgements. Rows on reserved domains are staged Suppressed and never claimed; the claim re-applies that rule to a Pending
-/// row that predates it or was written outside the application. An email is rendered only here, so neither a recipient nor a template
-/// problem can reach the booking or cancel that wrote the row.
+/// Background worker for at-least-once notification delivery using leased claims and claim tokens.
 /// </summary>
-/// <remarks>
-/// Wake strategy: drain once at start, then sleep until the first of a commit nudge (<see cref="NotificationSignal"/>), the earliest
-/// Pending <c>next_attempt_at</c> (a retry or a lease expiry), or <see cref="NotificationOptions.IdleInterval"/>. An idle API therefore
-/// sends no query to the database for that long, instead of one every few seconds.
-/// </remarks>
 public sealed class NotificationDispatcher(IServiceScopeFactory scopes, IEmailSender sender, NotificationSignal signal,
     IOptions<NotificationOptions> options, TimeProvider timeProvider, ILogger<NotificationDispatcher> logger) : BackgroundService
 {
-    /// <summary>
-    /// The acknowledgement after a send ignores shutdown, so an accepted email is not left leased and sent again; it is bounded instead,
-    /// and the lease covers it: <c>ClaimLease</c> must exceed <c>SendTimeout</c> by more than this.
-    /// </summary>
+    /// <summary>Bounded deadline for post-send acknowledgement (<c>ClaimLease</c> must exceed <c>SendTimeout</c> by more than this).</summary>
     internal static readonly TimeSpan AcknowledgementTimeout = TimeSpan.FromSeconds(5);
 
     // When rows are due but were not claimable (another instance holds them), wait at least this long rather than spin.

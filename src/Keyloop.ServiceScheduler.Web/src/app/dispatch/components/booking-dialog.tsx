@@ -1,10 +1,5 @@
-/*
- * Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/event-form.tsx` and
- * `src/app/users/components/user-form-dialog.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the
- * README's licence section): the event form's dialog, date field and select layout, and the user form dialog's
- * react-hook-form + zod + `Field` pattern. Adapted to the generated API client, the two-step stepper, slot chips instead of
- * free time inputs, the full-screen sheet on phones and the design system (UI_DESIGN 11.14).
- */
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/event-form.tsx` and
+// `src/app/users/components/user-form-dialog.tsx`, Copyright (c) 2025 ShadcnStore, MIT License.
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarDays, Check, ChevronRight, CircleAlert, LoaderCircle, RotateCw, TriangleAlert } from "lucide-react"
@@ -111,54 +106,31 @@ export interface BookingDialogProps {
   dealership: DealershipResponse
   /** The board's schedule: its bays and technicians are the preferred-resource choices. */
   schedule: WorkshopScheduleResponse | undefined
-  /**
-   * The day the dialog starts on (`yyyy-MM-dd`): the board's day (today when the board shows a past one), moved on to the
-   * next day the dealership opens when that day is closed, since a closed day cannot be picked.
-   */
+  /** Initial date (`yyyy-MM-dd`), advanced to the next open day when the board's day is closed or in the past. */
   initialDate: string
   today: string
-  /** Phones: a full-screen sheet that ends on a success state instead of closing (UI_DESIGN 11.14). */
+  /** Phones: a full-screen sheet that ends on a success state instead of closing. */
   fullScreen: boolean
-  /**
-   * A booking was made (the board refreshes and highlights it; on wide screens the dialog has closed), with its allocation
-   * explained when vehicle-aware requirements are on and the answer carries one: the sentences, and why a preference was
-   * not followed, named from `schedule`.
-   */
+  /** Called when a booking succeeds, along with its allocation explanation when vehicle-aware requirements are enabled. */
   onBooked: (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => void
   /** The success state's "View on board" (phones). */
   onViewOnBoard: (appointment: AppointmentResponse) => void
 }
 
-/**
- * From 1280 px (the sidebar's wide layout) the dialog is about 1100 px wide and each step uses two columns: the job beside
- * its start times, the customer beside the vehicle (UI_DESIGN 11.14). Narrower, one column as before; phones, the sheet.
- */
 const TWO_COLUMNS = "(min-width: 1280px)"
 
 /**
- * Book appointment: step 1 picks the service, the day and a free start (slot chips from `GET /availability`), optionally
- * from services suggested for the issue's description when booking intake triage is on (`BookingTriageIntake`); step 2 takes
- * the customer and the vehicle, with an optional preferred bay and technician. A dialog on wide screens, a full-screen
- * sheet on phones. Every attempt of one booking carries the same `Idempotency-Key`, so trying again after a lost answer
- * can never book twice; a conflict offers the API's suggested starts, a refused rule says why, and field errors land on
- * their fields.
+ * Two-step appointment booking dialog (or full-screen sheet on phones): step 1 selects service, date, and start slot;
+ * step 2 collects customer, vehicle, and optional resource preferences.
  */
 export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: BookingDialogProps) {
-  // Whether to offer suggestions, read while the dialog is still closed (see `bookingTriageStatusQuery`).
   useQuery(bookingTriageStatusQuery())
-  // Likewise the vehicle-aware switch, so the vehicle step is in place from the dialog's first frame, not added under the
-  // person's pointer a moment later.
   useQuery(featureSwitchesQuery())
   const queryClient = useQueryClient()
   const owner = useCurrentUser().writer
   const columns = useMediaQuery(TWO_COLUMNS)
-  // The phone's success state, kept here so a discard knows a booking had been made.
   const [booked, setBooked] = useState<AppointmentResponse | null>(null)
-  // The booking being entered belongs to the account that opened the dialog (`CurrentUser.writer`). When the identity
-  // changes to one that may not book, or to another email, it is discarded in the same render (the flow starts again under
-  // a new key: its fields, the description and the photos' previews go, and their object URLs are revoked), and the dialog
-  // says so. A change between two roles that may book, for the same email, keeps it (`owner` does not change). Its writes
-  // are bound to the same account (`useWriteMutation`), so nothing of a discarded booking is ever sent, by any path.
+  // Discard in-progress draft state if the signed-in writer changes.
   const [draft, setDraft] = useState<{ owner: string | null; key: number; discard: Discard | null }>({ owner, key: 0, discard: null })
   if (owner !== draft.owner) {
     const held = draft.owner !== null
@@ -177,8 +149,6 @@ export function BookingDialog({ open, onOpenChange, fullScreen, ...props }: Book
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="bottom"
-          // Every override carries the sheet's own `data-[side=bottom]:` variant: tailwind-merge then replaces the bottom sheet's
-          // auto height, 85dvh cap and radius (a bare `h-dvh` loses to the variant's `h-auto` on specificity).
           className="gap-0 overflow-clip p-0 data-[side=bottom]:h-dvh data-[side=bottom]:max-h-dvh data-[side=bottom]:rounded-none *:data-[slot=sheet-close]:top-2 *:data-[slot=sheet-close]:right-2"
         >
           <BookingFlow key={draft.key} {...flow} layout="sheet" columns={false} onClose={() => onOpenChange(false)} />
@@ -206,27 +176,19 @@ type Step = 1 | 2
 
 interface BookingFlowProps extends Omit<BookingDialogProps, "open" | "onOpenChange" | "fullScreen"> {
   layout: Layout
-  /** The wide dialog's two columns (`TWO_COLUMNS`); never on the sheet. */
   columns: boolean
   onClose: () => void
-  /** Why the booking being entered was discarded while the dialog was open, if it was. */
   discard: Discard | null
-  /** The phone's success state (held by the dialog). */
   booked: AppointmentResponse | null
   onBookedChange: (booked: AppointmentResponse | null) => void
 }
 
-/** A booking being entered that the dialog discarded when the identity changed. */
 interface Discard {
-  /** It had been booked (the phone's success state was showing). */
   booked: boolean
-  /** Book had been pressed and had no answer yet: it may have been booked. */
   bookWasPending: boolean
 }
 
-/** The booking request's mutation key, so the dialog can tell whether a Book is still out when it discards a draft. */
 const BOOK_MUTATION_KEY = ["bookAppointment"]
-/** The VIN look-up's (`POST /vehicle-profiles/resolve`). */
 const RESOLVE_MUTATION_KEY = ["resolveVehicleProfile"]
 
 type ResolveVariables = Parameters<NonNullable<ReturnType<typeof resolveVehicleProfileMutation>["mutationFn"]>>[0]
@@ -234,7 +196,6 @@ type ResolveVariables = Parameters<NonNullable<ReturnType<typeof resolveVehicleP
 const WHOLE_VIN = /^[A-HJ-NPR-Z0-9]{17}$/
 const MANUFACTURER_CODE = /^[A-Z0-9-]{1,32}$/
 
-/** A value at a dotted path of a nested object (a form's errors). */
 const at = (value: unknown, path: string): unknown =>
   path.split(".").reduce<unknown>((node, key) => (node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined), value)
 
@@ -250,10 +211,7 @@ const blank = (date: string): BookingFormInput => ({
   notes: "",
 })
 
-/**
- * The form paths a `400`'s `errors` can name (camelCase JSON paths, as `fieldErrors` writes them), with the name each field
- * goes by on screen: the API's messages open with the path ("vehicle.vin must be ..."), the form's with the label.
- */
+/** Maps camelCase API validation error paths to form field labels. */
 const formLabels = {
   serviceTypeId: "Service",
   startUtc: "Start time",
@@ -276,7 +234,7 @@ const formLabels = {
 
 const formPaths = Object.keys(formLabels) as ReadonlyArray<keyof typeof formLabels>
 
-/** Business rules about the start time (§8.7): the fix is another start, back on step 1. */
+/** Start-time business rules that require picking a different slot on step 1. */
 const timeRules = new Set(["outside-operating-hours", "lead-time-not-met", "beyond-booking-horizon", "slot-not-aligned"])
 
 function BookingFlow({
@@ -297,8 +255,7 @@ function BookingFlow({
   const timeZone = dealership.timeZoneId
   const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>(1)
-  // One booking intention, one key: every attempt (a retry after a lost answer, a suggested slot after a conflict) sends it,
-  // so the API books at most once (§7.5). A new key only after a success, for the next booking.
+  // Reuse the same idempotency key across retries and suggested-slot picks for a single booking intention.
   const idempotencyKey = useRef(crypto.randomUUID())
   const lastRequest = useRef<BookAppointmentRequest | null>(null)
   const stepHeading = useRef<HTMLHeadingElement>(null)
@@ -307,24 +264,18 @@ function BookingFlow({
   const alertRef = useRef<HTMLDivElement>(null)
   const moved = useRef(false)
   const [waiting, startWaiting] = useCountdown()
-  // The dialog opens only for an account that may book, but the identity can change while it is open (a sign-out in
-  // another tab, a session that ended, a role removed): the dialog then discards what was typed (`BookingDialog`), and
-  // Book, Suggest a service, its Try again and the photos stop, named by the notice that says why.
   const current = useCurrentUser()
   const access = writeAccessOf(current)
   const blocked = access.state === "sign-in" || access.state === "denied"
   const blockedId = useId()
   const noticeRef = useRef<HTMLDivElement>(null)
   const discardedId = useId()
-  // Vehicle-aware requirements (ADR-029), as the environment's switch says: off (or unreadable), the flow is today's and
-  // nothing of the vehicle step is shown or sent.
   const { on: vehicleAware, unreadable: switchUnreadable } = useVehicleAwareSwitch()
   const vehicleSectionRef = useRef<HTMLDivElement>(null)
   const manufacturerRef = useRef<HTMLInputElement | null>(null)
   const focusVehicle = useRef(false)
 
   const form = useForm<BookingFormInput, unknown, BookingForm>({
-    // The vehicle step's rules apply while its declaration can be sent: the switch as the cache holds it when checked.
     resolver: (values, context, options) => zodResolver(bookingSchemaFor(cachedVehicleAware(queryClient)))(values, context, options),
     defaultValues: blank(initialDate),
     mode: "onTouched",
@@ -346,38 +297,23 @@ function BookingFlow({
     }) as [string, string, string, string | undefined, Powertrain | undefined, VehicleClass | undefined, boolean | undefined, string | undefined, string | undefined]
   const serviceTypesOptions = getServiceTypesOptions({ path: { dealershipId } })
   const serviceTypes = useQuery(serviceTypesOptions)
-  // Kept while Try again loads them again, so the alert and its focused button stay in the dialog until the answer.
   const serviceTypesFailure = useQueryFailure(serviceTypes, serviceTypesOptions.queryKey)
   const service = serviceTypes.data?.find((candidate) => candidate.id === serviceTypeId)
   const serviceFor = (id: string) => serviceTypes.data?.find((candidate) => candidate.id === id)
 
-  // Booking intake triage (§8.10): optional, above the service. Its state outlives step 1, for when the person comes back.
   const triage = useBookingTriage(dealershipId)
-  // A booking being entered is work a session renewal's navigation would lose (hooks/use-unsaved-work).
   useUnsavedWork(!booked && (form.formState.isDirty || triage.description.trim() !== "" || triage.photos.length > 0))
-  // What the dialog last wrote into Notes (the description's copy and the lines added from the suggestions), and whether the
-  // description was part of it: notes that still read exactly that are the dialog's, not the person's own words, so they can
-  // follow the description (or go when the box is unticked); anything else is never written over.
   const [copied, setCopied] = useState<{ text: string; description: boolean }>({ text: "", description: false })
-  // The "Also mentioned" lines *Add to Notes* added while the notes were the dialog's: written after the description's copy.
   const [noteLines, setNoteLines] = useState<readonly string[]>([])
-  // The line *Add to Notes* last left out because the notes would then be too long: the notice says by how much (counted
-  // against the notes as they are now) until the line fits or is added.
   const [refusedLine, setRefusedLine] = useState<string | null>(null)
-  // Raised when a suggestion is used, so focus moves on to its free starts once they are on screen.
   const [startFocusRequest, setStartFocusRequest] = useState(0)
 
-  // The VIN look-up (`POST /vehicle-profiles/resolve`, BookingsWrite): a write like Book, bound to the account the dialog was
-  // drawn for and checked as its request leaves (`write.fetch`). The VIN goes in the body only, never in a URL or a query
-  // key. Its answer is kept with the VIN and the identity it was read for, so it never shows for another VIN or caller.
   const [resolved, setResolved] = useState<{ identity: string; vin: string; profile: VehicleProfile } | null>(null)
   const [lookupWaiting, startLookupWaiting] = useCountdown()
   const generatedResolve = resolveVehicleProfileMutation()
   const resolve = useWriteMutation({
     mutationKey: RESOLVE_MUTATION_KEY,
     mutationFn: (variables: ResolveVariables, write, context) => generatedResolve.mutationFn!({ ...variables, fetch: write.fetch() }, context),
-    // Kept for the caller its request left as (the cache's, when the answer is used: `useWriteMutation` throws away an answer
-    // whose caller changed after it left).
     onSuccess: (profile, variables) => setResolved({ identity: cachedIdentityKey(queryClient), vin: variables.body.vin ?? "", profile }),
     onError: (error) => {
       const problem = parseProblem(error)
@@ -388,7 +324,6 @@ function BookingFlow({
       if (problem?.status === 429) startLookupWaiting(Math.max(1, Math.ceil(Number(problem.retryAfterSeconds ?? 1))))
     },
   })
-  // The look-up's answer for a VIN, when it was read for that VIN and for the caller signed in now.
   const lookedUpFor = (value: string) => (resolved && resolved.identity === current.identity && resolved.vin === value ? resolved.profile : null)
   const wholeVin = normalVin(vin)
   const resolvedHere = lookedUpFor(wholeVin)
@@ -404,7 +339,7 @@ function BookingFlow({
           : { state: "idle" }
   const decoded = resolvedHere ? knownManufacturer(resolvedHere.manufacturer) : null
 
-  /** Look up: the button, leaving the field with a whole VIN, or a returning customer's VIN filled in (`fill`). */
+  /** Triggers VIN profile resolution from the Look up button, input blur, or returning-customer autofill. */
   function lookUp(trigger: "button" | "blur" | "fill") {
     if (blocked || lookupWaiting > 0) return
     const value = form.getValues("vehicle.vin").trim().toUpperCase()
@@ -412,20 +347,14 @@ function BookingFlow({
       if (trigger === "button") void form.trigger("vehicle.vin", { shouldFocus: true })
       return
     }
-    // Leaving the field, or filling it, looks up a VIN once; the button always asks again.
     const asked = (resolve.isPending && resolve.variables?.body.vin === value) || (resolved?.vin === value && resolved.identity === current.identity)
     if (trigger !== "button" && asked) return
     resolve.mutate({ body: { vin: value } })
   }
 
-  // The returning customer chosen on step 2 (Task 39b): what it filled in, and the start of the booking it came from, for
-  // the note under the search and its Clear. Part of the booking being entered, so it goes with it.
   const [filled, setFilled] = useState<{ from: string; values: ReturningValues } | null>(null)
 
-  /**
-   * A returning customer chosen: their latest booking's customer and vehicle fill the fields (each still editable, checked
-   * as it is filled), and with vehicle-aware requirements on the VIN is looked up as Look up would.
-   */
+  /** Populates customer and vehicle fields from a returning customer match and triggers VIN lookup if enabled. */
   function chooseReturning(match: ReturningCustomerResponse) {
     const values = returningValues(match)
     for (const path of RETURNING_FIELDS) {
@@ -436,7 +365,7 @@ function BookingFlow({
     if (vehicleAware) lookUp("fill")
   }
 
-  /** The note's Clear: empties the fields the choice filled, except one changed since (the person's own words stay). */
+  /** Clears fields that still match the returning-customer autofill values. */
   function clearReturning() {
     if (!filled) return
     for (const path of RETURNING_FIELDS) {
@@ -448,16 +377,12 @@ function BookingFlow({
     setFilled(null)
   }
 
-  // A declared manufacturer that disagrees with the VIN: "Use decoded data" holds for the VIN, the declaration and the decoded
-  // attributes it was chosen for, or for the VIN and declaration when no look-up had answered (`DecodedChoice`). A change of
-  // any of them clears it, for good, so the advisor is asked again; the request is checked against it as it is built.
   const declaredCode = manufacturerCode(declaredManufacturer)
   const entered: DecodedChoice = { vin: wholeVin, declared: { powertrain, vehicleClass, manufacturer: declaredCode }, decoded: decodedOf(resolvedHere) }
   const [decision, setDecision] = useState<DecodedChoice | null>(null)
   const useDecoded = choiceHolds(decision, entered)
   if (decision !== null && !useDecoded) setDecision(null)
 
-  // What the free starts are counted for: never the VIN, the registration or the reason (ADR-029, §8.7).
   const liveApplies = liveDiagnosisApplies(service, powertrain)
   const availabilityVehicle: AvailabilityVehicle | null = vehicleAware
     ? {
@@ -468,10 +393,6 @@ function BookingFlow({
       }
     : null
 
-  // The API refused vehicle-aware inputs (`422 vehicle-aware-requirements-disabled`), or the switch turned off while some
-  // were entered: they are dropped (the step goes back to Unknown) and the dialog says so once. A switch that cannot be read
-  // after it was read on is not known to be off: the inputs are set aside, neither shown nor sent, and come back as they were
-  // once it reads on again (or are dropped if it reads off).
   const [dropped, setDropped] = useState<"booking" | "availability" | "switch" | "unreadable" | null>(null)
   const [seenVehicleAware, setSeenVehicleAware] = useState(vehicleAware)
   if (seenVehicleAware !== vehicleAware) {
@@ -492,15 +413,10 @@ function BookingFlow({
     void vehicleAwareRefused(queryClient)
   }
 
-  // Who is signed in changed before Book's answer arrived, so the answer was thrown away (`useWriteMutation`).
   const [answerDiscarded, setAnswerDiscarded] = useState(false)
   const generated = bookAppointmentMutation()
   const book = useWriteMutation({
     mutationKey: BOOK_MUTATION_KEY,
-    // The generated mutation, inside a `ui.book_appointment` span whose fetch carries `traceparent` to the API, so one trace
-    // runs from the click to PostgreSQL in the Aspire dashboard. The account is checked inside that fetch, as the request
-    // leaves (`write.fetch`); an answer that arrives after the identity changed is thrown away, with no toast, no closing
-    // and nothing kept.
     mutationFn: (variables: BookVariables, write, context) =>
       withSpan("ui.book_appointment", ({ fetch }) => generated.mutationFn!({ ...variables, fetch: write.fetch(fetch) }, context), {
         "keyloop.dealership_id": dealershipId,
@@ -509,19 +425,15 @@ function BookingFlow({
     onDiscarded: () => setAnswerDiscarded(true),
     onSuccess: (appointment) => {
       idempotencyKey.current = crypto.randomUUID()
-      // The allocation, explained, while the switch is on and the answer carries one (a vehicle-aware booking); a preference
-      // not followed is named from the roster the dialog offered it from.
       const explanation =
         cachedVehicleAware(queryClient) && appointment.allocation
           ? explainBooking(appointment, appointment.allocation, serviceFor(appointment.serviceType.id), schedule)
           : null
       const day = appointment.startLocal.slice(0, 10)
       void queryClient.invalidateQueries({ queryKey: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: day } }) })
-      // Every service's availability that day (the KPI strip's next free slot and the chips): a partial key matches them all.
       void queryClient.invalidateQueries({
         queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: day } as GetAvailabilityData["query"] }),
       })
-      // Every range read of the dealership (the Overview's fortnight either side of today, the Calendar's week or month).
       void queryClient.invalidateQueries({ queryKey: rangeReadsOf(dealershipId) })
       onBooked(appointment, explanation)
       if (layout === "sheet") setBooked(appointment)
@@ -542,7 +454,6 @@ function BookingFlow({
         if (onStepOne) goTo(1)
         return
       }
-      // The switch the dialog read was stale: the API takes no vehicle-aware input now.
       if (slug === "vehicle-aware-requirements-disabled") {
         vehicleRefused("booking")
         return
@@ -557,7 +468,6 @@ function BookingFlow({
         })
       }
       if (slug === "slot-unavailable" || slug === "slot-conflict" || slug === "concurrency-conflict") {
-        // Refresh starts after changes to booked capacity or the requirement policy.
         void queryClient.invalidateQueries({
           queryKey: getAvailabilityQueryKey({ path: { dealershipId }, query: { date } as GetAvailabilityData["query"] }),
         })
@@ -565,11 +475,7 @@ function BookingFlow({
     },
   })
 
-  // The last refusal, kept while this booking is tried again (Try again, a suggested start, Book): the alert and the
-  // control that was pressed in it stay, unavailable but focused, until the answer (a mutation that runs again has no error).
   const failure = useMutationFailure(book)
-  // The API's conflict is about the VIN and declaration it refused: once either is changed, its "Use decoded data" would
-  // answer for another vehicle, so the alert goes (Book asks the API again, and the look-up asks before Book).
   const failedProblem = parseProblem(failure)
   const staleConflict =
     failedProblem !== null &&
@@ -577,8 +483,6 @@ function BookingFlow({
     book.variables !== undefined &&
     !sameEntry(choiceOfRequest(book.variables.body, null), entered)
 
-  // A discard took the focused field with it: focus goes to the notice that says why, unless something else holds it (a
-  // dialog opened over this one). A layout effect: before the dialog's focus guard puts lost focus on the dialog itself.
   useLayoutEffect(() => {
     if (!discard) return
     const popup = formRef.current?.closest('[role="dialog"]')
@@ -586,8 +490,6 @@ function BookingFlow({
     if (!active || active === document.body || active === popup) noticeRef.current?.focus()
   }, [discard])
 
-  // The new step's heading takes focus, so keyboard and screen-reader users start at its top (UI_DESIGN 11.14); "Change the
-  // vehicle details" from a refusal goes to the vehicle step instead.
   useEffect(() => {
     if (!moved.current) return
     if (focusVehicle.current && vehicleSectionRef.current) {
@@ -597,14 +499,9 @@ function BookingFlow({
     } else stepHeading.current?.focus()
   }, [step])
 
-  // A refusal comes into view where the user is looking (the step may be scrolled to its last field). When the control that
-  // was pressed went with the last one (a suggested start that is now taken too, Try again when the answer is a conflict),
-  // focus moves to the new refusal, or to the first field it marked, instead of falling to the dialog. A layout effect: in
-  // the same commit as the removal, before the dialog's focus guard puts lost focus on the dialog itself.
   useLayoutEffect(() => {
     if (!failure) return
     problemRef.current?.scrollIntoView?.({ block: "nearest" })
-    // A declaration the VIN contradicts needs the advisor's choice, so its alert takes focus wherever focus was.
     const failedProblem = parseProblem(failure)
     if (failedProblem && problemSlug(failedProblem) === "vehicle-profile-conflict" && alertRef.current) {
       alertRef.current.focus()
@@ -807,12 +704,9 @@ function BookingFlow({
         className={cn(
           "flex flex-col gap-3 border-b px-4 pt-4 pb-3 sm:px-6",
           sheet && "pt-[max(1rem,env(safe-area-inset-top))]",
-          // The wide dialog's header is one band on the body's two columns: the title over the job, the stepper over the
-          // second column, level with the title, so the row the stepper had goes to the columns below (UI_DESIGN 11.14).
           columns && "grid grid-cols-2 items-center justify-items-start gap-x-8"
         )}
       >
-        {/* Room for the close button on the title only, so the stepper has the whole width and its names fit on a phone. */}
         <div className={cn("flex flex-col gap-0.5", !columns && "pr-10")}>
           <Title className="font-heading text-lg font-semibold">Book appointment</Title>
           <Description className="text-sm text-muted-foreground">{`${dealership.name} · times in ${timeZone}`}</Description>
@@ -824,7 +718,6 @@ function BookingFlow({
         className={cn(
           "flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6",
           booked && "flex flex-col justify-center",
-          // Step 1 in two columns fills the body, and each column scrolls on its own, between the header and the footer.
           !booked && columns && step === 1 && "flex flex-col py-0"
         )}
       >
@@ -896,7 +789,6 @@ function BookingFlow({
             notesFrom={copied.text !== "" && notes === copied.text ? (copied.description ? "description" : "suggestions") : null}
             onChangeTime={back}
             returning={
-              // Keyed by who is signed in: any change of caller starts the search empty, its matches gone (ARCHITECTURE §15).
               <ReturningCustomerSearch
                 key={current.identity}
                 dealershipId={dealershipId}
@@ -993,15 +885,11 @@ function BookingFlow({
               Back
             </Button>
           )}
-          {/* Distinct keys: React must not turn the clicked Next button into the submit button while its click is still
-              being handled, or the browser's default action would submit step 2 on arrival. */}
           {step === 1 ? (
             <Button key="next" type="button" onClick={() => void next()}>
               Next
             </Button>
           ) : (
-            // Focusable while it waits (booking, or a rate limit's wait): it was just pressed, and focus must stay in the dialog.
-            // Base UI also turns a press, or Enter in a field, into nothing meanwhile.
             <Button
               key="book"
               type="submit"
@@ -1020,7 +908,6 @@ function BookingFlow({
   )
 }
 
-/** What the session notice says: why the booking was discarded (or cannot be made), and what to do next. */
 function sessionNoticeText(access: WriteAccess, failed: boolean, discard: Discard | null): string {
   if (!discard) return access.state === "denied" ? access.reason : "You’re signed out, so this booking can’t be made. Sign in to book."
   const why = failed
@@ -1042,7 +929,6 @@ interface SessionNoticeProps {
   id: string
   ref: Ref<HTMLDivElement>
   access: WriteAccess
-  /** `/me` could not be read: Try again reads it again. */
   failed: boolean
   retrying: boolean
   onRetry: () => void
@@ -1050,13 +936,7 @@ interface SessionNoticeProps {
   sheet: boolean
 }
 
-/**
- * Above the footer, when the identity changed while the dialog was open: that the booking being entered was discarded
- * because the session changed (and, if Book had been pressed, that it may have been booked), or, with nothing discarded,
- * why it cannot be made; Sign in when signed out, Try again when `/me` could not be read. Book, Suggest a service, its
- * Try again and the photos name it with `aria-describedby` while they are unavailable. It takes focus when the discarded
- * fields took it with them.
- */
+/** Notice shown above the footer when the session changes while the dialog is open. */
 function SessionNotice({ id, ref, access, failed, retrying, onRetry, discard, sheet }: SessionNoticeProps) {
   return (
     <div ref={ref} tabIndex={-1} className={cn("flex flex-col gap-2 border-t px-4 py-3 outline-none sm:px-6", sheet && "bg-popover")}>
@@ -1078,7 +958,6 @@ function SessionNotice({ id, ref, access, failed, retrying, onRetry, discard, sh
 
 const steps = ["Service & time", "Customer & vehicle"] as const
 
-/** Two numbered steps, a real sequence: the current one marked for assistive technology, a done one with a check. */
 function Stepper({ step }: { step: Step }) {
   return (
     <ol aria-label="Booking steps" className="flex min-w-0 items-center gap-1.5 sm:gap-2">
@@ -1115,7 +994,6 @@ type BookingFormApi = ReturnType<typeof useForm<BookingFormInput, unknown, Booki
 
 interface StepOneProps {
   form: BookingFormApi
-  /** The job on the left and its start times on the right (`TWO_COLUMNS`). */
   columns: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
   dealership: DealershipResponse
@@ -1123,22 +1001,14 @@ interface StepOneProps {
   serviceTypes: ServiceTypeResponse[] | undefined
   serviceTypesLoading: boolean
   serviceTypesError: unknown
-  /** True while Try again loads the services again. */
   serviceTypesRetrying: boolean
   onRetryServiceTypes: () => void
   service: ServiceTypeResponse | undefined
   date: string
   startUtc: string
-  /** Raised to move focus into the free starts once they are on screen (a suggestion was just used). */
   startFocusRequest: number
-  /** Booking intake triage above the service, when suggestions are on. */
   intake: ReactNode
-  /**
-   * The vehicle step, with vehicle-aware requirements on (ADR-029): its declaration between the service and the starts,
-   * which are counted for it; and, once the API refused vehicle-aware inputs or the switch turned off, the note saying
-   * they were dropped (`off`), or, while the switch cannot be read, that they are set aside (`unreadable`). `null`
-   * otherwise: today's step 1.
-   */
+  /** Vehicle step declaration and availability filter when vehicle-aware requirements are enabled. */
   vehicle: {
     section: ReactNode
     availability: AvailabilityVehicle | null
@@ -1147,7 +1017,6 @@ interface StepOneProps {
   } | null
 }
 
-/** The calendar's day names, with "closed" after a day the dealership does not open (struck through and disabled). */
 const dayLabels = {
   labelDayButton: (...args: Parameters<typeof labelDayButton>) => {
     const [, modifiers] = args
@@ -1184,15 +1053,10 @@ function StepOne({
       aria-labelledby={`${ids.service}-heading`}
       className={
         columns
-          ? // Two panes that scroll apart, parted by a hairline from the header's border to the footer's, in the middle of
-            // the gap: the job's pane ends where its fields do, and the rule keeps a short one from reading as unfinished.
-            // A background, not a positioned element: positioning the section would make it the containing block of the
-            // columns' visually hidden text, which would then escape their scrolling and make the whole body scroll.
-            "grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] gap-x-8 bg-[linear-gradient(var(--color-border),var(--color-border))] bg-[length:1px_100%] bg-center bg-no-repeat"
+          ? "grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] gap-x-8 bg-[linear-gradient(var(--color-border),var(--color-border))] bg-[length:1px_100%] bg-center bg-no-repeat"
           : "flex flex-col gap-5"
       }
     >
-      {/* What the job is, then when: in reading order, so Tab goes down the left column before the start times. */}
       <Column columns={columns} label={vehicle?.section ? "Service and vehicle" : "Service and date"} className="flex flex-col gap-4">
         <h3 id={`${ids.service}-heading`} ref={headingRef} tabIndex={-1} className="font-heading text-base font-semibold outline-none">
           Service and time
@@ -1220,7 +1084,6 @@ function StepOne({
                     value={field.value || null}
                     onValueChange={(value) => {
                       field.onChange(value ?? "")
-                      // A start belongs to one service's availability.
                       form.setValue("startUtc", "")
                     }}
                   >
@@ -1334,7 +1197,6 @@ function StepOne({
         {vehicle?.section}
       </Column>
 
-      {/* Level with the left column's first field: the column's 1 rem padding, the heading's 1.5 rem line, the 1 rem gap. */}
       <Column columns={columns} labelledBy={ids.start} className="flex flex-col pt-14">
         <Controller
           control={form.control}
@@ -1383,12 +1245,6 @@ interface ColumnProps {
   children: ReactNode
 }
 
-/**
- * One of step 1's two columns: a named group that scrolls on its own from the header to the footer (with the body's
- * padding inside it, and room at its sides for the focus rings it would otherwise clip). In one column it adds nothing
- * (`display: contents`), and the same element stays either way, so crossing the breakpoint keeps every field mounted,
- * with its focus and its state.
- */
 function Column({ columns, label, labelledBy, className, children }: ColumnProps) {
   return (
     <div
@@ -1404,7 +1260,6 @@ function Column({ columns, label, labelledBy, className, children }: ColumnProps
 
 interface StepTwoProps {
   form: BookingFormApi
-  /** The customer on the left and the vehicle on the right (`TWO_COLUMNS`). */
   columns: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
   problemRef: RefObject<HTMLDivElement | null>
@@ -1412,19 +1267,12 @@ interface StepTwoProps {
   schedule: WorkshopScheduleResponse | undefined
   startUtc: string
   timeZone: string
-  /**
-   * Where the notes came from, while they are still what step 1 wrote: the issue description (the box there was ticked,
-   * with any line added from the suggestions after it), or only lines added from the suggestions.
-   */
   notesFrom: "description" | "suggestions" | null
   onChangeTime: () => void
   problem: ReactNode
-  /** The returning-customer search, at the top of the customer section (Task 39b). */
+  /** Returning-customer search rendered at the top of the customer section. */
   returning: ReactNode
-  /**
-   * With vehicle-aware requirements on: the vehicle as declared on step 1 (in the summary), the VIN with Look up in place of
-   * the plain field, and what the VIN said, under it. `null` otherwise: today's step 2.
-   */
+  /** Vehicle summary, VIN lookup field, and decoded facts when vehicle-aware requirements are enabled. */
   vehicleStep: {
     summary: { powertrain: Powertrain; vehicleClass: VehicleClass; live: boolean }
     vin: ReactNode
@@ -1450,7 +1298,6 @@ function StepTwo({
   vehicleStep,
 }: StepTwoProps) {
   const headingId = useId()
-  // Only resources that could take this job: active, with every capability or certification the service needs.
   const bays = (schedule?.bays ?? []).filter(
     (bay) => bay.isActive && (service?.requiredBayCapabilities ?? []).every((capability) => bay.capabilities.includes(capability))
   )
@@ -1471,12 +1318,10 @@ function StepTwo({
         </div>
       )}
 
-      {/* Side by side in two columns, in the same order, so Tab still goes through the customer before the vehicle. */}
       <div className={columns ? "grid grid-cols-2 items-start gap-x-8" : "contents"}>
         <FieldSet className="gap-4">
           <FieldLegend variant="label">Customer</FieldLegend>
           {returning}
-          {/* One field to a line in a column, which also keeps the customer about as tall as the vehicle beside it. */}
           <FieldGroup className={cn("grid gap-4", !columns && "sm:grid-cols-2")}>
             <TextField form={form} name="customer.name" label="Name" autoComplete="name" className={columns ? undefined : "sm:col-span-2"} />
             <TextField form={form} name="customer.email" label="Email" type="email" inputMode="email" autoComplete="email" />
@@ -1528,7 +1373,6 @@ function StepTwo({
       <FieldSet className="gap-4">
         <FieldLegend variant="label">Preferences (optional)</FieldLegend>
         {schedule && (
-          // Under the customer and the vehicle in two columns, on the same lines.
           <FieldGroup className={cn("grid gap-4 sm:grid-cols-2", columns && "gap-x-8")}>
             <ResourceSelect form={form} name="preferredBayId" label="Preferred bay" anyLabel="Any free bay" options={bays} />
             <ResourceSelect
@@ -1558,7 +1402,6 @@ function StepTwo({
                 className="min-h-20"
               />
               {notesFrom && (
-                // The description may hold personal details: say plainly that, as notes, it is kept.
                 <p id={`${headingId}-notes-copied`} className="text-xs text-muted-foreground">
                   {notesFrom === "description"
                     ? "Copied from the description of the issue. Notes are saved with the booking."
@@ -1574,7 +1417,6 @@ function StepTwo({
   )
 }
 
-/** What step 1 chose, at the top of step 2: the service, the day and time, the duration and what the job needs. */
 function Summary({
   service,
   startUtc,
@@ -1586,7 +1428,6 @@ function Summary({
   startUtc: string
   timeZone: string
   onChange: () => void
-  /** The vehicle as declared on step 1, with where each fact came from (vehicle-aware requirements on). */
   vehicle?: { powertrain: Powertrain; vehicleClass: VehicleClass; live: boolean }
 }) {
   const start = new Date(startUtc)
@@ -1634,7 +1475,6 @@ interface TextFieldProps extends Omit<React.ComponentProps<"input">, "form" | "n
   name: TextPath
   label: string
   description?: string
-  /** Shows capitals as they are typed (VIN, registration); the schema upper-cases the value too. */
   upperCase?: boolean
   inputClassName?: string
 }
@@ -1710,7 +1550,6 @@ function ResourceSelect({ form, name, label, anyLabel, options }: ResourceSelect
   )
 }
 
-/** A field's error under it, with the field-error icon (UI_DESIGN 11.4). */
 function FormError({ id, message }: { id?: string; message?: string }) {
   if (!message) return null
   return (
@@ -1723,19 +1562,13 @@ function FormError({ id, message }: { id?: string; message?: string }) {
 
 interface BookingProblemProps {
   error: unknown
-  /** The alert, for the dialog to focus when the control that was pressed went with the last refusal. */
   alertRef: Ref<HTMLDivElement>
-  /** Seconds left of a rate limit's wait. */
   waiting: number
-  /** True while this booking is tried again: the refusal stays, and its controls wait (focusable) for the answer. */
   busy: boolean
-  /** The start being booked meanwhile (`startUtc`), so a suggested start that was picked says it is booking. */
   booking?: string
-  /** The vehicle step's answers to its refusals (ADR-029): a conflict's choice, no qualified bay or technician, switched-off inputs. */
+  /** Handlers and context for vehicle-aware booking refusals. */
   vehicle: {
-    /** The manufacturer code the advisor declared, if any. */
     declared: string
-    /** The manufacturer the VIN decoded, if it was looked up and recognised. */
     decoded: string | null
     dealershipName: string
     onUseDecoded: () => void
@@ -1750,17 +1583,13 @@ interface BookingProblemProps {
 }
 
 /**
- * Why a booking was refused, in place (UI_DESIGN 11.16): a taken slot with the API's suggested starts, a business rule
- * (with what is missing, or a way back to pick another time), a rate limit with its wait, or a failure with a safe retry.
- * Field errors (`400`) are on their fields; this shows only the ones no field owns.
+ * Displays booking failure details, suggested slots on conflict, business rule refusals, rate limits, or retry actions.
  */
 function BookingProblem({ error, alertRef, waiting, busy, booking, vehicle, onPick, onRetry, onChangeTime, onStartOver }: BookingProblemProps) {
   const problem = parseProblem(error)
   const slug = problem ? problemSlug(problem) : ""
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)
 
-  // Vehicle-aware refusals (ADR-029): a declaration the VIN contradicts, inputs this server does not take now, and no
-  // qualified bay or technician for the vehicle, each in the advisor's terms.
   if (slug === "vehicle-profile-conflict" && problem) {
     return (
       <ProfileConflictProblem

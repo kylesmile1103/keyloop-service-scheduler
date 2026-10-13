@@ -5,10 +5,7 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 /// <summary>Observes the database from outside the API, for tests that must know where concurrent requests are waiting.</summary>
 public static class DatabaseProbe
 {
-    /// <summary>
-    /// Waits until at least <paramref name="count"/> other sessions of this database are blocked on a heavyweight lock (an advisory
-    /// lock, a row lock, or another transaction's unique-index entry), e.g. requests queued behind a lock the test holds.
-    /// </summary>
+    /// <summary>Waits until at least <paramref name="count"/> other database sessions are blocked on a lock.</summary>
     public static async Task WaitForBlockedSessionsAsync(string connectionString, int count, CancellationToken ct)
     {
         await using var connection = new NpgsqlConnection(connectionString);

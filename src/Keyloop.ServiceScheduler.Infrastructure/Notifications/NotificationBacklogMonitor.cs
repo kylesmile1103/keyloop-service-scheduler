@@ -7,11 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// Backs the gauges <c>scheduler.notifications.outbox_pending</c> (by kind) and <c>scheduler.notifications.oldest_pending_age</c> with
-/// one query on the pending partial index, whatever <c>Notifications:Enabled</c> says: a disabled or stalled dispatcher shows as a
-/// growing backlog (ARCHITECTURE §12.1, G2). Collecting never waits for the database. It reports the cached result and, when that is
-/// older than the metric export interval (<c>OTEL_METRIC_EXPORT_INTERVAL</c>, default 60 s), refreshes it in the background; with no
-/// metric exporter nothing collects, so nothing is queried. While the latest refresh has failed the gauges report nothing (no data).
+/// Backs the <c>scheduler.notifications.outbox_pending</c> and <c>scheduler.notifications.oldest_pending_age</c> gauges
+/// using a cached background refresh over the pending outbox index.
 /// </summary>
 public sealed class NotificationBacklogMonitor(IServiceScopeFactory scopes, TimeProvider timeProvider, IConfiguration configuration)
     : IHostedService, IDisposable

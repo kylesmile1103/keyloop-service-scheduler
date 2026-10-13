@@ -6,11 +6,7 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// Booking over real HTTP on Kestrel (<c>WebApplicationFactory.UseKestrel</c>), where the test server would not prove anything:
-/// the 64 KB request-body limit is Kestrel's (<c>KestrelServerOptions.Limits.MaxRequestBodySize</c>), and the problem body must carry
-/// <c>traceId</c> and <c>instance</c> through the real server pipeline.
-/// </summary>
+/// <summary>Tests booking over Kestrel to verify request-body size limits and ProblemDetails fields.</summary>
 public sealed class BookingOverKestrelTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -22,7 +18,7 @@ public sealed class BookingOverKestrelTests(PostgresFixture pg) : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _factory = new SchedulerApiFactory(pg.ConnectionString, TestData.Clock());
-        _factory.UseKestrel(0); // a free localhost port
+        _factory.UseKestrel(0);
         await _factory.ResetAsync();
         _client = _factory.CreateClient();
         _workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
@@ -53,9 +49,6 @@ public sealed class BookingOverKestrelTests(PostgresFixture pg) : IAsyncLifetime
         var body = await response.Content.ReadAsStringAsync(Ct);
         response.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge, body);
 
-        // Kestrel's limit surfaces as BadHttpRequestException(413) while the body is read; GlobalExceptionHandler answers it with the
-        // framework's RFC 9110 type and title for the status (ARCHITECTURE §8.7), plus instance and traceId like every problem.
-        // Kestrel also closes the connection, since the rest of the body was never read.
         response.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("application/problem+json");
         using var problem = JsonDocument.Parse(body);
         var root = problem.RootElement;
@@ -76,7 +69,7 @@ public sealed class BookingOverKestrelTests(PostgresFixture pg) : IAsyncLifetime
         using var response = await _client.PostJsonAsync(
             Url, valid with { Vehicle = valid.Vehicle with { Vin = "short" } }, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
 
-        var problem = await response.ShouldBeValidationErrorAsync(["vehicle.vin"], Ct); // asserts traceId and instance = the path
+        var problem = await response.ShouldBeValidationErrorAsync(["vehicle.vin"], Ct);
         problem.GetProperty("instance").GetString().ShouldBe($"/api/v1/dealerships/{_workshop.Dealership.Id}/appointments");
     }
 

@@ -10,9 +10,7 @@ import coreEnvFixture from "./fixtures/container-env-core.json" with { type: "js
 import otlpEnvFixture from "./fixtures/container-env-otlp.json" with { type: "json" };
 import vehicleAwareEnvFixture from "./fixtures/container-env-vehicle-aware.json" with { type: "json" };
 
-// The core-only profile: notifications, email, triage, the OTLP relay, API telemetry and vehicle-aware requirements off.
-// The .NET integration test CloudflareContainerEnvTests boots the API with the committed fixture, so both sides are
-// pinned to the same contract.
+// Base profile with optional features disabled.
 function coreEnv() {
   const { env } = fakeEnv();
   return Object.assign(env, {
@@ -25,17 +23,14 @@ function coreEnv() {
   });
 }
 
-// The core profile with API telemetry export on (test/fixtures/container-env-otlp.json, which CloudflareContainerEnvTests boots).
 function otlpEnv() {
   return Object.assign(coreEnv(), { API_OTLP_ENABLED: "true" as Env["API_OTLP_ENABLED"] });
 }
 
-// The core profile with ADR-029's vehicle-aware requirements switched on for the deployment (test/fixtures/container-env-vehicle-aware.json).
 function vehicleAwareEnv() {
   return Object.assign(coreEnv(), { VEHICLE_AWARE_REQUIREMENTS: "true" as Env["VEHICLE_AWARE_REQUIREMENTS"] });
 }
 
-// Both on: API telemetry export and the vehicle-aware switch.
 function otlpAndVehicleAwareEnv() {
   return Object.assign(otlpEnv(), { VEHICLE_AWARE_REQUIREMENTS: "true" as Env["VEHICLE_AWARE_REQUIREMENTS"] });
 }
@@ -131,13 +126,10 @@ describe("container startup and Secrets Store", () => {
     expect(settings).toMatchObject({
       OTEL_EXPORTER_OTLP_ENDPOINT: "https://otlp-gateway-local.grafana.net/otlp",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
-      // job="keyloop-scheduler/api" is service.namespace/service.name; deployment.environment.name comes from the API's
-      // ASPNETCORE_ENVIRONMENT (ServiceDefaults), so the dashboards' Production default selects this deployment.
       OTEL_SERVICE_NAME: "api",
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=keyloop-scheduler",
       ASPNETCORE_ENVIRONMENT: "Production",
     });
-    // OTEL headers are W3C-baggage style: the space is percent-encoded; base64's "+", "/" and "=" are legal value octets.
     const prefix = "Authorization=Basic%20";
     expect(settings.OTEL_EXPORTER_OTLP_HEADERS?.startsWith(prefix)).toBe(true);
     const credential = settings.OTEL_EXPORTER_OTLP_HEADERS!.slice(prefix.length);
@@ -215,8 +207,6 @@ describe("container startup and Secrets Store", () => {
   });
 });
 
-// The real @cloudflare/containers class against a fake runtime: the library's own readiness and restart paths are
-// what these tests observe, so a regression in how ApiContainer drives them cannot hide behind a mocked base class.
 describe("container lifecycle with the real Container class", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
@@ -403,8 +393,6 @@ describe("start configuration fingerprint", () => {
   }, 30_000);
 });
 
-// A deploy can replace or retain the Durable Object instance, keeping its storage and the running container. The platform also restarts
-// a container on an image rollout with the start options it kept, so only the Durable Object can apply a new configuration.
 describe("configuration changes reach a running container", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
@@ -516,7 +504,6 @@ describe("configuration changes reach a running container", () => {
     expect(runtime.starts).toHaveLength(2);
     expect(runtime.starts[1]!.env).toMatchObject({ Triage__Enabled: "true", Triage__ApiToken: "test-token", Triage__Model: "@cf/cloudflare/clef-flash" });
     expect(runtime.proxied.map(request => new URL(request.url).pathname)).toEqual(["/api/v1/dealerships", "/api/v1/dealerships", "/api/v1/features"]);
-    // Checked once per instance: later requests neither reread Secrets Store nor restart (F5).
     const reads = next.mocks.DB_URL.get.mock.calls.length;
     expect(await serve(next.api)).toEqual({ value: expect.objectContaining({ status: 204 }) });
     expect(next.mocks.DB_URL.get).toHaveBeenCalledTimes(reads);

@@ -16,11 +16,7 @@ export const cancelled = new Counter('cancelled');
 export const secondCancelConflicts = new Counter('second_cancel_conflicts');
 export const orphansCancelled = new Counter('orphans_cancelled');
 
-// rateLimitBudget is the default fraction of HTTP attempts allowed to be 429s
-// (MAX_RATE_LIMIT_RATE overrides it). droppedIterations is the default number
-// of dropped iterations allowed (MAX_DROPPED_ITERATIONS overrides it); null
-// reports them without a gate, for a profile whose VUs are expected to wait
-// out Retry-After while the arrival-rate executor keeps offering iterations.
+// Builds default k6 thresholds; pass droppedIterations: null to report dropped iterations without gating.
 export function baseThresholds({ rateLimitBudget = 0.01, droppedIterations = 0 } = {}) {
   const thresholds = {
     checks: ['rate==1'],
@@ -62,13 +58,7 @@ export function problem(response, slugs, startUtc, requireSuggestions = false, t
   return check(response, { 'problem matches contract': () => valid && suggestions }, tags);
 }
 
-// The Retry-After cooldown is per VU by design: each VU models one client, and
-// all VUs share the generator's IP like clients behind one NAT. k6 has no
-// mutable state shared across VUs, so other VUs learn of the limit only from
-// their own 429. The Production preset, required for every remote run, does
-// not rely on that: the first workload 429 aborts the whole test (k6 exit 108)
-// so the IP stops sending. Setup and teardown run alone in one VU, where this
-// cooldown pauses every request from the IP, so they wait and retry instead.
+// Per-VU Retry-After cooldown; under the Production preset, any workload 429 aborts the test immediately.
 let nextRequestAt = 0;
 export function request(method, path, endpoint, body, expected, settings = {}) {
   if (settings.backoff !== false) sleep(Math.max(0, nextRequestAt - Date.now()) / 1000);
@@ -97,8 +87,6 @@ export function request(method, path, endpoint, body, expected, settings = {}) {
     if (config.production && !['setup', 'teardown'].includes(tags.phase)) {
       exec.test.abort(`429 on ${endpoint} under the Production preset, Retry-After ${wait}s; stopping all VUs`);
     }
-    // Contention must finish this request as a 429 and fail its exact counts.
-    // It never converts a throttled contender into a later booking attempt.
     if (settings.backoff === false) sleep(wait);
   }
   return response;
@@ -138,7 +126,6 @@ export function discover(singleCapacity = false) {
   const dealerships = mustRead(withRetry('GET', '/dealerships', 'GetDealerships', undefined, [200], { phase: 'setup' }), 'Dealership discovery');
   if (!Array.isArray(dealerships)) throw new Error('Expected a dealership catalogue');
   const candidates = dealerships.filter((d) => !config.dealershipId || d.id === config.dealershipId);
-  // Prefer Reading, with a generic fallback for any catalogue exposed by the API.
   candidates.sort((a, b) => Number(!a.name.includes('Reading')) - Number(!b.name.includes('Reading')));
   const code = config.serviceCode || (singleCapacity ? 'EV-BATTERY-CHECK' : 'INTERIM-SERVICE');
   for (const dealership of candidates) {
@@ -154,9 +141,7 @@ export function discover(singleCapacity = false) {
     if (singleCapacity) {
       const board = mustRead(schedule(context, context.dates[0], 'setup'), 'Resource discovery');
       const bays = board.bays.filter((b) => b.isActive && service.requiredBayCapabilities.every((c) => b.capabilities.includes(c)));
-      // The single qualified bay is the contended resource: every contender needs it, so exactly one can win however many
-      // technicians qualify. With vehicle-aware requirements on, technicians qualify by HV level rather than the legacy
-      // certification, so more than one can (Development), and availability then reports two free technicians.
+      // Require a single qualified bay as the contended bottleneck resource.
       if (bays.length !== 1) continue;
       context.bayId = bays[0].id;
     }
@@ -168,7 +153,6 @@ export function discover(singleCapacity = false) {
 export function bookingBody(context, slot, suffix = '') {
   const sequence = `${exec.vu.idInTest}-${exec.scenario.iterationInTest}-${suffix}`;
   const customerId = `${context.runId}-${sequence}`;
-  // 17 VIN characters, no I/O/Q. The API validates syntax, not a check digit.
   const serial = `${exec.vu.idInTest.toString().padStart(5, '0')}${exec.scenario.iterationInTest.toString().padStart(6, '0')}`.slice(-11);
   return {
     serviceTypeId: context.service.id, startUtc: slot.startUtc,

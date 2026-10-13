@@ -2,11 +2,7 @@ import type { HttpError } from "@refinedev/core"
 
 import { describeFailure, fieldErrors, parseProblem, UnexpectedResponseError } from "@/lib/problem-details"
 
-/**
- * Refine's `HttpError` for a failed call to the API. Refine reads `statusCode`, `message` and the field `errors` (its forms
- * put them under their fields); the views show `cause`, the failure as the generated client reported it, with the rest of
- * the app's failed states (the API's words, its trace id).
- */
+/** Refine `HttpError` extended with the API's `traceId` and original failure `cause`. */
 export interface SchedulerHttpError extends HttpError {
   /** The API's trace id, for the Aspire dashboard's trace search. */
   traceId?: string
@@ -14,11 +10,7 @@ export interface SchedulerHttpError extends HttpError {
   cause?: unknown
 }
 
-/**
- * Maps a failure of the generated client to Refine's `HttpError`: an RFC 9457 problem keeps its status, its `detail` (or
- * `title`) as the message, its trace id and its field errors under the form's field paths (`Customer.Email` becomes
- * `customer.email`); a response without a problem keeps its status; no answer at all is status 0.
- */
+/** Converts an API client error into a `SchedulerHttpError` with normalized field errors. */
 export function toHttpError(error: unknown): SchedulerHttpError {
   const problem = parseProblem(error)
   const { summary, traceId } = describeFailure(error)

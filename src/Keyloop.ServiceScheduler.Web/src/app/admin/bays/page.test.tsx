@@ -8,8 +8,6 @@ import { renderBoard, viewportOf } from "@/test/render-board"
 import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 import { appointments, bays, readingSunday, readingTuesday, withStatus } from "@/test/schedules"
 
-// The Bays page (Task 29): the dealership's service bays as a read-only list on Refine core, with today's load.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/bays/page")])
 })
@@ -117,7 +115,6 @@ describe("bays list", () => {
     renderBoard(page)
 
     expect(await screen.findByRole("heading", { name: "No bays yet" })).toBeInTheDocument()
-    // The empty roster's own picture (wave 2): an open, empty locker beside the tool board.
     expect(screen.getByRole("img", { name: "Tool pegboard beside an open, empty technician locker." }).getAttribute("src")).toMatch(/\/empty-technicians\.webp$/)
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(figure("Bays")).toHaveTextContent("0None set up yet")

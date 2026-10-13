@@ -43,10 +43,7 @@ const SORTS: readonly SortChoice[] = [
 /** Stable empty rows: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: BayRecord[] = []
 
-/**
- * The Bays page (`/resources/bays`): the dealership's service bays. An Admin adds and edits bays and takes them out of
- * service or back (Task 30b); a Service advisor or a Viewer sees the same list read-only.
- */
+/** Bays management page (`/resources/bays`). */
 export default function BaysPage() {
   return (
     <ResourcePage title="Bays" description="The service bays, how they are equipped and how loaded they are today.">

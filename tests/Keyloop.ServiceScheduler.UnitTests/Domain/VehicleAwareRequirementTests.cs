@@ -5,9 +5,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 namespace Keyloop.ServiceScheduler.UnitTests.Domain;
 
 /// <summary>
-/// The resolver's safety semantics pinned by hand-written expectations: the property tests compare the resolver only with itself, so a
-/// regression in the maximum, the unions, the heavy-vehicle condition, the legacy level-3 floor or the rule order would pass them.
-/// Services are the seeded catalogue; the policy is the seeded default. Every expected value below is written out, never computed.
+/// Verifies default policy requirement resolution against explicit expected capabilities, certifications, and HV levels.
 /// </summary>
 public sealed class VehicleAwareRequirementTests
 {
@@ -18,8 +16,7 @@ public sealed class VehicleAwareRequirementTests
     {
         // The heavy-vehicle rule (order 50, level 0) fires after hv-routine (order 20, level 2): the minimum is the maximum, not the last.
         { Powertrain.BatteryElectric, VehicleClass.Heavy, "BRAKES-PADS-DISCS", false, 2, "StandardLift,HeavyDutyLift", "Brakes,HeavyVehicle", "hv-routine,heavy-vehicle" },
-        // The legacy HighVoltageElectrical certification is a level 3 floor on component work, even for a declared ICE vehicle, and is
-        // named first in the explanation so that a level 3 minimum on an ICE vehicle is never unexplained.
+        // HighVoltageElectrical acts as a level 3 floor on component work even for a declared ICE vehicle.
         { Powertrain.Ice, VehicleClass.Car, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "legacy-hv-component" },
         { Powertrain.Unknown, VehicleClass.Unknown, "EV-BATTERY-CHECK", false, 3, "EvHighVoltage", "", "legacy-hv-component,hv-components" },
         { Powertrain.BatteryElectric, VehicleClass.Car, "EV-CHARGING-FAULT", false, 3, "EvHighVoltage", "Diagnostics", "legacy-hv-component,hv-components" },

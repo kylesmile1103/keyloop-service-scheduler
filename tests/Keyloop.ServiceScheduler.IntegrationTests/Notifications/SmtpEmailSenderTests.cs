@@ -19,7 +19,6 @@ public sealed class SmtpEmailSenderTests
             .Build();
         await mailpit.StartAsync(ct);
         using var http = new HttpClient { BaseAddress = new Uri($"http://{mailpit.Hostname}:{mailpit.GetMappedPublicPort(8025)}") };
-        // Colima host port forwarding can lag the container-internal ready probe.
         await WaitForHttpAsync(http, ct);
         var options = new NotificationOptions
         {
@@ -31,7 +30,6 @@ public sealed class SmtpEmailSenderTests
             new NotificationDetails(Guid.NewGuid(), TestData.DeliverableEmail(), "Test Motors", "Interim service", "Europe/London",
                 TestData.LondonTime(9), TestData.LondonTime(10), "AB12 CDE", "3456"));
         await new SmtpEmailSender(Options.Create(options), TestData.Clock()).SendAsync(message, ct);
-        // Acceptance by SMTP means the message is already visible in Mailpit's API.
         using var list = JsonDocument.Parse(await http.GetStringAsync("/api/v1/messages", ct));
         list.RootElement.GetProperty("total").GetInt32().ShouldBe(1);
         var summary = list.RootElement.GetProperty("messages")[0];
@@ -42,7 +40,6 @@ public sealed class SmtpEmailSenderTests
         detail.RootElement.GetProperty("Text").GetString()!.Replace("\r\n", "\n", StringComparison.Ordinal).ShouldBe(message.TextBody.Replace("\r\n", "\n", StringComparison.Ordinal));
         detail.RootElement.GetProperty("HTML").GetString().ShouldBe(message.HtmlBody);
         var raw = await http.GetStringAsync($"/api/v1/message/{mailpitId}/raw", ct);
-        // Providers correlate through this header (Cloudflare rejects a caller-set Message-ID); SMTP also derives a stable Message-Id (A3).
         raw.ShouldContain($"X-Keyloop-Notification-Id: {id:D}", Case.Insensitive);
         raw.ShouldContain("Auto-Submitted: auto-generated", Case.Insensitive);
         raw.ShouldContain($"Message-Id: <{id:N}@service-scheduler.keyloop.example>", Case.Insensitive);

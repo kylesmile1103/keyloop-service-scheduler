@@ -24,7 +24,6 @@ public sealed class CancelAppointmentEndpoint : IEndpoint
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .AddEndpointFilter<ValidationFilter<CancelAppointmentRequest>>()
-            // A state-changing POST: the stricter write policy, on top of the global limiter (ARCHITECTURE §11.1).
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
             .Produces<AppointmentResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
@@ -34,16 +33,10 @@ public sealed class CancelAppointmentEndpoint : IEndpoint
 
     /// <summary>Cancel an appointment</summary>
     /// <remarks>
-    /// Cancels a confirmed or checked-in appointment and records why. Its bay and technician are free again at once, so the slot is
-    /// re-bookable; the appointment stays readable, with status <c>Cancelled</c> and the reason as <c>cancellationReason</c>. Cancelling is
-    /// not repeatable: a second cancel, or one after work has started, is refused with the current status. When another request changed
-    /// the appointment after this one read it, nothing is overwritten: read it again and decide.
+    /// Cancels a confirmed or checked-in appointment, records the cancellation reason, and makes its bay and technician re-bookable immediately.
     /// </remarks>
     /// <param name="appointmentId">The appointment to cancel.</param>
-    /// <param name="request">
-    /// The reason. Its OpenAPI description is <see cref="RequestDescription"/>, given by the <c>[Description]</c> attribute: the XML-comment
-    /// generator also copies the other parameters' tags here, so <c>SchedulerOpenApi</c> puts the attribute's text back.
-    /// </param>
+    /// <param name="request">The cancellation request body.</param>
     /// <param name="handler">Applies the transition under optimistic concurrency.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="200">Cancelled: the appointment with status <c>Cancelled</c>, its <c>cancellationReason</c> and the time of the change as <c>updatedAtUtc</c>.</response>

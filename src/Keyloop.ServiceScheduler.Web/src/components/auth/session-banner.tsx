@@ -7,29 +7,19 @@ import { SessionRenewalContext } from "@/contexts/session-renewal-context"
 import { useSessionRenewal } from "@/hooks/use-session-renewal"
 import { identitySource } from "@/lib/session"
 
-/** The end of a sign-in on this device's clock (24-hour), where the person is. */
 const endTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
 
-/** Runs the tab's session renewal once and shares it with the session banner of whichever page is shown (root layout). */
+/** Provides session renewal state to the page banner and modal notices. */
 export function SessionRenewalProvider({ children }: { children: ReactNode }) {
   const renewal = useSessionRenewal()
   return <SessionRenewalContext value={renewal}>{children}</SessionRenewalContext>
 }
 
-/**
- * The session banner (UI_DESIGN 11.20), under every page's header. While work is open when the sign-in is about to end:
- * "Your sign-in ends at 14:05. Save or finish what you are doing, then stay signed in.", with **Not now** and **Stay signed
- * in**; once it has ended: "Your sign-in ended.", with **Not now** and **Sign in again** (*How to sign in* on the development
- * server, whose identity is configuration). Both renew by navigating to the API's login path, back to this page
- * (lib/session-renewal.ts). Nothing at all for a sign-in renewed in time, the Development identity or a visitor who never
- * signed in. It never takes focus: it is announced politely and follows the header in the tab order.
- */
+/** Polite status banner displayed beneath the site header when the session is ending with unsaved work or has ended. */
 export function SessionBanner() {
   const renewal = use(SessionRenewalContext)
   const notice = renewal?.notice ?? null
   return (
-    // Always there, so a banner put into it is announced; Base UI leaves `aria-live` regions readable while a dialog is open,
-    // which is where the work it is about usually is.
     <div aria-live="polite">
       {renewal && notice && (
         <div
@@ -67,12 +57,7 @@ export function SessionBanner() {
   )
 }
 
-/**
- * The same notice inside a dialog or sheet (components/ui/dialog.tsx and sheet.tsx render it last), where the work it is
- * about usually is: a modal covers the page's banner, so its bottom row says when the sign-in ends. Words only: *Stay
- * signed in* navigates, so it stays on the page, for after the work is saved or finished. Nothing once the sign-in has
- * ended (the page's banner, the session dialog and the identity rules answer that), and nothing outside the root layout.
- */
+/** Inline footer notice inside dialogs and sheets when the session is about to expire while modal work is open. */
 export function SessionNoticeInModal() {
   const notice = use(SessionRenewalContext)?.notice
   if (notice?.kind !== "ending") return null

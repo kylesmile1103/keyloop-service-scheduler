@@ -10,23 +10,15 @@ import { cn } from "@/lib/utils"
 import { type AppointmentRow, appointmentStats } from "../lib/appointments"
 
 interface StatCardsProps {
-  /** The day's appointments; `undefined` while the day loads. */
   rows: readonly AppointmentRow[] | undefined
   failed: boolean
-  /** "Today" or "Tuesday 13 October". */
   dayWords: string
 }
 
-/**
- * The day in four figures, adopted from the template's users `stat-cards.tsx`: the appointments on the list, the active
- * ones, the completed ones and the no-shows. As on the board's KPI strip (UI_DESIGN 11.11, 11.19) there are no trend
- * badges, because the API keeps no history to compare with; the completed and no-show cards carry their status's icon
- * tile, and the total a thin bar of the day by status, in the status markers the list's badges use.
- */
+/** Daily summary stat cards for the appointments list. */
 export function StatCards({ rows, failed, dayWords }: StatCardsProps) {
   const stats = rows ? appointmentStats(rows) : undefined
   const value = (count: number | undefined) => (count === undefined ? (failed ? NO_FIGURE : undefined) : String(count))
-  // A day that failed to load has no figures to explain.
   const footer = (text: string | undefined) => (stats ? text : failed ? "Unavailable" : undefined)
 
   return (
@@ -66,10 +58,6 @@ export function StatCards({ rows, failed, dayWords }: StatCardsProps) {
   )
 }
 
-/**
- * The day by status as one thin bar of the status markers, in lifecycle order (UI_DESIGN 13: a chart of appointments by
- * status uses the status markers). Decorative: the footer writes the same figures out.
- */
 function StatusMeter({ rows }: { rows: readonly AppointmentRow[] }) {
   const counts = countByStatus(rows)
   return (
@@ -89,7 +77,6 @@ function countByStatus(rows: readonly AppointmentRow[]): Map<AppointmentStatus, 
   return counts
 }
 
-/** "4 confirmed, 1 in progress, 1 completed": the day by status, in lifecycle order. */
 function statusSummary(rows: readonly AppointmentRow[]): string {
   const counts = countByStatus(rows)
   return boardStatuses
@@ -98,7 +85,6 @@ function statusSummary(rows: readonly AppointmentRow[]): string {
     .join(", ")
 }
 
-/** "2 of 6 appointments", "None of 6 appointments", or "Nothing booked" on an empty day. */
 function share(count: number, total: number): string {
   if (total === 0) return "Nothing booked"
   const of = `of ${total} ${total === 1 ? "appointment" : "appointments"}`

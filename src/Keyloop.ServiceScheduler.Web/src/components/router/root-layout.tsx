@@ -1,6 +1,6 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/router/root-layout.tsx` and, for the
-// error boundary, `src/app/errors/internal-server-error/components/internal-server-error.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/router/root-layout.tsx` and
+// `src/app/errors/internal-server-error/components/internal-server-error.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { RotateCw } from "lucide-react"
 import { isRouteErrorResponse, Outlet, useNavigation, useRouteError } from "react-router-dom"
 
@@ -11,7 +11,7 @@ import { TraceIdRow } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 
-/** Thin top bar shown while the next route's code is loading. */
+/** Thin top progress bar shown while a lazy route is loading. */
 function RouteProgress() {
   return (
     <div
@@ -27,17 +27,15 @@ function RouteProgress() {
 export function RootLayout() {
   const navigation = useNavigation()
   return (
-    // One session renewal for the tab, whose banner each page shows under its header (components/auth/session-banner).
     <SessionRenewalProvider>
       {navigation.state === "loading" && <RouteProgress />}
       <Outlet />
-      {/* After the routes: its effects run after the pages' own (see SessionWatch). */}
       <SessionWatch />
     </SessionRenewalProvider>
   )
 }
 
-/** Shown on the very first load, before any route has rendered. */
+/** Initial loading fallback shown before any route renders. */
 export function RootFallback() {
   return (
     <div className="flex min-h-svh items-center justify-center">
@@ -46,11 +44,7 @@ export function RootFallback() {
   )
 }
 
-/**
- * Shown when a page fails to load or render - most often a code chunk that no longer exists after a new deployment
- * (adopted from the template's `errors/internal-server-error`, in the UI_DESIGN 12.1 layout). Says what failed and
- * offers the one action that fixes it: reloading the route, which also fetches the latest version after an update.
- */
+/** Root route error boundary offering a full page reload. */
 export function RootErrorBoundary() {
   const error = useRouteError()
   const detail = isRouteErrorResponse(error)

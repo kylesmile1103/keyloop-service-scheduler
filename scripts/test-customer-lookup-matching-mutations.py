@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Task 39C: kill one mutation per matching rule with assertion failures. Never run LiveAi."""
+"""Verify customer-lookup matching mutations fail with assertion errors. Never run LiveAi."""
 import os
 from pathlib import Path
 import re

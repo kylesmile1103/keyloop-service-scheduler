@@ -5,8 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 import App from "@/App"
 import { appRoutes } from "@/config/routes"
 
-// A page that fails. (A chunk that fails to download after a deployment lands on the same route error boundary; Vitest
-// cannot simulate that without wrapping the error message, so the page throws while rendering instead.)
+// Simulate a route error boundary failure via a throwing page component.
 vi.mock("@/app/appointments/page", () => ({
   default: function BrokenPage(): never {
     throw new Error("Appointments page failed: unexpected response shape")

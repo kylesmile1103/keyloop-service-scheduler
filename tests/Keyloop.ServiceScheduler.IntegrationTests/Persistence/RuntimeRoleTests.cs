@@ -20,11 +20,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
-/// <summary>
-/// Owner migrates, then psql applies the deployment grants over the old blanket grants twice. Every application operation uses
-/// a separate scheduler_app LOGIN connection, including the Production demo's startup seeding. Owner connections are confined to
-/// test arrangement, migration and deliberate out-of-band faults. No AppHost or external service is started.
-/// </summary>
+/// <summary>Verifies least-privilege <c>scheduler_app</c> database grants across startup seeding, runtime operations, and forbidden DDL/DML.</summary>
 public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
 {
     private readonly string _database = "runtime_grants_" + Guid.NewGuid().ToString("N");
@@ -72,10 +68,9 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
                     builder.UseSetting(setting.Name.Replace("__", ":", StringComparison.Ordinal), setting.Value.GetString());
                 }
             }
-            // Test authentication was installed by SchedulerApiFactory. Keep network/rate limits out of grant proofs.
             builder.UseSetting("Security:RateLimiting:Enabled", "false");
         });
-        _client = _host.CreateClient(); // Runtime startup seeds the empty migrated database.
+        _client = _host.CreateClient();
         await RuntimeDbAsync(async db =>
         {
             (await db.Database.SqlQuery<string>($"""SELECT current_user::text AS "Value" """).SingleAsync(Ct)).ShouldBe("scheduler_app");
@@ -87,7 +82,6 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
         _client?.Dispose();
         if (_host is not null) { await _host.DisposeAsync(); }
         if (_factory is not null) { await _factory.DisposeAsync(); }
-        // Each test has its own database and two pools (owner and runtime); release them so the shared server's connections do not run out.
         if (_ownerConnection is not null) { await pg.ReleaseDatabaseAsync(_database, _ownerConnection, _runtimeConnection ?? _ownerConnection); }
     }
 
@@ -111,7 +105,6 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Startup_additive_catalogue_and_policy_upgrade_uses_insert_only_grants()
     {
-        // Arrange a pre-Task-32a database as owner, then run the actual startup initializer as runtime.
         await using (var owner = OwnerDb()) { await PolicyPublicationProbe.RevertToBeforeTask32aAsync(owner, Ct); }
         await DatabaseInitializer.InitializeAsync(_host.Services, Ct);
         await RuntimeDbAsync(async db =>
@@ -156,7 +149,6 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
         replay.Headers.GetValues("Idempotent-Replayed").ShouldBe(["true"]);
         using var cancel = await SendAsync(client, HttpMethod.Post, $"/api/v1/appointments/{id}/cancel", "{\"reason\":\"Grant proof\"}");
         cancel.StatusCode.ShouldBe(HttpStatusCode.OK, await cancel.Content.ReadAsStringAsync(Ct));
-        // Clock-independent expiry arrangement; replacement DELETE is performed by the real booking handler as runtime.
         await OwnerSqlAsync("UPDATE idempotency_keys SET expires_at_utc = '2026-10-11T00:00:00Z' WHERE key = 'runtime-proof'");
         using var replaced = await client.PostJsonAsync(Site + "/appointments", request, SchedulerJsonContext.Default.BookAppointmentRequest, headers, Ct);
         replaced.StatusCode.ShouldBe(HttpStatusCode.Created, await replaced.Content.ReadAsStringAsync(Ct));
@@ -286,7 +278,6 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
             services.AddHttpClient<TriageImageStore>().ConfigurePrimaryHttpMessageHandler(() => relay);
         }));
         using var client = host.CreateClient();
-        // The private R2 relay is fully stubbed: photos require no PostgreSQL write privilege.
         var bytes = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory,
             "Fixtures/triage-plain-3x2.png"), Ct);
         using var uploaded = await SendAsync(client, HttpMethod.Post, Site + "/booking-triage/images",
@@ -324,10 +315,9 @@ public sealed class RuntimeRoleTests(PostgresFixture pg) : IAsyncLifetime
             (await command.ExecuteScalarAsync(Ct)).ShouldBe(false);
         }
         await pg.RunGrantScriptAsync(_database, verifyOnly: true, Ct);
-        // The runner's independent postcondition must detect privilege regressions even after the grant script returned success.
         await OwnerSqlAsync("GRANT UPDATE, DELETE ON appointment_history TO scheduler_app; GRANT DELETE ON appointments TO scheduler_app;");
         await pg.RunGrantScriptAsync(_database, verifyOnly: true, Ct, succeeds: false);
-        await pg.RunGrantScriptAsync(_database, verifyOnly: false, Ct); // Reapplication repairs existing excess rights.
+        await pg.RunGrantScriptAsync(_database, verifyOnly: false, Ct);
     }
 
     [Fact]

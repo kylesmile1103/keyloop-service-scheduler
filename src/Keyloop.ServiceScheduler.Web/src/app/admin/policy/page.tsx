@@ -38,12 +38,7 @@ import { RuleDialog } from "./rule-dialog"
 import { blankRule, carriedOnto, inOrder, type RuleChange, ruleChanges, ruleSummary, whenWords } from "./rule-words"
 import { PolicyVersions } from "./versions"
 
-/**
- * The Requirement policy page (`/resources/policy`, Task 30b): one dealership's typed rules (ADR-029), what each job needs
- * from the technician and the bay. An Admin edits a draft, previews what it would change with today's roster (the API's
- * dry-run), and publishes it as the next version; every version stays, and appointments keep the one they were booked
- * under. A Service advisor or a Viewer is told the policy is the Admin's (the API answers only an Admin).
- */
+/** Requirement policy page (`/resources/policy`) for editing, previewing, and publishing dealership competence rules. */
 export default function PolicyPage() {
   return (
     <ResourcePage title="Requirement policy" description="What each job needs from the technician and the bay, by service, powertrain, vehicle class and live HV work.">
@@ -85,7 +80,7 @@ type WriteVariables = {
   dryRun: boolean
   ifMatch: string
   previewDate: string
-  /** Publishing only: the token of the preview the Admin confirmed (Task 30c); the API refuses a publication that no longer matches it. */
+  /** Preview token from the confirmed dry-run, required when publishing. */
   previewToken?: string
   key: string
 }
@@ -94,7 +89,6 @@ const changeLabel: Record<RuleChange, string> = { added: "New", changed: "Change
 
 function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const queryClient = useQueryClient()
-  // The draft is the Admin's who made it (`adminWriter`), as a booking being entered is its writer's.
   const { adminWriter } = useCurrentUser()
   const identity = adminWriter ?? ""
   const refresh = useRefreshAfterEdit()
@@ -107,34 +101,26 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const services = catalogue.data
 
   const [draft, setDraft] = useState<Draft | null>(null)
-  // An unpublished draft is work a session renewal's navigation would lose (hooks/use-unsaved-work).
   useUnsavedWork(draft !== null)
   const [discarded, setDiscarded] = useState(false)
   const [preview, setPreview] = useState<{ key: string; result: PolicyEditResponse } | null>(null)
   const [conflict, setConflict] = useState<{ opened: AdminPolicyResponse; current: AdminPolicyResponse; mine: RequirementRuleInput[] } | null>(null)
   const [editing, setEditing] = useState<{ rule: RequirementRuleInput; isNew: boolean } | null>(null)
-  // The draft whose publication the API refused as out of date (409 policy-preview-outdated): its preview is gone, and the
-  // bar asks for a new one, for that draft only.
   const [outdated, setOutdated] = useState<string | null>(null)
   const previewAgainRef = useRef<HTMLButtonElement>(null)
   const publishRef = useRef<HTMLButtonElement>(null)
   const previewButtonRef = useRef<HTMLButtonElement>(null)
   const addRuleRef = useRef<HTMLButtonElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
-  // A control that takes itself away (Remove, Put back, Discard, Keep, Publish) hands focus on before it goes, so focus is
-  // never lost to the page: first to Add rule, which is always there, then (once the change is drawn) to what comes next.
+  // Move focus to Add rule before unmounting the active control, then to the next target.
   const handOff = (change: () => void, next?: () => HTMLElement | null | undefined) => {
     addRuleRef.current?.focus()
     flushSync(change)
     next?.()?.focus()
   }
-  // A successful Try again (a failed first read) replaces its alert with the rules: focus goes to Add rule (UI_DESIGN 11.24).
   const armRetryFocus = useFocusAfterRetry(() => addRuleRef.current)
   const inCard = (label: string) => cardRef.current?.querySelector<HTMLElement>(`[aria-label="${label}"]`)
-  // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
-  // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
-  // of it in the render the change arrives in (React's pattern for state that follows a prop), never painting for the next
-  // caller; the last write's failure and progress show only for the Admin it was sent for (below).
+  // Reset draft and conflict state if the signed-in Admin changes.
   const [shownFor, setShownFor] = useState(identity)
   if (shownFor !== identity) {
     setShownFor(identity)
@@ -520,10 +506,7 @@ function RuleActions({ rule, onEdit, onRemove }: { rule: RequirementRuleInput; o
   )
 }
 
-/**
- * The rules as a table (11.17's anatomy): order (`tabular-nums`), the rule's code (mono) with New or Changed in the draft,
- * when it applies in words, what it adds, and Edit and Remove (icon buttons named for the rule).
- */
+/** Desktop table of requirement rules. */
 function RuleTable({ rules, changes, services, onEdit, onRemove }: RulesProps) {
   return (
     <Table aria-label="Rules">
@@ -562,10 +545,7 @@ function RuleTable({ rules, changes, services, onEdit, onRemove }: RulesProps) {
   )
 }
 
-/**
- * The rules on a phone: one entry each in the card, divided by hairlines (a card inside the card would double the frame): the
- * code as a heading with New or Changed and the order, when it applies, then what it adds beside Edit and Remove (44 px).
- */
+/** Mobile list of requirement rules. */
 function RuleCards({ rules, changes, services, onEdit, onRemove }: RulesProps) {
   return (
     <ol aria-label="Rules" className="flex flex-col divide-y divide-border">

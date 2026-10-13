@@ -39,12 +39,9 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
     {
         await _factory.WithDbAsync(async db =>
         {
-            // Bulk synthetic history seeding is much heavier than the lookup. Leave the measured query's timeout unchanged.
             db.Database.SetCommandTimeout(180);
-            // Exercise upgrading a sizeable pre-existing history, as a migration bundle will do in production.
             var migrator = db.GetService<IMigrator>();
             await migrator.MigrateAsync("20261012204715_AdminEditing", Ct);
-            // Completed/cancelled imports need no exclusive resources. Clone the real migrated row's required FK fields.
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO appointments (id, dealership_id, service_type_id, bay_id, technician_id, start_utc, end_utc,
                     customer_name, customer_email, customer_phone, vehicle_vin, vehicle_registration, vehicle_make, vehicle_model,
@@ -93,7 +90,6 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
                 plan.ShouldContain("ix_appointments_lookup_pair", Case.Sensitive, query);
                 plan.ShouldNotContain("Seq Scan on appointments", Case.Sensitive, query);
             }
-            // Evidence is local, synthetic data only, reproducible by this test. The human report includes the full output.
             Directory.CreateDirectory("/tmp/kl39c");
             await File.WriteAllTextAsync("/tmp/kl39c/customer-lookup-explain.txt", evidence.ToString(), Ct);
         });
@@ -212,7 +208,6 @@ public sealed class CustomerLookupIndexTests(PostgresFixture pg) : IAsyncLifetim
 
     private async Task AssertPreviousPhoneQueryAsync(SchedulerDbContext db)
     {
-        // Task 39A's two phone candidate branches, unchanged. Both must work without the new function or indexes.
         var phones = await db.Database.SqlQuery<string>($"""
             SELECT customer_phone AS "Value" FROM appointments
             WHERE dealership_id = {_dealershipId} AND regexp_replace(customer_phone, '[^0-9]', '', 'g') LIKE {"447700%"}

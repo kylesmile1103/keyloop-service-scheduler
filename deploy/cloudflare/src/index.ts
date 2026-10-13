@@ -22,24 +22,20 @@ export class ApiContainer extends Container<Env> {
   override enableInternet = true;
   override pingEndpoint = "localhost/alive";
 
-  // A Durable Object can survive a settings-only deploy. Check once per Worker version as well as per instance/start;
-  // the platform can restart the container with its earlier start options, so health alone does not prove configuration.
+  // Reconcile once per Worker version and container start so settings-only deploys take effect.
   private startConfigCurrent = false;
   private checkedVersionId: string | undefined;
   private reconciling: Promise<void> | undefined;
   private activeHttpRequests = 0;
 
   override async fetch(request: Request): Promise<Response> {
-    // F5: once checked, a healthy container serves requests without reading Secrets Store. Every other request, including
-    // one that arrives while another request's check, restart or cold start is still in progress, waits on that same
-    // attempt with its 60 s readiness window before reaching the native port fetch (F11).
+    // Share a single in-flight reconciliation across concurrent requests before reading from the container port.
     const versionId = this.env.CF_VERSION_METADATA.id;
     if (!this.startConfigCurrent || this.checkedVersionId !== versionId || !(await this.runningAndHealthy())) {
       this.reconciling ??= this.reconcile(versionId).finally(() => { this.reconciling = undefined; });
       await this.reconciling;
     }
-    // The SDK's containerFetch catches port errors, logs their raw text and returns a text 500. Fetch at the native
-    // transport boundary instead, so a rejected fetch can be distinguished from every API-produced HTTP response.
+    // Proxy directly via the native TCP port so transport failures can be distinguished from API HTTP responses.
     return fetchWithAvailability(request, () => this.proxyHttp(request));
   }
 
@@ -77,16 +73,12 @@ export class ApiContainer extends Container<Env> {
     try {
       envVars = await containerEnv(this.env);
     } catch (error) {
-      // A container that is not running is never started without its configuration. Health is read again because the
-      // container can stop while Secrets Store is slow to fail. Refuse forwarding in that case; the Worker supplies the
-      // availability fallback, and the next attempt checks again before any start.
+      // Never start a stopped container without verified configuration; allow an already-healthy container to keep serving.
       if (!healthy || !(await this.runningAndHealthy())) throw error;
-      // The running container keeps serving with the configuration it was started with; the next request checks again.
       console.error(JSON.stringify({ event: "ApiContainerConfigUnverified" }));
       return;
     }
     const fingerprint = startFingerprint({ image: this.env.API_IMAGE, enableInternet: this.enableInternet, env: envVars });
-    // Keep the SDK's start defaults consistent with the recorded fingerprint, including any SDK-initiated restart.
     this.envVars = envVars;
     if (this.ctx.container?.running) {
       const recorded = await this.ctx.storage.get<string>(START_FINGERPRINT_KEY);
@@ -96,7 +88,6 @@ export class ApiContainer extends Container<Env> {
         return;
       }
       if (recorded !== fingerprint) {
-        // Never logs the values or the digest: the reason is enough to correlate a deploy with the restart.
         console.log(JSON.stringify({ event: "ApiContainerRestart", reason: recorded === undefined ? "unrecorded" : "configuration-changed" }));
         await this.stopForRestart();
       }

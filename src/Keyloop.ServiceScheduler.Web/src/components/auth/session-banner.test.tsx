@@ -11,28 +11,20 @@ import { admin, anonymous, expiringAt, serviceAdvisor } from "@/test/identities"
 import { problemResponse } from "@/test/mock-api"
 import { pointerClick, renderBoard, viewportOf } from "@/test/render-board"
 
-// Keeping a signed-in user signed in (Task 36, lib/session-renewal.ts): Access issues no refresh token, so a tab renews its
-// sign-in by navigating through the API's login path two minutes before `/me`'s expiresAtUtc, unless work is open, and says
-// clearly when the sign-in ends or has ended.
-
 beforeAll(async () => {
   await import("@/app/dispatch/page")
 })
 
 const board = `/dispatch?dealership=${reading.id}`
-/** The page the browser shows (the memory router leaves window.location alone, and the renewal reads it), with a hash. */
 const here = `${board}#timeline`
 const renewal = `/auth/login?returnTo=${encodeURIComponent(here)}`
-/** Below 1280 px a booking's details open as the sheet, a modal over the page. */
 const SHEET_WIDTH = 1024
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed"
-/** A one-hour Access token issued at the tests' 08:30 UTC: renewed at 09:28. */
 const END = "2026-10-13T09:30:00Z"
 
 let navigate: MockInstance<(href: string) => void>
 
 beforeEach(() => {
-  // Timers are fake so an hour can pass at once; they still advance with real time, for the UI's own waits.
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true })
   vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
   window.history.replaceState(null, "", here)
@@ -44,10 +36,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/")
 })
 
-/** Lets the clock run on to `iso`, firing every timer due by then. */
 const until = (iso: string) => act(() => vi.advanceTimersByTimeAsync(Date.parse(iso) - Date.now()))
 const meReads = (requests: readonly Request[]) => requestsTo(requests, "/api/v1/me").length
-/** The session banner, if one is shown: the status region that speaks of the sign-in. */
 const banner = () => screen.queryAllByRole("status").find((element) => element.textContent?.startsWith("Your sign-in"))
 const findBanner = (title: string) =>
   waitFor(() => {
@@ -63,11 +53,6 @@ function refocus() {
   })
 }
 
-/**
- * Opens the Interim Service's details on the board and types a cancellation reason: work a navigation would lose. The
- * caller renders the board below 1280 px (`viewportOf(SHEET_WIDTH)`), where the details are the modal sheet that covers the
- * page's banner; wider, they dock beside the board and the banner stays in view (UI_DESIGN 11.14).
- */
 async function typeCancellationReason() {
   fireEvent.click(await screen.findByRole("button", { name: interimLabel }))
   const sheet = await screen.findByRole("dialog", { name: "Interim Service" })

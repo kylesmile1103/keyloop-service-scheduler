@@ -7,13 +7,7 @@ import { cn } from "@/lib/utils"
 
 import { previewLines } from "./rule-words"
 
-/**
- * What publishing the draft would change (UI_DESIGN 11.24), from the API's dry-run: on the preview's date and with today's
- * roster, which services the dealership could no longer book, or could now book, for which vehicles. Each line pairs a
- * shape and words with its colour (`Ban` and "can no longer be booked", `CircleCheck` and "can now be booked"), never the
- * colour alone. The API compares bookability only: a rule that changes what a job needs without changing whether anyone
- * here can do it shows no line, which the empty state says.
- */
+/** Displays the dry-run bookability impact of publishing the current policy draft. */
 export function PolicyPreview({ preview, services, className }: { preview: PolicyEditResponse; services: readonly ServiceTypeResponse[] | undefined; className?: string }) {
   const headingId = useId()
   const lines = previewLines(preview.changes, services)

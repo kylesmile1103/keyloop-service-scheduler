@@ -10,11 +10,7 @@ using Microsoft.OpenApi;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// RFC 9457 responses over HTTP, written with reflection-free JSON (this test process runs with
-/// <c>JsonSerializerIsReflectionEnabledByDefault=false</c>, as the API does). The SystemTest-only <c>/api/v1/__throw?kind=…</c>
-/// endpoint throws each exception <c>GlobalExceptionHandler</c> maps, so every problem-extension shape is serialised for real.
-/// </summary>
+/// <summary>RFC 9457 problem detail responses and reflection-free JSON serialization.</summary>
 public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -77,18 +73,15 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
         }
 
         using var alive = await _client.GetAsync("/alive", Ct);
-        Header(alive, "X-Content-Type-Options").ShouldBe("nosniff"); // every response, not only /api
+        Header(alive, "X-Content-Type-Options").ShouldBe("nosniff");
     }
 
     [Fact]
     public async Task Enums_serialise_as_strings()
     {
-        // Runtime JSON: an enum-valued problem extension.
         var transition = await ProblemAsync("transition", HttpStatusCode.Conflict, "invalid-state-transition");
         transition.GetProperty("currentStatus").GetString().ShouldBe("Cancelled");
 
-        // OpenAPI: the schema generator uses the same JSON options. No endpoint exposes AppointmentStatus before the appointment
-        // slices (Tasks 10-11), so a test-only document transformer asks the generator for its schema.
         await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.Configure<OpenApiOptions>("v1", options => options.AddDocumentTransformer(async (document, context, ct) =>
             {
@@ -186,11 +179,11 @@ public sealed partial class ProblemDetailsTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task Unreadable_request_is_400_validation_error()
     {
-        using var response = await _client.GetAsync("/api/v1/__throw", Ct); // the required 'kind' query parameter is missing
+        using var response = await _client.GetAsync("/api/v1/__throw", Ct);
 
         var problem = await ReadProblemAsync(response, HttpStatusCode.BadRequest, "validation-error");
         problem.GetProperty("title").GetString().ShouldBe("Validation failed");
-        var errors = problem.GetProperty("errors"); // §8.7: validation-error always carries errors, here with no field to name
+        var errors = problem.GetProperty("errors");
         errors.ValueKind.ShouldBe(JsonValueKind.Object);
         errors.EnumerateObject().ShouldBeEmpty();
     }

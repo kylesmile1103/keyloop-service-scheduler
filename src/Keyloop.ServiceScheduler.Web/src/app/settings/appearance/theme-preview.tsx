@@ -1,11 +1,6 @@
 import { cn } from "@/lib/utils"
 
-/**
- * A miniature of the dispatch board in one theme, drawn with that theme's own tokens: `.light` or `.dark` on the frame
- * scopes them (src/index.css), so each preview shows its theme whatever the page is in. The frame is the sidebar's grey,
- * the work surface carries a title bar, four figure tiles and lanes of appointment blocks in their status markers.
- * Decorative: the choice's name and description say what it is.
- */
+/** Decorative miniature of the dispatch board styled with the specified theme's tokens. */
 export function ThemePreview({ theme, className }: { theme: "light" | "dark"; className?: string }) {
   return (
     <div aria-hidden="true" className={cn(theme, "flex h-full w-full gap-1.5 bg-sidebar p-1.5", className)}>

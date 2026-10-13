@@ -4,10 +4,7 @@ import { cn } from "@/lib/utils"
 
 import { boardStatuses, statusMeta } from "../lib/status"
 
-/**
- * The key to the board's colours: each status's swatch, icon and name; and, when the day has flagged appointments (Task
- * 30b), the Review mark with its meaning.
- */
+/** Legend of appointment status colors and icons, plus the competence review mark when applicable. */
 export function StatusLegend({ review = false, className }: { review?: boolean; className?: string }) {
   return (
     <ul aria-label="Status legend" className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground", className)}>

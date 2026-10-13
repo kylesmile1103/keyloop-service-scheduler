@@ -1,16 +1,8 @@
 import { type RefObject, useEffect, useRef } from "react"
 
-/**
- * Focus hand-offs for a control that takes itself away (Codex check of Task 30b, UI_DESIGN 11.24): a focused element
- * removed from the page drops focus to the page, and one removed from a sheet or dialog sends it to the popup itself
- * (Base UI restores it there on the next frame), so focus moves on before the control goes.
- */
+/** Focus management helpers for controls that unmount on completion (pagination, retry, and HV confirmation). */
 
-/**
- * "Show older ..." for a list of focusable `article`s (tabIndex -1): when the last page takes the button away, focus goes
- * to the first article it loaded. The page can arrive before or after React draws it, so the hand-off is tried at once and
- * again after each commit until it lands.
- */
+/** Moves focus to the first newly loaded article when the final page removes the "Show older" button. */
 export function useLastPageFocus(container: RefObject<HTMLElement | null>) {
   const from = useRef<number | null>(null)
   const land = () => {
@@ -29,10 +21,7 @@ export function useLastPageFocus(container: RefObject<HTMLElement | null>) {
   }
 }
 
-/**
- * After a successful Try again, the alert holding it is replaced by what loaded: `arm` when the retry is pressed, and the
- * target is focused once it is drawn (tried after each commit until it exists).
- */
+/** Moves focus to a target element after a retry replaces the error alert. */
 export function useFocusAfterRetry(target: () => HTMLElement | null | undefined) {
   const armed = useRef(false)
   useEffect(() => {
@@ -57,12 +46,7 @@ export function confirmButtonFor(id: string): HTMLElement | null {
   return byLabel("HV levels to review")?.querySelector<HTMLElement>(`button[data-record-id="${id}"]`) ?? null
 }
 
-/**
- * Where focus goes once a technician's level is confirmed, so the button (and the review note, with the last level) can go:
- * the next level to review, else that technician's row actions, else (a search or filter hides the row) the list's search
- * field, else Add technician. All by record id: a rename (and the re-sort it brings) can come between; rows are keyed by
- * record, so the row actions keep their element.
- */
+/** Resolves the next focus target after confirming a technician's HV level. */
 export function pastConfirmed(id: string): HTMLElement | null {
   const note = byLabel("HV levels to review")
   const next = note ? [...note.querySelectorAll<HTMLElement>("button[data-record-id]")].find((button) => button.dataset.recordId !== id) : undefined
@@ -75,12 +59,7 @@ export function pastConfirmed(id: string): HTMLElement | null {
   )
 }
 
-/**
- * After a confirmation the list is read again, which can take away the row actions focus moved to (another Admin's rename
- * that leaves the search, or moves the technician to another page). Armed with the record id, it checks after each commit
- * until that re-read has landed: if focus was lost to the page, it resolves the target again by id against the list as it
- * is now (`pastConfirmed`: the next level to review, the row actions, else the search field).
- */
+/** Restores focus if a list refetch after HV confirmation unmounts the previously focused element. */
 export function useRefocusAfterReread(fetching: boolean) {
   const pending = useRef<{ id: string; sawFetch: boolean } | null>(null)
   useEffect(() => {

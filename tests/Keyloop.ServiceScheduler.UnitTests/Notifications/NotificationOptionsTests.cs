@@ -35,7 +35,7 @@ public sealed class NotificationOptionsTests
 
     public static TheoryData<string, Action<NotificationOptions>> OutOfRange => new()
     {
-        // Typed bounds (A4: no RangeAttribute(Type, string, string), which is not trim-safe); each names its member.
+        // Typed bounds (trim-safe without RangeAttribute(Type, string, string)); each names its member.
         { nameof(NotificationOptions.IdleInterval), o => o.IdleInterval = TimeSpan.FromMilliseconds(999) },
         { nameof(NotificationOptions.IdleInterval), o => o.IdleInterval = TimeSpan.FromHours(1) + TimeSpan.FromTicks(1) },
         { nameof(NotificationOptions.InitialBackoff), o => o.InitialBackoff = TimeSpan.FromMilliseconds(99) },

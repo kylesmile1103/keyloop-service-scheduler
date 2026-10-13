@@ -8,8 +8,6 @@ import { admin, anonymous, noRole, serviceAdvisor, unnamedAdvisor, viewer } from
 import { jsonResponse } from "@/test/mock-api"
 import { phoneViewport, renderBoard } from "@/test/render-board"
 
-// The sidebar footer's user row and menu (Task 27b), from GET /me.
-
 const identity = vi.hoisted(() => ({ source: "access" as "access" | "configuration" }))
 vi.mock("@/lib/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/session")>()),

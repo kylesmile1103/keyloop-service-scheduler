@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-view-options.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ReactTable, RowData } from "@tanstack/react-table"
 import { Settings2 } from "lucide-react"
 
@@ -14,10 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { DataTableFeatures } from "@/lib/data-table"
 
-/**
- * Which columns the table shows, adopted from the template's tasks table. Columns are named by their `meta.label` (the
- * template wrote the column id); the ones a row cannot do without (time, actions) cannot be hidden.
- */
+/** Dropdown menu for toggling hideable table columns. */
 export function DataTableViewOptions<TData extends RowData>({ table }: { table: ReactTable<DataTableFeatures, TData> }) {
   return (
     <DropdownMenu>

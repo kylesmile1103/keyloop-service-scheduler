@@ -9,15 +9,11 @@ import { createQueryClient } from "@/lib/query-client"
 import { currentUserQueryKey } from "@/lib/session"
 import { admin, anonymous, viewer } from "@/test/identities"
 
-// A write is bound to the account its view was drawn for (Task 27b, review round 2): it is sent only while the identity in
-// the cache is still that account, whatever React has drawn yet, and a write stopped before its request leaves nothing
-// behind, in the mutation cache or in the hook. No SessionWatch here, so the caller generation never moves: these cases
-// are decided by the binding alone.
+// Verifies that writes are bound to the account the view was rendered for and leave no residual state when aborted.
 
 const otherAdmin: CurrentUserResponse = { ...admin, email: "another.admin@keyloop.test", displayName: "Another Admin" }
 const sameEmailAdvisor: CurrentUserResponse = { ...admin, roles: ["ServiceAdvisor"] }
 
-/** What a write carries: a customer's details, as a booking's would. */
 const draft = () => ({ customer: { email: "draft.private@example.invalid" } })
 
 function renderWrite(drawnFor: CurrentUserResponse = admin) {
@@ -34,7 +30,6 @@ function renderWrite(drawnFor: CurrentUserResponse = admin) {
   return { ...hook, queryClient, send, onError, onDiscarded, becomes }
 }
 
-/** Nothing of the write anywhere: no mutation in the cache, nothing running, and the hook idle without its variables. */
 async function expectNothingKept(rendered: Pick<ReturnType<typeof renderWrite>, "queryClient"> & { result: { current: { isIdle: boolean; variables: unknown } } }) {
   await waitFor(() => expect(rendered.result.current.isIdle).toBe(true))
   expect(rendered.result.current.variables).toBeUndefined()
@@ -109,10 +104,6 @@ describe("useWriteMutation", () => {
   })
 
   describe("the account checked last, inside the fetch each request is given", () => {
-    /**
-     * A write whose request is prepared over a few awaits (as the generated client prepares one) and then handed to the
-     * fetch the hook gives it; the identity changes during that preparation.
-     */
     function renderPreparedWrite() {
       const queryClient = createQueryClient()
       queryClient.setQueryData(currentUserQueryKey(), admin)
@@ -258,8 +249,6 @@ describe("useWriteMutation", () => {
   })
 })
 
-// Task 30: an Admin's edit in the Resources area is bound the same way, to an Admin. The same email as a Service advisor may
-// still book, but it is not the edit's writer, so the edit is not sent; an Admin who is also a Viewer is the same writer.
 describe("useWriteMutation for an Admin's edit (writes: admin)", () => {
   const adminAlsoViewer: CurrentUserResponse = { ...admin, roles: ["Admin", "Viewer"] }
   const serviceAdvisorOnly: CurrentUserResponse = { ...admin, email: "advisor@keyloop.test", roles: ["ServiceAdvisor"] }

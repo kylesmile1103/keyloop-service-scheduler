@@ -17,14 +17,7 @@ import type {
 } from "@/api/types.gen"
 import { parseProblem, problemSlug } from "@/lib/problem-details"
 
-/**
- * The Admin API's writes (Task 30a), as the Resources area sends them. Every one is an Admin's edit bound to the Admin who
- * made it: it is given the bound write's `fetch` (`useWriteMutation` with `writes: "admin"`), which checks the account
- * immediately before the request leaves. An edit of a record carries the version it was based on as `If-Match`: a
- * technician's or bay's `version` (PostgreSQL `xmin`) quoted, `"712"`, and the policy's `"policy-2"`. The API answers a
- * missing one with `428 precondition-required` and a stale one with `412 precondition-failed`, carrying the current
- * representation and its tag (`conflictOf`). A create has no record to match yet.
- */
+/** Admin API write helpers with optimistic concurrency (`If-Match`) and pre-flight caller verification. */
 
 /** A technician's or bay's strong ETag from its `version`: `"712"`. */
 export const resourceTag = (version: number) => `"${version}"`

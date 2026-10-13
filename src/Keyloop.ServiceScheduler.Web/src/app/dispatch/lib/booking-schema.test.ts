@@ -103,7 +103,6 @@ describe("toBookingRequest", () => {
   })
 })
 
-// Task 31b: the vehicle step's declaration, as the API validates it, and what is sent of it.
 describe("the vehicle step's declaration", () => {
   const declared = (profile: Partial<ReturnType<typeof undeclaredProfile>>) => ({
     ...valid,

@@ -3,8 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 
 /// <summary>
-/// A3: the provider-neutral envelope carries only the notification (outbox) id; providers correlate through the
-/// <c>X-Keyloop-Notification-Id</c> header, and only the SMTP sender derives a Message-Id (Cloudflare rejects a caller-set one).
+/// Verifies notification correlation header and SMTP Message-Id derivation.
 /// </summary>
 public sealed class EmailCorrelationTests
 {

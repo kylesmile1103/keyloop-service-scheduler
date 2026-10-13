@@ -4,12 +4,11 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Health;
 
-/// <summary>Readiness requires a reachable database with every application migration applied (ARCHITECTURE §12.3).</summary>
+/// <summary>Verifies that the database is reachable and all EF Core migrations have been applied.</summary>
 internal sealed class SchedulerReadinessCheck(IServiceScopeFactory scopes) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        // Health checks can run concurrently with requests and each other. Never share a request's context/change tracker.
         await using var scope = scopes.CreateAsyncScope();
         try
         {

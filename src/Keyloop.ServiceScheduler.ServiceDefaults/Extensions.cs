@@ -54,7 +54,7 @@ public static class Extensions
             logging.IncludeScopes = true;
         });
 
-        // Outside Development the console carries JSON for container log collectors (Addendum C §C4).
+        // Outside Development, write JSON logs to the console for container log collectors.
         if (!builder.Environment.IsDevelopment())
         {
             builder.Logging.AddJsonConsole(options =>

@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/page.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { useQuery } from "@tanstack/react-query"
 import { RotateCw } from "lucide-react"
 import { Fragment, type ReactNode } from "react"
@@ -36,11 +36,7 @@ interface ResourcePageProps {
   children: (scope: ResourceScope) => ReactNode
 }
 
-/**
- * A resources page (the template's users page, without the add-user form: these lists are read-only until Task 30): the
- * dealership choice the workshop pages share (`?dealership=`, the same default), then the dealership's list, measured on
- * its own today. Until a dealership is chosen the page says why: loading, none set up, or the list failed.
- */
+/** Shared layout and dealership selector for resource management pages. */
 export function ResourcePage({ title, description, children }: ResourcePageProps) {
   const dealershipsOptions = getDealershipsOptions()
   const dealerships = useQuery(dealershipsOptions)

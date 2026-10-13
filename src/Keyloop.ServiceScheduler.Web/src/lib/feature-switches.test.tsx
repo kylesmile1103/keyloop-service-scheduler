@@ -73,7 +73,6 @@ describe("the environment's vehicle-aware switch", () => {
   })
 
   it("is off when a later read fails after a successful one, in rendering and for a request being built, and on again once read", async () => {
-    // The checker's probe (review round 0): the cache still holds the earlier "on" while the query is in error.
     let fail = false
     mockApi(() => (fail ? new Response("", { status: 503 }) : jsonResponse({ vehicleAwareRequirements: true })))
     const queryClient = noRetry()

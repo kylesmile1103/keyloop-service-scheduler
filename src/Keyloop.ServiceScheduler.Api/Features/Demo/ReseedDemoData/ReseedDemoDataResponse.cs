@@ -1,7 +1,4 @@
 namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 
-/// <summary>
-/// What a reseed did: the demo dealerships' appointments it deleted (in every status) and the demo week's appointments it booked. Not
-/// part of the OpenAPI contract: only the Aspire dashboard's command reads it.
-/// </summary>
+/// <summary>Counts of deleted and re-created demo appointments returned by the demo reseed endpoint.</summary>
 public sealed record ReseedDemoDataResponse(int AppointmentsDeleted, int AppointmentsCreated);

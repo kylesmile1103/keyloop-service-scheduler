@@ -51,16 +51,13 @@ import { StatusBadge } from "./status-badge"
 
 const REASON_LIMIT = 500
 
-/**
- * Where an appointment's details show (UI_DESIGN 11.14): docked beside the board from 1280 px (`inspector`), else the sheet,
- * on the right of a wide screen or from the bottom of a phone.
- */
+/** Where appointment details are presented: docked inspector (>=1280px), right sheet, or bottom sheet on mobile. */
 export type DetailsPresentation = "inspector" | "right" | "bottom"
 
 export interface AppointmentDetailsProps {
-  /** The appointment as the board shows it (the caller's view: masked for a visitor). */
+  /** The appointment as the board shows it (masked for a visitor). */
   appointment: BoardAppointment
-  /** Whether the details are on screen: the whole record is read only then. */
+  /** Whether the details are on screen: the full record is read only then. */
   open: boolean
   presentation: DetailsPresentation
   dealershipId: string
@@ -69,25 +66,16 @@ export interface AppointmentDetailsProps {
   timeZone: string
   titleRef: RefObject<HTMLHeadingElement | null>
   reasonRef: RefObject<HTMLTextAreaElement | null>
-  /** Opened to cancel (the appointments list's Cancel action): the cancellation's confirm starts open. */
+  /** Whether the cancellation confirmation starts open. */
   confirming?: boolean
   /** The inspector's close button; the sheet draws its own. */
   onClose?: () => void
-  /** Called once the appointment is cancelled: the details close. */
+  /** Called once the appointment is cancelled. */
   onDone: () => void
 }
 
 /**
- * An appointment's details, shared by the docked inspector and the sheet: a header (status tile, service, day and time in
- * the dealership's zone, status), then sectioned cards (Job, Customer, Vehicle, Notes) and a quiet reference line, and an
- * action row with *Cancel booking…*, which opens a short confirm with the reason. The board's snapshot shows at once and
- * the whole record (contact details, vehicle, notes) as soon as `GET /appointments/{id}` answers. A refused cancellation
- * shows the API's problem and trace id; a conflict re-reads the board, since someone else changed it.
- *
- * What it asks for follows the signed-in role (UI_DESIGN 11.20): the record is read for any role; a visitor who is not
- * signed in sees the board's masked snapshot and a sign-in panel in its place (no request, so no 401); an account without
- * a role is told why the details stay masked. Cancelling is for an Admin or Service advisor; a Viewer sees the action
- * unavailable with the reason.
+ * Appointment details shared by the docked inspector and the sheet, with role-gated full record loading and cancellation.
  */
 export function AppointmentDetails({
   appointment,
@@ -108,37 +96,23 @@ export function AppointmentDetails({
   const writeAccess = writeAccessOf(current)
   const path = { appointmentId: appointment.id }
   const detailsOptions = getAppointmentOptions({ path })
-  // Decided again whenever the record would be read, from the identity in the cache at that moment: when `/me` changes or
-  // fails, the re-read of what the previous caller saw (components/auth/session-watch.tsx) can come before these details
-  // have rendered for the new state, and a visitor (or nobody known) must never send the read. Not read again when the
-  // window regains focus or the network returns: `/me` is read again at that same moment, so the cache would still name
-  // the caller from before (a sign-out in another tab); the record is read when the details open, and on Try again.
+  // Check cached capabilities on each read so session transitions never send unauthorized requests.
   const details = useQuery({
     ...detailsOptions,
     enabled: () => open && cachedCapabilities(queryClient).canViewDetails,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
-  // Skeletons while the record may still come: until `/me` answers, and while a role's read is out.
   const recordLoading = detailsAccess === "checking" || (detailsAccess === "allowed" && details.isPending)
-  // Kept while Try again reads the record again, so the alert and its focused button stay until the answer.
   const detailsFailure = useQueryFailure(details, detailsOptions.queryKey)
   const record: AppointmentResponse | undefined = details.data
   const status = record?.status ?? appointment.status
-  // Why this technician and bay (ADR-029), with vehicle-aware requirements on: from the role-protected record only, so a
-  // visitor never sees it; the service's needs come from the catalogue the board already read (caller-independent).
   const vehicleAware = useVehicleAware()
   const allocation = vehicleAware ? record?.allocation : undefined
   const catalogue = useQuery({ ...getServiceTypesOptions({ path: { dealershipId } }), enabled: Boolean(allocation) })
   const service = catalogue.data?.find((candidate) => candidate.id === appointment.serviceType.id)
   const day = appointment.startLocal.slice(0, 10)
-  // Needs review (Task 30b): the record's warning once read, else the board's; only for a workshop role. A cancelled,
-  // completed or no-show appointment holds nothing any more, and the API flags none.
   const warning = shownWarning(record ? record.competenceWarning : appointment.competenceWarning, current.canViewDetails)
-  // A preference the allocation did not follow is named from the day's bays and technicians, with that technician's HV
-  // level (a role's schedule carries it): the appointment's own day, read only when the record says one was not followed.
-  // The board's read of that day has the same key, so the board's details find it there; the Overview and the Calendar
-  // read it once.
   const roster = useQuery({
     ...getWorkshopScheduleOptions({ path: { dealershipId }, query: { date: day } }),
     enabled: (allocation?.reasons.length ?? 0) > 0,
@@ -275,7 +249,6 @@ export function AppointmentDetails({
           </DetailsCard>
 
           <DetailsCard title="Vehicle" icon={CarFront}>
-            {/* A generic car, never captioned as the customer's own (UI_DESIGN 12.2). */}
             <div className="mb-3 flex items-center gap-3">
               <img
                 src={vehiclePlaceholder}
@@ -326,7 +299,6 @@ export function AppointmentDetails({
             />
           )}
 
-          {/* The quiet footer: when it was booked, and the reference to quote, aligned with the cards' rows. */}
           <dl className="mt-auto grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3.25 pt-1 text-xs text-muted-foreground">
             {record && (
               <>
@@ -369,21 +341,15 @@ interface DetailsHeaderProps {
   onClose?: () => void
 }
 
-/**
- * The status tile, the service as the heading (the sheet's title, or the inspector's `h2`), the day and time in the
- * dealership's zone, the status, and the inspector's close button (the sheet's own sits in the same corner).
- */
 function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, onClose }: DetailsHeaderProps) {
   const { icon: StatusIcon, classes } = statusMeta[status]
   const day = appointment.startLocal.slice(0, 10)
-  // Two pieces that each stay whole, so a narrow header breaks after the day, never inside the times.
   const when = (
     <>
       <span className="whitespace-nowrap">{`${formatDay(day, "long")},`}</span>{" "}
       <span className="whitespace-nowrap">{`${timeRange(appointment, timeZone)} (${timeZone})`}</span>
     </>
   )
-  // Clear of the close button in the corner (the inspector's, or the sheet's own), which only the title's line meets.
   const titleClass = "pr-10 font-heading text-lg leading-snug font-semibold text-balance text-foreground outline-none"
   const inspector = presentation === "inspector"
 
@@ -402,9 +368,6 @@ function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, 
             {appointment.serviceType.name}
           </SheetTitle>
         )}
-        {/* The day, the times and the status wrap as one line under the title, the status after the times when it fits:
-            the description (the day and times only) lays out its two pieces as this line's own. The side sheet is wide
-            enough for the whole date on its first line, which would then run under the close button. */}
         <div
           className={cn(
             "flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground tabular-nums",
@@ -438,7 +401,7 @@ function DetailsHeader({ appointment, status, timeZone, presentation, titleRef, 
   )
 }
 
-/** One section of the details: a hairline card (UI_DESIGN 11.14) headed by its icon and an `h3`. */
+/** Section card with an icon and heading inside the details panel. */
 function DetailsCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   return (
     <section data-slot="details-card" className="shrink-0 rounded-xl border border-border p-3 text-sm">
@@ -451,7 +414,6 @@ function DetailsCard({ title, icon: Icon, children }: { title: string; icon: Luc
   )
 }
 
-/** A card's label and value rows: one label column in every card, so the values line up down the whole panel. */
 function Rows({ children }: { children: ReactNode }) {
   return <dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5">{children}</dl>
 }
@@ -465,7 +427,6 @@ function Row({ term, children }: { term: string; children: ReactNode }) {
   )
 }
 
-/** A value with its copy button at the row's end, where every copy button of the panel lines up. */
 function Copyable({ value, label, copiedLabel, children }: { value: string; label: string; copiedLabel: string; children: ReactNode }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
@@ -475,10 +436,7 @@ function Copyable({ value, label, copiedLabel, children }: { value: string; labe
   )
 }
 
-/**
- * In place of the record when this caller may not read it: a visitor who is not signed in gets the sign-in panel (it also
- * covers cancelling), an account without a role the reason its details stay masked.
- */
+/** Renders a sign-in prompt or missing-role notice when full details are restricted. */
 function RecordAccess({ access }: { access: DetailsAccess }) {
   const reasonId = useId()
   if (access === "sign-in") {
@@ -500,41 +458,27 @@ function RecordAccess({ access }: { access: DetailsAccess }) {
   return null
 }
 
-/** A contact link: underlined, and 44 px tall on a touch screen, where calling or writing is one tap. */
 const contactLink =
   "w-fit rounded-sm text-signal underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
 
-/** A line of skeleton while the whole record loads. */
 function Pending({ loading, children }: { loading: boolean; children: ReactNode }) {
   return loading ? <Skeleton className="h-4 w-40 max-w-full" /> : children
 }
 
-/**
- * *Cancel booking…*: a destructive outline button (UI_DESIGN 11.2), never a red fill at rest. The base `outline` look is
- * replaced in both themes, so the text stays `destructive` on the surface it was audited on (4.4).
- */
 const cancelBookingClasses =
   "cursor-pointer border-destructive bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive dark:bg-transparent dark:hover:bg-destructive/10 max-md:h-11"
 
 type CancelVariables = Parameters<NonNullable<ReturnType<typeof cancelAppointmentMutation>["mutationFn"]>>[0]
 
-/**
- * What the details offer for cancelling: nothing for a visitor (the sign-in panel above covers it); a line saying why when
- * the status cannot be cancelled; *Cancel booking…* unavailable, with the reason, for a role that may not cancel (or while
- * `/me` has not answered); else *Cancel booking…* and, once it is pressed, the confirm.
- */
 type CancelOffer = "none" | "not-cancellable" | "unavailable" | "start" | "confirm"
 
 interface CancellationOptions {
-  /** Whether this account may cancel: the action for Admin and Service advisor, the reason for any other role. */
   access: WriteAccess
   appointment: BoardAppointment
   status: BoardAppointment["status"]
   timeZone: string
   reasonRef: RefObject<HTMLTextAreaElement | null>
-  /** The details' one scrolling part: scrolled (never the page) to bring the confirm, or a problem, into view. */
   bodyRef: RefObject<HTMLDivElement | null>
-  /** The confirm starts open (opened to cancel). */
   confirming: boolean
   onCancelled: (cancelled: AppointmentResponse) => void
   onConflict: () => void
@@ -543,33 +487,19 @@ interface CancellationOptions {
 type Cancellation = Omit<ReturnType<typeof useCancellation>, "refs">
 type CancellationRefs = ReturnType<typeof useCancellation>["refs"]
 
-/**
- * The cancellation, shared by the details' two parts: what it says sits at the foot of the scrolling cards
- * (`CancelPrompt`: the confirm's prompt, what it frees, the reason with its counter and a refusal, or why cancelling is
- * unavailable), and its buttons are in the pinned action row (`CancelActions`), so the details never scroll in two places.
- * Nothing is sent until *Cancel appointment*. As the confirm opens, focus goes to the reason and the cards scroll to bring
- * the confirm into view; *Keep booking* closes it, drops the reason and puts focus back on *Cancel booking…*.
- */
+/** Manages cancellation state, confirmation focus/scroll behavior, and mutation submission. */
 function useCancellation({ access, appointment, status, timeZone, reasonRef, bodyRef, confirming, onCancelled, onConflict }: CancellationOptions) {
   const ids = { reason: useId(), error: useId(), count: useId(), denied: useId(), prompt: useId(), form: useId() }
   const [open, setOpen] = useState(confirming)
   const [reason, setReason] = useState("")
-  // A reason typed is work a session renewal's navigation would lose (hooks/use-unsaved-work).
   useUnsavedWork(reason.trim() !== "")
   const [missingReason, setMissingReason] = useState(false)
   const startRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLFormElement>(null)
   const fieldRef = useRef<HTMLDivElement>(null)
   const problemRef = useRef<HTMLDivElement>(null)
-  // What follows once the confirm has drawn or gone: on opening, the confirm brought into view and focus on the reason; on
-  // keeping the booking, focus on Cancel booking…. Opened to cancel, the confirm is in view from the first frame, and the
-  // sheet itself puts focus on the reason.
   const next = useRef<{ focus: "reason" | "start" | null; reveal: boolean }>({ focus: null, reveal: confirming })
   const generated = cancelAppointmentMutation()
-  // Bound to the account the details were drawn for and sent only while the cache names it (checked last as the request
-  // leaves, `write.fetch`), and its answer thrown away if who is signed in changed meanwhile (`useWriteMutation`): a reason
-  // typed for one account is never sent as another, and a late answer neither caches the record nor shows a toast for the
-  // next caller.
   const cancel = useWriteMutation({
     mutationFn: (variables: CancelVariables, write, context) => generated.mutationFn!({ ...variables, fetch: write.fetch() }, context),
     onSuccess: (cancelled) => {
@@ -603,27 +533,18 @@ function useCancellation({ access, appointment, status, timeZone, reasonRef, bod
   useLayoutEffect(() => {
     const { focus, reveal } = next.current
     next.current = { focus: null, reveal: false }
-    // Without scrolling: the reveal below scrolls the cards alone, where `focus()` would also scroll the page to it.
     if (focus === "reason") reasonRef.current?.focus({ preventScroll: true })
     else if (focus === "start") startRef.current?.focus()
-    // Smoothly when the person asked for it, at once when the details open on it.
     if (reveal) revealIn(bodyRef.current, confirmSpans(confirmRef.current, fieldRef.current, null), focus === "reason")
   }, [open, reasonRef, bodyRef])
 
   useEffect(() => {
-    // A reason asked for, or a refusal, is drawn under the reason (or, with no confirm open, at the foot of the cards): bring
-    // it into view, with as much of the confirm above it as the cards have room for.
     if (reasonError || showProblem) {
       revealIn(bodyRef.current, confirmSpans(confirmRef.current, fieldRef.current, showProblem ? problemRef.current : null), true)
     }
   }, [reasonError, showProblem, bodyRef])
 
   useEffect(() => {
-    // The confirm sits at the foot of the cards, so it moves when they change height (the whole record arriving after it
-    // opened: opened to cancel, the record is read as the details open), and it can drop out of view when the scrolling
-    // part gets shorter (the docked inspector fits itself to the window as the page scrolls or settles). While the person
-    // is in the confirm (the reason, or its buttons), keep it in view. Its own growth (a long reason) is left to the
-    // browser, which keeps the caret in view.
     const body = bodyRef.current
     const content = body?.firstElementChild
     if (offer !== "confirm" || !body || !content || typeof ResizeObserver === "undefined") return

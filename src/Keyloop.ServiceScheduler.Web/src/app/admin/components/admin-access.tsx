@@ -11,10 +11,7 @@ interface AdminButtonProps extends ComponentProps<typeof Button> {
   children: ReactNode
 }
 
-/**
- * A page's edit action (Add technician, Add bay): usable for an Admin; for anyone else unavailable but focusable, named by
- * the reason on screen (`aria-describedby`), never a tooltip alone.
- */
+/** Action button enabled for Admins and disabled (with `aria-describedby` reason) for other roles. */
 export function AdminButton({ admin, reasonId, children, className, ...props }: AdminButtonProps) {
   return (
     <Button

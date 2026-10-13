@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`
-// (its list view), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { ChevronDown } from "lucide-react"
 import { Fragment, useId } from "react"
 
@@ -23,15 +23,13 @@ interface ScheduleAgendaProps {
   /** The current instant when the agenda shows today; `null` on any other day. */
   now: Date | null
   selectedId: string | null
-  /** A booking just made: its card draws the booked halo (UI_DESIGN 10). */
+  /** A booking just made: its card draws the booked halo. */
   bookedId?: string | null
   onSelect: (appointment: BoardAppointment, card: HTMLElement) => void
 }
 
 /**
- * The board on a phone: the same lanes as the timeline, as collapsible sections of time-ordered job cards (the template
- * calendar's list view, regrouped by bay or technician, with Service Hub's job card anatomy, UI_DESIGN 11.13). Each lane
- * header stays in view while its cards scroll; today's lists mark "now" between past and coming work.
+ * Mobile agenda view grouping time-ordered job cards into collapsible bay or technician sections.
  */
 export function ScheduleAgenda({ lanes, ...rest }: ScheduleAgendaProps) {
   return (
@@ -46,7 +44,6 @@ export function ScheduleAgenda({ lanes, ...rest }: ScheduleAgendaProps) {
 function AgendaLane({ lane, mode, timeZone, now, selectedId, bookedId, onSelect }: { lane: Lane } & Omit<ScheduleAgendaProps, "lanes">) {
   const headingId = useId()
   const count = lane.appointments.length
-  // "Now" goes before the first appointment still to start; one already under way stays above it.
   const nowIndex = now ? lane.appointments.findIndex((appointment) => Date.parse(appointment.startUtc) > now.getTime()) : -1
   const nowAt = now && count > 0 ? (nowIndex === -1 ? count : nowIndex) : null
 
@@ -100,7 +97,6 @@ function AgendaLane({ lane, mode, timeZone, now, selectedId, bookedId, onSelect 
   )
 }
 
-/** "Now" between today's past and coming cards: the timeline's now line, as a divider with its time pill. */
 function NowDivider({ now, timeZone }: { now: Date; timeZone: string }) {
   return (
     <li className="flex items-center gap-2 py-0.5">
@@ -121,11 +117,6 @@ interface JobCardProps {
   onSelect: (appointment: BoardAppointment, card: HTMLElement) => void
 }
 
-/**
- * A job card: the time range (and, in the bay view, the technician's avatar), the customer, the plate and VIN, then the
- * status and the service with the other resource, so every card names both the bay and the technician (one in the lane
- * header). The whole card opens the details.
- */
 function JobCard({ appointment, mode, timeZone, selected, booked, onSelect }: JobCardProps) {
   const other = mode === "bays" ? appointment.technician.name : appointment.bay.name
 
@@ -141,8 +132,6 @@ function JobCard({ appointment, mode, timeZone, selected, booked, onSelect }: Jo
       onClick={(event) => onSelect(appointment, event.currentTarget)}
       className={cn(
         "flex min-h-11 w-full cursor-pointer flex-col gap-1.5 rounded-chip border-l-3 bg-card p-3 text-left shadow-xs ring-1 ring-foreground/10 outline-none",
-        // A borderless target (UI_DESIGN 15): the focus ring stands off the card by 1 px of the page it sits on, which
-        // also tells it from the just-booked ring.
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         "data-selected:ring-2 data-selected:ring-primary",
         "data-booked:animate-booked data-booked:ring-2 data-booked:ring-ring",

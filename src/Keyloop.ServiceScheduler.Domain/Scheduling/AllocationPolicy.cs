@@ -5,10 +5,8 @@ using Keyloop.ServiceScheduler.Domain.Resources;
 namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 
 /// <summary>
-/// Picks one bay and one technician among those already known to be free and qualified at the requested start (ARCHITECTURE §6.3).
-/// Deterministic greedy order: the preferred resource if it is among the candidates; otherwise the fewest surplus
-/// capabilities/certifications (keep specialised capacity free), then the lowest load that day (a missing entry counts as 0), then
-/// <c>Name</c> (ordinal), then <c>Id</c>.
+/// Selects a free, qualified bay and technician in deterministic order: preferred resource first, then fewest surplus
+/// capabilities/certifications, lowest daily load, ordinal <c>Name</c>, and <c>Id</c>.
 /// </summary>
 public static class AllocationPolicy
 {

@@ -44,11 +44,11 @@ class Instruments(unittest.TestCase):
 
 
 class Telemetry(unittest.TestCase):
-    """Strict inventory against this tree: each assembly declares the instruments it records (ADR-025)."""
+    """Strict inventory against this tree: each assembly declares the instruments it records."""
 
     @staticmethod
     def tree(directory, without=None, design=lambda text: text):
-        """The files the inventory reads, copied from this tree, minus one telemetry folder or with an edited design."""
+        """Copies telemetry and design files into a temporary repository tree."""
         repo = Path(directory)
         for folder in v.TELEMETRY:
             if folder != without:

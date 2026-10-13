@@ -9,11 +9,7 @@ import type { BookedExplanation } from "../lib/allocation"
 import { localTime } from "../lib/appointment-text"
 
 /**
- * The toast a booking ends with on a wide screen (UI_DESIGN 11.15), the same from every page that books (the board, the
- * Overview, the Calendar): what was booked, its time (with the day when it is not today) and View on board. With
- * vehicle-aware requirements on, the booking dialog passes the allocation explained (ADR-029 §4), and the toast then says
- * why this technician and why not the one asked for, stacked and shown for longer. That can name a technician's HV level
- * (role-only data), so an explained toast closes when who is signed in changes, as the details sheet does.
+ * Shows the post-booking confirmation toast with optional allocation explanation, closing explained toasts on identity changes.
  */
 export function useBookedToast(today: string) {
   const identity = useCurrentUser().identity

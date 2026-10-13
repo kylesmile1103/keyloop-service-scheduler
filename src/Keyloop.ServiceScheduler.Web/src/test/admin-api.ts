@@ -17,11 +17,8 @@ import { readingTuesday } from "@/test/schedules"
 import { readingTuesdayWithCompetence } from "@/test/vehicle"
 
 /**
- * The Admin API of Task 30a as a small in-memory server, for the Resources area's editing tests: the technicians, bays and
- * requirement policy of Reading, each with its version (the API's `xmin`, sent as a strong ETag `"712"`; a policy's is
- * `"policy-2"`), the 428 and 412 refusals with the current representation, the dry-run preview, and the audit history. Every
- * route answers 403 for a caller who is not an Admin, as the API does. Tests can change a record as another Admin would,
- * between the reads and a write (`editedElsewhere`).
+ * In-memory Admin API test server for Reading's technicians, bays, requirement policy, dry-run previews, and audit history.
+ * Enforces ETag preconditions (428/412) and the `Admin` role (403), and exposes `editedElsewhere` for concurrent-edit scenarios.
  */
 
 const problems = "https://api.keyloop.example/problems/"
@@ -235,8 +232,6 @@ export function adminServer(options: AdminServerOptions = {}) {
       const rules = [...body.rules].sort((a, b) => a.order - b.order || a.code.localeCompare(b.code))
       const proposed: AdminPolicyResponse = { dealershipId: state.policy.dealershipId, version: state.policy.version + 1, rules }
       const changes = options.changes?.(rules) ?? []
-      // The API's previewToken (Task 30c): a fingerprint of the version, rules, date and consequences (here with the roster's
-      // revision standing in for consequences that changed), required to publish and compared then.
       const previewToken = tokenOf(state.policy.version, rules, body.previewDate, changes, state.rosterRevision)
       if (body.dryRun) return withTag({ saved: false, policy: proposed, previewDate: body.previewDate, changes, previewToken }, tag)
       if (!body.previewToken) {

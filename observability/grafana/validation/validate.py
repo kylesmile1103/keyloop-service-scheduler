@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Offline checks for the Grafana manifests. Never calls Grafana.
-
-Stages: JSON Schema and structure; layout, datasource and scope variables; pinned alert contracts; metric
-and label inventory against validation/metrics.json and the telemetry code; PromQL behaviour of the
-must-be-zero counter queries (promtool); gcx lint of v1beta1 copies plus a canary that must fail.
-"""
+"""Offline validation for Grafana dashboard and alert manifests."""
 
 import argparse
 import copy
@@ -22,13 +17,11 @@ from jsonschema.exceptions import ValidationError, best_match
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
-# Each assembly declares the instruments it records (ADR-025): Api the booking, availability and cancellation
-# instruments, Infrastructure the shared Meter and the notification instruments. Every folder is read.
+# Each assembly declares the instruments it records.
 TELEMETRY = (Path("src/Keyloop.ServiceScheduler.Api/Common/Telemetry"),
              Path("src/Keyloop.ServiceScheduler.Infrastructure/Telemetry"))
 DASHBOARDS = {"keyloop-booking-engine", "keyloop-api-health", "keyloop-notifications", "keyloop-frontend"}
-# Pinned from grafana-observability-plan.md section 5.2, ARCHITECTURE section 12.3 and the Task 23 scope
-# (readiness). A changed threshold, pending period, window or severity must be a deliberate edit here.
+# Pinned alert thresholds, pending periods, windows, and severities.
 ALERTS = {
     "keyloop-allocation-below-hv-minimum": dict(severity="page", pending="0s", window="10m", condition=("gt", 0),
                                                panel=("keyloop-booking-engine", 18)),
@@ -48,28 +41,20 @@ ALERTS = {
     "keyloop-api-readiness": dict(severity="page", pending="0s", window="5m", condition=("gt", 0),
                                   panel=("keyloop-api-health", 11)),
 }
-# Panels whose counter windows must count a series' first export, with their window: the must-be-zero stats
-# over the dashboard range, and per step the readiness rule's evidence panel and the Admin edits panel (health
-# failures, the Durable Object's start pings and the edits of one resource and action are rare series that are
-# often born holding their only event). Every alert query that uses increase() is must-be-zero as well.
+# Panels whose counter windows must count a series' first export.
 BORN_AWARE_PANELS = {("keyloop-booking-engine", 1): "$__range", ("keyloop-booking-engine", 2): "$__range",
                      ("keyloop-booking-engine", 6): "$__range", ("keyloop-booking-engine", 18): "$__range",
                      ("keyloop-notifications", 1): "$__range",
                      ("keyloop-api-health", 11): "$__rate_interval",
                      ("keyloop-booking-engine", 19): "$__rate_interval"}
-# Promoted OTLP resource labels on every Mimir series. target_info keeps only job and instance of the
-# identifying attributes (service.name/namespace/instance.id), unless the stack keeps them explicitly.
+# Promoted OTLP resource labels on Mimir series.
 RESOURCE_LABELS = {"job", "instance", "service_name", "service_namespace", "service_version",
                    "deployment_environment_name"}
 INFO_LABELS = {"job", "instance"}
-# OTLP translation makes job = service.namespace/service.name, so dashboards derive it from the same variables
-# their Loki and Tempo queries use rather than reading it back from target_info.
 DASHBOARD_SCOPE = 'job="${namespace}/${service}", deployment_environment_name=~"${env:regex}"'
 ALERT_SCOPE = re.compile(r'job="(?:\$\{API_JOB\}|[^"$]+)", deployment_environment_name="(?:\$\{ENVIRONMENT\}|[^"$]+)"')
 LINT_RULES = {"target-valid-promql", "panel-title-description", "panel-units", "uneditable-dashboard",
               "alert-summary", "alert-runbook-link"}
-# Values for behaviour tests. Alert placeholders and dashboard variables resolve to the same scope.
-# $__rate_interval is at least four scrape intervals; OTLP exports every 60 seconds by default.
 TEST_VALUES = {"${namespace}": "keyloop-scheduler", "${service}": "api", "${env:regex}": "Production",
                "${kind:regex}": ".*", "${route:regex}": ".*", "${API_JOB}": "keyloop-scheduler/api",
                "${ENVIRONMENT}": "Production", "$__rate_interval": "4m"}

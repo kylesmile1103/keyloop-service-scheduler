@@ -166,8 +166,7 @@ public sealed class AccessTokenTests : IDisposable
         {
             ["iss"] = variant == "wrong-issuer" ? "https://evil.test" : _settings.TeamDomain,
             ["aud"] = new JsonArray(variant == "wrong-audience" ? "other" : variant == "second-audience" ? "aud-two" : "aud-one"),
-            // Each lifetime variant breaks exactly one clause: expired tokens keep nbf well before exp, so only the expiry
-            // check can reject them, and the 30-second skew boundary is pinned on both sides for exp and nbf.
+            // Keep nbf well before exp on expired variants so only the expiry check can reject them.
             ["exp"] = variant switch
             {
                 "expired" => now - 60,

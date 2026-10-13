@@ -10,8 +10,7 @@ type ContainerEnv = Pick<Env, "DB_URL" | "NOTIFICATIONS_ENABLED" | "NOTIFY_FROM_
   "TRIAGE_ENABLED" | "TRIAGE_ACCOUNT_ID" | "TRIAGE_GATEWAY_ID" | "AI_TOKEN" | "VEHICLE_AWARE_REQUIREMENTS" |
   "API_OTLP_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_INSTANCE_ID" | "API_OTLP_TOKEN">;
 
-// The committed Grafana dashboards select job="keyloop-scheduler/api", which OTLP translation builds as service.namespace/service.name,
-// and deployment_environment_name="Production", which ServiceDefaults sets from ASPNETCORE_ENVIRONMENT (observability/grafana/README.md).
+// Matches Grafana dashboard job="keyloop-scheduler/api" (service.namespace/service.name).
 const API_OTLP_SERVICE_NAME = "api";
 const API_OTLP_SERVICE_NAMESPACE = "keyloop-scheduler";
 const API_OTLP_TOKEN_SECRET = "keyloop_prod_api_otlp_token";
@@ -28,8 +27,7 @@ export function apiOtlpSettings(enabled: string, endpoint: string, instanceId: s
   return base;
 }
 
-// OTEL_EXPORTER_OTLP_HEADERS uses the W3C baggage format: the space is percent-encoded, while base64's "+", "/" and "=" are legal
-// value octets (.NET unescapes the list, then splits each pair at its first "="). The token never appears in a message.
+// Formats OTEL_EXPORTER_OTLP_HEADERS in W3C baggage format without exposing the token in error messages.
 function apiOtlpHeaders(instanceId: string, token: string): string {
   if (!/^[\x21-\x7e]+$/.test(token)) {
     throw new Error(`Secrets Store secret ${API_OTLP_TOKEN_SECRET} must hold only the Grafana token, without spaces or line breaks`);
@@ -70,14 +68,9 @@ export function recipientAllowlist(addressList: string, domainList: string, noti
   return { addresses, domains };
 }
 
-/**
- * SHA-256 digest of everything the Durable Object starts the API container with: the image reference, internet access and
- * the environment, secret values included, so that a changed setting, rotated secret or new image is detected. Only the
- * digest is stored or compared; the values are never persisted or logged.
- */
+/** Computes a SHA-256 digest of the container image, internet flag, and environment so changes trigger a restart. */
 export function startFingerprint(start: { image: string; enableInternet: boolean; env: Record<string, string> }): string {
   const env = Object.entries(start.env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  // node:crypto (nodejs_compat) hashes synchronously, so the check adds no extra await to a request.
   return createHash("sha256").update(JSON.stringify(["keyloop-api-container-start/v1", start.image, start.enableInternet, env])).digest("hex");
 }
 
@@ -106,8 +99,7 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     Security__ForwardedHeaders__KnownNetworks__1: "::/0",
     Security__RateLimiting__BookingPermitsPerMinute: "120",
     Notifications__Enabled: notificationsEnabled ? "true" : "false",
-    // The API refuses to start with the reserved Cloudflare provider, enabled or not, until its relay adapter exists (ARCHITECTURE
-    // section 10). Disabled notifications therefore select None, so a core deployment starts; enabling them still fails loudly.
+    // Select None when notifications are disabled so the API starts without a relay adapter.
     Notifications__Provider: notificationsEnabled ? "Cloudflare" : "None",
     Notifications__FromAddress: SENDER,
     Notifications__FromDisplayName: env.NOTIFY_FROM_NAME,
@@ -126,10 +118,7 @@ export async function containerEnv(env: ContainerEnv): Promise<Record<string, st
     result.Triage__GatewayId = env.TRIAGE_GATEWAY_ID;
     result.Triage__ApiToken = await requiredSecret(env.AI_TOKEN, "keyloop_prod_ai_token");
   }
-  // Off passes nothing, so appsettings.Production.json's false applies and the core profile is unchanged. On is this
-  // deployment's explicit override (ADR-029): the API honours vehicle-aware inputs and GET /features tells the board.
   if (env.VEHICLE_AWARE_REQUIREMENTS === "true") result.Scheduling__VehicleAwareRequirements = "true";
-  // Disabled export passes nothing OTLP-related, so ServiceDefaults registers no exporter and the API behaves as before.
   if (otlpEndpoint !== null) {
     const token = await requiredSecret(env.API_OTLP_TOKEN, API_OTLP_TOKEN_SECRET);
     result.OTEL_EXPORTER_OTLP_ENDPOINT = otlpEndpoint;

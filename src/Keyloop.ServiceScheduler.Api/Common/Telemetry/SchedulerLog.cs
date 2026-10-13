@@ -3,10 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
-/// <summary>Source-generated request and host logs with stable event ids (ADR-016). Never log customer PII.</summary>
+/// <summary>Source-generated request and host log definitions. Never log customer PII.</summary>
 internal static partial class SchedulerLog
 {
-    // Typed scope state: no reflection or discovery. Nested scopes add ids as soon as they are known and flow through async EF work.
     private static readonly Func<ILogger, string, IDisposable?> RequestScopeDefinition = LoggerMessage.DefineScope<string>("ClientRequestId:{ClientRequestId}");
     private static readonly Func<ILogger, Guid, IDisposable?> DealershipScopeDefinition = LoggerMessage.DefineScope<Guid>("DealershipId:{DealershipId}");
     private static readonly Func<ILogger, Guid, IDisposable?> AppointmentScopeDefinition = LoggerMessage.DefineScope<Guid>("AppointmentId:{AppointmentId}");
@@ -22,24 +21,17 @@ internal static partial class SchedulerLog
     public static partial void BookingConfirmed(
         this ILogger logger, Guid appointmentId, Guid dealershipId, Guid bayId, Guid technicianId, DateTime startUtc, string maskedVin);
 
-    /// <summary>
-    /// A booking was refused (<paramref name="outcome"/> is the <c>scheduler.booking.requests</c> outcome tag, e.g. <c>slot_unavailable</c>).
-    /// Ids and the service code only: the request's customer and vehicle are never logged. <paramref name="serviceCode"/> is null when the
-    /// request was rejected before the service type was read (validation, unknown dealership or service type).
-    /// </summary>
+    /// <summary>Logs a rejected booking by dealership, service code, and outcome tag without customer or vehicle PII.</summary>
     [LoggerMessage(EventId = 1002, EventName = "BookingRejected", Level = LogLevel.Information,
         Message = "Booking rejected at dealership {DealershipId} for service {ServiceCode}: {Outcome}")]
     public static partial void BookingRejected(this ILogger logger, string outcome, Guid dealershipId, string? serviceCode);
 
-    /// <summary>
-    /// An exclusion constraint rejected a booking that had passed the locked pre-check: some writer bypassed the booking path
-    /// (ARCHITECTURE §7.4). The constraint name says whether the bay or the technician overlapped.
-    /// </summary>
+    /// <summary>Logs when a database exclusion constraint rejects a booking after the locked pre-check passed.</summary>
     [LoggerMessage(EventId = 1003, EventName = "ConstraintBackstopFired", Level = LogLevel.Warning,
         Message = "Overlap constraint {Constraint} rejected a booking at dealership {DealershipId} that passed the locked pre-check; an out-of-band writer holds the slot")]
     public static partial void ConstraintBackstopFired(this ILogger logger, string constraint, Guid dealershipId);
 
-    /// <summary>PostgreSQL broke a deadlock on the booking path, which ADR-003 says cannot happen: a code change has added a second lock.</summary>
+    /// <summary>Logs when PostgreSQL detects a deadlock on the booking path.</summary>
     [LoggerMessage(EventId = 1004, EventName = "DeadlockDetected", Level = LogLevel.Warning,
         Message = "Deadlock detected while booking at dealership {DealershipId}; the booking path must take one lock only (ADR-003)")]
     public static partial void DeadlockDetected(this ILogger logger, Exception exception, Guid dealershipId);
@@ -53,32 +45,22 @@ internal static partial class SchedulerLog
     public static partial void ApiStarting(
         this ILogger logger, string environment, bool migrateOnStartup, bool seedDemoData, string apiReference, string authentication);
 
-    /// <summary>
-    /// The configuration failed validation and the API will not start. <paramref name="failures"/> are the validators' messages,
-    /// each prefixed with the member names it concerns; validator messages never echo secret values, and neither the bound options
-    /// nor the configuration are logged.
-    /// </summary>
+    /// <summary>Logs startup options validation failures without echoing secret values.</summary>
     [LoggerMessage(EventId = 1103, EventName = "StartupValidationFailed", Level = LogLevel.Critical,
         Message = "Configuration validation failed for {OptionsType}; the API will not start: {Failures}")]
     public static partial void StartupValidationFailed(this ILogger logger, string optionsType, string failures);
 
-    /// <summary>
-    /// Loading the configuration failed for a reason other than validation (e.g. the binder could not convert a value) and the API
-    /// will not start. <paramref name="detail"/> contains only a recognised binder path/type or a fixed safe description.
-    /// </summary>
+    /// <summary>Logs non-validation configuration loading failures at startup with a sanitized detail message.</summary>
     [LoggerMessage(EventId = 1104, EventName = "StartupConfigurationFailed", Level = LogLevel.Critical,
         Message = "Configuration could not be loaded; the API will not start: {ExceptionType}: {Detail}")]
     public static partial void StartupConfigurationFailed(this ILogger logger, string exceptionType, string detail);
 
-    /// <summary>The Aspire dashboard's <em>Reseed demo data</em> command replaced the demo dealerships' appointments (Addendum C §C3).</summary>
+    /// <summary>Logs a completed demo data reseed operation.</summary>
     [LoggerMessage(EventId = 1105, EventName = "DemoDataReseeded", Level = LogLevel.Information,
         Message = "Demo data reseeded: {Deleted} appointment(s) deleted, {Created} created")]
     public static partial void DemoDataReseeded(this ILogger logger, int deleted, int created);
 
-    /// <summary>
-    /// A reseed request carried no <c>X-Reseed-Key</c> or the wrong one and was answered like an unknown route. The key presented is never
-    /// logged, right or wrong.
-    /// </summary>
+    /// <summary>Logs a refused demo reseed request without echoing the supplied key.</summary>
     [LoggerMessage(EventId = 1106, EventName = "DemoReseedRefused", Level = LogLevel.Warning,
         Message = "Demo reseed refused: the X-Reseed-Key header was missing or wrong; answered 404")]
     public static partial void DemoReseedRefused(this ILogger logger);

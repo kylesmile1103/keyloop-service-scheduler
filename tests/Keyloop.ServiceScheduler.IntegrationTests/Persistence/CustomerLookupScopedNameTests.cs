@@ -73,7 +73,6 @@ public sealed class CustomerLookupScopedNameTests(PostgresFixture pg) : IAsyncLi
         {
             db.Dealerships.Add(other);
             await db.SaveChangesAsync(Ct);
-            // Same pair exists locally under a nonmatching name. A foreign match must not pull its local fields into the result.
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO appointments (id, dealership_id, service_type_id, bay_id, technician_id, start_utc, end_utc,
                     customer_name, customer_email, customer_phone, vehicle_vin, vehicle_registration, vehicle_make, vehicle_model,
@@ -98,7 +97,7 @@ public sealed class CustomerLookupScopedNameTests(PostgresFixture pg) : IAsyncLi
             var migrator = db.GetService<IMigrator>();
             await migrator.MigrateAsync(PreviousMigration, Ct);
             var definitions = await OldDefinitionsAsync(db);
-            definitions.Count.ShouldBe(9); // Eight indexes and the previous name function.
+            definitions.Count.ShouldBe(9);
             var extensions = await db.Database.SqlQuery<string>($"SELECT extname::text AS \"Value\" FROM pg_extension ORDER BY extname").ToListAsync(Ct);
             var previous = await PreviousNamesAsync(db);
             previous.ShouldBe(["Customer 1"]);

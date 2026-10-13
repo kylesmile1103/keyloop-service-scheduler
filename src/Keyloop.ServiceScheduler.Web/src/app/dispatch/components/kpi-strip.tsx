@@ -1,6 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/dashboard/components/section-cards.tsx` and
-// `src/app/dashboard-2/components/metrics-overview.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice
-// is in the README's licence section).
+// `src/app/dashboard-2/components/metrics-overview.tsx`, Copyright (c) 2025 ShadcnStore, MIT License.
 import { useQuery } from "@tanstack/react-query"
 import type { LucideIcon } from "lucide-react"
 import { CalendarClock, ClipboardList, Gauge, UsersRound } from "lucide-react"
@@ -17,10 +16,10 @@ import { fieldErrors, parseProblem } from "@/lib/problem-details"
 import { boardAppointments, scheduleKpis } from "../lib/schedule"
 import { boardStatuses, statusMeta } from "../lib/status"
 
-/** What a card shows when it has no figure for the day (its footer says why); read out in words. */
+/** Displayed when a KPI card has no figure for the day. */
 const NO_FIGURE = "–"
 
-/** The service whose next free slot the strip shows (Addendum B §B4); the first bookable one when a catalogue lacks it. */
+/** Default service code for the next-free-slot KPI; falls back to the first bookable service. */
 const KPI_SERVICE_CODE = "INTERIM-SERVICE"
 
 interface KpiStripProps {
@@ -38,8 +37,7 @@ interface KpiStripProps {
 }
 
 /**
- * Four figures for the day, computed from the board's own data plus one availability read (adopted from the template's
- * dashboard `section-cards`): appointments, bay utilisation, technicians busy now, and the next free slot for an interim service.
+ * Day summary strip showing appointments count, bay utilisation, technicians busy now, and next free slot.
  */
 export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed, now, refetchInterval }: KpiStripProps) {
   const kpis = schedule ? scheduleKpis(schedule, now) : undefined
@@ -48,8 +46,6 @@ export function KpiStrip({ dealershipId, date, today, timeZone, schedule, failed
   const dayWords = isToday ? "Today" : formatDay(date, "long")
 
   return (
-    // The template's section cards without their gradient wash or trend badges: the API has no history, so a trend would be
-    // invented (UI_DESIGN 11.11, 11.19).
     <section aria-label="Day summary" className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
       <KpiCard
         label="Appointments"
@@ -116,10 +112,7 @@ interface KpiCardProps {
   detail: ReactNode
 }
 
-/**
- * One figure of the day (UI_DESIGN 11.11): the label, the figure in the display face, a context line, and a neutral icon
- * tile. None of the four is a single status, so no tile takes a status hue.
- */
+/** Single KPI card displaying a metric label, figure, optional progress meter, and context footer. */
 function KpiCard({ label, icon: Icon, value, meter, failed, footer, detail }: KpiCardProps) {
   const labelId = useId()
   const loading = value === undefined && !failed

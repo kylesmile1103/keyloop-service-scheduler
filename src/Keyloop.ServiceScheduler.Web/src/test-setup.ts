@@ -5,10 +5,7 @@ import { afterEach } from "vitest"
 
 import { matchesWidth } from "@/test/media-query"
 
-// How long findBy* and waitFor wait for something to appear. Testing Library's 1 s default suits a quiet machine; with the
-// suite on every core (or beside another build) a lazy page's first compile or a dialog's render can take longer, and the
-// review of Task 31b saw 12 such timeouts in 9 files that all passed serialized. A wait for something that never comes still
-// fails, two seconds later. Vitest's per-test limit (vitest.config.ts) stays well above it.
+// Raise async utility timeout above 1s so lazy-route compilation and dialog renders do not flake under parallel load.
 configure({ asyncUtilTimeout: 3000 })
 
 afterEach(() => {
@@ -18,9 +15,7 @@ afterEach(() => {
   document.documentElement.className = ""
 })
 
-// jsdom has no matchMedia (used by the sidebar's breakpoint hooks and the theme provider): report a wide (1440 px),
-// light-scheme desktop viewport, answering width queries against that width and everything else with "no".
-// Tests that need another answer spy on window.matchMedia (see viewportOf in src/test/render-board.tsx).
+// Polyfill matchMedia for jsdom with a 1440px light-scheme desktop default.
 if (!window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList => ({
     matches: matchesWidth(query, 1440),
@@ -34,8 +29,7 @@ if (!window.matchMedia) {
   })
 }
 
-// jsdom has no PointerEvent. Base UI creates one when an option is chosen from the keyboard, and reads `pointerType` from
-// pointer events; a MouseEvent carrying the pointer fields is enough for both.
+// Polyfill PointerEvent for Base UI keyboard/pointer interactions in jsdom.
 if (!window.PointerEvent) {
   class PointerEvent extends MouseEvent {
     readonly pointerId: number

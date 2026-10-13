@@ -12,10 +12,6 @@ import { anonymous, serviceAdvisor, viewer } from "@/test/identities"
 
 import { type BookAction, useBookAction } from "./use-book-action"
 
-// A Book action decides when it is pressed, from the `/me` the cache holds at that moment (Task 28b review round 1): a
-// press can land after `/me` changed but before React has drawn the change (TanStack tells the views on a zero timeout),
-// and then the action the page last drew is the previous caller's.
-
 type Caller = CurrentUserResponse | "unreadable"
 
 /** The hook in a bare page: its reason and its dialogs on screen, the latest render's action in `latest.action`. */

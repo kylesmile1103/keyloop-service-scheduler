@@ -18,8 +18,7 @@ using Microsoft.OpenApi;
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
 
 /// <summary>
-/// The guards inside SchedulerOpenApi's schema and operation transformers that the served document cannot exercise (the integration
-/// contract tests cover what the real document says).
+/// Verifies schema and operation transformer guards in <see cref="SchedulerOpenApi"/>.
 /// </summary>
 public sealed class SchedulerOpenApiTransformerTests : IDisposable
 {

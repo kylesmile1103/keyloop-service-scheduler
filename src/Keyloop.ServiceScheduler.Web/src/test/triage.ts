@@ -7,11 +7,6 @@ import type {
   TriageUncoveredIssue,
 } from "@/api/types.gen"
 
-/**
- * Booking intake triage as the API answers it (ARCHITECTURE §8.10): the status read, two seeded services to suggest, and
- * answers built from them. The ids and requirements are the seeded catalogue's (ReferenceDataSeed).
- */
-
 /** `GET /booking-triage` with suggestions switched on (the API ships with them off). */
 export const triageEnabled: BookingTriageStatusResponse = {
   enabled: true,
@@ -47,7 +42,6 @@ export const diagnosticsServiceType: ServiceTypeResponse = {
   bookable: true,
 }
 
-/** The seeded Accident Damage Assessment (Task 32a), with the catalogue's id. */
 export const assessmentServiceType: ServiceTypeResponse = {
   id: "651b016b-c559-8313-9f1c-d22ecd706059",
   code: "ACCIDENT-DAMAGE-ASSESSMENT",
@@ -58,10 +52,7 @@ export const assessmentServiceType: ServiceTypeResponse = {
   bookable: true,
 }
 
-/**
- * A triage answer: the recommendation, its candidates with their probabilities (most likely first), the day asked for and
- * a further problem the description mentioned that the most likely service would not address (Task 32a).
- */
+/** Builds a `TriageBookingResponse` fixture from a recommendation, candidate list, optional preferred date, and optional uncovered issue. */
 export function triageAnswer(
   recommendation: "suggest" | "confirm" | "no-match",
   candidates: ReadonlyArray<readonly [ServiceTypeResponse, number]>,
@@ -81,10 +72,7 @@ export function triageAnswer(
   }
 }
 
-/**
- * `uncoveredIssue`: its closed category, outside the service Clef chose (`outside`), or outside every bookable service
- * (`null`, a no-match). Shapes from the Task 32a report's examples.
- */
+/** Builds a `TriageUncoveredIssue` fixture for `category` and optional `outside` service type. */
 export const uncovered = (category: TriageUncoveredCategory, outside: ServiceTypeResponse | null): TriageUncoveredIssue => ({
   category,
   probability: 0.85,

@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
-# Deploy rehearsal: 30 concurrent bookings of one single-capacity slot must give exactly one 201 and 29 409s (ARCHITECTURE §14.4).
-#
-#   deploy/cloudflare/scripts/rehearse-contention.sh https://<host>
-#
-# Writes require an Access session with the ServiceAdvisor or Admin role. The script asks for that browser session's
-# CF_Authorization cookie value without echoing it, keeps it only in a mode-600 curl config in a private temporary directory,
-# and deletes that directory on exit; the value never appears in arguments, history or output. Customers are on example.com,
-# which the API never emails. The winning booking is cancelled afterwards unless KEEP_WINNER=true. Needs curl, jq and uuidgen.
-#
-# Options (environment): CONTENDERS (default 30), DAY_OFFSET (first day searched, default 7), SEARCH_DAYS (default 14),
-# DEALERSHIP_NAME (default "Keyloop Motors Reading"), SERVICE_CODE (default EV-BATTERY-CHECK), KEEP_WINNER (default false).
+# Deploy rehearsal: fires concurrent bookings at a single-capacity slot and asserts 1 x 201 and (N - 1) x 409.
+# Usage: deploy/cloudflare/scripts/rehearse-contention.sh https://<host>
 set -euo pipefail
 
 base="${1:?Usage: $0 https://<host>}"

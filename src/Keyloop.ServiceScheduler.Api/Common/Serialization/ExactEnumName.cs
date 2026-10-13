@@ -4,10 +4,7 @@ using System.Text.Json.Serialization;
 namespace Keyloop.ServiceScheduler.Api.Common.Serialization;
 
 /// <summary>
-/// One enum member name, and nothing else, for the vehicle-aware inputs (ADR-029). <c>Enum.TryParse</c> and System.Text.Json's
-/// string enum converter also accept integers and comma-separated lists, whose members they OR together: <c>Heavy, LightCommercial</c>
-/// is <c>VehicleClass.Unknown</c> (2 | 1 = 3), a defined value that silently drops the heavy-vehicle rule the client asked for, and
-/// <c>4</c> is <c>Powertrain.BatteryElectric</c> although the contract is a string enum. Names match ignoring case, as before.
+/// Case-insensitive parser for single defined enum member names, rejecting integer literals and comma-separated flag lists.
 /// </summary>
 public static class ExactEnumName
 {
@@ -26,16 +23,11 @@ public static class ExactEnumName
         return false;
     }
 
-    /// <summary>The member names in declaration order, for messages and the OpenAPI document.</summary>
+    /// <summary>Returns the enum's member names in declaration order.</summary>
     public static string Describe<TEnum>() where TEnum : struct, Enum => string.Join(", ", Enum.GetNames<TEnum>());
 }
 
-/// <summary>
-/// Reads one <typeparamref name="TEnum"/> member name from a JSON string (no number, no list) and writes the member name, exactly as
-/// the context's string enum converter writes it. Applied with <c>[JsonConverter]</c> to request properties, so it holds whichever
-/// options read the request; a value it rejects is unreadable JSON, a 400 <c>validation-error</c>. The OpenAPI document cannot see
-/// through a custom converter, so <c>SchedulerOpenApi.DescribeExactEnumNames</c> lists the member names as the property's enum.
-/// </summary>
+/// <summary>JSON converter that reads and writes a single defined <typeparamref name="TEnum"/> member name as a string.</summary>
 public sealed class ExactEnumNameConverter<TEnum> : JsonConverter<TEnum> where TEnum : struct, Enum
 {
     public override TEnum Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
@@ -50,7 +42,7 @@ public sealed class ExactEnumNameConverter<TEnum> : JsonConverter<TEnum> where T
     }
 }
 
-/// <summary>Request arrays follow the same closed string-enum format as individual enum inputs; numbers and comma lists are unreadable.</summary>
+/// <summary>JSON converter that reads and writes an array of defined <typeparamref name="TEnum"/> member names as strings.</summary>
 public sealed class ExactEnumNameArrayConverter<TEnum> : JsonConverter<TEnum[]> where TEnum : struct, Enum
 {
     public override TEnum[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

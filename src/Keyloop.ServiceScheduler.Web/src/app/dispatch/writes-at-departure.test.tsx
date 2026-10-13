@@ -19,25 +19,11 @@ import { availabilityOn, bays as bayIds, interimServiceType, technicians as tech
 import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } from "@/test/triage"
 import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
-// Review round 3: a write's account is checked at the last moment it can be, inside the fetch the generated client calls
-// for each of the write's requests, once the client's own awaited preparation (its auth parameters, its request
-// interceptors) is done and immediately before the request is forwarded. Round 2 checked before that preparation, so an
-// identity that changed while the client prepared the request was not seen: the previous account's booking, cancellation,
-// description or photo left as the next caller.
-//
-// These tests use the app's own generated client, unmodified, with its real awaits. The identity changes in a microtask
-// queued from a request interceptor on that client, so it lands while the client awaits its interceptors: after the write
-// has started (and passed the check at its start), before the client calls fetch. Each test checks that it did land
-// there: the client had built the request, and no request of that kind had reached fetch yet.
-//
-// The Overview and the Calendar (Task 28b) write through the board's booking dialog and details sheet, so their rows are the
-// same writes started from those pages: Book appointment and an upcoming row's sheet on the Overview, a day's New
-// appointment and a chip's sheet on the Calendar. Every row also checks the range reads those pages show: a write stopped
-// before its request left marks none of them stale, and a booking or cancellation whose answer is used marks them all.
+// Verifies that write requests check the signed-in caller inside the client fetch wrapper after request interceptors complete,
+// aborting if the caller identity changed during request preparation.
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])
-  // The Resources area's pages (Task 30b's edits, below), through the routes' own lazy imports.
   const resources = routes.find((route) => route.path === "/resources")!
   await Promise.all([resources, ...resources.children!].map((route) => (route.lazy as (() => Promise<unknown>) | undefined)?.()))
 })
@@ -73,26 +59,14 @@ function cached(queryClient: QueryClient): string {
 /** Lets the send, its answer and TanStack's notifications all run. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 150)))
 
-/**
- * Waits for the steps the assertions after a change of identity depend on, never for a fixed time (Task 37): the change
- * landed in the preparation it was aimed at, then the write finished (nothing pending: it was stopped there, or it ran to
- * its end), so it can send nothing more. A fixed wait could pass before either: a later request of a write (the second
- * photo's upload, the suggestion after an upload) is prepared only once a photo was read and an earlier request answered,
- * which a loaded runner took longer than 150 ms to reach. Then lets whatever the write might still wrongly cause (a
- * toast, an answer kept) render before the test looks for it.
- */
+/** Waits for the identity change to land during request preparation and for the write mutation to finish. */
 async function landedAndFinished(at: { landed: boolean }, queryClient: QueryClient) {
   await waitFor(() => expect(at.landed, "the change of identity landed while the request was prepared").toBe(true))
   await waitFor(() => expect(queryClient.isMutating(), "the write finished").toBe(0))
   await settle()
 }
 
-/**
- * A test that ends (failing) while its write still runs must not hand that write to the next test: the write's later
- * requests would leave through the next test's stubbed `fetch` (looked up as each leaves) and pass its interceptors on the
- * shared client, so one slow test showed as two failures (Task 37). Each test waits, bounded, for its own writes to
- * finish before it ends, while `fetch` is still its own (vitest restores globals before the next test).
- */
+/** Ensures all active write mutations finish before the test exits. */
 function finishWritesWithTheTest(queryClient: QueryClient) {
   onTestFinished(() => waitFor(() => expect(queryClient.isMutating(), "the test's writes finished").toBe(0)))
 }
@@ -143,11 +117,7 @@ const becomes = (name: string, next: CurrentUserResponse): Change => ({
   },
 })
 
-/**
- * A `/me` re-read that failed: nobody is known until it answers again. The query's final failed state, with the cleanup
- * SessionWatch makes on a failure (it clears on the first failed attempt; the failed state itself cannot be dispatched
- * from outside TanStack in one step).
- */
+/** Simulates a failed `/me` re-read and clears caller data. */
 const meFails: Change = {
   name: "cannot be read (/me failed)",
   apply: (queryClient, session) => {
@@ -162,12 +132,7 @@ const meFails: Change = {
   },
 }
 
-/**
- * Changes who is signed in while the generated client prepares the `nth` POST to `path` from now on: in a microtask queued
- * from a request interceptor on the app's client, so the change lands while the client awaits its interceptors. Records
- * how many POSTs to `path` had been sent before (`before`), how many the client prepared since (`prepared`), how many
- * had reached fetch when the change landed (`reachedFetch`), and whether it has landed (`landed`).
- */
+/** Changes caller identity inside a request interceptor while preparing the `nth` POST to `path`. */
 function changeWhilePreparing(api: { requests: Request[] }, queryClient: QueryClient, session: Session, path: string, nth: number, change: Change) {
   const at = { before: posts(api.requests, path).length, prepared: 0, reachedFetch: -1, landed: false }
   const interceptor = (request: Request) => {
@@ -216,11 +181,7 @@ async function enterBooking(dialog: HTMLElement) {
 
 const photo = (name: string) => new File([new Uint8Array([137, 80, 78, 71])], name, { type: "image/png" })
 
-/**
- * One way a write is sent: the POST whose preparation the change lands in (`path`, the `nth` of them the press sends), how
- * the view is brought to the press that sends it (returning that press), what it carries that must then be nowhere, and
- * the sign that its answer was used.
- */
+/** Test case configuration for a write path under identity change. */
 interface WritePath {
   name: string
   /** The page the write is made from: the board unless given. */
@@ -232,13 +193,9 @@ interface WritePath {
   /** Answers the first attempt with a failure, so the second is the one under test (Try again, a suggested start). */
   firstFails?: "book-503" | "book-409" | "triage-503"
   photos?: number
-  /**
-   * A later request of a write whose first request already left: a write's requests all leave as one caller, so even a
-   * change between two roles that may write for the same email stops it (what the first answered was the previous
-   * caller's).
-   */
+  /** Indicates a subsequent request in a multi-request write flow. */
   later?: true
-  /** Needs vehicle-aware requirements on (the VIN look-up, Task 31b). */
+  /** Enables vehicle-aware requirements for this write path. */
   vehicleAware?: true
   open: () => Promise<() => void>
   carries: string[]
@@ -303,7 +260,6 @@ const writePaths: WritePath[] = [
     answered: () => screen.findByText("Booked"),
   },
   {
-    // Task 31b: the VIN look-up is a BookingsWrite like Book, its VIN in the body only.
     name: "Look up (the VIN's manufacturer)",
     path: "/vehicle-profiles/resolve",
     nth: 1,
@@ -564,12 +520,7 @@ describe.each(writePaths)("$name, while the generated client prepares its reques
   }
 })
 
-/**
- * The checker's own probe, unmodified (`sdk-unmodified.test.tsx`): no interceptor added, the identity changes a given
- * number of microtasks after TanStack marks the write pending, across the generated client's existing awaits. Whatever the
- * depth: if no request had reached fetch when another account entered the cache, none is sent afterwards; if one had, it is
- * not recalled. Both must happen across the sweep, so it spans the moment the request leaves.
- */
+/** Sweeps microtask depths after mutation start to verify requests are only sent if they reached fetch before identity change. */
 describe.each([
   { name: "Book", path: "/appointments" },
   { name: "Cancel appointment", path: "/cancel" },
@@ -608,10 +559,7 @@ describe.each([
   })
 })
 
-// Task 30b: an Admin's edits in the Resources area are writes bound the same way, to an Admin (`writes: "admin"`). Each is
-// checked inside the fetch its request is given, so a change of who is signed in while the generated client prepares the
-// request sends nothing: signed out, a Viewer, `/me` unreadable, another Admin, and also the same email as a Service
-// advisor, which may still book but not edit. The same Admin gaining another role is the same writer.
+// Admin writes in the Resources area verify that the signed-in caller still holds the Admin role when the request leaves.
 
 const technicians = `/resources/technicians?dealership=${reading.id}`
 const bayList = `/resources/bays?dealership=${reading.id}`

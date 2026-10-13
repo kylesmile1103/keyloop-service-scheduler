@@ -3,11 +3,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Runs a test's own write between an Admin edit's If-Match check and its conditional <c>UPDATE</c> of <paramref name="table"/>: once
-/// armed, the next command that updates that table waits for <paramref name="interleave"/> before it is sent. The edit then sends an
-/// <c>xmin</c> that is no longer current, so its outcome comes from the conditional update rather than from the If-Match pre-check.
-/// </summary>
+/// <summary>Runs <paramref name="interleave"/> immediately before the next <c>UPDATE</c> on <paramref name="table"/> is sent.</summary>
 public sealed class BeforeResourceUpdate(string table, Func<CancellationToken, Task> interleave) : DbCommandInterceptor
 {
     private int _armed;

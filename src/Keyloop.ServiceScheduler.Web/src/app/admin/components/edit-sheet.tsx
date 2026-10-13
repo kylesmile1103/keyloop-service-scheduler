@@ -18,13 +18,8 @@ interface EditSheetProps {
   children: ReactNode
 }
 
-/**
- * The Resources area's edit sheet (UI_DESIGN 11.24): a side sheet on wide screens (`sm:max-w-xl`), the whole screen on a
- * phone, with the title (its accessible name), one line on what a change does, then the form, whose actions stay in view at
- * the bottom. Base UI traps focus, closes on Escape and gives focus back on close.
- */
+/** Slide-over sheet (full-screen on mobile) for resource add and edit forms. */
 export function EditSheet({ open, onOpenChange, phone, title, description, initialFocus, returnFocus, children }: EditSheetProps) {
-  // An open edit is work a session renewal's navigation would lose (hooks/use-unsaved-work).
   useUnsavedWork(open)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

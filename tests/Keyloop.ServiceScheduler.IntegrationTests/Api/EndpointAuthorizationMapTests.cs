@@ -10,11 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// Every mapped route, including those outside the OpenAPI document (login, health, the contract itself, demo reseed, the SystemTest
-/// probe), must declare its access explicitly. A route missing from <see cref="Expected"/> fails here, so a new endpoint cannot ship
-/// with an unreviewed access decision; at runtime the fallback policy would make such a route Admin-only.
-/// </summary>
+/// <summary>Verifies that every mapped route explicitly declares its expected authorization policy.</summary>
 public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLifetime
 {
     private const string Public = "public";
@@ -54,7 +50,7 @@ public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLi
         ["POST /api/v1/admin/demo/reseed"] = "Admin",
         ["GET /api/v1/__throw"] = Public,
         ["GET /auth/login"] = Authenticated,
-        ["* /health"] = Public, // health checks map every method
+        ["* /health"] = Public,
         ["* /alive"] = Public,
         ["GET /openapi/{documentName}.json"] = Public,
         ["GET /scalar/{documentName?}"] = Public,
@@ -77,7 +73,6 @@ public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLi
     [Fact]
     public void Every_mapped_route_declares_the_expected_access()
     {
-        // Reseed is mapped only with demo data and a key: enable both so the map covers every route the API can expose.
         using var host = _factory.WithWebHostBuilder(builder => builder
             .UseSetting("Database:SeedDemoData", "true").UseSetting("Demo:ReseedKey", "test-reseed-key-1234567890123456"));
         var actual = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -99,10 +94,7 @@ public sealed class EndpointAuthorizationMapTests(PostgresFixture pg) : IAsyncLi
         }
     }
 
-    /// <summary>
-    /// Admin writes carry the stricter <c>booking</c> write limit on top of the global one, like every other state-changing route;
-    /// Admin reads stay on the global limit. SystemTest turns limiting off, so the declaration itself is what is pinned here.
-    /// </summary>
+    /// <summary>Verifies that state-changing Admin routes apply the booking write rate limit.</summary>
     [Fact]
     public void Admin_writes_and_only_writes_carry_the_booking_write_rate_limit()
     {

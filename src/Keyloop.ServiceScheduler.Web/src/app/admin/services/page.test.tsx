@@ -7,9 +7,6 @@ import { munich, reading } from "@/test/dealerships"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 
-// The Services page (Task 29): the service catalogue as a read-only list on Refine core, with what each needs and
-// whether this dealership can book it.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/services/page")])
 })
@@ -39,7 +36,6 @@ describe("services list", () => {
     expect(columnTexts(list, "Duration")).toEqual(["60 min", "60 min", "90 min", "60 min", "60 min", "90 min", "45 min", "120 min", "180 min", "60 min"])
     expect(columnTexts(list, "Bookable here")).toEqual(Array(10).fill("Yes"))
     expect(columnTexts(list, "Booked today")).toEqual(["0", "0", "1", "0", "1", "0", "1", "1", "0", "1"])
-    // Accident Damage Assessment (Task 32a) needs a damage-assessment-certified technician; its certification is named.
     expect(within(bodyRows(list)[0]).getByText("Needs: Damage assessment, Standard lift.")).toBeInTheDocument()
     // EV Charging Fault Diagnosis needs an EV bay and a technician with both certifications.
     expect(within(bodyRows(list)[5]).getByText("Needs: EV high voltage, High-voltage electrical, Diagnostics.")).toBeInTheDocument()
@@ -71,7 +67,6 @@ describe("services list", () => {
     const row = (name: string) => bodyRows(list)[columnTexts(list, "Service").indexOf(name)]
     expect(figureValue("Bookable here")).toBe("6 of 11")
     expect(figure("Bookable here")).toHaveTextContent("5 need what this dealership lacks")
-    // Hans Richter assesses accident damage here (Task 32a).
     expect(within(row("Accident Damage Assessment")).getByText("Yes")).toBeInTheDocument()
     expect(within(row("Diagnostic Fault Finding")).getByText("Missing: Diagnostics.")).toBeInTheDocument()
     // Each need exists here, but on different technicians.

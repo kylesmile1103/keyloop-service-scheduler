@@ -8,9 +8,6 @@ import { createQueryClient } from "@/lib/query-client"
 import { mockBoardApi } from "@/test/board-api"
 import { admin, anonymous, noRole, serviceAdvisor, unnamedAdvisor, viewer } from "@/test/identities"
 
-// The Settings pages (Task 29): Appearance (the theme) and Account, which shows `GET /me` (Task 27b).
-
-// Where the identity comes from: Cloudflare Access unless a test says the development server's configuration.
 const identity = vi.hoisted(() => ({ source: "access" as "access" | "configuration" }))
 vi.mock("@/lib/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/session")>()),
@@ -31,7 +28,6 @@ beforeEach(() => {
 function renderAt(path: string) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] })
   const queryClient = createQueryClient()
-  // Failures show at once; the production retry policy is covered by lib/query-client.test.ts.
   queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retry: false } })
   render(<App router={router} queryClient={queryClient} />)
   return router
@@ -48,7 +44,6 @@ describe("appearance settings", () => {
     expect(within(group).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label") ?? radio.textContent)).toHaveLength(3)
     expect(themeChoice("Light")).not.toBeChecked()
     expect(themeChoice("Dark")).not.toBeChecked()
-    // The app's default: follow the device.
     expect(themeChoice("Match system")).toBeChecked()
     expect(document.title).toBe("Appearance – Keyloop Service Scheduler")
   })
@@ -61,7 +56,6 @@ describe("appearance settings", () => {
     await waitFor(() => expect(document.documentElement).toHaveClass("dark"))
     expect(themeChoice("Dark")).toBeChecked()
     expect(localStorage.getItem("keyloop-scheduler-theme")).toBe("dark")
-    // The header's toggle and the page say the same.
     expect(screen.getByRole("button", { name: "Switch to light mode" })).toBeInTheDocument()
 
     fireEvent.click(themeChoice("Light"))
@@ -101,7 +95,6 @@ describe("account settings", () => {
     ])
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login?returnTo=%2Fsettings%2Faccount")
     expect(screen.queryByRole("link", { name: "Sign out" })).not.toBeInTheDocument()
-    // Nothing to edit: the account lives with Cloudflare Access, and no password is ever asked for.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     expect(document.querySelector("input[type=password]")).toBeNull()
     expect(document.title).toBe("Account – Keyloop Service Scheduler")
@@ -122,7 +115,6 @@ describe("account settings", () => {
     expect(facts().map((fact) => fact?.startsWith("Yes"))).toEqual(allowed)
     const signOut = within(card).getByRole("link", { name: "Sign out" })
     expect(signOut).toHaveAttribute("href", "/cdn-cgi/access/logout")
-    // An outline button: its border colour replaces the base's transparent one (a link styled by buttonVariants alone kept both).
     expect(signOut).toHaveClass("border-input")
     expect(signOut).not.toHaveClass("border-transparent")
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
@@ -170,7 +162,6 @@ describe("account settings", () => {
     ])
     expect(within(card).getByText("--Parameters:auth-development-roles=ServiceAdvisor")).toBeInTheDocument()
     expect(await screen.findByRole("region", { name: "Development user" })).toBeInTheDocument()
-    // No Access logout to promise: it could not change a configured identity.
     expect(screen.queryByRole("link", { name: "Sign out" })).not.toBeInTheDocument()
   })
 })

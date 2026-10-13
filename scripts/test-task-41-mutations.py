@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kill Task 41's name-key and HTTPS-policy regressions locally, then restore and verify. Never run LiveAi."""
+"""Verify customer-lookup name-key and HTTPS-policy mutations fail with assertion errors, then restore and verify."""
 import os
 from pathlib import Path
 import re

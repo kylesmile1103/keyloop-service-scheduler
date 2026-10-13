@@ -10,14 +10,11 @@ namespace Keyloop.ServiceScheduler.IntegrationTests.Triage;
 /// <summary>Pure scoring of validated answers. Reports fixture ids and closed choices, never customer or model prose.</summary>
 internal static class TriageGoldenSetReport
 {
-    /// <summary>
-    /// An accepted (service, uncovered issue) answer. A description with two issues accepts either as the main service, each with the
-    /// other as the uncovered issue, so the uncovered answer is always scored against the service Clef actually chose.
-    /// </summary>
+    /// <summary>An accepted (service, uncovered issue) pair for a golden-set fixture.</summary>
     internal sealed record Accepted(string Service, string Uncovered = ClefQuestionBuilder.NoUncoveredIssue);
 
     /// <param name="Hinted">The description names the main task or what is excluded: an easier subset, reported apart.</param>
-    /// <param name="StakeholderCase">The stakeholder's own sentence from the 2026-10-13 test, reported on its own line.</param>
+    /// <param name="StakeholderCase">Whether this is the stakeholder reference sentence, reported on its own line.</param>
     internal sealed record Sample(int Fixture, IReadOnlyList<Accepted> Accept, bool Hinted, bool StakeholderCase, bool MustAbstain, string Date,
         ClefEvaluation Answer, TriageBookingResponse Response, double LatencyMs, int AddedQuestionBytes)
     {

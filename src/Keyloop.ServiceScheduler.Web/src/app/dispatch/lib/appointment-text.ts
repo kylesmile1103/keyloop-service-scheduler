@@ -8,10 +8,7 @@ export function timeRange(appointment: Pick<BoardAppointment, "startUtc" | "endU
   return `${formatLocalTime(appointment.startUtc, timeZone)}–${formatLocalTime(appointment.endUtc, timeZone)}`
 }
 
-/**
- * What a block or card says to assistive technology (Addendum B §B4):
- * "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Amelia Clarke, Confirmed", and ", needs review" when it is flagged.
- */
+/** Accessible label for a timeline appointment block. */
 export function appointmentLabel(appointment: BoardAppointment, timeZone: string): string {
   const start = formatLocalTime(appointment.startUtc, timeZone)
   const end = formatLocalTime(appointment.endUtc, timeZone)
@@ -28,10 +25,7 @@ export function appointmentLabel(appointment: BoardAppointment, timeZone: string
 /** "needs review" at the end of a label, for an appointment the board shows flagged (its warning is kept only for a role). */
 const reviewWords = (appointment: Pick<BoardAppointment, "competenceWarning">) => (appointment.competenceWarning ? ["needs review"] : [])
 
-/**
- * What a job card says to assistive technology (UI_DESIGN 11.13): the block's words plus the customer, whom the card
- * shows: "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed".
- */
+/** Accessible label for an agenda job card, including the customer name. */
 export function jobCardLabel(appointment: BoardAppointment, timeZone: string): string {
   const start = formatLocalTime(appointment.startUtc, timeZone)
   const end = formatLocalTime(appointment.endUtc, timeZone)

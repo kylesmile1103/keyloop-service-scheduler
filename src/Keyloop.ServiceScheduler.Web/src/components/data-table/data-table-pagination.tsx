@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-pagination.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ReactTable, RowData } from "@tanstack/react-table"
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { useId } from "react"
@@ -11,16 +11,11 @@ import { cn } from "@/lib/utils"
 
 interface DataTablePaginationProps<TData extends RowData> {
   table: ReactTable<DataTableFeatures, TData>
-  /** The phone layout: previous and next only, as full touch targets. */
   compact?: boolean
   className?: string
 }
 
-/**
- * Rows per page and the page controls, adopted from the template's tasks table. It shows only when the rows outnumber the
- * smallest page, so a short day is not framed by controls that cannot do anything. Each button can disable itself when
- * pressed (the last page), so each keeps keyboard focus when it does.
- */
+/** Page size selector and pagination navigation controls, shown when filtered rows exceed the minimum page size. */
 export function DataTablePagination<TData extends RowData>({ table, compact = false, className }: DataTablePaginationProps<TData>) {
   const sizeId = useId()
   const rows = table.getFilteredRowModel().rows.length

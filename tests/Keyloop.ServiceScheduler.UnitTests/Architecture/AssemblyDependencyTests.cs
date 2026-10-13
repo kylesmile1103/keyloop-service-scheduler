@@ -5,9 +5,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 namespace Keyloop.ServiceScheduler.UnitTests.Architecture;
 
 /// <summary>
-/// The assembly boundaries of ADR-025. Compiled references show what code uses, but the compiler drops a reference
-/// no code uses, so the project files are checked as well: declaring a reference is a boundary change before any
-/// code depends on it. Reverse references (Domain to Infrastructure or Api) are already a build-time project cycle.
+/// Verifies compiled assembly references and project file declarations across Domain and Infrastructure boundaries.
 /// </summary>
 public class AssemblyDependencyTests
 {

@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/nav-user.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 "use client"
 
 import { EllipsisVertical, Info, LogIn, LogOut, Monitor, Moon, RotateCw, Sun, UserRound } from "lucide-react"
@@ -33,16 +33,9 @@ import { ACCOUNT_PATH, useSignInTarget } from "@/hooks/use-sign-in"
 import { useTheme } from "@/hooks/use-theme"
 import { nameOf, ROLE_LABELS } from "@/lib/session"
 
-/** Menu items are 44 px tall in touch layouts (UI_DESIGN 17.3). */
 const item = "cursor-pointer pointer-coarse:min-h-11"
 
-/**
- * Who is acting (UI_DESIGN 11.20), from `GET /api/v1/me`: the sidebar footer's user row, the template's nav-user. Signed in,
- * it shows the name (or the email) and the role, and its menu the account with its role badges, Account and Sign out;
- * signed out, "Not signed in" and a menu with Sign in. The theme choice stays in the menu, where phones find it. On the
- * development server, whose identity is configuration, the menu says so instead of offering a sign-in or sign-out that
- * could not change it.
- */
+/** Sidebar footer user row and account/theme dropdown menu backed by `GET /api/v1/me`. */
 export function NavUser() {
   const { isMobile } = useSidebar()
   const { theme, setTheme } = useTheme()

@@ -1,13 +1,6 @@
 import type { ReturningCustomerResponse } from "@/api/types.gen"
 import { formatDay, todayIn } from "@/lib/calendar-date"
 
-/**
- * The returning-customer search on step 2 of the booking dialog (Task 39b, ADR-034): staff find an earlier booking of this
- * dealership by registration, email, phone or name (`POST /customer-lookups`, `FindReturningCustomers`), and choosing one
- * fills in the customer and vehicle. The words and the field mapping live here; the combobox is
- * `components/returning-customer-search.tsx`.
- */
-
 /** The API's bounds on the search, counted after trimming (`FindReturningCustomersRequest.query`). */
 export const LOOKUP_MIN_LENGTH = 2
 export const LOOKUP_MAX_LENGTH = 100

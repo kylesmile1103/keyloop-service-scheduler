@@ -12,7 +12,7 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/service-types", HandleAsync)
             .WithName("GetServiceTypes")
-            .AllowAnonymous() // public read (ADR-027)
+            .AllowAnonymous()
             .WithTags(ApiTags.Catalog)
             .Produces<IReadOnlyList<ServiceTypeResponse>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -20,12 +20,8 @@ public sealed class GetServiceTypesEndpoint : IEndpoint
 
     /// <summary>List the service catalogue for a dealership</summary>
     /// <remarks>
-    /// The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician
-    /// certifications each requires. <c>bookable</c> is computed for this dealership: at least one active bay and one active
-    /// technician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies
-    /// under the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable
-    /// when an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;
-    /// catalogue eligibility ignores busy time, opening hours and the booking window.
+    /// Returns the global service catalogue ordered by name, with <c>bookable</c> indicating whether the dealership's active bays and
+    /// technicians can satisfy the service's requirements under the current policy.
     /// </remarks>
     /// <param name="dealershipId">The dealership whose active bays and technicians decide <c>bookable</c>.</param>
     /// <param name="handler">Reads the catalogue and the dealership's resources.</param>

@@ -7,8 +7,7 @@ namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 public sealed record ServiceCatalogueEntry(ServiceType ServiceType, bool Bookable);
 
 /// <summary>
-/// Shared catalogue/triage eligibility. Vehicle-aware: some dialog-submittable profile qualifies on the supplied dealership-local
-/// date, ignoring busy time. Legacy: an active bay and technician qualify for the service type (ADR-029 Task 43a).
+/// Shared catalogue and triage eligibility reader for vehicle-aware and legacy service qualification.
 /// </summary>
 public sealed class ServiceCatalogueReader(SchedulerDbContext db, RequirementPolicyReader policies)
 {
@@ -28,7 +27,7 @@ public sealed class ServiceCatalogueReader(SchedulerDbContext db, RequirementPol
                 {
                     foreach (var vehicleClass in Enum.GetValues<VehicleClass>())
                     {
-                        // Phase 1 has no manufacturer rules. Live diagnosis only adds constraints, so false covers eligibility.
+                        // Live diagnosis only adds constraints, so false covers baseline eligibility.
                         var profile = VehicleProfile.Unknown with { Powertrain = powertrain, VehicleClass = vehicleClass };
                         var requirements = RequirementResolver.Resolve(service, profile, policy.Rules, policyVersion: policy.Version);
                         if (bays.Exists(b => b.Satisfies(requirements)) && technicians.Exists(t => t.Satisfies(requirements, localDate)))

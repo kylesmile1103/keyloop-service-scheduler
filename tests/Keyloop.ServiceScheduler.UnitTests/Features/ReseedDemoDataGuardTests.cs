@@ -5,10 +5,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The two guards of <c>POST /api/v1/admin/demo/reseed</c> (Addendum C §C3, ARCHITECTURE §11.2): the route is mapped only where demo
-/// data is seeded and a key is configured (<see cref="DemoOptions.ReseedEnabled"/>), and a request passes only with exactly that key
-/// (<see cref="ReseedDemoDataHandler.KeyMatches"/>). Each guard holds on its own: no configured key matches nothing, so a route mapped
-/// by mistake still refuses every request, including one with an empty <c>X-Reseed-Key</c> header.
+/// Verifies demo data reseed route activation and key matching guards.
 /// </summary>
 public class ReseedDemoDataGuardTests
 {

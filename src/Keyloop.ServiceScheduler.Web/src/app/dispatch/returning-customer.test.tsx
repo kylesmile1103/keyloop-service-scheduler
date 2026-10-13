@@ -14,8 +14,7 @@ import { vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
 import { LOOKUP_DEBOUNCE_MS } from "./lib/returning-customer"
 
-// Task 39b: the returning-customer search at the top of step 2's customer section. Staff search earlier bookings by
-// registration, email, phone or name, choose one, and its customer and vehicle fill the fields.
+// Returning-customer search on step 2: searches past bookings by registration, email, phone, or name to prefill customer and vehicle fields.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")

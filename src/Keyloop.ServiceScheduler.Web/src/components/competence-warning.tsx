@@ -5,12 +5,7 @@ import type { CompetenceWarningResponse } from "@/api/types.gen"
 import { competenceReason, NEEDS_REVIEW, type WarningContext } from "@/lib/competence-warnings"
 import { cn } from "@/lib/utils"
 
-/**
- * The mark on a flagged block or job card (UI_DESIGN 11.24): a small pill on the card's own fill, `ShieldAlert` and the word,
- * in the warning ink. It sits on the card colour, not the status tint, so it reads on every status (the in-progress amber
- * included) and never stands in for a status. Decorative to assistive technology: the block's label already ends with
- * "needs review".
- */
+/** Decorative warning pill rendered on appointment blocks and cards that require competence review. */
 export function ReviewMark({ label = "Review", className }: { label?: string; className?: string }) {
   return (
     <span
@@ -32,10 +27,7 @@ interface CompetenceWarningNoticeProps extends WarningContext {
   className?: string
 }
 
-/**
- * The details sheet's account of a warning: a region named "Needs review" in the warning treatment (11.16), one line per
- * reason naming the technician or bay, and what the flag does and does not do: nothing was moved, a person decides.
- */
+/** Warning section in appointment details listing competence mismatch reasons. */
 export function CompetenceWarningNotice({ warning, technician, bay, day, className }: CompetenceWarningNoticeProps) {
   const headingId = useId()
   return (

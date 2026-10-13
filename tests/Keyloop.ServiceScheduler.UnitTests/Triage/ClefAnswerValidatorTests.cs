@@ -42,8 +42,6 @@ public sealed class ClefAnswerValidatorTests
     [Fact]
     public void Rejects_the_historical_two_question_Jev_response_under_the_three_question_contract()
     {
-        // The Reading catalogue and clock of the captured request (2026-10-12T08:00Z, 90-day horizon) and the body Cloudflare
-        // returned for it through the keyloop-scheduler gateway on 2026-10-12, unedited.
         var request = ClefQuestionBuilder.Build("@cf/cloudflare/clef-flash", "Brakes squeal, it's an EV, need it Thursday.",
             ReferenceDataSeed.CreateServiceTypes().Where(s => s.Code != "ACCIDENT-DAMAGE-ASSESSMENT").ToArray(), ClefQuestionBuilderTests.Reading,
             new FakeTimeProvider(new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero)), 90);

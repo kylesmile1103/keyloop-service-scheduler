@@ -10,9 +10,8 @@ import { pointerClick, renderBoard } from "@/test/render-board"
 import { bays, interimServiceType, technicians } from "@/test/schedules"
 import { allocation, decodedVolkswagen, readingTuesdayWithCompetence, vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
-// The toast a booking ends with on a wide screen, from every page that books (Task 31b merged with Task 28b): with
-// vehicle-aware requirements on it explains the allocation (why this technician, why not the one asked for, ADR-029 §4),
-// stacked and shown for longer, and it closes when who is signed in changes, since it names technicians' levels.
+// Wide-screen booking confirmation toast: shows allocation explanation when vehicle-aware requirements are enabled
+// and dismisses when caller identity changes.
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])

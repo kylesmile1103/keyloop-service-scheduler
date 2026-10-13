@@ -17,13 +17,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// <c>GET /api/v1/appointments/{appointmentId}</c> and <c>POST /api/v1/appointments/{appointmentId}/cancel</c>: reading a booking back
-/// (including through the booking's <c>Location</c>), the cancel transition with its audit row, telemetry and problems (ARCHITECTURE
-/// §5.5, §8.7), the slot it frees (Review Focus 3), and optimistic concurrency on the row's <c>xmin</c> (§7.3 layer 3). The workshop is
-/// Test Motors (Europe/London) with two standard bays, two general technicians and a 60-minute interim service; the clock is Monday
-/// 2026-10-12 08:00Z and the booking day Tuesday 2026-10-13.
-/// </summary>
+/// <summary>Tests appointment retrieval, cancellation, audit logging, and optimistic concurrency.</summary>
 public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly DateTime Ten = new(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc); // 11:00 BST
@@ -75,7 +69,6 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
 
         foreach (var location in new[] { created.Headers.Location, replayed.Headers.Location })
         {
-            // As a client follows it: a relative reference resolved against the request's URI.
             using var response = await _client.GetAsync(location.ShouldNotBeNull(), Ct);
 
             response.StatusCode.ShouldBe(HttpStatusCode.OK, location.OriginalString);
@@ -113,7 +106,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
         cancelled.ShouldBe(booked with
         {
             Status = AppointmentStatus.Cancelled,
-            CancellationReason = "Customer called to reschedule.", // trimmed by the aggregate
+            CancellationReason = "Customer called to reschedule.",
             UpdatedAtUtc = cancelledAt,
         });
 
@@ -136,7 +129,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
             payload.RootElement.GetProperty("reason").GetString().ShouldBe("Customer called to reschedule.");
         });
 
-        // 1010 comes from the post-commit observer, once; the reason is free text that may carry PII and is never logged (§11.1).
+        // Event 1010 is logged once after commit without the free-text cancellation reason.
         var logged = logs.Entries.Where(e => e.EventId.Id == 1010).ShouldHaveSingleItem();
         logged.Message.ShouldContain(booked.Id.ToString());
         logs.Entries.ShouldNotContain(e => e.Message.Contains("reschedule", StringComparison.Ordinal));
@@ -148,7 +141,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
     public async Task Cancels_a_checked_in_appointment_and_counts_its_previous_status()
     {
         var booked = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten));
-        await TransitionAsync(booked.Id, (appointment, now) => appointment.CheckIn(now)); // no check-in endpoint in this slice (§5.5)
+        await TransitionAsync(booked.Id, (appointment, now) => appointment.CheckIn(now));
         using var metrics = new MetricsCollector();
 
         using var response = await CancelAsync(booked.Id, "Customer collected the car unserviced.");
@@ -251,12 +244,11 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Cancelled_slot_can_be_rebooked_on_same_bay_and_technician()
     {
-        // Review Focus 3: one bay and one technician, so the only way to book the slot again is on the very resources it held.
         var (dealershipId, serviceTypeId, bayId, technicianId) = await _factory.WithDbAsync(TestData.ContentionDealershipAsync);
         var first = await BookAsync(TestData.BookingRequest(serviceTypeId, Ten, customerIndex: 1), dealershipId: dealershipId);
         using (var blocked = await PostBookingAsync(dealershipId, TestData.BookingRequest(serviceTypeId, Ten, customerIndex: 2)))
         {
-            await blocked.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct); // taken while the first is active
+            await blocked.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
         }
 
         using (var cancel = await CancelAsync(first.Id, "Customer called to reschedule."))
@@ -282,7 +274,6 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
     {
         var booked = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten));
 
-        // The first writer loads the row now, through its own context, and cancels between the API's read and its UPDATE.
         await using var scope = _factory.Services.CreateAsyncScope();
         var firstWriter = scope.ServiceProvider.GetRequiredService<SchedulerDbContext>();
         var loaded = await firstWriter.Appointments.SingleAsync(a => a.Id == booked.Id, Ct);
@@ -305,7 +296,6 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
         {
             var row = await db.Appointments.AsNoTracking().SingleAsync(Ct);
             (row.Status, row.CancellationReason).ShouldBe((AppointmentStatus.Cancelled, "Cancelled by the workshop."), "first writer wins");
-            // The loser's audit row rolled back with its UPDATE: one cancellation in the history, the winner's.
             var cancellation = await db.AppointmentHistory.AsNoTracking().Where(h => h.EventType == "Cancelled").SingleAsync(Ct);
             using var payload = JsonDocument.Parse(cancellation.Payload);
             payload.RootElement.GetProperty("reason").GetString().ShouldBe("Cancelled by the workshop.");
@@ -319,7 +309,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
             .UseSetting("Security:RateLimiting:Enabled", "true")
             .UseSetting("Security:RateLimiting:BookingPermitsPerMinute", "1"));
         using var client = factory.CreateClient();
-        var booked = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten), client); // the minute's one write
+        var booked = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten), client);
 
         using var response = await CancelAsync(booked.Id, "Customer called to reschedule.", client);
 
@@ -349,7 +339,7 @@ public sealed class AppointmentLifecycleTests(PostgresFixture pg) : IAsyncLifeti
     private Task<HttpResponseMessage> PostRawAsync(Guid appointmentId, string json) =>
         _client.PostAsync($"/api/v1/appointments/{appointmentId}/cancel", new StringContent(json, Encoding.UTF8, "application/json"), Ct);
 
-    /// <summary>Applies lifecycle steps the API has no endpoint for yet, through the aggregate (so they are audited like any other).</summary>
+    /// <summary>Applies domain lifecycle transitions directly on the aggregate.</summary>
     private Task TransitionAsync(Guid appointmentId, Action<Appointment, DateTime> transition) => _factory.WithDbAsync(async db =>
     {
         var appointment = await db.Appointments.SingleAsync(a => a.Id == appointmentId, Ct);

@@ -15,14 +15,11 @@ function renderAt(path: string) {
   return { router, ...view }
 }
 
-// The pages' routes are lazy: load the code of those the tests open (the board, the Overview, and the Appointments list the
-// sidebar moves to) once up front, so each test's wait measures rendering, not the first, cold compile of the page's modules
-// (about 0.4 s, more on a busy machine; the Appointments list's alone timed out once under load in the Task 31b review).
+// Preload lazily imported routes once before running tests.
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/appointments/page")])
 })
 
-// The dispatch board lists dealerships as it opens.
 beforeEach(() => {
   mockBoardApi()
 })

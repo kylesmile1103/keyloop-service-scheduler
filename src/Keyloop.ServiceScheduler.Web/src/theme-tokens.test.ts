@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 // Read from disk: Vitest stubs CSS imports (even `?raw`) to an empty string.
 const css = readFileSync(path.resolve(import.meta.dirname, "index.css"), "utf8")
 
-// Appointment states (ARCHITECTURE §5.5) and their token slugs (Addendum B §B4).
+// Appointment states and their token slugs.
 const statuses = ["confirmed", "checked-in", "in-progress", "completed", "no-show", "cancelled"] as const
 const themes = [
   { name: "light", selector: ":root" },
@@ -63,10 +63,7 @@ function contrast(foreground: string, background: string): number {
   return ratio(luminance(foreground), luminance(background))
 }
 
-/**
- * A colour at `percent` opacity painted over an opaque one, as the browser composites Tailwind's `x/NN` (gamma-encoded sRGB).
- * Returns linear sRGB.
- */
+/** Composites `top` at `percent` opacity over `bottom` in gamma-encoded sRGB and returns linear sRGB. */
 function over(top: string, percent: number, bottom: string): Rgb {
   const alpha = percent / 100
   const [t, b] = [linearRgb(top), linearRgb(bottom)]
@@ -102,9 +99,8 @@ describe("Tailwind exposure", () => {
 })
 
 /**
- * Contrast-critical pairs from docs/UI_DESIGN.md section 4.4 (text 4.5:1; control boundaries, focus indicators and marks
- * 3:1), asserted in both themes. `token/NN` is the token at NN % opacity composited over the pair's background, as
- * Tailwind's opacity modifier paints it. Rows marked with a theme occur only in that theme.
+ * Contrast-critical token pairs (text 4.5:1; control boundaries, focus indicators, and marks 3:1),
+ * asserted in both themes. `token/NN` composites the token at NN% opacity over the background.
  */
 const pairs: ReadonlyArray<readonly [foreground: string, background: string, minimum: number, only?: "light" | "dark"]> = [
   // Core text
@@ -121,7 +117,6 @@ const pairs: ReadonlyArray<readonly [foreground: string, background: string, min
   ["muted-foreground", "secondary", 4.5],
   ["muted-foreground", "accent", 4.5],
   ["muted-foreground", "sidebar", 4.5],
-  // The secondary line of a hovered or open nav item (the user row): 4.49:1 before the v2 correction.
   ["muted-foreground", "sidebar-accent", 4.5],
   ["secondary-foreground", "secondary", 4.5],
   ["accent-foreground", "accent", 4.5],
@@ -129,7 +124,6 @@ const pairs: ReadonlyArray<readonly [foreground: string, background: string, min
   ["popover-foreground", "popover", 4.5],
   // Actions
   ["primary-foreground", "primary", 4.5],
-  // The selected slot chip's capacity line and an active pill's count (muted text there was 3.06:1 light, 1.88:1 dark).
   ["primary-foreground/80", "primary", 4.5],
   ["signal", "background", 4.5],
   ["signal", "card", 4.5],
@@ -138,7 +132,7 @@ const pairs: ReadonlyArray<readonly [foreground: string, background: string, min
   ["signal-foreground", "signal", 4.5],
   ["brand-accent-foreground", "brand-accent", 4.5],
   ["destructive-foreground", "destructive", 4.5],
-  // Feedback: ink on a card and on its own banner tint, text on a solid fill, body text in the banner
+  // Feedback
   ...(["success", "warning", "info", "destructive"] as const).flatMap((tone) => [
     [tone, "card", 4.5] as const,
     [tone, "background", 4.5] as const,
@@ -157,8 +151,7 @@ const pairs: ReadonlyArray<readonly [foreground: string, background: string, min
   ...(["background", "card", "popover", "muted", "secondary", "accent", "sidebar", "sidebar-accent"] as const).map(
     (surface) => ["ring", surface, 3] as const
   ),
-  // Control boundaries: fields, selects, checkboxes, chips, outline buttons (the dark field border on the menu highlight was
-  // 2.97:1 before the v2 correction), and the plate chip's outline on every status tint
+  // Control boundaries
   ...(["background", "card", "popover", "muted", "secondary", "accent", "sidebar"] as const).map(
     (surface) => ["input", surface, 3] as const
   ),

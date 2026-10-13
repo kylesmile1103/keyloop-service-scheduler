@@ -21,35 +21,25 @@ interface ProblemAlertProps {
   retryDisabled?: boolean
   /** The id of what says why the retry is unavailable, read with it (`aria-describedby`). */
   retryDescribedBy?: string
-  /**
-   * `error` (the default) for a failure to load or save; `warning` for a refusal that reflects the current state or a
-   * business rule, such as a `409` conflict or a `422`: the request was understood, and the screen should be read again
-   * or the request changed rather than retried; `info` for a rate limit, which passes on its own (UI_DESIGN 11.16).
-   */
+  /** `error` for load/save failures, `warning` for business-rule/conflict refusals (409/422), or `info` for rate limits. */
   tone?: ProblemTone
-  /** What the problem offers beyond its summary: suggested slots, missing requirements. */
+  /** Additional problem content such as suggested slots or missing requirements. */
   children?: ReactNode
-  /** Actions in place of, or next to, the retry. */
+  /** Actions rendered next to or in place of the retry button. */
   actions?: ReactNode
-  /**
-   * Makes the alert itself able to take focus (`tabIndex` -1, the focus ring), for a view that moves focus to it when the
-   * control that was pressed went away with the last answer.
-   */
+  /** Makes the alert programmatically focusable (`tabIndex={-1}`) when the triggering control unmounts. */
   focusRef?: Ref<HTMLDivElement>
   className?: string
 }
 
 const tones: Record<ProblemTone, { icon: typeof CircleX; alert: string; title: string; detail: string }> = {
-  // A failure: the traffic light's cross on the card, in the destructive ink.
   error: { icon: CircleX, alert: "bg-card text-destructive", title: "", detail: "" },
-  // A refusal: the warning banner, its triangle and title in the warning ink, the detail in the body colour.
   warning: {
     icon: TriangleAlert,
     alert: "border-warning/30 bg-warning-subtle text-foreground *:[svg]:text-warning",
     title: "text-warning",
     detail: "text-foreground",
   },
-  // A rate limit: the info banner with a clock.
   info: {
     icon: Clock,
     alert: "border-info/30 bg-info-subtle text-foreground *:[svg]:text-info",
@@ -58,11 +48,7 @@ const tones: Record<ProblemTone, { icon: typeof CircleX; alert: string; title: s
   },
 }
 
-/**
- * A failed API call: what failed, the API's explanation, and its trace id (to look the request up in the Aspire dashboard,
- * §12.2), with a retry when one makes sense. It fits any width: the text wraps, the trace id is cut short (its full value is
- * in its tooltip and the copy button), so the copy button never leaves the screen.
- */
+/** Inline alert displaying an API failure summary, trace ID with copy action, and optional retry button. */
 export function ProblemAlert({
   title,
   error,
@@ -85,13 +71,12 @@ export function ProblemAlert({
       tabIndex={focusRef ? -1 : undefined}
       variant={tone === "error" ? "destructive" : "default"}
       data-tone={tone}
-      // The focus ring shows only on an alert that can take focus (one with `focusRef`).
       className={cn("px-4 py-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50", alert, className)}
     >
       <Icon aria-hidden="true" />
       <AlertTitle className={cn("font-semibold wrap-break-word", titleClass)}>{title}</AlertTitle>
       <AlertDescription className={cn("flex flex-col gap-2", detail)}>
-        {/* Keyed by the failure, so a retry that fails again in the same words is still read out (`failureKey`). */}
+        {/* Keyed by failure instance so repeated identical errors are re-announced by screen readers. */}
         <span key={failureKey(error)} className="wrap-break-word">
           {summary}
         </span>
@@ -106,7 +91,6 @@ export function ProblemAlert({
                 size="sm"
                 onClick={onRetry}
                 disabled={retrying || retryDisabled}
-                // It disables itself while the retry is out: focus stays on it, ready for another try if that one fails.
                 focusableWhenDisabled
                 aria-describedby={retryDescribedBy}
                 className="text-foreground"
@@ -123,7 +107,7 @@ export function ProblemAlert({
   )
 }
 
-/** "Trace ID", the id in mono (cut short to fit, whole in its tooltip) and a copy button (UI_DESIGN 11.8). */
+/** Trace ID row with truncated monospace value and copy button. */
 export function TraceIdRow({ traceId, className }: { traceId: string; className?: string }) {
   return (
     <span className={cn("flex min-w-0 items-center gap-1.5", className)}>

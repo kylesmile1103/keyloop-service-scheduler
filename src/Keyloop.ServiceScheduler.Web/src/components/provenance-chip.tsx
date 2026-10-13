@@ -15,10 +15,7 @@ const looks: Record<ProfileSource, { icon: LucideIcon; className: string }> = {
   Unknown: { icon: CircleQuestionMark, className: "border border-dashed border-input text-muted-foreground" },
 }
 
-/**
- * Where one fact about the vehicle came from (ADR-029 provenance): "from VIN", "declared", "not known". Shown beside the
- * value it qualifies, never on its own, and read with it ("Volkswagen, from VIN").
- */
+/** Chip indicating the provenance of a vehicle profile attribute ("from VIN", "declared", "not known"). */
 export function ProvenanceChip({ source, className }: { source: ProfileSource; className?: string }) {
   const { icon: Icon, className: look } = looks[source]
   return (

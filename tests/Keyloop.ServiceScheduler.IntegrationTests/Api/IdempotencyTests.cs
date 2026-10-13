@@ -14,12 +14,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// The optional <c>Idempotency-Key</c> on booking (ARCHITECTURE §7.5). The key is looked up before any rule or availability check,
-/// and again under the dealership lock, so a retry of a booking that committed is replayed (201, stored body,
-/// <c>Idempotent-Replayed: true</c>) instead of colliding with its own appointment; the unique key is the backstop for the one case
-/// the lock does not serialise (the same key at two dealerships). Only successful bookings are memoised.
-/// </summary>
+/// <summary>Tests Idempotency-Key handling, replay behavior, expiration, and conflict detection on appointment bookings.</summary>
 public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly DateTime Ten = new(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc);
@@ -47,8 +42,6 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Same_key_same_body_replays_201_without_second_row()
     {
-        // One bay and one technician: after the first booking the slot is full, so a retry that reached the availability check would
-        // meet its own appointment and answer 409 instead of replaying.
         var (dealershipId, serviceTypeId, _, _) = await _factory.WithDbAsync(TestData.ContentionDealershipAsync);
         var request = TestData.BookingRequest(serviceTypeId, Ten);
         using var metrics = new MetricsCollector();
@@ -130,9 +123,7 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Concurrent_requests_with_the_same_key_and_body_book_once_and_both_get_201()
     {
-        // Hold the dealership's booking lock so both requests pass the lock-free lookup (no key yet) and queue on the lock. Whichever
-        // gets it second must find the first one's key on its re-check under the lock, before looking at availability, where (one bay,
-        // one technician) it would otherwise see its twin's appointment and answer 409.
+        // Hold the dealership lock so both requests pass the initial lookup and serialize on the in-lock re-check.
         var (dealershipId, serviceTypeId, _, _) = await _factory.WithDbAsync(TestData.ContentionDealershipAsync);
         var request = TestData.BookingRequest(serviceTypeId, Ten);
         HttpResponseMessage[] responses;
@@ -169,9 +160,7 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Same_key_at_two_dealerships_concurrently_books_once_and_rejects_the_other_422()
     {
-        // Different dealerships take different locks, so only the key's primary key serialises them. Row locks on both dealerships
-        // hold each request at its appointment INSERT (the foreign-key check), after its key lookups found nothing; released together,
-        // one commits its key first and the other's INSERT of the same key fails with 23505: it must then answer from the stored row.
+        // Hold row locks on both dealerships so the two requests collide on the idempotency_keys primary key constraint (23505).
         var elsewhere = TestData.NewDealership("Elsewhere Motors");
         await SaveAsync(
             elsewhere,
@@ -231,9 +220,6 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_duplicate_key_whose_stored_row_is_expired_is_not_replayed_but_booked()
     {
-        // Two API instances whose clocks are 25 hours apart share the database. B books first with the key; by A's clock B's row is
-        // already expired. A was held at its appointment INSERT after its key re-check found nothing, so its key INSERT collides
-        // (23505) with B's committed row: an expired row is no answer, so A books again and its re-check under the lock deletes it.
         var elsewhere = TestData.NewDealership("Elsewhere Motors");
         await SaveAsync(
             elsewhere,
@@ -280,10 +266,9 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
         await _factory.WithDbAsync(async db => (await db.Appointments.CountAsync(Ct)).ShouldBe(1));
     }
 
-    // An empty value is rejected too, but the in-memory test client drops an empty header: BookingOverKestrelTests sends one.
     [Theory]
     [InlineData("has space")]
-    [InlineData("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")] // 65 characters
+    [InlineData("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")]
     [InlineData("key=1")]
     public async Task Invalid_key_format_400(string key)
     {
@@ -335,7 +320,6 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
         var first = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1), "day-old-key");
         _factory.Clock.Advance(TimeSpan.FromHours(25));
 
-        // Wednesday: the original appointment still holds Tuesday 10:00Z, so the same body could not be booked again anyway.
         var later = TestData.BookingRequest(_workshop.Interim.Id, Ten.AddDays(1), customerIndex: 2);
         using var response = await PostAsync(_workshop.Dealership.Id, later, "day-old-key");
 
@@ -356,8 +340,6 @@ public sealed class IdempotencyTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Replay_answers_even_after_time_has_moved_past_the_rules()
     {
-        // The lookup comes before every rule check: retried after the appointment's start (lead time now unmet) but within the key's
-        // 24 hours, the booking that succeeded is still replayed rather than rejected. Booked for later today, 10:00Z on Monday.
         var request = TestData.BookingRequest(_workshop.Interim.Id, TestData.Now.AddHours(2));
         var original = await BookAsync(request, "late-retry");
         _factory.Clock.SetUtcNow(TestData.DefaultNow.AddHours(2.5));

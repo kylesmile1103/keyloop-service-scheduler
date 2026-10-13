@@ -8,8 +8,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 
 internal static class ListAppointmentsResponseMapper
 {
-    /// <summary>A range item: summaries from the projected columns, local times in <paramref name="zone"/>, and the customer name,
-    /// VIN and registration as <see cref="PersonalData"/> allows <paramref name="caller"/> to see them.</summary>
+    /// <summary>Maps a projected row to an <see cref="AppointmentListItemResponse"/> with role-based PII masking.</summary>
     internal static AppointmentListItemResponse Map(AppointmentListRow row, TimeZoneInfo zone, ClaimsPrincipal caller)
     {
         var visible = PersonalData.ForCaller(caller, row.CustomerName, row.Vin, row.Registration);

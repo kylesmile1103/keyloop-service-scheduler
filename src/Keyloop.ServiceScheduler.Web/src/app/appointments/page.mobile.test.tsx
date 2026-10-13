@@ -6,14 +6,11 @@ import { reading } from "@/test/dealerships"
 import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
 import { appointments, readingTuesday, withStatus } from "@/test/schedules"
 
-// The Appointments page on a phone (< 768 px): job cards instead of the table, the same filters in a bottom sheet.
-
 beforeAll(async () => {
   await import("@/app/appointments/page")
 })
 
 beforeEach(() => {
-  // Tuesday 2026-10-13, 09:30 in Reading.
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
   phoneViewport()
@@ -41,7 +38,6 @@ describe("appointments list on a phone", () => {
       "Four-Wheel Alignment, Bay 2 - Alignment, 15:00 to 15:45, Harry Whitfield, Chloe Nguyen, Confirmed",
     ])
     const [interim] = list
-    // Every card names the time, customer, plate and VIN, status, service, and both the bay and the technician.
     expect(interim).toHaveTextContent("08:00–09:00")
     expect(interim).toHaveTextContent("60 min")
     expect(interim).toHaveTextContent("Sophie Turner")
@@ -51,7 +47,6 @@ describe("appointments list on a phone", () => {
     expect(interim).toHaveTextContent("Interim Service")
     expect(interim).toHaveTextContent("Bay 1 - Standard · Amelia Clarke")
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
-    // One page holds the day, so there is no previous/next.
     expect(screen.queryByRole("navigation", { name: "Pages" })).not.toBeInTheDocument()
   })
 

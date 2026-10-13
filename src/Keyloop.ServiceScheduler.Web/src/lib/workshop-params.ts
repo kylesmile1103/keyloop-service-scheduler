@@ -1,16 +1,13 @@
-/** The search parameter naming the dealership a workshop page shows: `?dealership=<id>`. */
+/** URL search parameter for the selected dealership ID (`?dealership=<id>`). */
 export const DEALERSHIP_PARAM = "dealership"
 
-/** The search parameter naming the day a workshop page shows (`yyyy-MM-dd`); without it the page shows today. */
+/** URL search parameter for the selected workshop date (`yyyy-MM-dd`). */
 export const DATE_PARAM = "date"
 
-/**
- * What the workshop pages (the dispatch board and the appointments list) share in the address: both show one dealership's
- * day, so moving from one to the other keeps the dealership and the day.
- */
+/** Search parameters preserved when navigating between workshop views. */
 export const WORKSHOP_PARAMS: readonly string[] = [DEALERSHIP_PARAM, DATE_PARAM]
 
-/** The search string (`?a=1&b=2`, or `""`) of the current address, keeping only the named parameters, in that order. */
+/** Returns a query string (`?a=1&b=2` or `""`) preserving only `names` from `search` in order. */
 export function carrySearch(search: string, names: readonly string[]): string {
   const current = new URLSearchParams(search)
   const kept = new URLSearchParams()

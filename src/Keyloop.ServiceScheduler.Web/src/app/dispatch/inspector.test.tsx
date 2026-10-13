@@ -12,8 +12,7 @@ import { matchesWidth } from "@/test/media-query"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { appointments, interimDetails, readingTuesday, without } from "@/test/schedules"
 
-// The docked inspector (Task 34, UI_DESIGN 11.14): from 1280 px a booking's details sit beside the board, which stays usable;
-// narrower boards keep the sheet. Cancelling goes through a short confirm.
+// Docked inspector (>= 1280 px): appointment details sit beside the board while narrower viewports use a sheet.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")

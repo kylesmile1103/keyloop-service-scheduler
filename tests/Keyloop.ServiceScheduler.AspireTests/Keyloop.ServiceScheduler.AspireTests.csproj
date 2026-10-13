@@ -1,7 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The whole-stack smoke test (Category=Aspire, Addendum C §C7, ARCHITECTURE §14.3) in a project of its own: Aspire.Hosting runs the
-       AppHost in this process and deserialises DCP's answers with reflection-based System.Text.Json, which the integration test process
-       turns off on purpose so that it fails exactly where the API would (ADR-016). Nothing here references the API. -->
+  <!-- Isolated from IntegrationTests because Aspire.Hosting requires reflection-based System.Text.Json. -->
   <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><NoWarn>$(NoWarn);CA1707</NoWarn></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />

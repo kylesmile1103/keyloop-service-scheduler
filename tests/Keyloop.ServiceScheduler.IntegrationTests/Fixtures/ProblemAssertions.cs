@@ -3,15 +3,12 @@ using System.Text.Json;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>Assertions for RFC 9457 responses from the catalogue (ARCHITECTURE §8.7).</summary>
+/// <summary>Assertions for RFC 9457 problem details responses.</summary>
 public static class ProblemAssertions
 {
     public const string TypeBase = "https://api.keyloop.example/problems/";
 
-    /// <summary>
-    /// Asserts <paramref name="status"/>, <c>application/problem+json</c>, <c>type</c> = <see cref="TypeBase"/> + <paramref name="slug"/>, a
-    /// title, a W3C <c>traceId</c> and <c>instance</c> = the request path; returns the problem's root (detached from the document).
-    /// </summary>
+    /// <summary>Asserts status, <c>application/problem+json</c> content type, problem <c>type</c>, <c>title</c>, W3C <c>traceId</c>, and <c>instance</c>.</summary>
     public static async Task<JsonElement> ShouldBeProblemAsync(this HttpResponseMessage response, HttpStatusCode status, string slug, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(response);

@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""Offline mutation probes for ADR-029. Restores source even on failure; serial execution only.
-
-Each probe rewrites exactly one occurrence in one domain source file, runs the vehicle-aware domain tests and requires at least one
-failing test (a compile failure does not count). The probes cover the allocation criteria, the requirement resolver's safety
-semantics (maximum, unions, heavy-vehicle and live conditions, legacy level-3 floor, rule order, Unknown inheritance), the
-technician and bay qualification predicates, and the why-not reason codes.
-
-Set MUTATION_TMPDIR to a short directory (default /tmp/keyloop-tests): Microsoft.Testing.Platform's pipe path must stay under 104 bytes.
+"""Offline mutation probes for vehicle-aware allocation and requirement resolution.
+Restores source on exit; set MUTATION_TMPDIR to a short path (<104 bytes for test platform pipes).
 """
 import os
 from pathlib import Path

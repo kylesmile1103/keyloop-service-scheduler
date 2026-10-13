@@ -9,10 +9,6 @@ import { admin, anonymous, noRole, serviceAdvisor, viewer } from "@/test/identit
 import { jsonResponse } from "@/test/mock-api"
 import { renderBoard } from "@/test/render-board"
 
-// The Resources area needs a signed-in user with a role (Task 27b, ADR-027): the 401 page in place for a visitor who is
-// not signed in, the 403 page for an account without a role, the lists for Viewer, Service advisor and Admin (an Admin's
-// from the Admin reads, editable, Task 30b).
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/technicians/page"), import("@/app/admin/bays/page")])
 })

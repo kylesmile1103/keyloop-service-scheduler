@@ -1,10 +1,6 @@
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
-/// <summary>Startup database behaviour per environment (ARCHITECTURE §10). Both default to off; Development turns both on.</summary>
-/// <remarks>
-/// No <c>[OptionsValidator]</c>: the generator rejects a type with nothing to validate (SYSLIB1203). <c>ValidateOnStart()</c> still
-/// binds it at startup, so a malformed value fails the boot rather than the first use.
-/// </remarks>
+/// <summary>Startup database behaviour per environment. Both default to off; Development turns both on.</summary>
 public sealed class DatabaseOptions
 {
     public const string SectionName = "Database";

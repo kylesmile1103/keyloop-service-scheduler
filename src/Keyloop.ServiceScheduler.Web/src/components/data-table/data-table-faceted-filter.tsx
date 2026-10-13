@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-faceted-filter.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 
 import type { Column, RowData } from "@tanstack/react-table"
 import { PlusCircle } from "lucide-react"
@@ -14,18 +14,15 @@ import { Separator } from "@/components/ui/separator"
 import { countOf, type DataTableFeatures, type Noun, selectedValues } from "@/lib/data-table"
 import { cn } from "@/lib/utils"
 
-/** A choice in a faceted filter: what the filter compares (an id, a status, a flag) and what the user reads. */
 export interface FacetOption {
   value: string
   label: string
 }
 
-/** A faceted filter's choice, with an optional mark drawn before its label (a status's swatch). */
 export interface FilterChoice extends FacetOption {
   mark?: ReactNode
 }
 
-/** One faceted filter of a list: the column it filters, its name in the toolbar and the filter sheet, and its choices. */
 export interface Facet {
   id: string
   title: string
@@ -35,15 +32,11 @@ export interface Facet {
 interface FacetChoicesProps<TData extends RowData> {
   column: Column<DataTableFeatures, TData, unknown> | undefined
   options: readonly FilterChoice[]
-  /** What the list holds, for each choice's spoken count ("3 appointments"). */
   noun: Noun
   className?: string
 }
 
-/**
- * A faceted filter's choices as checkboxes, each with how many rows it holds given the other filters (a facet leaves its
- * own filter out, so the alternatives keep their counts). Shared by the toolbar's popovers and the phone's filter sheet.
- */
+/** Checkbox list of faceted filter options with per-option row counts. */
 export function FacetChoices<TData extends RowData>({ column, options, noun, className }: FacetChoicesProps<TData>) {
   const counts = column?.getFacetedUniqueValues()
   const selected = selectedValues(column)
@@ -62,7 +55,6 @@ export function FacetChoices<TData extends RowData>({ column, options, noun, cla
             <Label className="flex min-h-9 cursor-pointer items-center gap-3 rounded-md px-2 font-normal hover:bg-accent/50 max-md:min-h-11 pointer-coarse:min-h-11">
               <Checkbox checked={selected.includes(option.value)} onCheckedChange={(checked) => toggle(option.value, checked)} />
               {option.mark}
-              {/* Read with the label: "Bay 1 - Standard (3 appointments)". */}
               <span className="min-w-0 flex-1 truncate">
                 {option.label}
                 <span className="sr-only">{` (${countOf(count, noun)})`}</span>
@@ -85,11 +77,7 @@ interface DataTableFacetedFilterProps<TData extends RowData> {
   noun: Noun
 }
 
-/**
- * One column's faceted filter in the toolbar: a dashed button naming the column (and, once chosen, the choices), opening a
- * popover of checkboxes with counts. The template's command palette is replaced by a plain checkbox list: a dealership has
- * a handful of statuses, bays, technicians and services, too few to need a search.
- */
+/** Toolbar popover filter button for a single faceted table column. */
 export function DataTableFacetedFilter<TData extends RowData>({ column, title, options, noun }: DataTableFacetedFilterProps<TData>) {
   const selected = selectedValues(column)
   const chosen = options.filter((option) => selected.includes(option.value))

@@ -6,7 +6,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Serialization;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
-/// <summary>One row of the append-only audit trail (<c>appointment_history</c>, ARCHITECTURE §5.6), written in the same transaction as the change.</summary>
+/// <summary>One row of the append-only audit trail (<c>appointment_history</c>), written in the same transaction as the change.</summary>
 public sealed class AppointmentHistoryEntry
 {
     // EF Core materialisation.
@@ -34,7 +34,7 @@ public sealed class AppointmentHistoryEntry
     /// <summary>The event serialised as JSON (a <c>jsonb</c> column).</summary>
     public string Payload { get; private set; }
 
-    /// <summary>Maps the event's fields explicitly; the payload goes through the source-generated <see cref="PersistenceJsonContext"/> (Addendum A §A7).</summary>
+    /// <summary>Maps the event's fields explicitly; the payload goes through the source-generated <see cref="PersistenceJsonContext"/>.</summary>
     public static AppointmentHistoryEntry From(IDomainEvent domainEvent, string actor)
     {
         ArgumentNullException.ThrowIfNull(domainEvent);

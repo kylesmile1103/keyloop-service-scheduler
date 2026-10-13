@@ -1,10 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react"
 
-/**
- * A booking's details on a board 1280 px wide or wider (the tests' default 1440 px): the inspector docked beside the board,
- * a complementary landmark named "Appointment details" (UI_DESIGN 11.14). Narrower boards and the other pages use the sheet,
- * a dialog named by the service.
- */
+/** Finds the desktop appointment details inspector (`role="complementary"`). */
 export const findInspector = () => screen.findByRole("complementary", { name: "Appointment details" })
 
 export const queryInspector = () => screen.queryByRole("complementary", { name: "Appointment details" })

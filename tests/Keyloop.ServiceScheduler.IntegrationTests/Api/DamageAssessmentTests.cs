@@ -44,7 +44,6 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
             $"/api/v1/dealerships/{site}/availability?serviceTypeId={service}&date=2026-10-13{query}", Ct));
         availability.RootElement.GetProperty("slots").GetArrayLength().ShouldBeGreaterThan(0);
         var request = TestData.BookingRequest(service, TestData.LondonTime(10));
-        // Flag-off deployments use service-type qualification and do not accept vehicle.profile.
         if (enabled && !unknown)
         {
             request = request with { Vehicle = request.Vehicle with { Profile = new VehicleProfileRequest(Powertrain.Ice, DeclarationReason: "Verified at intake") } };
@@ -94,12 +93,10 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
         var resourcesBefore = await ResourcesAsync();
         var logs = new CapturingLoggerProvider();
         var upgrade = await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
-        upgrade.RowsAdded.ShouldBe(15); // service + 7 Reading + 7 Munich
+        upgrade.RowsAdded.ShouldBe(15);
         upgrade.PublishedPolicies.ShouldBe([new(site, 8, 7), new(ReferenceDataSeed.MunichDealershipId, 2, 0)], ignoreOrder: true);
         var repeat = await _factory.WithDbAsync(db => ReferenceDataSeed.EnsureSeededAsync(db, _factory.Clock, Ct));
         (repeat.RowsAdded, repeat.PublishedPolicies.Count).ShouldBe((0, 0));
-        // Logged by the caller after commit: one line per dealership that received a version, naming the previous latest one (0: Munich
-        // had none after the delete above).
         upgrade.LogPublished(logs.CreateLogger("seed"));
         repeat.LogPublished(logs.CreateLogger("seed"));
         logs.Entries.Select(e => (e.EventId.Id, e.Message)).ShouldBe([
@@ -120,7 +117,6 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
             appointment.AllocationDecision.ShouldNotBeNull().PolicyVersion.ShouldBe(7);
             appointment.AllocationDecision.MinimumHvLevel.ShouldBe(3);
         });
-        // The service exists but startup has not granted a new qualification to any person.
         using var gap = await client.PostJsonAsync($"/api/v1/dealerships/{site}/appointments",
             TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("ACCIDENT-DAMAGE-ASSESSMENT"), TestData.LondonTime(12)),
             SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
@@ -132,7 +128,6 @@ public sealed class DamageAssessmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Startup_upgrade_is_one_shot_and_keeps_a_later_operator_version_without_the_collision_rule()
     {
-        // The fresh seed is v2 with hv-post-collision. An operator then publishes v3 without it (Task 30 editing).
         var site = ReferenceDataSeed.ReadingDealershipId;
         await _factory.WithDbAsync(async db =>
         {

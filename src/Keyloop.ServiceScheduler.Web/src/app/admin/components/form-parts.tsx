@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 import { preconditionMissing } from "../lib/admin-api"
 
-/** An error under its field (11.4): `CircleAlert` and the sentence, named by the field's `aria-describedby`. */
+/** Field validation error message with alert icon. */
 export function FieldMessage({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null
   return (
@@ -32,10 +32,7 @@ interface FailureAlertProps {
   retrying: boolean
 }
 
-/**
- * A save the API refused for a reason other than a field or a conflict (UI_DESIGN 11.16): signed out or another role, in the
- * action's words; an edit sent without its version (`428`, the app's fault), with Reload; anything else with Try again.
- */
+/** Alert for non-field save failures (401/403 auth refusal, 428 missing precondition, or general error). */
 export function FailureAlert({ failure, action, onReload, reloading = false, reloadFailed = false, onRetry, retrying }: FailureAlertProps) {
   const status = failureStatus(failure)
   if (preconditionMissing(failure)) {

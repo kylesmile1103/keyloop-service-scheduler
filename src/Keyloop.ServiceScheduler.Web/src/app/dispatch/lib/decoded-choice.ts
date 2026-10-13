@@ -2,11 +2,7 @@ import type { BookAppointmentRequest, Powertrain, VehicleClass, VehicleProfile }
 import { manufacturerCode } from "@/lib/vehicle-aware"
 
 /**
- * What a "Use decoded data" choice is made for (ADR-029, `conflictChoice: UseDecoded`): the VIN, the attributes the advisor
- * declared, and the attributes a look-up of that VIN decoded. The choice holds for exactly these. When no look-up of the VIN
- * had answered (it failed, or the conflict came from the API before one did), the decoded attributes are unknown and the
- * choice holds for the VIN and the declaration: one VIN always decodes the same, so a later look-up of it only shows what
- * the choice already accepted.
+ * Snapshot of the VIN, declared attributes, and decoded attributes for which the advisor chose "Use decoded data".
  */
 export interface DecodedChoice {
   /** As sent: trimmed and upper case. */

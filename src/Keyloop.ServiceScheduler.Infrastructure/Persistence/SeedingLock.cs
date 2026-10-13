@@ -3,9 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// Serialises reference and demo seeding across API instances (startup seeding and the demo reseed): a transaction-scoped PostgreSQL
-/// advisory lock on a fixed pair of 32-bit keys. PostgreSQL keeps the two-key and single 64-bit key spaces apart, so it never collides
-/// with a <see cref="DealershipLock"/>, and no booking transaction takes it (ADR-003).
+/// Transaction-scoped two-key PostgreSQL advisory lock that serialises reference and demo seeding across API instances.
 /// </summary>
 public static class SeedingLock
 {

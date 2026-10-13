@@ -9,16 +9,10 @@ namespace Keyloop.ServiceScheduler.E2ETests;
 /// <summary>One fresh browser context per test, with evidence retained if any assertion fails.</summary>
 internal sealed class BrowserJourney(SchedulerStack stack, string directory)
 {
-    /// <summary>
-    /// How long a page of the Vite dev server may take to become usable after a navigation (Task 37). Each journey's fresh
-    /// context fetches the app's unbundled modules again (about 250 before the board asks for its schedule), and a cold
-    /// server transforms each on its first request; on a loaded machine that took longer than the 15 s an action or an
-    /// assertion is given. Only page loads get it: navigations and the board's readiness signal. Every action and every
-    /// other assertion keeps 15 s.
-    /// </summary>
+    /// <summary>Navigation and initial board readiness timeout to accommodate cold Vite module transforms.</summary>
     public const float PageLoadTimeout = 60_000;
 
-    /// <summary>The most each step of a failure's evidence (the trace, a screenshot, an accessibility snapshot, closing) may take.</summary>
+    /// <summary>Maximum duration for each failure-artifact capture step.</summary>
     private static readonly TimeSpan CaptureStepTimeout = TimeSpan.FromSeconds(20);
 
     private readonly List<IBrowserContext> contexts = [];
@@ -46,11 +40,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
         Page ??= page;
         return page;
     }
-    /// <summary>
-    /// Opens the dispatch board and waits for the board's own readiness signal: its schedule answered and its heading drawn,
-    /// within <see cref="PageLoadTimeout"/>. Not the document's load event, which waits for every static subresource and
-    /// says nothing about whether the board can be used.
-    /// </summary>
+    /// <summary>Opens the dispatch board and waits for the schedule response and board heading.</summary>
     public async Task GotoBoardAsync(IPage? page = null)
     {
         page ??= Page;
@@ -71,10 +61,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
         }
         return dialog;
     }
-    /// <summary>
-    /// Opens the booking dialog and completes step 1 (the service, a battery electric declaration when a reason is given,
-    /// and the first free start or the one named), leaving it on step 2 with the customer and vehicle still empty.
-    /// </summary>
+    /// <summary>Opens the booking dialog and completes step 1, leaving step 2 ready for customer and vehicle input.</summary>
     public async Task<ILocator> OpenStepTwoAsync(string service = "Interim Service", string? electricReason = null, string? startLocal = null)
     {
         await Page.GetByRole(AriaRole.Button, new() { Name = "Book appointment", Exact = true }).ClickAsync();
@@ -107,8 +94,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
     private static Regex BlockName(JsonObject appointment) => new($"^(?:[^,]+, )?{Regex.Escape(appointment["serviceType"]!.String("name"))}, {Regex.Escape(appointment["bay"]!.String("name"))}, {appointment.String("startLocal")[11..16]} to {appointment.String("endLocal")[11..16]},");
     public async Task ScanAsync(string name)
     {
-        // No disabled rules or excluded regions. Full axe results preserve lower-impact and incomplete findings too.
-        // Inspect settled colors/layout, not a sheet's intermediate opacity during its entrance animation.
+        // Wait for finite animations to settle before running axe.
         await Page.EvaluateAsync("async () => { await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))); }");
         var result = await Page.RunAxe();
         await File.WriteAllTextAsync(Path.Combine(directory, $"axe-{name}.json"), result.ToString());
@@ -128,8 +114,6 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
         }
         catch (Exception error)
         {
-            // The journey's own failure is the one reported. Its evidence is gathered best effort, each step bounded, and
-            // nothing that gathering meets (a page too busy to screenshot, a context that will not close) replaces it.
             try
             {
                 await journey.CaptureFailureAsync(name, error, clock.Elapsed);
@@ -145,7 +129,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
         await journey.FinishAsync(name, clock.Elapsed);
     }
 
-    /// <summary>A passing journey: traces and videos are discarded, and a failure to tear down is reported as one.</summary>
+    /// <summary>Discards traces and videos on success and writes the test result.</summary>
     private async Task FinishAsync(string name, TimeSpan elapsed)
     {
         foreach (var context in contexts)
@@ -164,12 +148,7 @@ internal sealed class BrowserJourney(SchedulerStack stack, string directory)
         await WriteResultAsync(name, success: true, elapsed);
     }
 
-    /// <summary>
-    /// A failed journey's evidence, most useful first: the exception, each context's trace (network, console and DOM for the
-    /// whole journey, needing nothing from a page), then each open page's screenshot and accessibility snapshot, then the
-    /// video (written as its context closes). Every step is bounded by <see cref="CaptureStepTimeout"/> and none throws; a
-    /// step that failed is listed in capture.log and in the test's output beside the original exception.
-    /// </summary>
+    /// <summary>Captures failure artifacts (exception, trace, screenshots, ARIA snapshot, and logs) with bounded per-step timeouts.</summary>
     private async Task CaptureFailureAsync(string name, Exception error, TimeSpan elapsed)
     {
         var problems = new List<string>();

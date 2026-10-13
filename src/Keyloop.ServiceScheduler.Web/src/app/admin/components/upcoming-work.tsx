@@ -10,7 +10,7 @@ import { localDateOf, MAX_RANGE_DAYS, rangeReadOptions } from "@/lib/appointment
 import { formatDay, shiftDate } from "@/lib/calendar-date"
 import { cn } from "@/lib/utils"
 
-/** The statuses that still hold a bay and a technician: the ones the API flags (Task 30a). */
+/** Appointment statuses that actively hold a bay and technician. */
 const HOLDING = new Set<AppointmentListItemResponse["status"]>(["Confirmed", "CheckedIn", "InProgress"])
 
 /** How many appointments the preview lists before "and n more". */
@@ -27,12 +27,7 @@ interface UpcomingWorkProps {
 const dayWords = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 const time = (local: string) => local.slice(11, 16)
 
-/**
- * What deactivating a technician or taking a bay out of service would flag (UI_DESIGN 11.24): the appointments from today
- * to the longest range the API reads (62 days) that still hold the resource, read with the range read the Overview and the
- * Calendar use. Each would gain a competence warning on the board; none is moved. Up to five are listed by day, time and
- * service, with the count of the rest; a failed read says so and does not stop the change.
- */
+/** Previews upcoming appointments that would be flagged for review if a technician or bay is deactivated. */
 export function UpcomingWork({ dealership, today, resource, className }: UpcomingWorkProps) {
   const headingId = useId()
   const last = shiftDate(today, MAX_RANGE_DAYS - 1)

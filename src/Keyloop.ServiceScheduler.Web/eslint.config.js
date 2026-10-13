@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `eslint.config.js`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -10,8 +10,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
-    // HeyAPI output (`pnpm generate:api`, Task 15b) is generated, never hand-edited, so it is not linted.
-    // The hand-written client runtime configuration next to it is.
+    // Generated client files are not linted; hand-written runtime.ts is.
     'src/api/**/*',
     '!src/api/runtime.ts',
   ]),
@@ -31,9 +30,7 @@ export default defineConfig([
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
-  // One app, two areas (ARCHITECTURE §15, ADR-030): the admin area (Refine and the resources pages) and the workshop pages
-  // never import each other, so the board's first load never downloads Refine or admin code. Both may use components,
-  // hooks, lib and api. src/module-boundaries.test.ts pins these patterns.
+  // Keep admin (Refine) and workshop pages isolated so the board's initial bundle excludes admin code.
   {
     files: ['src/app/admin/**/*.{ts,tsx}'],
     rules: {
@@ -57,7 +54,6 @@ export default defineConfig([
     },
   },
   {
-    // shadcn/ui files export variants and hooks next to their components by design
     files: ['src/components/ui/**/*.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',

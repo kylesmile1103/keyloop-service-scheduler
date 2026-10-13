@@ -62,27 +62,15 @@ interface BookingTriageProps {
   onAddToNotes: (line: string) => void
   /** "Use this": the service, and the day asked for when it is still to come and the workshop is open then. */
   onUse: (serviceTypeId: string, date: string | null) => void
-  /**
-   * The id of the reason this account can no longer ask for suggestions (signed out, or a role that cannot book): Suggest a
-   * service and the photos are then unavailable and name it (UI_DESIGN 11.20). Nothing is uploaded or asked meanwhile.
-   */
+  /** Element id describing why triage actions are disabled for the current account. */
   blockedBy?: string
-  /**
-   * In the wide dialog's job column (UI_DESIGN 11.14): the same fields, denser, so the column holds the whole job at 1440 x
-   * 900. The frame keeps 12 px of padding, the description box opens at two lines with no spare height, the photo panel is
-   * one row (the picture, what to photograph, then *Add photos*) with the limits behind a *Limits* disclosure, and the
-   * provider's line sits under the buttons it explains.
-   */
+  /** Uses a denser layout for the wide two-column booking dialog. */
   compact?: boolean
 }
 
 /**
- * Booking intake triage in step 1 (ARCHITECTURE §8.10, §15): the issue in the customer's words, "Suggest a service", and
- * the answer as cards to choose from: the likely service (chosen, but never used without the person's "Use this"), the
- * possible ones (nothing chosen when the model is unsure), or a plain no-match with what to do next. A further problem the
- * description mentioned is named in fixed words beside the service it is outside (Task 32b). Using one sets the service
- * and, when that day is still to come and the workshop is open then, the day asked for; the free starts for them come
- * next. A failure leaves the manual choice below as it is.
+ * Booking intake triage in step 1: accepts customer issue text and optional photos, suggests matching services,
+ * and flags uncovered issues that can be added to Notes.
  */
 export function BookingTriageIntake({
   triage,
@@ -102,12 +90,8 @@ export function BookingTriageIntake({
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const suggestRef = useRef<HTMLButtonElement>(null)
   const { answer, failure, pending, waiting, descriptionError, maxLength } = triage
-  // A refused description is shown under the field, not as an alert.
   const alert = failure && !isValidation(failure) ? failure : null
 
-  // The alert goes when its Try again is answered (with suggestions, or a description error), and its focused button goes
-  // with it. Focus then moves to the description that was refused, or back to Suggest a service, instead of falling to
-  // the dialog. A layout effect: in the same commit as the removal, before the dialog's focus guard takes lost focus.
   const hadAlert = useRef(false)
   useLayoutEffect(() => {
     const removed = hadAlert.current && !alert
@@ -160,7 +144,6 @@ export function BookingTriageIntake({
 
       {triage.imagesEnabled && <PhotoField triage={triage} pending={pending} blockedBy={blockedBy} compact={compact} />}
 
-      {/* Compact, the provider's line is the caption of the buttons above it. */}
       <div className={cn("flex flex-col", compact ? "gap-1.5" : "gap-3")}>
         <div className="flex flex-col gap-x-4 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <Button
@@ -168,7 +151,6 @@ export function BookingTriageIntake({
             type="button"
             variant="outline"
             onClick={suggest}
-            // Focusable while it asks (or waits out a rate limit): it was just pressed, and focus must stay in the dialog.
             disabled={pending || waiting > 0 || Boolean(blockedBy)}
             focusableWhenDisabled
             aria-busy={pending || undefined}
@@ -189,7 +171,6 @@ export function BookingTriageIntake({
         <p className="text-xs text-pretty text-muted-foreground">Suggestions by {triage.provider}. Check before booking.</p>
       </div>
 
-      {/* Always on the page, so what each answer says is read out as it arrives. */}
       <p role="status" className="sr-only">
         {pending ? "Looking for matching services…" : answer ? announcement(answer.response, dealership, today, serviceTypes) : ""}
       </p>
@@ -227,37 +208,21 @@ export function BookingTriageIntake({
   )
 }
 
-/** A drag that carries files (not text or a link dragged from the page). */
 const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files")
 
 interface PhotoFieldProps {
   triage: BookingTriage
-  /** A suggestion is being asked for: its photos are on their way, so none is added or removed meanwhile. */
   pending: boolean
-  /** As Suggest a service's: the id of the reason this account cannot ask any more; no photo is added meanwhile. */
   blockedBy?: string
-  /** The wide dialog's one-row panel, with the limits behind *Limits* (`BookingTriageProps.compact`). */
   compact: boolean
 }
 
-/**
- * *Photos or paperwork (optional)*: a styled *Add photos* control over a visually hidden file input (UI_DESIGN 12.1). The
- * input keeps the field's label, accept list, limits, error and keyboard behaviour (Tab reaches it, Enter or Space opens the
- * picker, the control shows its focus), and the browser's own button, "No file chosen" text and tooltip never show. Photos
- * can also be dropped anywhere on the field: a drop goes through the same checks as the picker, and while the field is
- * unavailable it is still kept from the browser, which would otherwise leave the page to open the file. Before the first
- * photo the dashed panel says what is worth photographing, beside the picture of it; after, it is the slim row that adds
- * more. The input keeps its place in the panel either way, so the element the file picker returns focus to is never
- * replaced when the photos arrive. Compact, the panel is one row (the picture, the line, then *Add photos* over "or drop
- * them here") and the limits open from *Limits* at the end of the label's line; closed, they are still the input's
- * description, so a screen reader hears them with the field.
- */
+/** Optional photo upload field with drag-and-drop, file picker, and preview list. */
 function PhotoField({ triage, pending, blockedBy, compact }: PhotoFieldProps) {
   const ids = { input: useId(), help: useId(), error: useId() }
   const disabled = pending || Boolean(blockedBy)
   const [dragging, setDragging] = useState(false)
   const [limitsOpen, setLimitsOpen] = useState(false)
-  // Enter and leave fire for every child the pointer crosses: the highlight goes only when the drag has left the field.
   const depth = useRef(0)
   const noPhotos = triage.photos.length === 0
 
@@ -298,10 +263,6 @@ function PhotoField({ triage, pending, blockedBy, compact }: PhotoFieldProps) {
       {compact ? (
         <div className="flex items-center justify-between gap-3">
           <FieldLabel htmlFor={ids.input}>Photos or paperwork (optional)</FieldLabel>
-          {/*
-            A quiet disclosure, as *Why this allocation* is (UI_DESIGN 11.14): words and a turning chevron, its text level
-            with the panel's edge; 24 px tall (44 px on touch, reaching into the space around the line, not widening it).
-          */}
           <button
             type="button"
             aria-expanded={limitsOpen}
@@ -860,12 +821,7 @@ interface TriageProblemProps {
   onRetry: () => void
 }
 
-/**
- * Why there are no suggestions, in the shared problem alert (UI_DESIGN 11.16): a rate limit waits (Suggest a service
- * counts down), a refusal says what the API said, and any other failure (`503 triage-unavailable`, the network) offers
- * Try again with the same description, unavailable with Suggest a service's reason when the account cannot ask. Manual
- * selection below works throughout.
- */
+/** Displays triage request failures with rate-limit countdowns or retry controls. */
 function TriageProblem({ error, waiting, retrying, blockedBy, onRetry }: TriageProblemProps) {
   const problem = parseProblem(error)
   const status = problem?.status ?? (error instanceof UnexpectedResponseError ? error.status : undefined)

@@ -13,7 +13,7 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/availability", HandleAsync)
             .WithName("GetAvailability")
-            .AllowAnonymous() // public read (ADR-027)
+            .AllowAnonymous()
             .WithTags(ApiTags.Availability)
             .AddEndpointFilter<ValidationFilter<GetAvailabilityQuery>>()
             .Produces<AvailabilityResponse>(StatusCodes.Status200OK)
@@ -22,25 +22,18 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesRateLimitedProblem();
 
-    // The dealershipId, serviceTypeId and date <param> tags document the operation's parameters, which [AsParameters] flattens out
-    // of the query record: the OpenAPI XML-comment generator matches <param> to operation parameters by name (its only source of
-    // descriptions and examples for them), while the compiler knows only the method's own parameters and reports CS1572.
 #pragma warning disable CS1572
     /// <summary>Find bookable start times for a service on a date</summary>
     /// <remarks>
-    /// Start times on the slot grid, counted from opening, at which one active bay with every capability the service requires and one
-    /// active technician with every certification it requires are both free for the whole duration, with how many of each are free.
-    /// A closed day has no slots and <c>unavailableReason</c> <c>closed</c>; a service the dealership can never perform has
-    /// <c>no-qualified-resources</c>. A service longer than that day's opening hours, and opening hours that fall entirely in a
-    /// daylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset
-    /// (<c>2026-10-13T10:00+01:00</c>). The answer is a snapshot; booking checks again.
+    /// Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.
+    /// Reports <c>closed</c> on non-operating days and <c>no-qualified-resources</c> when the dealership lacks required capabilities or certifications.
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose bays, technicians and opening hours are used (the example is the seeded Reading dealership).</param>
     /// <param name="serviceTypeId" example="3153f30d-5700-8f07-a25d-4a4ea44dfeef">The service to fit (the example is the seeded Interim Service).</param>
     /// <param name="date" example="2026-10-13">The dealership's local calendar date, exactly <c>yyyy-MM-dd</c>, from yesterday to the end of the booking horizon.</param>
     /// <param name="powertrain" example="BatteryElectric">Optional powertrain; omitted is conservatively Unknown with vehicle-aware requirements enabled.</param>
-    /// <param name="manufacturer" example="VOLKSWAGEN">Optional OEM code; manufacturer preferences are deferred.</param>
+    /// <param name="manufacturer" example="VOLKSWAGEN">Optional OEM code.</param>
     /// <param name="vehicleClass" example="Heavy">Optional class; Heavy requires a heavy lift and HeavyVehicle certification.</param>
     /// <param name="needsLiveDiagnosis" example="false">Explicit live HV work requiring level 4 and an EV bay.</param>
     /// <param name="handler">Computes availability.</param>

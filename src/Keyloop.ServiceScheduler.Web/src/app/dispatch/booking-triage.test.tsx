@@ -20,7 +20,7 @@ import {
   triageUnavailable,
 } from "@/test/triage"
 
-// Booking intake triage (Task 26): describe the issue, get suggested services from the catalogue, and use one in step 1.
+// Booking intake triage: describe the issue, get suggested services from the catalogue, and apply one in step 1.
 
 vi.mock("@/lib/telemetry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/telemetry")>()
@@ -200,7 +200,6 @@ describe("suggesting a service from the issue", () => {
     const scope = await openDialog()
     await describeAndSuggest(scope, "Can you deliver a pizza?")
 
-    // What a no-match says and offers is Task 32b's (booking-triage-guidance.test.tsx); here, the manual choice stays open.
     expect(await within(scope).findByText("The workshop’s bookable services do not cover what you described.")).toBeInTheDocument()
     expect(within(scope).queryByRole("radiogroup", { name: "Suggested services" })).not.toBeInTheDocument()
     expect(within(scope).queryByRole("button", { name: "Use this" })).not.toBeInTheDocument()

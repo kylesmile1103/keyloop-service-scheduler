@@ -41,11 +41,10 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         var history = await HistoryOfAsync(appointment.Id);
         var entry = history.ShouldHaveSingleItem();
         entry.EventType.ShouldBe("Booked");
-        entry.Actor.ShouldBe("system"); // no HTTP request, so CurrentActor keeps its default
+        entry.Actor.ShouldBe("system");
         entry.OccurredAtUtc.ShouldBe(TestData.Now);
         appointment.DomainEvents.ShouldBeEmpty("events are cleared once they are persisted");
 
-        // Payload: the event's own fields, camelCase, with only the masked VIN (no customer PII reaches the audit trail).
         using var payload = JsonDocument.Parse(entry.Payload);
         payload.RootElement.GetProperty("appointmentId").GetGuid().ShouldBe(appointment.Id);
         payload.RootElement.GetProperty("bayId").GetGuid().ShouldBe(_workshop.Bay1.Id);
@@ -54,7 +53,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         entry.Payload.ShouldNotContain("WVWZZZ1KZAW123456");
         entry.Payload.ShouldNotContain("customer1@example.com");
 
-        // The history row commits or rolls back with the appointment: inside a transaction that is rolled back, neither survives.
         var rolledBack = _workshop.Book(TestData.LondonTime(11));
         await using (var db = NewContext(new CurrentActor(), new RecordingObserver()))
         {
@@ -79,7 +77,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
             await db.SaveChangesAsync(Ct);
         });
 
-        // Same bay, overlapping: the exclusion constraint rejects the insert (23P01) and the whole save rolls back.
         var clash = _workshop.Book(TestData.LondonTime(9, 30), technician: _workshop.Technician2);
         await _factory.WithDbAsync(async db =>
         {
@@ -87,10 +84,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
             var ex = await Should.ThrowAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
             PostgresErrorClassifier.Classify(ex).ShouldBe(PostgresFailure.BayOverlap);
 
-            // The history entry staged for the failed save is not left behind in the change tracker ...
             db.ChangeTracker.Entries<AppointmentHistoryEntry>().ShouldBeEmpty();
-
-            // ... and the aggregate keeps its event, so a corrected retry still audits it exactly once.
             clash.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<AppointmentBooked>();
         });
 
@@ -119,7 +113,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         history.ShouldAllBe(h => h.Actor == "anonymous:203.0.113.7");
 
         using var cancelled = JsonDocument.Parse(history[1].Payload);
-        cancelled.RootElement.GetProperty("previousStatus").GetString().ShouldBe("Confirmed"); // enums as strings
+        cancelled.RootElement.GetProperty("previousStatus").GetString().ShouldBe("Confirmed");
         cancelled.RootElement.GetProperty("reason").GetString().ShouldBe("Customer rescheduled");
     }
 
@@ -129,7 +123,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         var observer = new RecordingObserver();
         var actor = new CurrentActor { Name = "test" };
 
-        // Implicit transaction: SaveChanges commits, then observers hear about it.
         var plain = _workshop.Book(TestData.LondonTime(9));
         await using (var db = NewContext(actor, observer))
         {
@@ -139,7 +132,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
 
         observer.Batches.ShouldHaveSingleItem().ShouldHaveSingleItem().ShouldBeOfType<AppointmentBooked>().AppointmentId.ShouldBe(plain.Id);
 
-        // Explicit transaction: nothing is announced at SaveChanges, only when the transaction commits.
         var explicitCommit = _workshop.Book(TestData.LondonTime(10));
         await using (var db = NewContext(actor, observer))
         {
@@ -153,7 +145,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         observer.Batches.Count.ShouldBe(2);
         observer.Batches[1].ShouldHaveSingleItem().AppointmentId.ShouldBe(explicitCommit.Id);
 
-        // Rolled back or failed: never announced.
         await using (var db = NewContext(actor, observer))
         {
             await using var transaction = await db.Database.BeginTransactionAsync(Ct);
@@ -164,7 +155,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
 
         await using (var db = NewContext(actor, observer))
         {
-            db.Appointments.Add(_workshop.Book(TestData.LondonTime(9, 30))); // overlaps `plain` on Bay 1 and Technician 1
+            db.Appointments.Add(_workshop.Book(TestData.LondonTime(9, 30)));
             await Should.ThrowAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
         }
 
@@ -176,8 +167,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
     [InlineData(false)]
     public async Task A_commit_that_reports_a_failure_holds_its_events_until_resolved(bool committed)
     {
-        // The fault interceptor runs before the audit one, so the audit's post-commit hook never runs and EF Core reports the commit
-        // as failed although the server committed: exactly what a dropped connection after COMMIT looks like to the application.
         var observer = new RecordingObserver();
         var commitLoss = new CommitAcknowledgementLoss();
         var appointment = _workshop.Book(TestData.LondonTime(9));
@@ -199,7 +188,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         observer.Batches.ShouldBeEmpty("a commit in doubt is not announced");
         (await HistoryOfAsync(appointment.Id)).Count.ShouldBe(1, "the server did commit");
 
-        // A new transaction does not settle the doubt either way; only the caller, once it knows, does.
         await using (var other = await db.Database.BeginTransactionAsync(Ct))
         {
             await other.RollbackAsync(Ct);
@@ -207,7 +195,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
 
         observer.Batches.ShouldBeEmpty();
         await events.ResolveInDoubtCommitAsync(committed, Ct);
-        await events.ResolveInDoubtCommitAsync(committed, Ct); // settled once: a second call has nothing left
+        await events.ResolveInDoubtCommitAsync(committed, Ct);
 
         if (committed)
         {
@@ -227,7 +215,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         using (var db = NewContext(new CurrentActor(), observer))
         {
             db.Appointments.Add(appointment);
-            db.SaveChanges(); // the synchronous path is the subject of this test
+            db.SaveChanges();
         }
 
         (await HistoryOfAsync(appointment.Id)).ShouldHaveSingleItem().EventType.ShouldBe("Booked");
@@ -246,8 +234,6 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
             later,
         ];
 
-        // Implicit transaction (async), explicit transaction commit, and the synchronous path: each commits and audits although
-        // two observers throw, and the observer after them is still told.
         var implicitSave = _workshop.Book(TestData.LondonTime(9));
         await using (var db = NewContext(new CurrentActor(), observers, logger))
         {
@@ -268,7 +254,7 @@ public sealed class DomainEventInterceptorTests(PostgresFixture pg) : IAsyncLife
         using (var db = NewContext(new CurrentActor(), observers, logger))
         {
             db.Appointments.Add(synchronousSave);
-            db.SaveChanges(); // the synchronous path is part of the subject
+            db.SaveChanges();
         }
 
         foreach (var appointment in new[] { implicitSave, explicitCommit, synchronousSave })

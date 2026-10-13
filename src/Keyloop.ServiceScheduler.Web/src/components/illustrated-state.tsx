@@ -14,18 +14,12 @@ interface IllustratedStateProps {
   action?: ReactNode
   /** `alert` for a failure the user should hear about at once. */
   role?: "alert" | "status"
-  /**
-   * Gives the picture its alt text, for a picture that shows more than the headline says (UI_DESIGN 12.4). Without it the
-   * picture is decorative (`alt=""`): the headline says what it shows.
-   */
+  /** Exposes illustration alt text when the image conveys more than the heading; otherwise decorative (`alt=""`). */
   described?: boolean
   className?: string
 }
 
-/**
- * A whole view's empty or error state: the illustration, a headline, one line and one action, in a centred column.
- * Inline problems (409, 422, 400, 429) are alerts next to what the user is doing, never one of these.
- */
+/** Full-view empty or error state with an illustration, heading, description, and optional action. */
 export function IllustratedState({ illustration, title, level = 3, children, action, role, described = false, className }: IllustratedStateProps) {
   const Heading = (["h1", "h2", "h3"] as const)[level - 1]
   return (

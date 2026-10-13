@@ -11,10 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// A loopback OTLP/HTTP receiver standing in for the Grafana Cloud gateway: it records each export's path, headers and protobuf body
-/// and answers 200 with an empty (fully successful) export response. Nothing leaves the machine.
-/// </summary>
+/// <summary>Loopback OTLP/HTTP receiver that records exported paths, headers, and protobuf payloads.</summary>
 public sealed class OtlpReceiver : IAsyncDisposable
 {
     private readonly WebApplication _app;
@@ -68,11 +65,7 @@ public sealed class OtlpReceiver : IAsyncDisposable
 
     public sealed record Export(string Path, string Authorization, string ContentType, byte[] Body)
     {
-        /// <summary>
-        /// The string resource attributes of an Export{Traces,Metrics,Logs}ServiceRequest. All three share the shape: field 1 holds the
-        /// Resource{Spans,Metrics,Logs} entries, each with its Resource in field 1, whose field 1 lists KeyValue(key = 1, AnyValue = 2),
-        /// and AnyValue's string_value is field 1 (opentelemetry-proto).
-        /// </summary>
+        /// <summary>Extracts string resource attributes from an OTLP Export{Traces,Metrics,Logs}ServiceRequest protobuf payload.</summary>
         public IReadOnlyDictionary<string, string> ResourceAttributes()
         {
             var attributes = new Dictionary<string, string>(StringComparer.Ordinal);

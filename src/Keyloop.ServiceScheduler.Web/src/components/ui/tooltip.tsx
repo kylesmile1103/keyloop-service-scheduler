@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/tooltip.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/tooltip.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 "use client"
 
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"

@@ -6,11 +6,7 @@ using Riok.Mapperly.Abstractions;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.Mapping;
 
-/// <summary>
-/// Availability responses, generated at compile time by Mapperly (ADR-016, Addendum A §A6). An unmapped target member is a build
-/// error (<see cref="RequiredMappingStrategy.Target"/>). The domain works in UTC only, so the local wall-clock strings are computed
-/// in the dealership's zone by the public wrappers and passed to the generated mappings as additional parameters.
-/// </summary>
+/// <summary>Compile-time Mapperly mappings for availability responses.</summary>
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target, EnumMappingStrategy = EnumMappingStrategy.ByName)]
 public static partial class AvailabilityMapper
 {
@@ -28,7 +24,6 @@ public static partial class AvailabilityMapper
             opensAtLocal: LocalTimeConverter.FormatLocal(window.StartUtc, zone),
             closesAtLocal: LocalTimeConverter.FormatLocal(window.EndUtc, zone));
 
-    // The additional parameters are matched to the target members of the same name (StartLocal; OpensAtLocal, ClosesAtLocal).
     private static partial AvailabilitySlotResponse MapSlot(AvailabilitySlot slot, string startLocal);
 
     private static partial OperatingWindowResponse MapWindow(OperatingWindow window, string opensAtLocal, string closesAtLocal);

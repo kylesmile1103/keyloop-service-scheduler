@@ -8,14 +8,11 @@ import { problemResponse } from "@/test/mock-api"
 import { renderBoard, search, viewportOf } from "@/test/render-board"
 import { appointments, bays, interimDetails, readingTuesday, without, withStatus } from "@/test/schedules"
 
-// The Appointments page (Task 17c): the board's day as a sortable, filterable list, with the board's details sheet.
-
 beforeAll(async () => {
   await import("@/app/appointments/page")
 })
 
 beforeEach(() => {
-  // Tuesday 2026-10-13, 09:30 in Reading (BST). Only Date is faked; timers stay real for the UI.
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
 })
@@ -25,9 +22,7 @@ afterEach(() => {
 
 const readingList = `/appointments?dealership=${reading.id}`
 const table = () => screen.findByRole("table", { name: "Appointments" })
-/** The body rows (the header row is in the first row group). */
 const bodyRows = (list: HTMLElement) => within(within(list).getAllByRole("rowgroup")[1]).getAllByRole("row")
-/** What a column shows in each body row, by its header's name. */
 function columnTexts(list: HTMLElement, header: string): string[] {
   const headers = within(list).getAllByRole("columnheader")
   const index = headers.findIndex((cell) => cell.textContent?.trim() === header)
@@ -40,7 +35,7 @@ const openFilter = async (name: string) => {
   return screen.findByRole("dialog", { name })
 }
 
-/** Reading's Tuesday with six more appointments in Bays 3 and 5, so the day has twelve. */
+/** Reading's Tuesday with six extra appointments in Bay 3 (twelve total). */
 function longDay(): WorkshopScheduleResponse {
   const extra = (index: number): ScheduledAppointmentResponse => {
     const start = Date.parse("2026-10-13T07:00:00Z") + index * 3_600_000
@@ -123,10 +118,8 @@ describe("appointments list", () => {
       "60 min",
     ])
     expect(columnTexts(list, "Duration")).toEqual(["60 min", "60 min", "90 min", "45 min", "120 min", "45 min"])
-    // Six appointments fit one page, so there are no page controls to frame them.
     expect(screen.getByRole("status")).toHaveTextContent("6 appointments")
     expect(screen.queryByRole("navigation", { name: "Pages" })).not.toBeInTheDocument()
-    // Times are the dealership's own, and the page says which zone they are in.
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(document.title).toBe("Appointments – Keyloop Service Scheduler")
   })
@@ -136,7 +129,6 @@ describe("appointments list", () => {
     mockBoardApi()
     renderBoard(readingList)
 
-    // 1440 px (the test default): the time range already says how long each appointment is.
     const list = await table()
     expect(headers(list)).not.toContain("Duration")
     expect(headers(list)).toContain("VIN")
@@ -159,7 +151,6 @@ describe("appointments list", () => {
   })
 
   it("shows the day's figures above the list, whatever the filters", async () => {
-    // Every figure differs (6, 3, 2, 1), so each is pinned to its own statuses.
     let schedule = withStatus(readingTuesday, appointments.interim.id, "Completed")
     schedule = withStatus(schedule, appointments.full.id, "Completed")
     schedule = withStatus(schedule, appointments.evBattery.id, "NoShow")
@@ -168,7 +159,6 @@ describe("appointments list", () => {
     renderBoard(readingList)
 
     const summary = await screen.findByRole("region", { name: "Day summary" })
-    /** A card's figure (its large number, exactly) and its share of the day. */
     const expectFigure = (name: string, value: string, share: string) => {
       const card = within(summary).getByRole("group", { name })
       expect(within(card).getByText(value, { exact: true })).toBeInTheDocument()
@@ -183,7 +173,6 @@ describe("appointments list", () => {
     await waitFor(() => expect(within(summary).getByRole("group", { name: "Appointments" })).not.toHaveAttribute("aria-busy"))
     expectTheDay()
 
-    // The figures are the whole day's: narrowing the list leaves them alone.
     const list = await table()
     const statusFilter = await openFilter("Status")
     fireEvent.click(within(statusFilter).getByRole("checkbox", { name: /^Completed/ }))
@@ -264,7 +253,6 @@ describe("appointments list", () => {
     expect(columnTexts(list, "Bay")).toEqual(["Bay 1 - Standard", "Bay 1 - Standard", "Bay 6 - MOT", "Bay 1 - Standard"])
     expect(screen.getByRole("button", { name: "Bay filter, 2 selected" })).toBeInTheDocument()
 
-    // The other filters count what the bay filter leaves.
     const statusFilter = await openFilter("Status")
     expect(within(statusFilter).getByRole("checkbox", { name: "Confirmed (3 appointments)" })).toBeInTheDocument()
     fireEvent.click(within(statusFilter).getByRole("checkbox", { name: /^Completed/ }))
@@ -292,7 +280,6 @@ describe("appointments list", () => {
     fireEvent.keyDown(serviceFilter, { key: "Escape" })
     expect(columnTexts(list, "Customer")).toEqual(["Harry Whitfield"])
 
-    // Clear filter empties that filter only: the technician filter still holds.
     const again = await openFilter("Service")
     fireEvent.click(within(again).getByRole("button", { name: "Clear filter" }))
     expect(within(again).getByRole("checkbox", { name: /^Four-Wheel Alignment/ })).not.toBeChecked()
@@ -313,7 +300,6 @@ describe("appointments list", () => {
     fireEvent.click(within(list).getByRole("button", { name: "Reset filters" }))
     expect(bodyRows(list)).toHaveLength(6)
     expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveValue("")
-    // The reset took its own button away: focus is on the search field, not the page.
     expect(screen.getByRole("searchbox", { name: "Search appointments" })).toHaveFocus()
   })
 
@@ -345,7 +331,6 @@ describe("appointments list", () => {
 
     expect(bodyRows(list)).toHaveLength(2)
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
-    // Ties keep the bays' order: Bay 1's 13:00 Full Service ends page 1, Bay 3's 13:00 starts page 2.
     expect(columnTexts(list, "Time")).toEqual(["13:00–14:00", "15:00–15:45"])
   })
 })
@@ -356,7 +341,6 @@ describe("appointments list: actions", () => {
     renderBoard(readingList)
     const list = await table()
     const actions = await actionsFor("Interim Service at 08:00, Sophie Turner")
-    // While the modal sheet is open the page is hidden from role queries, so the rows are read from the table itself.
     const selectedRows = () =>
       Array.from(list.querySelectorAll("tbody tr[data-state=selected]"), (row) => row.getAttribute("data-appointment-id"))
     expect(selectedRows()).toEqual([])
@@ -367,7 +351,6 @@ describe("appointments list: actions", () => {
     const sheet = await screen.findByRole("dialog", { name: "Interim Service" })
     expect(sheet).toHaveAccessibleDescription("Tuesday 13 October 2026, 08:00–09:00 (Europe/London)")
     expect(await within(sheet).findByRole("link", { name: "sophie.turner@example.com" })).toBeInTheDocument()
-    // The row whose details are open is highlighted, as the board's block is.
     expect(selectedRows()).toEqual([appointments.interim.id])
 
     fireEvent.click(within(sheet).getByRole("button", { name: "Close" }))
@@ -388,7 +371,6 @@ describe("appointments list: actions", () => {
 
   it("cancels from a row's actions: the sheet opens on the reason, and the row leaves the list", async () => {
     let cancelled = false
-    // The day read after the cancellation is held, as on a slow network: the sheet closes while the row is still listed.
     let answer: () => void = () => {}
     const reread = new Promise<void>((resolve) => (answer = resolve))
     const api = mockBoardApi({
@@ -417,8 +399,6 @@ describe("appointments list: actions", () => {
     expect(new URL(cancel.url).pathname).toBe(`/api/v1/appointments/${appointments.interim.id}/cancel`)
     expect(await cancel.clone().json()).toEqual({ reason: "Customer rang to rearrange" })
 
-    // The sheet has closed and the row is still listed, but it is about to leave: focus goes into the list, not back to the
-    // row's actions button, which would take focus to the page body with it.
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Interim Service" })).not.toBeInTheDocument())
     expect(bodyRows(list)).toHaveLength(6)
     await waitFor(() => expect(region).toContainElement(document.activeElement as HTMLElement))
@@ -596,7 +576,6 @@ describe("appointments list: empty, closed, loading and failed days", () => {
     fireEvent.click(retry)
 
     expect(await table()).toBeInTheDocument()
-    // The pressed Try again has gone with the failure: focus moves to the list, not to the page body.
     await waitFor(() => expect(screen.getByRole("region", { name: reading.name })).toHaveFocus())
   })
 })

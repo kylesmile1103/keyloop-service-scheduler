@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/date-picker.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { labelDayButton } from "react-day-picker"
@@ -23,11 +23,10 @@ interface DateNavigatorProps {
   className?: string
 }
 
-/** Touch layouts get 44 px targets (task 16 mobile addendum). */
 const touch = "max-md:h-11 pointer-coarse:h-11"
 const touchIcon = "max-md:size-11 pointer-coarse:size-11"
 
-/** The calendar's day names, with "closed" after a day the dealership does not open, which is otherwise only struck through. */
+/** Appends "closed" to the day button label on days the dealership does not open. */
 const dayLabels = {
   labelDayButton: (...args: Parameters<typeof labelDayButton>) => {
     const [, modifiers] = args
@@ -35,10 +34,7 @@ const dayLabels = {
   },
 }
 
-/**
- * Which day the board shows: previous and next day, a calendar in a popover (adopted from the template calendar's
- * `date-picker`), and a way back to today. Days come from the dealership's calendar, never the browser's.
- */
+/** Day navigation controls (previous/next day, calendar popover, and Today button) in the dealership's calendar. */
 export function DateNavigator({ date, today, onDateChange, dealership, className }: DateNavigatorProps) {
   const [open, setOpen] = useState(false)
   const go = (next: string) => onDateChange(next)

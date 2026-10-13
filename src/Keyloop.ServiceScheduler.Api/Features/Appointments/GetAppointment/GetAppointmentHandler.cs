@@ -4,10 +4,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.GetAppointment;
 
-/// <summary>
-/// One appointment in any status, with its service, bay, technician and local times (<see cref="AppointmentResponseQuery"/>). Throws
-/// <see cref="NotFoundException"/> (404 <c>not-found</c>, <c>resource</c> = <c>appointment</c>) for an unknown id.
-/// </summary>
+/// <summary>Loads a single appointment by ID or throws <see cref="NotFoundException"/>.</summary>
 public sealed class GetAppointmentHandler(SchedulerDbContext db, Microsoft.Extensions.Options.IOptions<Common.Options.SchedulingOptions> options)
 {
     public async Task<AppointmentResponse> HandleAsync(Guid appointmentId, CancellationToken ct) =>

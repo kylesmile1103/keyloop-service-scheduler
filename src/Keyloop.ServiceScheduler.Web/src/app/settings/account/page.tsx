@@ -17,13 +17,7 @@ import { type CurrentUser, useCurrentUser } from "@/hooks/use-current-user"
 import { nameOf } from "@/lib/session"
 import { cn } from "@/lib/utils"
 
-/**
- * Account (`/settings/account`): who is signed in, from `GET /api/v1/me`, with their API roles and what those allow, and
- * the way in or out: Sign out to the hostname's Access logout, or Sign in returning here. On the development server the
- * identity is the API's configuration, so the page says how to change it instead (UI_DESIGN 11.20). The template's
- * profile, password and delete-account forms are not kept: the account lives with Cloudflare Access, and nothing here is
- * editable.
- */
+/** Account settings page displaying the signed-in identity, roles, and allowed actions. */
 export default function AccountPage() {
   const current = useCurrentUser()
 
@@ -128,12 +122,10 @@ function IdentityCard({ current }: { current: CurrentUser }) {
   )
 }
 
-/** The initials' source: the name, else the email's local part ("sam.advisor@…" gives "SA"). */
 function avatarName(user: CurrentUserResponse): string {
   return user.displayName?.trim() || (user.email ?? "").split("@")[0].replace(/[._-]+/g, " ")
 }
 
-/** One thing the account may or may not do: the words, and a check or a dash with the answer for screen readers. */
 function Fact({ allowed, children }: { allowed: boolean; children: ReactNode }) {
   const Icon = allowed ? CircleCheck : CircleMinus
   return (
@@ -147,7 +139,6 @@ function Fact({ allowed, children }: { allowed: boolean; children: ReactNode }) 
   )
 }
 
-/** The settings that choose the development server's identity, one per way of trying the app. */
 const developmentRoles = [
   { name: "Admin (the default)", value: "Admin" },
   { name: "Service advisor", value: "ServiceAdvisor" },
@@ -155,10 +146,7 @@ const developmentRoles = [
   { name: "Signed out", value: "" },
 ] as const
 
-/**
- * The development server's identity: the API's `Auth:Development` configuration, not a browser session. There is no login
- * page to visit and no session to end, so the card says how to restart the API as another role (README, "Try each role").
- */
+/** Displays instructions for switching roles via configuration on the development server. */
 function DevelopmentIdentityCard() {
   const headingId = useId()
   return (

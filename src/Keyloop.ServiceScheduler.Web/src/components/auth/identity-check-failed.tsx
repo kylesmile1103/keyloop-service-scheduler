@@ -4,13 +4,10 @@ import { Button } from "@/components/ui/button"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { cn } from "@/lib/utils"
 
-/** What a prompt that asks to sign in says while `/me` cannot be read. */
+/** Fallback message displayed inside sign-in prompts when `GET /api/v1/me` fails. */
 export const IDENTITY_CHECK_FAILED = "Couldn’t check who is signed in, so the app treats you as signed out."
 
-/**
- * Inside a sign-in prompt, only while `/me` cannot be read: that the check failed (so nobody is known and the prompt asks
- * to sign in), with Try again, which reads `/me` again (unavailable but focusable while it does).
- */
+/** Displays an inline warning and retry button when the `/me` identity check has failed. */
 export function IdentityCheckFailed({ className }: { className?: string }) {
   const current = useCurrentUser()
   if (current.status !== "failed") return null

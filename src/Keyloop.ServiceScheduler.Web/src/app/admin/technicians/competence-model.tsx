@@ -8,13 +8,7 @@ import { facetFilter } from "../lib/columns"
 import type { TechnicianRecord } from "../lib/resources"
 import { BrandsCell, CompetenceCell } from "./competence"
 
-/**
- * A technician's high-voltage competence (ADR-029 Phase 0), read-only until editing arrives (Task 30): the level with its
- * IMI-style name, how long it is valid (an inclusive date in the dealership's calendar), whether a person confirmed it
- * (a level carried over by the migration is unconfirmed and needs review, yet still counts when booking), whether it has
- * expired (from today it counts as no HV training), and the brands the technician specialises in, which allocation does
- * not use yet. The schedule carries these to a role with vehicle-aware requirements on; otherwise there is nothing to show.
- */
+/** High-voltage competence and brand specialisms for a technician. */
 export interface Competence {
   level: HvLevel
   /** `yyyy-MM-dd`, inclusive; `null` when the level does not expire. */
@@ -52,10 +46,7 @@ function competenceValues(row: TechnicianRecord, today: string): string[] {
   return [`level-${competence.level}`, ...(competence.confirmed ? [] : ["unconfirmed"]), ...(competence.expired ? ["expired"] : [])]
 }
 
-/**
- * The roster's competence columns, for `today` (whether a level has expired is a question about the dealership's date):
- * the HV level (sortable, highest first when descending; an expired level sorts as none) and the brand specialisms.
- */
+/** HV competence and brand specialism columns evaluated against `today`. */
 export function competenceColumns(today: string): ColumnDef<DataTableFeatures, TechnicianRecord>[] {
   return [
     {

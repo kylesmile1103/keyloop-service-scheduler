@@ -12,9 +12,8 @@ import { renderBoard, viewportOf } from "@/test/render-board"
 import { appointments, bays, readingTuesday } from "@/test/schedules"
 import { vehicleAwareOn } from "@/test/vehicle"
 
-// Competence warnings on the board (Task 30b, from Task 30a item 5): the schedule and the record flag an appointment whose
-// technician or bay no longer meets what it was booked with. The board marks the block or card and says so in its label;
-// the details sheet names each reason. A visitor never sees one: the API omits them, and the board would not show a cached one.
+// Competence warnings on the board: flags appointments whose technician or bay no longer meets booked requirements.
+// Visitors never see competence warnings.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")

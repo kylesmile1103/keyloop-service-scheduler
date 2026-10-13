@@ -3,10 +3,7 @@ using Keyloop.ServiceScheduler.Domain.Common;
 namespace Keyloop.ServiceScheduler.Api.Features.Vehicles;
 
 /// <summary>
-/// The vehicle-aware inputs (ADR-029) are honoured only with <c>Scheduling:VehicleAwareRequirements</c> on. With it off, qualification
-/// is the legacy service-type check, so a live-HV flag or a vehicle profile would be silently ignored, and any technician certified for
-/// the service could take work the client explicitly marked as live HV. Such a request is refused instead: 422
-/// <c>vehicle-aware-requirements-disabled</c> with <c>rejectedFields</c>. A request without these inputs is unchanged.
+/// Rejects vehicle-aware inputs with a 422 <c>vehicle-aware-requirements-disabled</c> error when <c>Scheduling:VehicleAwareRequirements</c> is disabled.
 /// </summary>
 public static class VehicleAwareInputs
 {

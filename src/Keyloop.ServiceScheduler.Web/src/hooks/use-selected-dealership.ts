@@ -13,16 +13,8 @@ import { DEALERSHIP_PARAM } from "@/lib/workshop-params"
 export { DEALERSHIP_PARAM }
 
 /**
- * The dealership a page shows (the dispatch board, the appointments list, the resources pages), kept in the address so a
- * reload or a shared link opens the same workshop.
- *
- * Until the list has loaded nothing is selected. Then the dealership the address names is selected; without one, a
- * dealership with work to show is (see `useDefaultDealership`), and the address is updated in place (no extra history
- * entry). An id that names no dealership (a stale link) is replaced the same way, and a toast says so. Choosing a dealership adds a history entry, so Back returns to the
- * previous one. Other search parameters (the date, the lane view) are left alone.
- *
- * The address is only corrected while no navigation is pending: writing it is itself a navigation, and would cancel the
- * user's own (a click to another page whose code is still loading when the list arrives).
+ * Syncs the selected dealership with the `?dealership=` URL query parameter.
+ * Falls back to `useDefaultDealership` (and notifies on stale IDs) when not navigating.
  */
 export function useSelectedDealership(dealerships: readonly DealershipResponse[] | undefined) {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -45,7 +37,6 @@ export function useSelectedDealership(dealerships: readonly DealershipResponse[]
     [setSearchParams]
   )
 
-  // Survives React's development double-run of effects, so a stale link is reported once.
   const reportedStaleId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -66,18 +57,14 @@ export function useSelectedDealership(dealerships: readonly DealershipResponse[]
   return { selected, select }
 }
 
-/** How many dealerships the default choice looks at (two schedule reads each); a longer list starts on its first. */
 const PROBED = 5
 
 const booked = (schedule: WorkshopScheduleResponse | undefined) =>
   schedule?.bays.some((bay) => bay.appointments.length > 0) ?? false
 
 /**
- * The dealership the board opens on when the address names none: the first (in the API's order, by name) with appointments
- * on today's board, else the first with appointments on its next open day, else the first open today, else the first. The
- * API lists dealerships by name, so without this a demo would open on one with nothing booked. It reads today's schedule
- * and the next open day's for the first few dealerships; the chosen one's today read is the board's own query, so the board
- * opens from the cache. `undefined` until those reads have settled (a failed read counts as nothing booked).
+ * Selects a default dealership when none is in the URL: prefers the first with bookings today,
+ * then on its next open day, then open today, then the first in the list.
  */
 export function useDefaultDealership(dealerships: readonly DealershipResponse[] | undefined, enabled: boolean) {
   const now = useNow(60_000)

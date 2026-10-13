@@ -4,10 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 
-/// <summary>
-/// The route and query parameters for the range read. Dates and statuses bind as text so malformed values reach the validator
-/// and produce field-keyed 400 validation errors, as on GetWorkshopSchedule. Date annotations document the OpenAPI contract only.
-/// </summary>
+/// <summary>Route and query parameters for listing appointments over a local date range.</summary>
 public sealed record ListAppointmentsQuery
 {
     public const string DateFormat = "yyyy-MM-dd";

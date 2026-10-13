@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-toolbar.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 
 import type { ReactTable, RowData } from "@tanstack/react-table"
 import { RotateCcw } from "lucide-react"
@@ -18,10 +18,7 @@ interface DataTableToolbarProps<TData extends RowData> {
   noun: Noun
 }
 
-/**
- * A table's controls: the search, a faceted filter per facet, Reset, and the View menu on the right. Reset disables itself
- * once pressed, so it keeps keyboard focus.
- */
+/** Table toolbar with global search, faceted column filters, filter reset, and column visibility menu. */
 export function DataTableToolbar<TData extends RowData>({ table, facets, search, noun }: DataTableToolbarProps<TData>) {
   const filtered = isFiltered(table)
 

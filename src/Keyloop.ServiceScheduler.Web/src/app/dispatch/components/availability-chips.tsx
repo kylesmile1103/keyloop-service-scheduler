@@ -20,23 +20,19 @@ import { type AvailabilityVehicle, availabilityVehicleQuery, vehicleNeeds, vehic
 
 import { localTime } from "../lib/appointment-text"
 
-/** A slot chip (UI_DESIGN 11.6): 40 px, 44 px on touch; selected chips take the primary fill. */
 const chip =
   "group/slot inline-flex min-h-10 min-w-20 cursor-pointer flex-col items-center justify-center rounded-chip border border-input bg-card px-2 py-1 text-sm leading-tight font-medium tabular-nums outline-none transition-colors duration-100 pointer-coarse:min-h-11 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
-/** The chip's second line; on a selected chip it switches to the fill's own ink (muted text there would be 3.06:1). */
 const chipLine = "text-xs font-normal text-muted-foreground"
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`
 
-/** "3 bays · 2 techs": how much capacity is left at a start. */
 function capacity(slot: Pick<AvailabilitySlotResponse, "freeBays" | "freeTechnicians">): string {
   return `${plural(slot.freeBays, "bay")} · ${plural(slot.freeTechnicians, "tech")}`
 }
 
 interface AvailabilityChipsProps {
   dealershipId: string
-  /** The chosen service; until there is one, the chips ask for it. */
   serviceType: ServiceTypeResponse | undefined
   /** The local date, `yyyy-MM-dd`. */
   date: string
@@ -51,33 +47,20 @@ interface AvailabilityChipsProps {
   /** Offered when the day has no free slot: the next day worth trying. */
   nextDate?: string | null
   onDateChange?: (date: string) => void
-  /**
-   * Raised (1, 2, …) to move keyboard focus into the start times once they are on screen: to the chosen chip or the first
-   * one, or else to what the area offers instead (the next day to try, Try again). A suggestion that was just used sets
-   * the service and the day, and a start is the next thing to choose.
-   */
+  /** Incremented to move keyboard focus into the start times once rendered. */
   focusRequest?: number
-  /**
-   * The vehicle the starts are counted for, with vehicle-aware requirements on (ADR-029): its powertrain, class,
-   * manufacturer and live-diagnosis flag go to `GET /availability`, never its VIN, registration or declaration reason.
-   */
+  /** Vehicle attributes for vehicle-aware availability queries (excludes VIN, registration, and declaration reason). */
   vehicle?: AvailabilityVehicle
-  /** The API refused the vehicle parameters (`422 vehicle-aware-requirements-disabled`): the switch the app read is stale. */
+  /** Called when the API refuses vehicle parameters (`422 vehicle-aware-requirements-disabled`). */
   onVehicleRefused?: () => void
-  /**
-   * The area has a column of its own (the booking dialog's two columns): a hint fills its height, centred, so the column
-   * reads as the place the start times will be rather than as space left over.
-   */
+  /** Whether the hint should expand to fill its column height. */
   fill?: boolean
 }
 
-/** A vehicle's parameters as one comparable value, to tell when they changed. */
 const vehicleKey = (vehicle: AvailabilityVehicle | undefined) => (vehicle ? JSON.stringify(availabilityVehicleQuery(vehicle)) : "")
 
 /**
- * The free start times of a service on a day (`GET /availability`) as a radio group of chips, grouped Morning and Afternoon,
- * each with its local time and remaining capacity. Arrow keys move between chips, Space chooses, Tab enters and leaves the
- * group. Only bookable starts are drawn; a day without one says why and offers the next day.
+ * Renders bookable start times for a service on a day (`GET /availability`) as a Morning/Afternoon radio group of chips.
  */
 export function AvailabilityChips({ dealershipId, focusRequest = 0, vehicle, onVehicleRefused, ...view }: AvailabilityChipsProps) {
   const { serviceType, date, value, onValueChange } = view

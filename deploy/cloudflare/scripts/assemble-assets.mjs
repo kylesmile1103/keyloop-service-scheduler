@@ -4,9 +4,7 @@ import { fileURLToPath } from "node:url";
 const edge = new URL("../", import.meta.url);
 const scalarPackage = new URL("node_modules/@scalar/api-reference/", edge);
 
-// The static API reference, published at the paths the API's own Development reference uses (/scalar/v1 and
-// /openapi/v1.json), so the board's "API reference" link works locally and on the deployed site. Static Assets serve
-// scalar/v1.html at /scalar/v1. Destination path to source.
+// Static API reference asset mappings served at /scalar/v1 and /openapi/v1.json.
 export const REFERENCE_FILES = {
   "scalar/v1.html": new URL("api-reference/v1.html", edge),
   "scalar/before.js": new URL("api-reference/before.js", edge),

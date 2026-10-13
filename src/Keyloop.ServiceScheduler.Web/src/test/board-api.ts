@@ -66,12 +66,9 @@ export interface BoardApiOptions {
   features?: () => Answer<FeatureSwitchesResponse>
   /** POST a VIN to resolve. By default: Volkswagen for a WVW VIN, the manufacturer not known for any other. */
   resolveVehicle?: (body: ResolveVehicleProfileRequest) => Answer<VehicleProfile>
-  /** POST a returning-customer search (`FindReturningCustomers`, Task 39). By default: nothing matches. */
+  /** POST a returning-customer search (`FindReturningCustomers`). By default: empty list. */
   customerLookup?: (dealershipId: string, body: FindReturningCustomersRequest, request: Request) => Answer<ReturningCustomerResponse[]>
-  /**
-   * The Admin routes of Task 30a (technicians, bays, the requirement policy, the change history), answered by an
-   * `adminServer` (src/test/admin-api.ts). Without one they are 404s, as on an API that has none.
-   */
+  /** Optional in-memory Admin API handler (`adminServer`). When omitted, Admin routes return 404. */
   admin?: { handle: (request: Request, url: URL) => Promise<Response | null> }
 }
 

@@ -9,8 +9,6 @@ import { renderBoard, search, viewportOf } from "@/test/render-board"
 import { bodyRows, columnTexts, figure, figureValue, headers, openFilter } from "@/test/resource-list"
 import { readingSunday, readingTuesday, technicians } from "@/test/schedules"
 
-// The Technicians page (Task 29): the roster as a read-only list on Refine core, with today's work.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/technicians/page")])
 })
@@ -46,12 +44,9 @@ describe("technicians list", () => {
     expect(columnTexts(list, "Appointments today")).toEqual(["1", "1", "2", "1", "0", "1"])
     expect(columnTexts(list, "Booked today")).toEqual(["1 h", "1 h", "2 h 15 min", "2 h", "0 min", "45 min"])
     expect(columnTexts(list, "Status")).toEqual(Array(6).fill("Active"))
-    // The certifications are the board's badges, read out once as a list.
     const [amelia, , , , eva] = bodyRows(list)
     expect(within(amelia).getByText("Certified for: Brakes, MOT tester, General service.")).toBeInTheDocument()
-    // Task 32a's certification, in its own words.
     expect(within(eva).getByText("Certified for: Diagnostics, Air-con, Damage assessment, General service.")).toBeInTheDocument()
-    // One read of today's schedule, in the dealership's own calendar; the day and zone are named.
     expect(requestsTo(requests, "/schedule").map((request) => new URL(request.url).search)).toContain("?date=2026-10-13")
     expect(screen.getByRole("heading", { level: 2, name: reading.name })).toBeInTheDocument()
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
@@ -140,7 +135,6 @@ describe("technicians list", () => {
     expect(bodyRows(list)).toHaveLength(6)
     expect(columnTexts(list, "Booked today")).toEqual(Array(6).fill("Closed"))
     expect(figureValue("Technicians")).toBe("6")
-    // A closed day has no figure for the day, not a 0: each card says so in words.
     for (const label of ["Working today", "Booked today", "Technician load"]) {
       expect(figureValue(label)).toBe("–No figure")
       expect(figure(label)).toHaveTextContent("Closed today")
@@ -153,7 +147,6 @@ describe("technicians list", () => {
     renderBoard(page)
 
     expect(await screen.findByRole("heading", { name: "No technicians yet" })).toBeInTheDocument()
-    // The empty roster's own picture (wave 2): an open, empty locker beside the tool board.
     expect(screen.getByRole("img", { name: "Tool pegboard beside an open, empty technician locker." }).getAttribute("src")).toMatch(/\/empty-technicians\.webp$/)
     expect(screen.getByText("Open today 08:00–18:00 (Europe/London).")).toBeInTheDocument()
     expect(figure("Technicians")).toHaveTextContent("0None yet")

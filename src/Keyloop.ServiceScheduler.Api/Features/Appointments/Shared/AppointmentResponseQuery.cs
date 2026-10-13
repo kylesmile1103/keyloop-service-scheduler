@@ -3,17 +3,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 
-/// <summary>
-/// Reads one appointment as an <see cref="AppointmentResponse"/>: what <c>GetAppointment</c> serves and what <c>CancelAppointment</c>
-/// answers with after its commit, so both show exactly what the database holds.
-/// </summary>
+/// <summary>Queries a single appointment and its referenced entities as an <see cref="AppointmentResponse"/>.</summary>
 public static class AppointmentResponseQuery
 {
-    /// <summary>
-    /// The response for the appointment with <paramref name="appointmentId"/>, or null when there is none. One query: the appointment
-    /// joined to its dealership's time zone (for <c>startLocal</c>/<c>endLocal</c>), its service type, bay and technician, which the
-    /// aggregate references by id only. The foreign keys make the inner joins total. Untracked, outside any transaction.
-    /// </summary>
+    /// <summary>Returns the <see cref="AppointmentResponse"/> for <paramref name="appointmentId"/>, or null if not found.</summary>
     public static async Task<AppointmentResponse?> FindAsync(SchedulerDbContext db, Guid appointmentId, CancellationToken ct, bool competence = false)
     {
         ArgumentNullException.ThrowIfNull(db);

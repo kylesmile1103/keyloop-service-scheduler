@@ -43,7 +43,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         {
             var request = TestData.BookingRequest(service.Id, TestData.LondonTime(10));
             var json = JsonSerializer.SerializeToNode(request, SchedulerJsonContext.Default.BookAppointmentRequest)!.AsObject();
-            // Build explicit JSON without reflection-based serialization in this process.
             if (!unknown)
             {
                 json["vehicle"]!["profile"] = System.Text.Json.Nodes.JsonNode.Parse("{\"powertrain\":\"Ice\",\"declarationReason\":\"Verified at intake\"}");
@@ -80,7 +79,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         body.RootElement.GetProperty("minimumHvLevel").GetInt32().ShouldBe(4);
         body.RootElement.GetProperty("requiredBrand").ValueKind.ShouldBe(JsonValueKind.Null);
-        // The legacy component floor is named as well, so the dispatcher can see why level 3 would apply even to a declared ICE vehicle.
         body.RootElement.GetProperty("firedRules").EnumerateArray().Select(r => r.GetString()).ShouldBe(
             declareIce ? ["legacy-hv-component", "hv-live-diagnosis"] : ["legacy-hv-component", "hv-components", "hv-live-diagnosis"]);
     }
@@ -175,7 +173,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
             using var body = await response.ReadProblemAsync(Ct);
             body.RootElement.GetProperty("type").GetString().ShouldEndWith("/vehicle-profile-conflict");
             body.RootElement.GetProperty("conflictingAttributes").EnumerateArray().Select(a => a.GetString()).ShouldBe(["manufacturer"]);
-            // The answer names the attribute only: never the identifiers, the declared value or the private reason.
             foreach (var secret in new[] { request.Vehicle.Vin, request.Vehicle.Registration, "BMW", "Checked engine" })
             {
                 text.ShouldNotContain(secret);
@@ -247,11 +244,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         string.Join('\n', spanTags).ShouldNotContain(reason);
     }
 
-    /// <summary>
-    /// Each resolution counts every fired rule once and each distinct provenance source once, the allocation's deciding criterion once
-    /// after commit, and nothing on an early idempotent replay; a refused resource gap still counts its resolution. No tag carries the
-    /// declaration text, the actor or an identifier.
-    /// </summary>
     [Fact]
     public async Task Vehicle_aware_telemetry_counts_each_resolution_once_and_carries_no_private_text()
     {
@@ -272,7 +264,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         void ShouldHaveCounted()
         {
             Counts("scheduler.requirements.rule_fired", "rule").ShouldBe([("hv-routine", 1L)]);
-            // Powertrain declared, manufacturer decoded from the WVW VIN, class not given: three distinct sources, one count each.
             Counts("scheduler.intake.profile_source", "source").ShouldBe([("Declared", 1L), ("Unknown", 1L), ("VinDecoded", 1L)]);
             Counts("scheduler.allocation.decided_by", "criterion").ShouldBe([(allocation.DecidedBy.ToString(), 1L)]);
             metrics.Sum("scheduler.allocation.below_hv_minimum").ShouldBe(0);
@@ -284,7 +275,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         replay.Headers.Contains("Idempotent-Replayed").ShouldBeTrue();
         ShouldHaveCounted();
 
-        // A refused resource gap is still one resolution: its rules are counted, nothing is allocated.
         var gap = TestData.BookingRequest(ReferenceDataSeed.ServiceTypeId("EV-BATTERY-CHECK"), TestData.LondonTime(11)) with { NeedsLiveDiagnosis = true };
         using var refused = await client.PostJsonAsync(BookingUrl(ReferenceDataSeed.ReadingDealershipId), gap, SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
         refused.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
@@ -327,7 +317,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         var technician = TestData.NewTechnician(site.Id, "Tech", "LOCAL", Certification.GeneralService);
         technician.SetCompetence(2, new DateOnly(2026, 10, expiryDay), false);
         var service = TestData.NewServiceType("INTERIM-SERVICE-LOCAL", 60, [BayCapability.StandardLift], [Certification.GeneralService]);
-        // An explicit policy for this service exercises persisted policy rules and local-date qualification together.
         var rules = RequirementRule.DefaultPolicy(site.Id).Select(r => r.Code == "hv-routine" ? r with { ServiceCodes = [service.Code] } : r).ToArray();
         await _factory.WithDbAsync(async db => { db.AddRange(site, bay, technician, service); db.RequirementRules.AddRange(rules); await db.SaveChangesAsync(Ct); });
         using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
@@ -362,10 +351,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         }
     }
 
-    /// <summary>
-    /// With the flag off, qualification is the legacy service-type check, so an explicit live-HV flag or a declared profile cannot be
-    /// honoured. Accepting them would let any certified technician take work the client explicitly marked as live HV.
-    /// </summary>
     [Theory]
     [InlineData(true, false, "needsLiveDiagnosis")]
     [InlineData(false, true, "vehicle.profile")]
@@ -415,10 +400,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
     }
 
-    /// <summary>
-    /// A vehicle enum is one member name. The framework's converter and Enum.TryParse OR comma-separated members together and read
-    /// numbers: "Heavy, LightCommercial" was VehicleClass.Unknown (2 | 1), which booked a heavy vehicle on a standard lift.
-    /// </summary>
     [Theory]
     [InlineData("{\"vehicleClass\":\"Heavy, LightCommercial\"}")]
     [InlineData("{\"vehicleClass\":\"Heavy,Car\"}")]
@@ -492,10 +473,6 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
     }
 
-    /// <summary>
-    /// A named technician's HV level, its expiry and whether HR confirmed it are employee data: the public board shows them only to a
-    /// caller with an API role, the same audience as the customer data (ADR-027).
-    /// </summary>
     [Theory]
     [InlineData("Anonymous", false)]
     [InlineData("Unknown", false)]
@@ -509,7 +486,7 @@ public sealed class VehicleAwareBookingTests(PostgresFixture pg) : IAsyncLifetim
         client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
         client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, role);
 
-        foreach (var date in new[] { "2026-10-13", "2026-10-18" }) // an open day and a closed Sunday, which lists the roster alone
+        foreach (var date in new[] { "2026-10-13", "2026-10-18" })
         {
             using var schedule = JsonDocument.Parse(await client.GetStringAsync(
                 $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/schedule?date={date}", Ct));

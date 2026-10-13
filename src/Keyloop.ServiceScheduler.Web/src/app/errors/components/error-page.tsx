@@ -10,21 +10,13 @@ import { buttonVariants } from "@/components/ui/button"
 import type { Illustration } from "@/lib/illustrations"
 
 interface ErrorPageProps {
-  /** The headline, which is also the browser tab's title. */
   title: string
-  /** The page's own picture (UI_DESIGN 12.1), described by its alt text: it shows what the headline does not say. */
   illustration: Illustration
-  /** One or two lines: what happened, and what to do. */
   children: ReactNode
-  /** The page's one action. */
   action: ReactNode
 }
 
-/**
- * An error page in the app's frame (UI_DESIGN 12.1, the not-found page's layout): the sidebar and header stay, so every
- * page is still a click away, and the work surface holds the illustrated state with the headline as the page's `h1` and
- * one action. The template's placeholder image, numeric headline, "Go Back Home" and "Contact Us" are not kept.
- */
+/** Shared layout for status error pages within the application shell. */
 export function ErrorPage({ title, illustration, children, action }: ErrorPageProps) {
   return (
     <BaseLayout documentTitle={title}>

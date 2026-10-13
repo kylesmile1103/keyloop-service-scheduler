@@ -1,20 +1,6 @@
--- DML-only grants for the API's runtime role (ARCHITECTURE §10 "DB role", ADR-007).
---
--- Run as the role that owns the migrated tables (the role that ran the EF migration bundle), connected to the scheduler database,
--- after the bundle has run:
---
+-- DML-only grants for the API runtime role (scheduler_app).
+-- Run as the table-owning migration role after applying the EF migration bundle:
 --   psql "$KEYLOOP_OWNER_URL" -v ON_ERROR_STOP=1 -f deploy/neon/runtime-role.sql
---
--- The runtime role must already exist as a plain LOGIN role created with SQL (see deploy/cloudflare/DEPLOY-RUNBOOK.md). On Neon,
--- roles created in the Console, CLI or API become members of neon_superuser, which is not a DML-only role; the checks below refuse
--- such a role. This script never creates a role or handles a password, and it is safe to run again after every migration bundle.
---
--- Explicit grants follow the runtime write paths, including Production's SeedDemoData=true demo override.
--- Appointment and Admin audits, policy rules and version markers are append-only. Appointments cannot be deleted.
--- Only idempotency keys need DELETE (expiry replacement). The Development-only destructive reseed uses the dev/owner role.
--- All keys are application-generated UUIDs (or the client's idempotency string); no runtime sequence privilege is needed.
--- Future tables/sequences receive no automatic grants: each migration must review this matrix and its verification.
--- Transaction-scoped advisory locks need no grant (PUBLIC may execute them).
 
 \set ON_ERROR_STOP on
 

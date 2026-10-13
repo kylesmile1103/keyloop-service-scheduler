@@ -35,7 +35,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public void Json_is_reflection_free_with_the_scheduler_context_first_in_the_chain()
     {
-        // The test process mirrors the API's feature switch, so a type missing from the contexts fails here as it would in production.
         JsonSerializer.IsReflectionEnabledByDefault.ShouldBeFalse();
 
         var options = _factory.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
@@ -66,7 +65,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("triage_permits", "Security:RateLimiting:TriagePermitsPerMinute", "0", "SecurityOptions", "TriagePermitsPerMinute")]
     public async Task Invalid_configuration_fails_startup_before_any_database_work(string name, string key, string value, string optionsType, string member)
     {
-        // A fresh, empty database: if startup migrated before validating, the history table would exist afterwards.
         var connectionString = await pg.CreateEmptyDatabaseAsync($"startup_failure_{name}", Ct);
         using var factory = new SchedulerApiFactory(connectionString, TestData.Clock()).WithWebHostBuilder(builder => builder.UseSetting(key, value));
 
@@ -132,8 +130,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("text/plain")]
     public async Task Rate_limited_request_is_429_with_Retry_After_whatever_the_client_accepts(string accept)
     {
-        // Migrate the shared database first, so this host's log holds only the requests below: when it is the first host to start,
-        // EF's Migrate reports its probe of the missing history table as a command error (Information since Program.cs lowers it).
         _ = _factory.Services;
         var logs = new CapturingLoggerProvider();
         await using var factory = _factory.WithWebHostBuilder(builder => builder
@@ -165,7 +161,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
         }
         else
         {
-            // No problem body can be written for this client; the status-code pages middleware answers in plain text instead.
             limited.Content.Headers.ContentType.ShouldNotBeNull().MediaType.ShouldBe("text/plain");
             body.ShouldContain("429");
         }
@@ -231,7 +226,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
             AllowOrigin(get).ShouldBeNull();
         }
 
-        // Default configuration (no origins): default-deny.
         using var defaultClient = _factory.CreateClient();
         using var denied = await PreflightAsync(defaultClient, "https://board.example");
         AllowOrigin(denied).ShouldBeNull();
@@ -242,7 +236,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("Production", HttpStatusCode.NotFound)]
     public async Task OpenApi_and_Scalar_are_mapped_everywhere_but_production(string environment, HttpStatusCode expected)
     {
-        // Also boots the environment's appsettings file through options validation, with the ingress network the platform supplies.
         await using var factory = _factory.WithWebHostBuilder(builder => builder
             .UseEnvironment(environment)
             .UseSetting("Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/24"));
@@ -266,7 +259,7 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
             .UseSetting("Security:ForwardedHeaders:KnownNetworks:0", "10.0.0.0/24"));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            BaseAddress = new Uri("https://scheduler.example"), // HSTS intentionally excludes loopback hosts
+            BaseAddress = new Uri("https://scheduler.example"),
             AllowAutoRedirect = false,
         });
 
@@ -285,8 +278,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("Production")]
     public void Forwarded_headers_fail_startup_in_UAT_and_Production_until_the_platform_supplies_the_ingress_addresses(string environment)
     {
-        // The environment files enable forwarded headers but ship no trusted addresses: configuration arrays merge by index, so an
-        // environment variable meant to replace a shipped default would only overwrite one entry and keep the rest trusted.
         using var factory = _factory.WithWebHostBuilder(builder => builder.UseEnvironment(environment));
 
         var ex = Should.Throw<Exception>(() => factory.CreateClient());
@@ -307,7 +298,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
 
         Should.Throw<Exception>(() => factory.CreateClient());
 
-        // A structured record (JSON console, OTLP) of why the process is about to die, not only the crash text on stderr.
         var entry = logs.Entries.Where(e => e.EventId.Id == 1103).ShouldHaveSingleItem();
         entry.EventId.Name.ShouldBe("StartupValidationFailed");
         entry.Level.ShouldBe(LogLevel.Critical);
@@ -318,7 +308,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public void Unconvertible_configuration_value_fails_startup_and_is_logged_as_critical_1104_without_the_value()
     {
-        // The configuration binder throws InvalidOperationException, not OptionsValidationException, for a value it cannot convert.
         var logs = new CapturingLoggerProvider();
         using var factory = _factory.WithWebHostBuilder(builder => builder
             .UseSetting("Scheduling:SlotGranularityMinutes", "abc")
@@ -339,8 +328,6 @@ public sealed class HostConfigurationTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public void Uri_connection_string_fails_startup_without_repeating_its_password()
     {
-        // The form Neon shows by default. Npgsql's own parse error quotes the whole value, which reached the container log as the
-        // unhandled exception until the composition root parsed the connection string itself.
         const string secret = "uri-secret-sentinel";
         var logs = new CapturingLoggerProvider();
         using var factory = _factory.WithWebHostBuilder(builder => builder

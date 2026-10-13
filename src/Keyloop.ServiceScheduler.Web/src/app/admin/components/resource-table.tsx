@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ReactTable } from "@tanstack/react-table"
 import type { ReactNode } from "react"
 
@@ -10,10 +10,7 @@ import { cn } from "@/lib/utils"
 
 const ariaSort = { asc: "ascending", desc: "descending" } as const
 
-/**
- * The first column stays in view while a narrow table scrolls sideways inside its card (a tablet held upright), as the
- * appointments list's time column does: an opaque fill repeating the row's tint, and below 1024 px a hairline on its edge.
- */
+/** Sticky styling for the first column on narrow viewports. */
 const halfMuted = "bg-[color-mix(in_srgb,var(--muted)_50%,var(--card))]"
 const stickyEdge = "sticky left-0 z-10 max-lg:shadow-[inset_-1px_0_0_var(--border)]"
 const stickyHead = cn(stickyEdge, halfMuted)
@@ -24,19 +21,11 @@ interface ResourceTableProps<TRow extends { id: string }> {
   /** The table's accessible name: "Technicians". */
   label: string
   noun: Noun
-  /**
-   * The row actions slot, left for the admin dashboard's editing (Task 30): a trailing cell per row with the row's menu.
-   * The lists are read-only until then, so no page passes it and no actions column is drawn.
-   */
+  /** Optional trailing actions cell per row. */
   rowActions?: (row: TRow) => ReactNode
 }
 
-/**
- * A resource list as a table, adopted from the template's users data table with the appointments list's anatomy
- * (UI_DESIGN 11.17): compact sortable headers with `aria-sort`, 44 px rows, numbers right-aligned, the first column held
- * in place while the table scrolls inside its card, and a row saying so when the search and filters match nothing. The
- * template's row selection, avatars from image URLs and per-role colours are not kept.
- */
+/** Sortable resource data table with sticky first column and empty filter state. */
 export function ResourceTable<TRow extends { id: string }>({ table, label, noun, rowActions }: ResourceTableProps<TRow>) {
   const rows = table.getRowModel().rows
   const columnCount = table.getVisibleLeafColumns().length + (rowActions ? 1 : 0)

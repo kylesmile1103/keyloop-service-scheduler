@@ -28,8 +28,7 @@ public class AllocationPolicyTests
     private static Technician Tech(Guid id, string name, params Certification[] certifications) =>
         Technician.Create(id, DealershipId, name, "T-1000", certifications);
 
-    // The name tie-break tests use fixed ids assigned in reverse of name order, so an ordering that compared Id before Name would
-    // always pick a different resource. Random ids let that mutant survive whenever they happened to sort like the names.
+    // Fixed IDs are assigned in reverse name order so comparing Id before Name would pick a different resource.
     private static Guid FixedId(int n) => Guid.Parse($"00000000-0000-0000-0000-{n:D12}");
 
     [Fact]

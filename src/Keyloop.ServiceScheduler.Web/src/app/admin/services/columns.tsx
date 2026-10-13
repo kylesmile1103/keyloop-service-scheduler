@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx` (its column
-// definitions), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { CapabilityBadges } from "@/components/capability-badges"
@@ -20,10 +20,7 @@ export const bookableValue = (row: ServiceRecord) => (row.bookable ? "yes" : "no
 
 const needs = (row: ServiceRecord) => featureLabels(row.requiredBayCapabilities, row.requiredCertifications)
 
-/**
- * The catalogue's columns: the service, its stable code (monospace, an identifier), how long it holds a bay and a
- * technician, what it needs of both (the board's badges), whether this dealership can book it and today's bookings.
- */
+/** Column definitions for the service catalogue table. */
 export const serviceColumns: ColumnDef<Features, ServiceRecord>[] = [
   {
     id: "name",

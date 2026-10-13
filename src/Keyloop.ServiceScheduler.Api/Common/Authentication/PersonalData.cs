@@ -5,18 +5,7 @@ using Keyloop.ServiceScheduler.Domain.Scheduling;
 namespace Keyloop.ServiceScheduler.Api.Common.Authentication;
 
 /// <summary>
-/// The single audience policy for personal data on the anonymous reads: the workshop schedule and the appointment-range read
-/// (ARCHITECTURE section 8.7, ADR-027). A caller with any API role (Admin, ServiceAdvisor, Viewer) receives the stored values. Every
-/// other caller (anonymous, an invalid or expired session, or a verified identity without a configured role) receives fixed masks:
-/// <list type="bullet">
-/// <item>customer name: one upper-case initial per whitespace-separated part, from the part's first letter (leading punctuation
-/// and digits are skipped; a part without a letter contributes nothing): <c>Alice Louise Smith</c> and <c>(Alice) Smith</c>
-/// become <c>ALS</c> and <c>AS</c>;</item>
-/// <item>VIN: the domain mask that logs and events use, <see cref="Vin.Masked"/>: <c>WVWZZZ1KZAW123456</c> becomes
-/// <c>***********123456</c>;</item>
-/// <item>registration: fully masked as <c>*******</c>, whatever the plate. The last three letters of a current UK plate are its
-/// most distinctive part, so no suffix is kept, and the fixed width does not reveal the plate's length.</item>
-/// </list>
+/// Resolves customer personal data for schedule and appointment list responses, returning full values for callers with an API role and masked values otherwise.
 /// </summary>
 internal static class PersonalData
 {

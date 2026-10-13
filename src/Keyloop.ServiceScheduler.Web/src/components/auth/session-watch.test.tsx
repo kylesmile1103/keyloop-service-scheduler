@@ -15,9 +15,6 @@ import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, renderBoard } from "@/test/render-board"
 import { readingTuesday } from "@/test/schedules"
 
-// The server's word on identity, answered in one place (Task 27b): 401 and 403 from any read or write, and the cache
-// cleared when /me names another caller.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/appointments/page")])
 })

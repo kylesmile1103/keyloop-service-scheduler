@@ -5,11 +5,7 @@ import { cn } from "@/lib/utils"
 
 import { type ServiceRecord, splitSentence } from "../lib/resources"
 
-/**
- * Whether the dealership can book a service: "Yes", or "No" with what it lacks as outline badges (the booking dialog's
- * `422 no-qualified-resources` treatment, UI_DESIGN 11.6) and, when every need exists but not together, which side splits
- * them ("Not all on one technician").
- */
+/** Displays whether a service is bookable at the dealership, or the missing capabilities/certifications. */
 export function BookableState({ service, className }: { service: ServiceRecord; className?: string }) {
   if (service.bookable) {
     return (

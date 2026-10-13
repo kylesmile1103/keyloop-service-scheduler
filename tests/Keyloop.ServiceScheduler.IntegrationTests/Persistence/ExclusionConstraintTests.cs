@@ -7,10 +7,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
-/// <summary>
-/// The overlap invariant is enforced by the database itself (ARCHITECTURE §7.3 layer 1): these writes bypass the booking handler
-/// and its advisory lock, exactly like an out-of-band writer would.
-/// </summary>
+/// <summary>Verifies PostgreSQL exclusion constraints reject overlapping active appointments even for direct SQL writes.</summary>
 public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -32,7 +29,6 @@ public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetim
     {
         await BookAsync(TestData.LondonTime(9), _workshop.Bay1, _workshop.Technician1);
 
-        // Same bay, a different technician, overlapping by 30 minutes.
         var ex = await Should.ThrowAsync<PostgresException>(() =>
             InsertRawAsync(TestData.LondonTime(9, 30), TestData.LondonTime(10, 30), _workshop.Bay1.Id, _workshop.Technician2.Id));
 
@@ -46,7 +42,6 @@ public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetim
     {
         await BookAsync(TestData.LondonTime(9), _workshop.Bay1, _workshop.Technician1);
 
-        // A different bay, the same technician, starting inside the existing slot.
         var ex = await Should.ThrowAsync<PostgresException>(() =>
             InsertRawAsync(TestData.LondonTime(9, 45), TestData.LondonTime(10, 45), _workshop.Bay2.Id, _workshop.Technician1.Id));
 
@@ -66,10 +61,7 @@ public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetim
             await db.SaveChangesAsync(Ct);
         });
 
-        // The exact same bay, technician and slot are free again ...
         await InsertRawAsync(TestData.LondonTime(9), TestData.LondonTime(10), _workshop.Bay1.Id, _workshop.Technician1.Id);
-
-        // ... and a terminal-status row may overlap an active one, because the constraints are partial.
         await InsertRawAsync(TestData.LondonTime(9), TestData.LondonTime(10), _workshop.Bay1.Id, _workshop.Technician1.Id, status: "NoShow");
 
         (await CountAsync()).ShouldBe(3);
@@ -80,7 +72,6 @@ public sealed class ExclusionConstraintTests(PostgresFixture pg) : IAsyncLifetim
     {
         await BookAsync(TestData.LondonTime(9), _workshop.Bay1, _workshop.Technician1);
 
-        // Half-open ranges: [09:00, 10:00) and [10:00, 11:00) touch but do not overlap, on both the bay and the technician.
         await InsertRawAsync(TestData.LondonTime(10), TestData.LondonTime(11), _workshop.Bay1.Id, _workshop.Technician1.Id);
         await InsertRawAsync(TestData.LondonTime(8), TestData.LondonTime(9), _workshop.Bay1.Id, _workshop.Technician1.Id);
 

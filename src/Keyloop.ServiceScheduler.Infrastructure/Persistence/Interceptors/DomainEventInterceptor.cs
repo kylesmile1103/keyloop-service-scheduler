@@ -9,25 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 
 /// <summary>
-/// Turns the domain events of saved aggregates into <c>appointment_history</c> and <c>notification_outbox</c> rows inside the same SaveChanges (so the audit row
-/// commits or rolls back with the change), and tells <see cref="IDomainEventObserver"/>s about the events only after the
-/// transaction has committed (ARCHITECTURE §5.6). Outbox rows that the recipient policy suppressed when they were staged are counted
-/// and logged (1305) at the same moment, so a suppression is reported once and only for a committed change.
+/// Stages <c>appointment_history</c> and <c>notification_outbox</c> rows during <c>SaveChanges</c> and notifies
+/// <see cref="IDomainEventObserver"/>s after the transaction commits.
 /// </summary>
-/// <remarks>
-/// One instance per DbContext (both are scoped). When SaveChanges runs in its own transaction, observers are notified as soon as it
-/// returns; inside an explicit transaction they are notified when that transaction commits, and never if it rolls back. A failed
-/// SaveChanges detaches the staged history and notification rows and leaves the aggregates' events in place, so a retry audits them exactly once.
-/// An observer that throws (cancellation included) is logged as event 1005 and never rethrown: the change is already committed, so
-/// the caller must not see a failure, and a retrying execution strategy must not re-run the unit of work.
-/// <para>
-/// A commit that reports a failure may still have committed (a lost acknowledgement). Its events are then held <em>in doubt</em>:
-/// never notified unless the caller establishes that the commit happened, with <see cref="ResolveInDoubtCommitAsync"/> (the write
-/// handlers, booking and cancellation, do when they verify a failed commit or re-check under a lock), so observers hear about every
-/// committed change once and about nothing else. Events still in doubt when the caller gives up (its retries exhausted) are never
-/// notified; the history row committed with the change remains its record (ARCHITECTURE §7.3).
-/// </para>
-/// </remarks>
 public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDomainEventObserver> observers, ILogger<DomainEventInterceptor> logger)
     : SaveChangesInterceptor, IDbTransactionInterceptor
 {
@@ -207,10 +191,7 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     }
 
     /// <summary>
-    /// The booking confirmation and cancellation emails, staged in the same SaveChanges, never by an after-commit observer (ADR-020).
-    /// In-memory work on the aggregate only: no lookup and no rendering, so staging can neither fail the booking or cancel nor add a
-    /// round trip to the booking's critical section; the dispatcher renders at send time. Fresh outbox ids add no contended resource (ADR-003).
-    /// A reserved-domain recipient's row is created Suppressed (the fixed recipient policy, a pure function), so it never becomes backlog.
+    /// Stages booking confirmation and cancellation outbox entries in the same <c>SaveChanges</c> call.
     /// </summary>
     private static List<NotificationOutboxEntry> Notifications(List<AggregateRoot> aggregates)
     {
@@ -314,8 +295,7 @@ public sealed class DomainEventInterceptor(CurrentActor actor, IEnumerable<IDoma
     }
 
     /// <summary>
-    /// Counts and logs (1305) the committed rows the recipient policy suppressed when they were staged; the dispatcher does the same for a
-    /// row it suppresses at claim. The outbox id, appointment id, kind and fixed reason only, never the address (ARCHITECTURE §11.1).
+    /// Counts and logs committed outbox rows that were suppressed by the recipient policy when staged.
     /// </summary>
     private void RecordSuppressed(IReadOnlyList<NotificationOutboxEntry> suppressed)
     {

@@ -2,11 +2,7 @@ import { Eye, type LucideIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-/**
- * Why a control that changes bookings is unavailable to this account, on screen and named by the control's
- * `aria-describedby` (UI_DESIGN 11.20): a screen reader reads it with the control, and sighted users see it without
- * hovering. One note serves every such control in its view.
- */
+/** Inline callout explaining why a write control is disabled for the current role, linked via `aria-describedby`. */
 export function WriteReason({ id, reason, icon: Icon = Eye, className }: { id: string; reason: string; icon?: LucideIcon; className?: string }) {
   return (
     <p

@@ -13,7 +13,7 @@ public sealed class GetWorkshopScheduleEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/schedule", HandleAsync)
             .WithName("GetWorkshopSchedule")
-            .AllowAnonymous() // public read; personal data is masked without a role (ADR-027)
+            .AllowAnonymous()
             .WithTags(ApiTags.Schedule)
             .AddEndpointFilter<ValidationFilter<GetWorkshopScheduleQuery>>()
             .Produces<WorkshopScheduleResponse>(StatusCodes.Status200OK)
@@ -21,21 +21,11 @@ public sealed class GetWorkshopScheduleEndpoint : IEndpoint
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesRateLimitedProblem();
 
-    // The dealershipId and date <param> tags document the operation's parameters, which [AsParameters] flattens out of the query
-    // record: the OpenAPI XML-comment generator matches <param> to operation parameters by name (its only source of descriptions and
-    // examples for them), while the compiler knows only the method's own parameters and reports CS1572.
 #pragma warning disable CS1572
     /// <summary>Get the workshop schedule for a date</summary>
     /// <remarks>
-    /// The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and
-    /// every technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold
-    /// stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
-    /// in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
-    /// <c>operatingWindow</c> and no appointments, and keeps its lanes. Local times carry the zone's offset (<c>2026-10-13T10:00+01:00</c>).
-    /// Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
-    /// one initial per name part (<c>ALS</c> for Alice Louise Smith), the domain VIN mask of eleven asterisks and the last six
-    /// characters (<c>***********123456</c>), and the full registration mask <c>*******</c> whatever the plate.
-    /// Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
+    /// Returns the workshop dispatch board for a dealership and local date, including all bays with non-cancelled appointments and all technicians.
+    /// Callers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (<c>ALS</c>, <c>***********123456</c>, and <c>*******</c>).
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose board is read (the example is the seeded Reading dealership).</param>

@@ -5,11 +5,8 @@ using Keyloop.ServiceScheduler.Api.Common.Problems;
 namespace Keyloop.ServiceScheduler.Api.Common.Validation;
 
 /// <summary>
-/// Validates the endpoint's <typeparamref name="T"/> argument with its registered <see cref="IValidator{T}"/> (validators are
-/// registered explicitly in <c>Program.cs</c>) and short-circuits with 400 <c>validation-error</c> on failure. Error keys are the
-/// camelCase JSON paths of the offending properties (<c>customer.email</c>), not C# property paths.
+/// Validates the endpoint's <typeparamref name="T"/> argument using <see cref="IValidator{T}"/> and returns a 400 <c>validation-error</c> with camelCase property paths on failure.
 /// </summary>
-/// <example><c>group.MapPost("/dealerships/{dealershipId:guid}/appointments", Handle).AddEndpointFilter&lt;ValidationFilter&lt;BookAppointmentRequest&gt;&gt;();</c></example>
 public sealed class ValidationFilter<T> : IEndpointFilter where T : class
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)

@@ -5,8 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 
 /// <summary>
-/// The host may dispose the monitor before it stops it (seen in WebApplicationFactory teardown), so stopping and disposing must work in
-/// either order: an ObjectDisposedException from the second call made the 30-way concurrency test fail intermittently in teardown.
+/// Verifies that stopping and disposing <see cref="NotificationBacklogMonitor"/> can occur in either order.
 /// </summary>
 public sealed class NotificationBacklogMonitorLifetimeTests
 {

@@ -35,9 +35,9 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         snapshot.ShouldNotBeNull();
         snapshot.Dealership.Id.ShouldBe(_workshop.Dealership.Id);
         snapshot.Dealership.Hours.ForDay(DayOfWeek.Tuesday).OpensAt.ShouldBe(new TimeOnly(8, 0));
-        snapshot.Bays.Select(b => b.Name).ShouldBe(["Bay 1", "Bay 2", "Bay 9 - Inactive"]); // all bays, ordered by name
+        snapshot.Bays.Select(b => b.Name).ShouldBe(["Bay 1", "Bay 2", "Bay 9 - Inactive"]);
         snapshot.Technicians.Select(t => t.Name).ShouldBe(["Amelia Clarke", "Ben Okafor"]);
-        snapshot.Appointments.Select(a => a.Id).ShouldBe([early.Id, cancelled.Id, late.Id]); // ordered by start; next day excluded
+        snapshot.Appointments.Select(a => a.Id).ShouldBe([early.Id, cancelled.Id, late.Id]);
 
         var row = snapshot.Appointments[0];
         row.BayId.ShouldBe(_workshop.Bay1.Id);
@@ -70,7 +70,7 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         await using var scope = _factory.Services.CreateAsyncScope();
         var snapshot = await scope.ServiceProvider.GetRequiredService<DayScheduleReader>().ReadAsync(_workshop.Dealership, _window, activeOnly: false, Ct);
 
-        snapshot.Dealership.ShouldBeSameAs(_workshop.Dealership); // the caller's instance, not a second read
+        snapshot.Dealership.ShouldBeSameAs(_workshop.Dealership);
         snapshot.Bays.Select(b => b.Id).ShouldBe(byId.Bays.Select(b => b.Id));
         snapshot.Technicians.Select(t => t.Id).ShouldBe(byId.Technicians.Select(t => t.Id));
         snapshot.Appointments.ShouldBe(byId.Appointments);
@@ -86,7 +86,7 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Resources_are_every_bay_and_technician_of_the_dealership_by_name_and_none_for_an_unknown_one()
     {
-        await SeedDayAsync(); // adds an inactive bay here, and another dealership with a bay of its own
+        await SeedDayAsync();
 
         await using var scope = _factory.Services.CreateAsyncScope();
         var reader = scope.ServiceProvider.GetRequiredService<DayScheduleReader>();
@@ -107,7 +107,6 @@ public sealed class DayScheduleReaderTests(PostgresFixture pg) : IAsyncLifetime
         await using var scope = _factory.Services.CreateAsyncScope();
         var counts = await scope.ServiceProvider.GetRequiredService<DayScheduleReader>().LoadCountsAsync(_workshop.Dealership.Id, _window, Ct);
 
-        // early: Bay 1 + Amelia; late: Bay 2 + Ben; the cancelled one and the next-day one do not count.
         counts.ShouldBe(new Dictionary<Guid, int>
         {
             [_workshop.Bay1.Id] = 1,

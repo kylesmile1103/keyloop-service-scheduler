@@ -8,19 +8,13 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 interface QuickActionsProps {
-  /** The dispatch board, on this dealership and today. */
   board: To
   onBook: () => void
   bookState: BookState
-  /** Phones: the two actions stack at full width. */
   stacked: boolean
 }
 
-/**
- * The Overview's two ways on (adopted from the template's dashboard-2 `quick-actions`): **Book appointment**, the view's one
- * primary action, and **Open dispatch board**, a signal link that navigates (UI_DESIGN 11.2). The template's Actions menu
- * (reports, export, settings) is not kept: none of those exists here.
- */
+/** Quick action controls for booking an appointment and opening the dispatch board. */
 export function QuickActions({ board, onBook, bookState, stacked }: QuickActionsProps) {
   return (
     <div role="group" aria-label="Quick actions" className={cn("flex items-center gap-2", stacked && "flex-col items-stretch")}>

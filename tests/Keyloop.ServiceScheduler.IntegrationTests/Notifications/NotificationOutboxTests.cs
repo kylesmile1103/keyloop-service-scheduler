@@ -41,7 +41,6 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         row.Kind.ShouldBe(NotificationKind.BookingConfirmation);
         row.Recipient.ShouldBe(TestData.DeliverableEmail());
         row.Status.ShouldBe(NotificationStatus.Pending);
-        // A snapshot of the aggregate, rendered at dispatch: ids and times, the registration and only the VIN's last four characters.
         row.ReadSnapshot().ShouldBe(new NotificationSnapshot(appointment.Id, _workshop.Dealership.Id, _workshop.Interim.Id,
             appointment.Slot.StartUtc, appointment.Slot.EndUtc, "AB12 CDE", "3456"));
         row.Payload.ShouldNotContain(appointment.Vehicle.Vin.Value);
@@ -75,7 +74,6 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
         });
         var rows = await RowsAsync();
         rows.Count.ShouldBe(2);
-        // The reason is free text typed by an anonymous visitor (ADR-010): it is not even stored for the email (proposal 2.4, A8).
         rows.ShouldAllBe(e => !e.Payload.Contains("Customer rescheduled"));
         var cancellation = rows.Single(e => e.Kind == NotificationKind.Cancellation);
         cancellation.ReadSnapshot().ShouldBe(rows.Single(e => e.Kind == NotificationKind.BookingConfirmation).ReadSnapshot());
@@ -85,8 +83,6 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Staging_reads_nothing_so_a_booking_or_cancel_gains_no_round_trip()
     {
-        // The booking's dealership and service type are loaded untracked by the handler, so any lookup here would be an extra
-        // SELECT inside the advisory-lock critical section (ADR-003). Rendering happens at dispatch instead.
         var commands = new CommandRecorder();
         var appointment = _workshop.Book(TestData.LondonTime(9));
         await using (var db = NewContext(commands))
@@ -107,7 +103,6 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     {
         var appointment = _workshop.Book(TestData.LondonTime(9));
         await _factory.WithDbAsync(async db => { db.Add(appointment); await db.SaveChangesAsync(Ct); });
-        // Unrenderable at this moment (an unknown zone); staging must not depend on it (A2).
         await _factory.WithDbAsync(db => db.Database.ExecuteSqlAsync(
             $"UPDATE dealerships SET time_zone_id = 'Mars/Olympus_Mons' WHERE id = {_workshop.Dealership.Id}", Ct));
         await _factory.WithDbAsync(async db =>
@@ -196,8 +191,6 @@ public sealed class NotificationOutboxTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_staged_suppression_is_counted_and_logged_only_once_its_transaction_has_committed()
     {
-        // Like the domain events: a rolled-back staging counts nothing, a caller's transaction counts at its commit, an implicit one at
-        // once, and an in-doubt commit only when the caller settles it as committed (ARCHITECTURE §5.6, §7.3).
         using var metrics = new MetricsCollector();
         var logger = new CapturingLogger<DomainEventInterceptor>();
         long Suppressed() => metrics.Sum("scheduler.notifications.suppressed", MetricsCollector.Tag("reason", "ReservedDomain"));

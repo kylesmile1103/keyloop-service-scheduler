@@ -4,10 +4,7 @@ import { cn } from "@/lib/utils"
 
 import { type DayLoad, formatMinutes } from "../lib/resources"
 
-/**
- * Whether a technician takes bookings, or a bay is in service: the active state a quiet pill, the inactive one the board's
- * dashed pill (its lanes say "Inactive" and "Out of service" the same way). Words and shape, never colour alone.
- */
+/** Badge indicating whether a technician is active or a bay is in service. */
 export function ActiveState({ active, words }: { active: boolean; words: { active: string; inactive: string } }) {
   return active ? (
     <Badge variant="secondary" className="font-normal">
@@ -23,10 +20,7 @@ export function ActiveState({ active, words }: { active: boolean; words: { activ
 const percentOf = (load: DayLoad) =>
   load.windowMinutes && load.windowMinutes > 0 ? Math.round((load.bookedMinutes / load.windowMinutes) * 100) : 0
 
-/**
- * Today's booked time as a thin meter of the opening hours (UI_DESIGN 13, `chart-1`) and the time in words, or the share
- * as a percentage (a bay's load). "Closed" on a day the dealership does not open.
- */
+/** Displays today's booked time or utilisation percentage with a share meter. */
 export function LoadCell({ load, show, className }: { load: DayLoad; show: "time" | "share"; className?: string }) {
   if (load.windowMinutes === null) return <span className="text-muted-foreground">Closed</span>
   const share = load.windowMinutes > 0 ? load.bookedMinutes / load.windowMinutes : 0

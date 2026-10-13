@@ -4,16 +4,8 @@ import path from "node:path"
 import { describe, expect, it } from "vitest"
 
 /**
- * The README's licence section promises that every file adopted from the MIT shadcn-dashboard-landing-template (vite
- * version) opens with a header comment naming its template source and carrying the template's copyright; the vendored
- * `components/ui` primitives also carry shadcn/ui's. This is the list of those files, kept by hand and independent of what
- * the files say about themselves, so removing a header (or a file) fails here. Paths are relative to the web project; each
- * maps to the template file or files it came from (relative to the template's `vite-version` folder).
- *
- * Found by provenance (the scaffold commit copied the template's shell, configuration and primitives), by what the
- * commits and the files declare adopted, and by comparing every source file with the template's. Not on the list:
- * `package.json` and `components.json`, whose JSON has no comment syntax (the README's notice covers them), tests, the
- * generated `src/api` client and the project's own files.
+ * Maps every file adopted from `shadcn-dashboard-landing-template` (vite-version) to its source path(s)
+ * so tests verify each file retains its attribution and MIT copyright notice.
  */
 const ADOPTED: Record<string, readonly string[]> = {
   // Configuration

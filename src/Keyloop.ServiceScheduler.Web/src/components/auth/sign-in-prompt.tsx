@@ -13,12 +13,7 @@ interface SignInPromptProps {
   onOpenChange: (open: boolean) => void
 }
 
-/**
- * Sign in to book (UI_DESIGN 11.20): what an anonymous visitor sees instead of the booking dialog, before anything is
- * entered, so no booking is half-typed and then lost to the sign-in's navigation. The picture, why booking needs an account,
- * and two actions: Sign in (focused, returning to this page) and Not now (focus goes back to the button that opened it).
- * While `/me` cannot be read it also says so, with Try again.
- */
+/** Modal dialog prompting an unauthenticated visitor to sign in before booking an appointment. */
 export function SignInPrompt({ open, onOpenChange }: SignInPromptProps) {
   const signIn = useRef<HTMLAnchorElement>(null)
 
@@ -57,10 +52,7 @@ interface SignInPanelProps {
   className?: string
 }
 
-/**
- * The inline sign-in prompt, inside a view that is already open (the details sheet): the picture beside the headline, one
- * line and the Sign in action. Nothing is requested on the visitor's behalf until they have signed in.
- */
+/** Inline sign-in callout card rendered inside views that require authentication for full details. */
 export function SignInPanel({ title, children, className }: SignInPanelProps) {
   const headingId = useId()
   return (

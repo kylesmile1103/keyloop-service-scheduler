@@ -7,10 +7,7 @@ using Keyloop.ServiceScheduler.Api.Common.Serialization;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
-/// What an <c>Idempotency-Key</c> was first used for (ARCHITECTURE §7.5): the lower-case hex SHA-256 of the dealership id, a line
-/// feed, and the request re-serialised through <see cref="SchedulerJsonContext"/> (fixed property order, no whitespace), so the same
-/// request gives the same fingerprint however the client formatted its JSON. A key arriving with another fingerprint is a 422
-/// <c>idempotency-key-reuse</c>.
+/// Computes a canonical SHA-256 fingerprint of a booking request and dealership ID for idempotency verification.
 /// </summary>
 public static class IdempotencyFingerprint
 {

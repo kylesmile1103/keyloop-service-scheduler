@@ -95,7 +95,7 @@ export interface ScheduleKpis {
   busyNow: { busy: number; active: number } | null
 }
 
-/** The KPI strip's figures, computed from the schedule alone (Addendum B §B4). */
+/** Computes KPI strip figures from the workshop schedule. */
 export function scheduleKpis(schedule: WorkshopScheduleResponse, now: Date): ScheduleKpis {
   const appointments = boardAppointments(schedule)
   const window = schedule.operatingWindow

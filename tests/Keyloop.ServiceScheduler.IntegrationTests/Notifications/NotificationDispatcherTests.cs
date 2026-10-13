@@ -81,7 +81,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
         entry.EventId.ShouldBe(new Microsoft.Extensions.Logging.EventId(1300, "NotificationSent"));
         entry.Message.ShouldContain(row.Id.ToString());
         entry.Message.ShouldContain(row.AppointmentId.ToString());
-        // No recipient at all, not even masked (A9), and nothing from the body.
         entry.Message.ShouldNotContain("@");
         entry.Message.ShouldNotContain("c***");
         entry.Message.ShouldNotContain("WVWZZZ");
@@ -94,8 +93,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [InlineData("someone@localhost")]
     public async Task Reserved_domains_are_suppressed_when_staged_and_never_sent(string email)
     {
-        // The fixed recipient policy decides when the row is staged, so it holds with dispatch disabled (this SystemTest host) and such a
-        // row is never backlog. The suppression is counted and logged once, when its transaction commits, without the address.
         using var metrics = new MetricsCollector();
         await BookAsync(9, email);
         await BookAsync(10);
@@ -124,8 +121,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task A_pending_row_on_a_reserved_domain_is_still_suppressed_at_claim()
     {
-        // A Pending row on a reserved domain can only predate the staging rule or come from outside the application; the claim applies
-        // the same policy before any lease or send.
         await BookAsync(9);
         await _factory.WithDbAsync(db => db.NotificationOutbox.ExecuteUpdateAsync(set => set.SetProperty(e => e.Recipient, "late@example.com"), Ct));
         using var metrics = new MetricsCollector();
@@ -151,7 +146,7 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
             appointment.Cancel("Visit https://phish.example.net to rebook", TestData.Now.AddMinutes(5));
             await db.SaveChangesAsync(Ct);
         });
-        _factory.Clock.Advance(TimeSpan.FromMinutes(5)); // the cancellation row is due from its event time
+        _factory.Clock.Advance(TimeSpan.FromMinutes(5));
         using var dispatcher = Dispatcher();
         (await dispatcher.DispatchOnceAsync(Ct)).ShouldBe(2);
         _sender.Messages.Count.ShouldBe(2);
@@ -179,7 +174,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
         await BookAsync(9);
         await _factory.WithDbAsync(async db =>
         {
-            // A second dealership offering the same service: its row stays renderable.
             var dealership = TestData.NewDealership("Other Motors");
             var bay = TestData.NewBay(dealership.Id, "Bay 1", Keyloop.ServiceScheduler.Domain.Resources.BayCapability.StandardLift);
             var technician = TestData.NewTechnician(dealership.Id, "Chloe Evans", "T-2001", Keyloop.ServiceScheduler.Domain.Resources.Certification.GeneralService);
@@ -411,14 +405,11 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
             SchedulerJsonContext.Default.BookAppointmentRequest, Ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
 
-        // The commit nudges the hosted dispatcher: the first attempt needs no clock movement and no polling interval.
         var failed = await EventuallyAsync(async () => await RowAsync() is { LastFailure: not null } row ? row : null);
         failed.Status.ShouldBe(NotificationStatus.Pending);
         failed.Attempts.ShouldBe(1);
         _sender.Messages.ShouldHaveSingleItem();
 
-        // The dispatcher then sleeps until the retry is due (next_attempt_at), not for a fixed poll or the idle interval. The business
-        // clock moves in one-second steps, so the outcome does not depend on when the dispatcher read the clock to compute its sleep.
         _sender.OnSend = null;
         var sent = await EventuallyAsync(async () =>
         {
@@ -435,21 +426,16 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task Rows_nobody_nudged_are_drained_at_start_and_later_picked_up_by_a_timed_wake()
     {
-        // Both rows are committed without this host's observers, as by another instance: no nudge ever reaches its dispatcher.
         await BookUnobservedAsync(9, TestData.DeliverableEmail(1));
         await using var enabled = EnabledHost();
-        _ = enabled.Services; // starts the hosted dispatcher, which drains once
+        _ = enabled.Services;
         await EventuallyAsync(() => RowAsync(TestData.DeliverableEmail(1), NotificationStatus.Sent));
 
-        // The start drain claimed before the second row existed (it claimed the first row before sending it), so the dispatcher is
-        // now asleep on the business clock, which stands still: nothing sends the second row.
         await BookUnobservedAsync(10, TestData.DeliverableEmail(2));
         await Task.Delay(TimeSpan.FromMilliseconds(300), Ct);
         (await RowAsync(TestData.DeliverableEmail(2), NotificationStatus.Pending)).ShouldNotBeNull().Attempts.ShouldBe(0);
         _sender.Messages.ShouldHaveSingleItem();
 
-        // Without any nudge, a timed wake picks it up within the idle interval (or at its due time, if the dispatcher's next-due
-        // read already saw it): the business clock moves a minute at a time.
         var idle = enabled.Services.GetRequiredService<IOptions<NotificationOptions>>().Value.IdleInterval;
         var started = _factory.Clock.GetUtcNow();
         await EventuallyAsync(() =>
@@ -464,8 +450,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task Seeded_demo_bookings_never_reach_the_sender()
     {
-        // DemoAppointmentSeeder books every demo customer at @example.com through the aggregate, so every seed, week top-up and reseed
-        // stages confirmations (proposal 2.6). The reserved-domain rule ends each one, when it is staged, without a send.
         await _factory.ResetAsync();
         var seeded = await _factory.WithDbAsync(async db =>
         {
@@ -487,9 +471,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task Backlog_gauges_report_only_pending_rows_and_the_oldest_pending_age_while_dispatch_is_disabled()
     {
-        // SystemTest defaults to Enabled=false, Provider=None: the host's dispatcher never runs, the backlog must still be visible (G2).
-        // Terminal rows come first and are older, so the gauges fail if they count or age anything but Pending rows: one Sent (by a
-        // dispatcher of the test's own) and one Suppressed (a reserved domain), both a minute older than the two Pending rows.
         var terminalAt = _factory.Clock.GetUtcNow().UtcDateTime;
         await BookAsync(8, TestData.DeliverableEmail(1), terminalAt);
         await BookAsync(9, "customer9@example.com", terminalAt);
@@ -520,9 +501,6 @@ public sealed class NotificationDispatcherTests(PostgresFixture pg) : IAsyncLife
     [Fact]
     public async Task Demo_seeding_with_dispatch_disabled_reports_no_false_backlog()
     {
-        // Demo (the published Compose bundle) migrates and seeds at startup with dispatch off. Every seeded customer is @example.com, so
-        // every staged email is Suppressed at once: the backlog gauges, and the oldest_pending_age alert (ARCHITECTURE §12.3), see no
-        // backlog that would never drain. Each suppression is still counted and logged once.
         var connectionString = await pg.CreateEmptyDatabaseAsync("demo_notification_backlog", Ct);
         using var logs = new CapturingLoggerProvider();
         using var metrics = new MetricsCollector();

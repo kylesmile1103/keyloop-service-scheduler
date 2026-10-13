@@ -7,12 +7,6 @@ import type {
 } from "@/api/types.gen"
 import { readingTuesday, technicians } from "@/test/schedules"
 
-/**
- * Vehicle-aware requirements as the API answers them (ADR-029, task-31-report.md "Facts for Task 31b"): the environment's
- * switch, the VIN look-up, allocation decisions, the no-qualified-resources and conflict problems, and the competence the schedule
- * carries for a role with the switch on (the fresh seed's levels).
- */
-
 export const vehicleAwareOn: FeatureSwitchesResponse = { vehicleAwareRequirements: true }
 export const vehicleAwareOff: FeatureSwitchesResponse = { vehicleAwareRequirements: false }
 
@@ -55,7 +49,6 @@ export const evChargingService: ServiceTypeResponse = {
   bookable: true,
 }
 
-/** Task 32a's inspection and estimate after a collision: a standard lift and a damage-assessment-certified technician. */
 export const assessmentService: ServiceTypeResponse = {
   id: "651b016b-c559-8313-9f1c-d22ecd706059",
   code: "ACCIDENT-DAMAGE-ASSESSMENT",
@@ -81,7 +74,7 @@ export function allocation(overrides: Partial<AllocationDecision> = {}): Allocat
   }
 }
 
-/** The fresh seed's confirmed levels (ADR-029 amendment), valid through 2028-12-31, as the schedule shows them to a role. */
+/** Seeded confirmed HV competence levels and brand specialisms valid through 2028-12-31. */
 const seededLevels: Record<string, { hvLevel: number; brands: string[] }> = {
   [technicians.amelia.id]: { hvLevel: 2, brands: ["VOLKSWAGEN"] },
   [technicians.ben.id]: { hvLevel: 3, brands: ["VOLKSWAGEN"] },
@@ -116,11 +109,6 @@ export const evBatteryService: ServiceTypeResponse = {
   bookable: true,
 }
 
-/**
- * A vehicle-aware `422 no-qualified-resources` as `BookAppointmentHandler` builds it. `missingCapabilities` lists what no
- * active bay has, and is empty when a bay qualifies or every capability is on some bay; `missingCertifications` likewise for
- * technicians. Neither says on its own that a technician's HV level fell short: `minimumHvLevel` is what the job needs.
- */
 const noQualifiedResources = (members: {
   missingCapabilities: string[]
   missingCertifications: string[]
@@ -136,10 +124,7 @@ const noQualifiedResources = (members: {
   ...members,
 })
 
-/**
- * Live diagnosis at Reading, where no technician holds level 4 (task-31-report.md): both lists empty, so the answer names
- * no missing resource, only the level 4 the job needs.
- */
+/** Live diagnosis at Reading where no technician holds HV level 4. */
 export const liveDiagnosisGap = noQualifiedResources({
   traceId: "00-7a1c2b3d4e5f60718293a4b5c6d7e8f9-1a2b3c4d5e6f7a8b-01",
   minimumHvLevel: 4,
@@ -148,10 +133,7 @@ export const liveDiagnosisGap = noQualifiedResources({
   missingCertifications: [],
 })
 
-/**
- * The EV bay out of use (the checker's live probe, review round 0): no active bay has EV high voltage, while two technicians
- * held a valid level 3. Only the equipment is named missing.
- */
+/** EV bay out of service while technicians hold valid HV level 3. */
 export const equipmentGap = noQualifiedResources({
   traceId: "00-13015a34ed8f1339a903ecb4a0b0128e-1591550a151c83e7-01",
   minimumHvLevel: 3,

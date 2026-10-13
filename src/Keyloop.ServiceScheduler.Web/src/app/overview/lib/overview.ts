@@ -4,19 +4,13 @@ import { byLocalDate, datesFrom, localDateOf } from "@/lib/appointment-range"
 import { formatDay, shiftDate, weekdayOf } from "@/lib/calendar-date"
 import { openingHoursOn } from "@/lib/opening-hours"
 
-/**
- * The Overview's figures, computed from one range read: the 14 days before today, today and the 14 days after, in the
- * dealership's own calendar (`today` is `todayIn(dealership.timeZoneId)`, never the browser's day). A cancelled
- * appointment is not work, so it counts only towards the cancellations; every other status counts as a booking.
- */
-
 /** Days either side of today. */
 export const OVERVIEW_DAYS_AROUND = 14
 
-/** How many local dates the Overview reads: the fortnight behind, today, the fortnight ahead. */
+/** Total local dates in the overview window. */
 export const OVERVIEW_DAYS = OVERVIEW_DAYS_AROUND * 2 + 1
 
-/** The range read's bounds for a day (`yyyy-MM-dd`, both included). */
+/** Inclusive date range (`yyyy-MM-dd`) around `today`. */
 export function overviewWindow(today: string): { from: string; to: string } {
   return { from: shiftDate(today, -OVERVIEW_DAYS_AROUND), to: shiftDate(today, OVERVIEW_DAYS_AROUND) }
 }
@@ -25,14 +19,12 @@ const booked = (appointment: Pick<AppointmentListItemResponse, "status">) => app
 
 export interface DayCount {
   date: string
-  /** Appointments that day in every status but cancelled. */
   count: number
-  /** The dealership does not open on that weekday. */
   closed: boolean
   when: "past" | "today" | "future"
 }
 
-/** One entry per date of the window, in order. */
+/** Daily booking counts across the overview window, excluding cancelled appointments. */
 export function bookingsPerDay(appointments: readonly AppointmentListItemResponse[], dealership: DealershipResponse, today: string): DayCount[] {
   const { from, to } = overviewWindow(today)
   const days = byLocalDate(appointments.filter(booked))
@@ -45,14 +37,11 @@ export function bookingsPerDay(appointments: readonly AppointmentListItemRespons
 }
 
 export interface BookingsSummary {
-  /** Bookings in the fortnight before today, today, and the fortnight after. */
   past: number
   today: number
   ahead: number
   total: number
-  /** The day with the most bookings (the earliest of equals); `null` when nothing is booked. */
   busiest: DayCount | null
-  /** The most bookings on one day. */
   peak: number
 }
 
@@ -63,10 +52,7 @@ export function bookingsSummary(days: readonly DayCount[]): BookingsSummary {
   return { past, today, ahead, total: past + today + ahead, busiest, peak: busiest?.count ?? 0 }
 }
 
-/**
- * The runs of days the chart's line joins: consecutive days, broken at each closed day with nothing booked, so a closed
- * Sunday shows as a gap over the hatch rather than a drop to zero (a closed day is not a quiet one). Indices into `days`.
- */
+/** Groups consecutive day indices, splitting at closed days with zero bookings. */
 export function lineRuns(days: readonly DayCount[]): number[][] {
   const runs: number[][] = []
   let run: number[] = []
@@ -80,7 +66,7 @@ export function lineRuns(days: readonly DayCount[]): number[][] {
   return runs
 }
 
-/** "41 in the last 14 days, 6 today and 23 booked so far for the next 14. Busiest: Tuesday 13 October, with 6." */
+/** Accessible text summary of the daily bookings chart. */
 export function chartSummary(summary: BookingsSummary): string {
   const sentence = `${summary.past} in the last ${OVERVIEW_DAYS_AROUND} days, ${summary.today} today and ${summary.ahead} booked so far for the next ${OVERVIEW_DAYS_AROUND}.`
   const busiest = summary.busiest && formatDay(summary.busiest.date, "long").replace(/ \d{4}$/, "")
@@ -91,19 +77,16 @@ export interface ServiceShare {
   id: string
   name: string
   count: number
-  /** Of every booking in the window, from 0 to 1. */
   share: number
 }
 
 export interface ServiceMix {
-  /** At most `limit` services, the most booked first (then by name). */
   services: ServiceShare[]
-  /** The rest, gathered into one row; `null` when every service has its own. */
   other: { count: number; services: number; share: number } | null
   total: number
 }
 
-/** Bookings by service over the window, cancelled ones left out. */
+/** Aggregates non-cancelled bookings by service type over the window. */
 export function serviceMix(appointments: readonly AppointmentListItemResponse[], limit = 5): ServiceMix {
   const counts = new Map<string, { name: string; count: number }>()
   for (const appointment of appointments.filter(booked)) {
@@ -115,7 +98,6 @@ export function serviceMix(appointments: readonly AppointmentListItemResponse[],
   const ranked = [...counts.entries()]
     .map(([id, { name, count }]) => ({ id, name, count, share: total > 0 ? count / total : 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-  // Six services fit as they are; a seventh would make a row of one, so "other" only gathers two or more.
   const shown = ranked.length > limit + 1 ? ranked.slice(0, limit) : ranked
   const rest = ranked.slice(shown.length)
   const otherCount = rest.reduce((sum, entry) => sum + entry.count, 0)
@@ -126,13 +108,9 @@ export function serviceMix(appointments: readonly AppointmentListItemResponse[],
   }
 }
 
-/** How many upcoming appointments the Overview lists. */
 export const UPCOMING_LIMIT = 6
 
-/**
- * The work still to do, soonest first: confirmed, checked-in and in-progress appointments that have not ended by `now`
- * (one under way stays at the top until it ends).
- */
+/** Active appointments that have not ended by `now`, ordered by start time. */
 export function upcomingAppointments(appointments: readonly AppointmentListItemResponse[], now: Date, limit = UPCOMING_LIMIT): AppointmentListItemResponse[] {
   const instant = now.getTime()
   return appointments
@@ -142,13 +120,12 @@ export function upcomingAppointments(appointments: readonly AppointmentListItemR
 }
 
 export interface TodayByStatus {
-  /** Today's appointments in every status but cancelled. */
   total: number
   counts: Map<AppointmentStatus, number>
   cancelled: number
 }
 
-/** Today's appointments on the dealership's calendar, by status. */
+/** Counts today's appointments on the dealership's calendar by status. */
 export function todayByStatus(appointments: readonly AppointmentListItemResponse[], today: string): TodayByStatus {
   const counts = new Map<AppointmentStatus, number>()
   let cancelled = 0
@@ -160,10 +137,7 @@ export function todayByStatus(appointments: readonly AppointmentListItemResponse
   return { total: [...counts.values()].reduce((sum, count) => sum + count, 0), counts, cancelled }
 }
 
-/**
- * Cancellations in the last seven days: the cancelled appointments due today or on the six days before, out of every
- * appointment due then. By the day the work was due, since the range read carries no cancellation time.
- */
+/** Counts cancelled appointments due in the 7-day window ending on `today`. */
 export function cancellationsLastWeek(appointments: readonly AppointmentListItemResponse[], today: string) {
   const from = shiftDate(today, -6)
   const due = appointments.filter((appointment) => {

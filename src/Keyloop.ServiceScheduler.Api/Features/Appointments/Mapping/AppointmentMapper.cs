@@ -8,12 +8,7 @@ using Riok.Mapperly.Abstractions;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Mapping;
 
-/// <summary>
-/// Appointment responses, generated at compile time by Mapperly (ADR-016, Addendum A §A6). An unmapped target member is a build
-/// error (<see cref="RequiredMappingStrategy.Target"/>). The aggregate references its service type and resources by id only, so their
-/// summaries and the local times (computed in the dealership's zone) arrive as additional parameters, matched to the target members of
-/// the same name. Use <see cref="AppointmentResponseMapper.Map"/>, which computes them.
-/// </summary>
+/// <summary>Compile-time Mapperly mappings for appointment responses and summaries.</summary>
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target, EnumMappingStrategy = EnumMappingStrategy.ByName)]
 public static partial class AppointmentMapper
 {

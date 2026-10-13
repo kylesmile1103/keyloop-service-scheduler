@@ -162,11 +162,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         finally { foreach (var response in responses) { response.Dispose(); } }
     }
 
-    /// <summary>
-    /// An out-of-band writer commits between an Admin edit's If-Match check and its UPDATE. Ordinary Admin writes now serialize under
-    /// the dealership lock and cannot interleave there. The xmin-conditional update still protects against bypass writers, producing
-    /// 412 with the current state and ETag and rolling back the Admin audit.
-    /// </summary>
+    /// <summary>Conditional xmin update rejects concurrent out-of-band modifications with 412 and rolls back audit changes.</summary>
     [Theory]
     [InlineData("technician")]
     [InlineData("bay")]
@@ -434,10 +430,7 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         if (kind == "policy") { JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["saved"]!.GetValue<bool>().ShouldBeFalse(); }
     }
 
-    /// <summary>
-    /// A field the contract marks required must be sent, even where null is a valid value: a client that leaves out
-    /// <c>hvLevelValidUntil</c> must not silently make an expired HV level unlimited (and so qualify the technician again).
-    /// </summary>
+    /// <summary>Requires explicit values for mandatory write fields even when null is allowed.</summary>
     [Theory]
     [InlineData("technician", "isActive")]
     [InlineData("technician", "hvLevelValidUntil")]
@@ -451,7 +444,6 @@ public sealed class AdminEditingTests(PostgresFixture pg) : IAsyncLifetime
         var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!.AsObject();
         if (kind == "policy")
         {
-            // The read has no dryRun; the vehicleClass case is otherwise a complete save of the current rules.
             body["previewDate"] = "2026-10-13";
             if (field == "vehicleClass")
             {

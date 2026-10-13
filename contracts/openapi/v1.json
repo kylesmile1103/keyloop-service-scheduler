@@ -12,7 +12,7 @@
           "Dealerships"
         ],
         "summary": "List dealerships",
-        "description": "Every dealership with its IANA time zone and weekly operating hours as local wall-clock times, ordered by name. Start here:\nthe catalogue, availability, booking and schedule routes are all scoped by a dealership id.",
+        "description": "Returns every dealership with its IANA time zone and weekly operating hours, ordered by name.",
         "operationId": "GetDealerships",
         "parameters": [
           {
@@ -93,7 +93,7 @@
           "Catalog"
         ],
         "summary": "List the service catalogue for a dealership",
-        "description": "The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician\ncertifications each requires. `bookable` is computed for this dealership: at least one active bay and one active\ntechnician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies\nunder the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable\nwhen an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;\ncatalogue eligibility ignores busy time, opening hours and the booking window.",
+        "description": "Returns the global service catalogue ordered by name, with `bookable` indicating whether the dealership's active bays and\ntechnicians can satisfy the service's requirements under the current policy.",
         "operationId": "GetServiceTypes",
         "parameters": [
           {
@@ -203,7 +203,7 @@
           "Availability"
         ],
         "summary": "Find bookable start times for a service on a date",
-        "description": "Start times on the slot grid, counted from opening, at which one active bay with every capability the service requires and one\nactive technician with every certification it requires are both free for the whole duration, with how many of each are free.\nA closed day has no slots and `unavailableReason` `closed`; a service the dealership can never perform has\n`no-qualified-resources`. A service longer than that day's opening hours, and opening hours that fall entirely in a\ndaylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset\n(`2026-10-13T10:00+01:00`). The answer is a snapshot; booking checks again.",
+        "description": "Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.\nReports `closed` on non-operating days and `no-qualified-resources` when the dealership lacks required capabilities or certifications.",
         "operationId": "GetAvailability",
         "parameters": [
           {
@@ -260,7 +260,7 @@
           {
             "name": "manufacturer",
             "in": "query",
-            "description": "Optional OEM code; manufacturer preferences are deferred.",
+            "description": "Optional OEM code.",
             "schema": {
               "type": "string"
             },
@@ -422,7 +422,7 @@
           "Appointments"
         ],
         "summary": "Book an appointment",
-        "description": "Reserves one bay with every capability the service requires and one technician with every certification it requires for the\nwhole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free\npreferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's\nload. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours\nwith the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.\nWith Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.\nA concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.\nDecoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.\nSuccessful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.",
+        "description": "Reserves a qualified bay and technician for the service slot, honouring optional preferences and `Idempotency-Key` replay within 24 hours.\nWhen vehicle-aware requirements are enabled, optional vehicle profile facts and live-diagnosis flags refine qualification and allocation rules.",
         "operationId": "BookAppointment",
         "parameters": [
           {
@@ -618,7 +618,7 @@
             }
           },
           "422": {
-            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.",
+            "description": "A business rule refuses it: `outside-operating-hours`, `lead-time-not-met`, `beyond-booking-horizon`, `slot-not-aligned`, `no-qualified-resources`, `idempotency-key-reuse`, `vehicle-profile-conflict`, or `vehicle-aware-requirements-disabled` (`needsLiveDiagnosis` or `vehicle.profile` sent while vehicle-aware requirements are disabled, named in `rejectedFields`; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand and firedRules.",
             "headers": {
               "X-Request-Id": {
                 "description": "The accepted or generated request correlation UUID, also recorded on the server Activity and in log scopes.",
@@ -676,7 +676,7 @@
           "Appointments"
         ],
         "summary": "List appointments for a local date range",
-        "description": "Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most\n62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a\nunion, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.\nOpening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back\nhour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller\nreceives them masked: one initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks\nand the last six characters (`***********123456`), and the full registration mask `*******` whatever the plate.\nReturns an empty array when there are no matches.",
+        "description": "Returns appointments starting between `from` and `to` (inclusive, up to 62 calendar days) in the dealership's time zone, optionally filtered by status.\nCallers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (`ALS`, `***********123456`, and `*******`).",
         "operationId": "ListAppointments",
         "parameters": [
           {
@@ -851,7 +851,7 @@
           "Appointments"
         ],
         "summary": "Get an appointment",
-        "description": "The appointment in whatever status it is now (cancelled ones included), with its service, the bay and technician reserved for\nit, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's `Location`\nheader points here.",
+        "description": "Returns an appointment in any status (including cancelled), with its service, bay, technician, local times, customer, and vehicle.",
         "operationId": "GetAppointment",
         "parameters": [
           {
@@ -995,7 +995,7 @@
           "Appointments"
         ],
         "summary": "Cancel an appointment",
-        "description": "Cancels a confirmed or checked-in appointment and records why. Its bay and technician are free again at once, so the slot is\nre-bookable; the appointment stays readable, with status `Cancelled` and the reason as `cancellationReason`. Cancelling is\nnot repeatable: a second cancel, or one after work has started, is refused with the current status. When another request changed\nthe appointment after this one read it, nothing is overwritten: read it again and decide.",
+        "description": "Cancels a confirmed or checked-in appointment, records the cancellation reason, and makes its bay and technician re-bookable immediately.",
         "operationId": "CancelAppointment",
         "parameters": [
           {
@@ -1188,7 +1188,7 @@
           "Schedule"
         ],
         "summary": "Get the workshop schedule for a date",
-        "description": "The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and\nevery technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold\nstay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and\nin progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no\n`operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).\nAdmin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:\none initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks and the last six\ncharacters (`***********123456`), and the full registration mask `*******` whatever the plate.\nAny well-formed date can be read, past or future. The answer is a snapshot; booking checks again.",
+        "description": "Returns the workshop dispatch board for a dealership and local date, including all bays with non-cancelled appointments and all technicians.\nCallers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (`ALS`, `***********123456`, and `*******`).",
         "operationId": "GetWorkshopSchedule",
         "parameters": [
           {
@@ -1815,7 +1815,7 @@
           "Identity"
         ],
         "summary": "Get the current caller and sign-in/out URLs",
-        "description": "Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.",
+        "description": "Returns authenticated status, verified identity claims, configured API roles, session expiry, and same-origin Access login and logout URLs.",
         "operationId": "GetCurrentUser",
         "parameters": [
           {
@@ -4481,7 +4481,7 @@
           "Appointments"
         ],
         "summary": "Find returning customers in this dealership's booking history",
-        "description": "Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.\nAt least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,\nselects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single\nnational trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward\nprefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,\nwhitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix\nof some name word, in any order; shorter words are ignored, and no eligible words disables name search).\nPrefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN\nwithin this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all\nbookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.\nOnly customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.",
+        "description": "Searches the dealership's booking history by email prefix, phone number, registration prefix, or customer name word prefixes,\nreturning up to eight customer-and-vehicle pairs ordered by most recent visit.",
         "operationId": "FindReturningCustomers",
         "parameters": [
           {
@@ -5168,7 +5168,7 @@
                 "type": "null"
               },
               {
-                "description": "Read-time review against recorded requirements on the local appointment date. Only `Confirmed`, `CheckedIn` and `InProgress`\nappointments, which still hold their bay and technician, are flagged; `Completed`, `Cancelled` and `NoShow` never are.\nOmitted with the flag off and when nothing needs review. No appointment is rewritten.",
+                "description": "Read-time review warning against recorded requirements for active appointments; omitted when clean or disabled.",
                 "$ref": "#/components/schemas/CompetenceWarningResponse"
               }
             ]
@@ -5234,14 +5234,14 @@
             "items": {
               "$ref": "#/components/schemas/AvailabilitySlotResponse"
             },
-            "description": "Every start on the grid where at least one qualified bay and one qualified technician are free for the whole duration, in\nascending order. Empty when `unavailableReason` is set, when everything is booked, when the service is longer than that\nday's opening hours, or on a day whose opening hours fall entirely in a daylight-saving gap."
+            "description": "Bookable start times on the slot grid in ascending order, or empty when closed or fully booked."
           },
           "unavailableReason": {
             "type": [
               "null",
               "string"
             ],
-            "description": "Why there can be no slots at all that day: `closed` (no opening hours on that weekday) or `no-qualified-resources`\n(no active bay with every required capability, or no active technician with every required certification). Null otherwise,\nincluding when every qualified resource is simply busy."
+            "description": "Reason when no slots can exist on the requested date (`closed` or `no-qualified-resources`); otherwise null."
           }
         },
         "description": "Feasible start times for one service on one local date at one dealership."
@@ -5268,7 +5268,7 @@
           },
           "startLocal": {
             "type": "string",
-            "description": "Start as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display. In the repeated\nhour of an autumn daylight-saving change two slots show the same wall-clock time, and the offset tells them apart."
+            "description": "Start as local time with offset, `yyyy-MM-ddTHH:mm±hh:mm` (e.g. `2026-10-13T10:00+01:00`), for display."
           },
           "freeBays": {
             "type": "integer",
@@ -5330,7 +5330,7 @@
             "items": {
               "$ref": "#/components/schemas/ScheduledAppointmentResponse"
             },
-            "description": "Its appointments overlapping that day's opening hours, in every status except `Cancelled`, ordered by start. Empty when\nthe dealership is closed that day."
+            "description": "Appointments overlapping that day's opening hours in every status except `Cancelled`, ordered by start."
           }
         },
         "description": "A service bay, a lane of the board, with the appointments it hosts that day."
@@ -5411,7 +5411,7 @@
               "2026-10-13T09:00:00Z"
             ],
             "type": "string",
-            "description": "Start time in UTC with `Z` and no seconds: a start offered by the availability route, inside the dealership's opening hours,\non its slot grid, and between the minimum lead time and the booking horizon from now.",
+            "description": "Start time in UTC (`Z`, whole minutes) aligned to the dealership's operating hours and slot grid.",
             "format": "date-time"
           },
           "customer": {
@@ -5430,7 +5430,7 @@
               "null",
               "string"
             ],
-            "description": "Optional: a bay to use when it is free and can host the service; otherwise the hint is ignored and the allocation policy\nchooses (the example is the seeded Reading Bay 1 - Standard).",
+            "description": "Optional preferred bay ID, honoured when free and compatible with the service.",
             "format": "uuid"
           },
           "preferredTechnicianId": {
@@ -5441,7 +5441,7 @@
               "null",
               "string"
             ],
-            "description": "Optional: a technician to assign when free and certified; otherwise ignored (the example is the seeded Amelia Clarke at Reading).",
+            "description": "Optional preferred technician ID, honoured when free and certified.",
             "format": "uuid"
           },
           "notes": {
@@ -5455,7 +5455,7 @@
             "description": "Optional free text for the workshop, at most 1000 characters after trimming."
           }
         },
-        "description": "The body of `POST /dealerships/{dealershipId}/appointments`: one service at one start time for one customer's vehicle. The\nexamples form a valid booking at the seeded Keyloop Motors Reading dealership."
+        "description": "Request body for `POST /dealerships/{dealershipId}/appointments`."
       },
       "BookingTriageStatusResponse": {
         "required": [
@@ -5520,7 +5520,7 @@
               "Customer called to reschedule."
             ],
             "type": "string",
-            "description": "Why the appointment is cancelled, 1 to 500 characters after trimming. Stored on the appointment (returned as\n`cancellationReason`) and in its audit history; never written to logs."
+            "description": "Reason for cancellation, 1 to 500 characters after trimming."
           }
         },
         "description": "The body of `POST /appointments/{appointmentId}/cancel`."
@@ -6245,7 +6245,7 @@
           "SuggestedConfirmed"
         ],
         "type": "string",
-        "description": "Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases."
+        "description": "Per-attribute provenance source."
       },
       "RequirementCondition": {
         "enum": [
@@ -6518,7 +6518,7 @@
             "description": "End as the dealership's local time with offset, `yyyy-MM-ddTHH:mm±hh:mm`, for display."
           },
           "status": {
-            "description": "Lifecycle state: `Confirmed`, `CheckedIn` or `InProgress`, which hold the bay and the technician, or `Completed`\nor `NoShow`. Cancelled appointments are not on the board.",
+            "description": "Lifecycle state (`Confirmed`, `CheckedIn`, `InProgress`, `Completed`, or `NoShow`); cancelled appointments are excluded.",
             "$ref": "#/components/schemas/AppointmentStatus"
           },
           "serviceType": {
@@ -6547,7 +6547,7 @@
                 "type": "null"
               },
               {
-                "description": "Computed review flag and bounded reason codes against recorded requirements, present only with the vehicle-aware flag and an API role,\nand only on `Confirmed`, `CheckedIn` and `InProgress` appointments, which still hold their bay and technician; never on\n`Completed` or `NoShow`.",
+                "description": "Computed review warning and bounded reason codes against recorded requirements for active appointments; omitted when clean, non-active, or unauthorized.",
                 "$ref": "#/components/schemas/CompetenceWarningResponse"
               }
             ]
@@ -6601,7 +6601,7 @@
           },
           "bookable": {
             "type": "boolean",
-            "description": "True when the dealership has at least one active bay with every required capability and at least one active technician with\nevery required certification when vehicle-aware requirements are off. When on, some powertrain/class profile the booking dialog\ncan submit must satisfy the latest dealership policy on today's dealership-local date, including inclusive HV expiry, without\nrequiring the legacy HV certificate. Busy time, opening hours and the booking window are excluded; availability checks the chosen\nvehicle and appointment date."
+            "description": "True when the dealership has active bays and technicians capable of performing the service under the current policy, ignoring busy time and opening hours."
           }
         },
         "description": "A catalogue entry: how long the service takes, what it needs, and whether the dealership in the route can perform it."
@@ -6701,7 +6701,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Normalized OEM codes; data only in Phase 1."
+            "description": "Normalized OEM codes."
           }
         },
         "description": "A technician on the dealership's roster: a lane of the board when it is viewed by technician."
@@ -6875,7 +6875,7 @@
                 "type": "null"
               },
               {
-                "description": "A confidently selected additional issue outside the most likely service, or null (none named, below the confidence threshold, or a category inside the chosen service's own scope). Render the category with fixed client copy, never model text, and only while the service it names is the one selected.",
+                "description": "Confidently selected additional issue outside the most likely service, or null.",
                 "$ref": "#/components/schemas/TriageUncoveredIssue"
               }
             ]
@@ -6963,11 +6963,11 @@
               "null",
               "string"
             ],
-            "description": "The service type the issue is outside: Clef's most likely service, which need not be the first candidate a person picks. Null when Clef chose none of the bookable services, so the issue is outside the whole catalogue. Show the notice while this service is selected (or whenever it is null), not for another candidate.",
+            "description": "The most likely service type that the issue falls outside, or null if outside all bookable services.",
             "format": "uuid"
           }
         },
-        "description": "A validated closed category, with confidence distinct from its probability. NONE, below-threshold answers and categories the chosen service already covers (for example accident damage beside the accident damage assessment) return null."
+        "description": "Additional uncovered issue category with probability and confidence."
       },
       "UploadBookingTriageImageRequest": {
         "required": [
@@ -7127,7 +7127,7 @@
                 "type": "null"
               },
               {
-                "description": "Optional advisor declaration, for example `{\"powertrain\":\"Ice\",\"declarationReason\":\"Engine checked at intake\"}`. Omission keeps\npowertrain Unknown; the server resolves manufacturer from VIN. Only with vehicle-aware requirements enabled: otherwise any profile\nis refused (422 `vehicle-aware-requirements-disabled`), which is why the example request sends none.",
+                "description": "Optional advisor vehicle profile declaration when vehicle-aware requirements are enabled.",
                 "$ref": "#/components/schemas/VehicleProfileRequest"
               }
             ]
@@ -7253,7 +7253,7 @@
             "description": "Every technician of the dealership, active or not, ordered by name. Each appointment's `technician.id` is one of them."
           }
         },
-        "description": "The dispatch board for one dealership on one local date: every bay with the appointments it hosts that day, and every technician.\nA projection over the day's appointments (ARCHITECTURE §5.3); it is a snapshot, and booking checks again."
+        "description": "The dispatch board for one dealership on one local date, including all bays, their appointments, and all technicians."
       }
     },
     "securitySchemes": {

@@ -80,10 +80,7 @@ public sealed class AdminCompetenceWarningTests(PostgresFixture pg) : IAsyncLife
         }
     }
 
-    /// <summary>
-    /// Appointments booked before the full requirement snapshot reconstruct their sets from their recorded policy version. One board read
-    /// reconstructs each version once, not once per appointment.
-    /// </summary>
+    /// <summary>Reconstructs missing requirement snapshots once per recorded policy version during a board read.</summary>
     [Fact]
     public async Task Board_read_reconstructs_each_older_policy_version_once()
     {
@@ -118,10 +115,7 @@ public sealed class AdminCompetenceWarningTests(PostgresFixture pg) : IAsyncLife
         }
     }
 
-    /// <summary>
-    /// The warning asks staff to review or reassign, which only an appointment that still holds its bay and technician allows: cancelled,
-    /// completed and no-show appointments (including past board days) are never flagged, while an in-progress one still is.
-    /// </summary>
+    /// <summary>Flags competence warnings only on appointments that still hold bay and technician resources.</summary>
     [Fact]
     public async Task Only_appointments_that_still_hold_their_resources_are_flagged()
     {
@@ -142,7 +136,6 @@ public sealed class AdminCompetenceWarningTests(PostgresFixture pg) : IAsyncLife
         {
             cancelled.StatusCode.ShouldBe(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync(Ct));
         }
-        // The board day is now in the past for the terminal transitions.
         _factory.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 14, 8, 0, 0, TimeSpan.Zero));
         await _factory.WithDbAsync(async db =>
         {

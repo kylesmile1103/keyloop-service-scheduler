@@ -9,7 +9,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
-/// <summary>The workshop schedule's parts (Mapperly, Addendum A §A6): resources as the board shows them, local times in the dealership's zone.</summary>
+/// <summary>Verifies mapping of dealership, resource, and appointment records to workshop schedule DTOs.</summary>
 public class ScheduleMapperTests
 {
     private static readonly DateTime Now = new(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);

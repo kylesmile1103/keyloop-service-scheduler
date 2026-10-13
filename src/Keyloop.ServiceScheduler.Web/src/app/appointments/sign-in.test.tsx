@@ -7,9 +7,6 @@ import { reading } from "@/test/dealerships"
 import { anonymous, noRole, viewer } from "@/test/identities"
 import { renderBoard } from "@/test/render-board"
 
-// The appointments list's row actions follow the signed-in role (Task 27b): a role that cannot cancel sees Cancel
-// unavailable with the reason; a visitor who is not signed in gets the details sheet's sign-in panel.
-
 beforeAll(async () => {
   await import("@/app/appointments/page")
 })
@@ -59,10 +56,8 @@ describe("a row's Cancel", () => {
       "href",
       `/auth/login?returnTo=${encodeURIComponent(readingList)}`
     )
-    // Focus lands on the sheet's title, since there is no reason field to fill.
     await waitFor(() => expect(within(sheet).getByRole("heading", { name: "Interim Service" })).toHaveFocus())
     expect(within(sheet).queryByRole("textbox", { name: "Reason" })).not.toBeInTheDocument()
-    // Neither the record (a role's read) nor a cancellation was asked for.
     expect(requests.filter((request) => new URL(request.url).pathname.startsWith("/api/v1/appointments/"))).toHaveLength(0)
     expect(writes(requests)).toHaveLength(0)
   })

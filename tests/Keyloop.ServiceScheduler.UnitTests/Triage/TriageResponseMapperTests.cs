@@ -11,8 +11,6 @@ public sealed class TriageResponseMapperTests
     [InlineData(1.0, "suggest")]
     [InlineData(0.5, "suggest")]
     [InlineData(0.49999, "confirm")]
-    // Clef-flash live golden set (2026-10-12): clear requests scored 0.38 to 0.88 (0.64 for "brakes squeal when stopping"),
-    // the vague "something feels odd" 0.19.
     [InlineData(0.64, "suggest")]
     [InlineData(0.19, "confirm")]
     [InlineData(0.0, "confirm")]
@@ -101,7 +99,6 @@ public sealed class TriageResponseMapperTests
 
     [Theory]
     [InlineData("NONE", 1, false)]
-    // Default 0.50 (live golden set, 2026-10-13): the lowest correct notices scored 0.538 and 0.547, the only false one 0.416.
     [InlineData("GLASS", 0.49999, false)]
     [InlineData("GLASS", 0.5, true)]
     [InlineData("GLASS", 0.538, true)]
@@ -141,8 +138,7 @@ public sealed class TriageResponseMapperTests
         issue.OutsideServiceTypeId.ShouldBeNull(); // Clef chose no service, so the issue is outside the whole bookable catalogue
     }
 
-    // The question asks for an issue outside Clef's most likely service, which need not be the candidate a person picks: with
-    // DIAG 0.45 and ACCIDENT 0.40 (confirm, nothing preselected) the notice is relative to DIAG only.
+    // The uncovered issue is relative to Clef's highest-probability service candidate.
     [Theory]
     [InlineData("DIAG-FAULT-FINDING")]
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT")]

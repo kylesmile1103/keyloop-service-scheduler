@@ -12,15 +12,11 @@ import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
 import { appointments } from "@/test/schedules"
 
-// The Calendar (Task 28b): one dealership's appointments by week or month from one range read, on the dealership's own
-// calendar, with the board's details sheet and booking dialog.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/calendar/page"), import("@/app/dispatch/page")])
 })
 
 beforeEach(() => {
-  // Tuesday 2026-10-13, 09:30 in Reading (BST). Only Date is faked; timers stay real for the UI.
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
 })
@@ -30,10 +26,8 @@ afterEach(() => {
 
 const calendar = `/calendar?dealership=${reading.id}`
 const title = (name: string) => screen.findByRole("heading", { level: 2, name })
-/** A day's column, cell or agenda section, found by its heading ("Tuesday 13 October, today, dispatch board"). */
 const day = async (name: string) => (await screen.findByRole("heading", { level: 3, name })).closest("li")!
 const rangeReads = (requests: readonly Request[]) => requestsTo(requests, "/appointments").filter((request) => request.method === "GET")
-/** The distinct ranges read (StrictMode mounts a page twice in development, so a read can be sent twice). */
 const rangesRead = (requests: readonly Request[]) => [...new Set(rangeReads(requests).map((request) => new URL(request.url).search))]
 const writes = (requests: readonly Request[]) => requests.filter((request) => request.method !== "GET")
 const interimLabel = "Interim Service, Bay 1 - Standard, 08:00 to 09:00, Sophie Turner, Amelia Clarke, Confirmed"

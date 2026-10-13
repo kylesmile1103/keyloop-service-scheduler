@@ -16,27 +16,19 @@ import { cn } from "@/lib/utils"
 
 import { cancellationsLastWeek, todayByStatus } from "../lib/overview"
 
-/** The service whose next free start the Overview shows, as on the board's strip; the first bookable one without it. */
 const KPI_SERVICE_CODE = "INTERIM-SERVICE"
 
 interface OverviewCardsProps {
   dealership: DealershipResponse
-  /** Today on the dealership's calendar. */
   today: string
   now: Date
-  /** The range read; `undefined` while it loads or when it failed. */
   appointments: readonly AppointmentListItemResponse[] | undefined
   rangeFailed: boolean
-  /** Today's schedule (the board's own read): its bays and opening window give the utilisation. */
   schedule: WorkshopScheduleResponse | undefined
   scheduleFailed: boolean
 }
 
-/**
- * Today in four figures (adopted from the template's dashboard `section-cards`, in the UI_DESIGN 11.11 anatomy): today's
- * bookings by status, bay utilisation today, cancellations in the last seven days and the next free start. As on the
- * board, no trend badges: the API keeps no history to compare with (UI_DESIGN 11.19). Every day is the dealership's own.
- */
+/** Summary KPI cards for the dealership overview page. */
 export function OverviewCards({ dealership, today, now, appointments, rangeFailed, schedule, scheduleFailed }: OverviewCardsProps) {
   const byStatus = appointments ? todayByStatus(appointments, today) : undefined
   const week = appointments ? cancellationsLastWeek(appointments, today) : undefined
@@ -89,17 +81,12 @@ export function OverviewCards({ dealership, today, now, appointments, rangeFaile
   )
 }
 
-/** "4 confirmed, 1 in progress", plus the cancelled ones, which the figure leaves out. */
 function todayFooter(counts: ReadonlyMap<AppointmentStatus, number>, cancelled: number): string {
   const parts = boardStatuses.filter((status) => counts.has(status)).map((status) => `${counts.get(status)} ${statusMeta[status].label.toLowerCase()}`)
   const summary = parts.length > 0 ? parts.join(", ") : "Nothing booked"
   return cancelled > 0 ? `${summary}; ${cancelled} cancelled not counted` : summary
 }
 
-/**
- * Today by status as one thin bar of the status markers, in lifecycle order (UI_DESIGN 13: a chart of appointments by status
- * uses the status markers). Decorative: the footer writes the same figures out.
- */
 function StatusMeter({ counts }: { counts: ReadonlyMap<AppointmentStatus, number> }) {
   return (
     <span aria-hidden="true" className="mb-1 flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
@@ -112,10 +99,6 @@ function StatusMeter({ counts }: { counts: ReadonlyMap<AppointmentStatus, number
   )
 }
 
-/**
- * The earliest bookable start for an interim service from now: today's next one, else the first on the next day the
- * dealership opens (two availability reads at most, the second only when today has none).
- */
 function NextFreeStart({ dealership, today, now }: { dealership: DealershipResponse; today: string; now: Date }) {
   const dealershipId = dealership.id
   const timeZone = dealership.timeZoneId
@@ -128,7 +111,6 @@ function NextFreeStart({ dealership, today, now }: { dealership: DealershipRespo
     ...getAvailabilityOptions({ path: { dealershipId }, query: { serviceTypeId: service?.id ?? "", date: today } }),
     enabled: Boolean(service) && openToday,
   })
-  // The API leaves out starts that have passed when it answers; between reads the answer ages, so they are skipped here too.
   const todaySlot = todayRead.data?.slots.find((slot) => Date.parse(slot.startUtc) >= now.getTime())
   const nextDay = nextOpenDate(dealership, today)
   const needNextDay = Boolean(service) && (!openToday || (todayRead.data !== undefined && !todaySlot))
@@ -162,5 +144,4 @@ function NextFreeStart({ dealership, today, now }: { dealership: DealershipRespo
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`
 
-/** 420 → "7 h", 375 → "6.3 h". */
 const hours = (minutes: number) => `${Number((minutes / 60).toFixed(1))} h`

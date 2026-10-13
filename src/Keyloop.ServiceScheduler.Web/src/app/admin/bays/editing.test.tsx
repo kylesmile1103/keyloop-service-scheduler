@@ -12,10 +12,6 @@ import { renderBoard, viewportOf } from "@/test/render-board"
 import { bodyRows } from "@/test/resource-list"
 import { appointments, bays, technicians } from "@/test/schedules"
 
-// Task 30b: an Admin adds bays, edits their name and equipment, and takes one out of service (after seeing which upcoming
-// appointments would then be flagged) or back. Every write carries the version it was made from. A Service advisor and a
-// Viewer see the bays read-only, with the reason.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/bays/page")])
 })

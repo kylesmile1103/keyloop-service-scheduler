@@ -21,12 +21,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// <c>POST /api/v1/dealerships/{dealershipId}/appointments</c>: rule checks, allocation (ARCHITECTURE §6.3), the locked pre-check and
-/// the exclusion-constraint backstop (§7.3–§7.4), suggestions, telemetry and rate limiting. The workshop is Test Motors (Europe/London,
-/// Monday–Saturday 08:00–18:00, so 07:00Z–17:00Z on the booking day) with two standard bays, two general technicians and a 60-minute
-/// interim service; the clock is Monday 2026-10-12 08:00Z and SystemTest has no lead time.
-/// </summary>
+/// <summary>Tests appointment booking validation, resource allocation, conflict handling, telemetry, and rate limiting.</summary>
 public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly DateTime Ten = new(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc); // 11:00 BST
@@ -66,13 +61,13 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         appointment.Status.ShouldBe(AppointmentStatus.Confirmed);
         appointment.DealershipId.ShouldBe(_workshop.Dealership.Id);
         appointment.ServiceType.ShouldBe(new ServiceTypeSummary(_workshop.Interim.Id, "INTERIM-SERVICE", "INTERIM-SERVICE", 60));
-        appointment.Bay.ShouldBe(new ResourceSummary(_workshop.Bay1.Id, "Bay 1")); // equal surplus and load: by name
+        appointment.Bay.ShouldBe(new ResourceSummary(_workshop.Bay1.Id, "Bay 1"));
         appointment.Technician.ShouldBe(new ResourceSummary(_workshop.Technician1.Id, "Amelia Clarke"));
         (appointment.StartUtc, appointment.EndUtc).ShouldBe((Ten, Ten.AddHours(1)));
         (appointment.StartLocal, appointment.EndLocal).ShouldBe(("2026-10-13T11:00+01:00", "2026-10-13T12:00+01:00"));
         appointment.Customer.ShouldBe(new CustomerResponse("Customer 1", "customer1@example.com", "+44 7700 900001"));
         appointment.Vehicle.ShouldBe(new VehicleResponse(TestData.VinFor(1), "AB12 CDE", "Volkswagen", "Golf"));
-        appointment.Notes.ShouldBe("Rattle from the front left wheel."); // trimmed by the aggregate
+        appointment.Notes.ShouldBe("Rattle from the front left wheel.");
         appointment.CancellationReason.ShouldBeNull();
         (appointment.CreatedAtUtc, appointment.UpdatedAtUtc).ShouldBe((TestData.Now, TestData.Now));
 
@@ -125,7 +120,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Prefers_bay_with_fewest_surplus_capabilities()
     {
-        // The EV bay sorts first by name and can host a standard service too, but taking it would waste specialised capacity.
         var evBay = TestData.NewBay(_workshop.Dealership.Id, "Bay 0 - EV", BayCapability.StandardLift, BayCapability.EvHighVoltage);
         await SaveAsync(evBay);
 
@@ -137,7 +131,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Balances_load_between_otherwise_equal_technicians()
     {
-        await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1)); // Bay 1 + Amelia
+        await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 1));
 
         var later = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Ten.AddHours(2), customerIndex: 2));
 
@@ -146,9 +140,9 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("2026-10-13T17:30:00Z")] // starts after closing (18:30 BST)
-    [InlineData("2026-10-13T16:01:00Z")] // ends one minute after closing
-    [InlineData("2026-10-13T06:45:00Z")] // starts before opening
+    [InlineData("2026-10-13T17:30:00Z")]
+    [InlineData("2026-10-13T16:01:00Z")]
+    [InlineData("2026-10-13T06:45:00Z")]
     public async Task Rejects_outside_operating_hours_422(string start)
     {
         using var response = await PostAsync(_workshop.Dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Utc(start)));
@@ -165,7 +159,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     {
         var appointment = await BookAsync(TestData.BookingRequest(_workshop.Interim.Id, Utc("2026-10-13T16:00:00Z")));
 
-        appointment.EndUtc.ShouldBe(Utc("2026-10-13T17:00:00Z")); // 18:00 BST: closing time, half-open
+        appointment.EndUtc.ShouldBe(Utc("2026-10-13T17:00:00Z"));
         appointment.EndLocal.ShouldBe("2026-10-13T18:00+01:00");
     }
 
@@ -217,9 +211,9 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("2026-10-11T10:00:00Z", "outside-operating-hours")] // past and closed: hours retain precedence over lead time
-    [InlineData("2026-10-12T08:10:00Z", "lead-time-not-met")] // inside hours, inside lead time, off grid
-    [InlineData("0001-01-01T10:00:00Z", "lead-time-not-met")] // earliest supported calendar date, no underflow/500
+    [InlineData("2026-10-11T10:00:00Z", "outside-operating-hours")]
+    [InlineData("2026-10-12T08:10:00Z", "lead-time-not-met")]
+    [InlineData("0001-01-01T10:00:00Z", "lead-time-not-met")]
     public async Task Normal_rule_order_is_preserved_after_the_early_horizon_guard(string start, string problemType)
     {
         await using var factory = _factory.WithWebHostBuilder(builder => builder.UseSetting("Scheduling:MinimumLeadTime", "01:00:00"));
@@ -279,9 +273,8 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         var problem = await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
         problem.GetProperty("title").GetString().ShouldBe("Slot unavailable");
         var suggestions = Suggestions(problem);
-        suggestions.Count.ShouldBe(3); // Scheduling:SuggestedSlotCount
+        suggestions.Count.ShouldBe(3);
         suggestions.ShouldAllBe(s => s.StartUtc >= Ten.AddHours(1) || s.EndUtc <= Ten, "none overlaps 10:00–11:00Z");
-        // Nearest first, ties to the earlier slot: 09:00Z and 11:00Z are 60 minutes away, then 08:45Z and 11:15Z.
         suggestions.Select(s => s.StartUtc).ShouldBe([Ten.AddHours(-1), Ten.AddHours(1), Ten.AddMinutes(-75)]);
         suggestions[0].ShouldBe(new SuggestedSlotView(Ten.AddHours(-1), Ten, "2026-10-13T10:00+01:00"));
         await _factory.WithDbAsync(async db => (await db.Appointments.CountAsync(Ct)).ShouldBe(2));
@@ -292,8 +285,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("technician")]
     public async Task Suggestions_use_only_active_qualified_resources(string side)
     {
-        // Busy at 10:00Z: the dealership's only active qualified resource on one side. The other side has a spare, so a dormant or
-        // unqualified resource on the scarce side, if the suggestions counted it, would make 09:45Z and 10:15Z look free.
         var dealership = TestData.NewDealership("Sparse Motors");
         var bay = TestData.NewBay(dealership.Id, "Bay 1", BayCapability.StandardLift);
         var technician = TestData.NewTechnician(dealership.Id, "Amelia Clarke", "S-1001", Certification.GeneralService);
@@ -322,7 +313,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Suggestions_are_bookable_now()
     {
-        // Booking later today (now is 09:00Z): the nearest free starts include one already in the past, which is not offered.
         _factory.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.Zero));
         var dealership = TestData.NewDealership("Single Bay Motors");
         await SaveAsync(
@@ -333,7 +323,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
 
         using var response = await PostAsync(dealership.Id, TestData.BookingRequest(_workshop.Interim.Id, Ten, customerIndex: 2));
 
-        // Free starts nearest 10:00Z: 09:00Z and 11:00Z (60 minutes away), then 08:45Z (in the past, dropped) and 11:15Z.
         var problem = await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, "slot-unavailable", Ct);
         Suggestions(problem).Select(s => s.StartUtc).ShouldBe([Ten.AddHours(-1), Ten.AddHours(1), Ten.AddMinutes(75)]);
     }
@@ -353,9 +342,9 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("2026-10-13T11:00:00+01:00")] // the same instant with an offset: deserialised as machine-local time, not UTC
-    [InlineData("2026-10-13T10:00:00")] // no zone at all
-    [InlineData("2026-10-13T10:00:30Z")] // not a whole minute
+    [InlineData("2026-10-13T11:00:00+01:00")]
+    [InlineData("2026-10-13T10:00:00")]
+    [InlineData("2026-10-13T10:00:30Z")]
     public async Task Rejects_a_start_that_is_not_a_whole_utc_minute_400(string startUtc)
     {
         var json = JsonSerializer.Serialize(TestData.BookingRequest(_workshop.Interim.Id, Ten), SchedulerJsonContext.Default.BookAppointmentRequest)
@@ -398,8 +387,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Constraint_backstop_maps_to_409_slot_conflict_for_out_of_band_row()
     {
-        // The locked pre-check reads only rows whose dealership_id is the route's. An out-of-band writer that books dealership A's Bay 1
-        // and Amelia under dealership B's id is invisible to it, but the exclusion constraints index bay_id and technician_id alone.
+        // Insert an out-of-band appointment under another dealership ID to bypass the dealership-scoped pre-check and hit the resource exclusion constraint.
         var elsewhere = TestData.NewDealership("Elsewhere Motors");
         await SaveAsync(elsewhere);
         await InsertOutOfBandAppointmentAsync(elsewhere.Id, _workshop.Bay1.Id, _workshop.Technician1.Id, Ten, Ten.AddHours(1));
@@ -424,7 +412,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         metrics.Sum("scheduler.booking.requests", MetricsCollector.Tag("outcome", "slot_conflict")).ShouldBe(1);
         metrics.Sum("scheduler.booking.deadlocks").ShouldBe(0);
 
-        // A handled refusal is a Warning (1003), not an error: EF Core's own failed-save and command-error logs are lowered to Information.
         logs.Entries.ShouldNotContain(e => e.Level >= LogLevel.Error, string.Join(Environment.NewLine, logs.Entries.Where(e => e.Level >= LogLevel.Error)));
         logs.Entries.ShouldContain(e => e.EventId.Id == 1003 && e.Level == LogLevel.Warning);
         await _factory.WithDbAsync(async db =>
@@ -438,8 +425,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Deadlock_on_the_insert_is_answered_once_as_a_slot_conflict_and_never_retried()
     {
-        // ADR-003 rules a 40P01 out on this path; if one happened, it must be reported (409, metric, Warning 1004), not retried as the
-        // execution strategy would retry any transient error, which a deadlock is to Npgsql.
+        // Deadlocks (40P01) on appointment insert are reported immediately as 409 rather than retried by the execution strategy.
         var deadlock = new SqlStateInjector("INSERT INTO appointments", "40P01");
         var logs = new CapturingLoggerProvider();
         await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -499,7 +485,7 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
         metrics.Of("scheduler.booking.lock_wait", MetricsCollector.Tag("dealership.id", dealershipId)).Count.ShouldBe(3, "the three that passed the rule checks");
 
         var rejected = logs.Entries.Where(e => e.EventId.Id == 1002).Select(e => e.Message).ToList();
-        rejected.Count.ShouldBe(4); // unavailable, rule, not found, validation
+        rejected.Count.ShouldBe(4);
         rejected.ShouldContain(m => m.Contains("slot_unavailable", StringComparison.Ordinal) && m.Contains("INTERIM-SERVICE", StringComparison.Ordinal));
         logs.Entries.Count(e => e.EventId.Id == 1001).ShouldBe(2, "BookingConfirmed comes from the post-commit observer, once per booking");
         logs.Entries.ShouldNotContain(e => e.Message.Contains("Customer 3", StringComparison.Ordinal) || e.Message.Contains("jane-at-example", StringComparison.Ordinal)
@@ -510,7 +496,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Lock_wait_measures_real_time_spent_queued_behind_the_dealership_lock()
     {
-        // The business clock is frozen (FakeTimeProvider); latencies must still be real elapsed time.
         using var metrics = new MetricsCollector();
         HttpResponseMessage response;
         await using (var connection = new NpgsqlConnection(pg.ConnectionString))
@@ -537,7 +522,6 @@ public sealed class BookAppointmentTests(PostgresFixture pg) : IAsyncLifetime
 
         var wait = metrics.Of("scheduler.booking.lock_wait", MetricsCollector.Tag("dealership.id", _workshop.Dealership.Id.ToString())).ShouldHaveSingleItem();
         wait.Value.ShouldBeGreaterThanOrEqualTo(200, "queued for at least the 250 ms the test held the lock (less scheduling slack)");
-        // The confirmed booking's own duration (outcome-tagged, so a measurement from any other request cannot satisfy it) includes the wait.
         metrics.Of("scheduler.booking.duration", MetricsCollector.Tag("outcome", "confirmed")).ShouldHaveSingleItem().Value.ShouldBeGreaterThanOrEqualTo(wait.Value);
     }
 

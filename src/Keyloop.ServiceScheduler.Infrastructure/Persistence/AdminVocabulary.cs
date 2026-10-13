@@ -1,9 +1,7 @@
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// The closed Admin audit vocabulary: <c>admin_changes.resource_kind</c> and <c>action</c>, the history filter and the
-/// <c>scheduler.admin.edits</c> tags. The API contract enumerates exactly these lists (Api <c>SchedulerOpenApi</c>), so a new value is a
-/// contract change. It lives beside <see cref="AdminChange"/> so the demo reseed recognises Admin-edited technicians by the same value.
+/// Closed Admin audit vocabulary for <c>admin_changes.resource_kind</c> and <c>action</c>, history filters, and metric tags.
 /// </summary>
 public static class AdminVocabulary
 {

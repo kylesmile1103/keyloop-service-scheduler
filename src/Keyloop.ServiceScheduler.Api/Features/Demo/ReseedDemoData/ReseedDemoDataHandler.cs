@@ -11,30 +11,13 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Demo.ReseedDemoData;
 
 /// <summary>
-/// Puts the demo back to its starting point (Addendum C §C3): deletes every appointment of the demo dealerships, in any status, with its
-/// history rows and the idempotency keys that would replay it, restores the seeded competence of seeded technicians whose HV level
-/// nobody confirmed (<see cref="ReferenceDataSeed.RestoreSeededCompetenceAsync"/>), then books the deterministic demo week again
-/// (<see cref="DemoAppointmentSeeder"/>, after <see cref="ReferenceDataSeed"/> in case the catalogue is gone), all in one transaction.
+/// Resets demo dealerships to their initial seeded state and re-creates the deterministic demo week of appointments within a single transaction.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The transaction runs at <c>READ COMMITTED</c> and, before it writes anything, takes the <see cref="SeedingLock"/> and then both demo
-/// dealerships' locks (<see cref="DealershipLock"/>), always in that order: startup seeding on another instance finishes first, a
-/// booking in flight finishes before anything is deleted, and a booking that arrives meanwhile waits and then sees the new week. This
-/// cannot deadlock with bookings, which hold one dealership's lock and never wait for another (ADR-003), with startup seeding, which
-/// takes only the seeding lock, nor with another reseed, which takes the locks in the same order.
-/// </para>
-/// <para>
-/// It runs under the retrying execution strategy without commit verification: the demo week's ids are deterministic, so a run repeated
-/// after a commit whose acknowledgement was lost deletes what that commit booked and books the same rows again.
-/// </para>
-/// </remarks>
 public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider clock, IOptions<DemoOptions> options, ILogger<ReseedDemoDataHandler> logger)
 {
-    /// <summary>The seeded dealerships, in the order their locks are taken.</summary>
     private static readonly Guid[] DemoDealerships = [ReferenceDataSeed.ReadingDealershipId, ReferenceDataSeed.MunichDealershipId];
 
-    /// <returns>What was deleted and created, or null when <paramref name="presentedKey"/> is missing or wrong (then nothing is done).</returns>
+    /// <returns>What was deleted and created, or null when <paramref name="presentedKey"/> is missing or wrong.</returns>
     public async Task<ReseedDemoDataResponse?> HandleAsync(string? presentedKey, CancellationToken ct)
     {
         if (!KeyMatches(presentedKey, options.Value.ReseedKey))
@@ -44,16 +27,12 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
         }
 
         var (outcome, reference) = await db.Database.CreateExecutionStrategy().ExecuteAsync(ReseedAsync, ct);
-        // After the commit, from the attempt that committed: a rolled-back attempt announces no policy version (ReferenceSeedResult).
         reference.LogPublished(logger);
         logger.DemoDataReseeded(outcome.AppointmentsDeleted, outcome.AppointmentsCreated);
         return outcome;
     }
 
-    /// <summary>
-    /// Compares in fixed time (<see cref="CryptographicOperations.FixedTimeEquals"/>), over SHA-256 digests so that neither the key's
-    /// content nor its length shows in the response time. No configured key matches nothing.
-    /// </summary>
+    /// <summary>Compares the presented and expected keys in fixed time over SHA-256 digests.</summary>
     internal static bool KeyMatches(string? presented, string? expected)
     {
         if (presented is null || string.IsNullOrEmpty(expected))
@@ -67,7 +46,6 @@ public sealed class ReseedDemoDataHandler(SchedulerDbContext db, TimeProvider cl
 
     private async Task<(ReseedDemoDataResponse Outcome, ReferenceSeedResult Reference)> ReseedAsync(CancellationToken ct)
     {
-        // A retried run starts from nothing: whatever the failed run tracked or staged is gone with its transaction.
         db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
         await SeedingLock.AcquireAsync(db, ct);
