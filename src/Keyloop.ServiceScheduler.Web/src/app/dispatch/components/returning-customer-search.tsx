@@ -43,20 +43,8 @@ export interface ReturningCustomerSearchProps {
 }
 
 /**
- * "Returning customer" at the top of step 2's customer section (Task 39b, UI_DESIGN 11.14): staff type a registration,
- * email, phone or name and choose an earlier booking of this dealership, which fills in the customer and the vehicle.
- *
- * An editable combobox with a list popup (the WAI-ARIA combobox pattern: list autocomplete, manual selection,
- * `aria-activedescendant`): Down and Up move through the matches (opening them), Enter chooses one, Escape closes them and
- * then clears the search, a pointer chooses one with a click; the count is announced politely. Searches go from two
- * characters, once typing pauses (`LOOKUP_DEBOUNCE_MS`); only the answer for what is in the box now is ever shown, and a
- * search overtaken by another is cancelled.
- *
- * What is typed and what comes back are personal data. The search goes in the request's body only (never a URL, a query
- * key, the console or a span), as a write bound to the account the dialog was drawn for (`useWriteMutation`: an answer
- * that arrives after who is signed in changed is thrown away); the answer lives in this component's mutation, dropped as
- * soon as nothing shows it (`gcTime` 0), and by the identity change's cache clearing. The dialog keys this component by
- * the identity, so any change of caller starts it empty.
+ * Returning-customer search combobox for step 2: searches earlier bookings by registration, email, phone, or name
+ * and populates customer and vehicle fields when a match is selected.
  */
 export function ReturningCustomerSearch({ dealershipId, timeZone, blockedBy, filledFrom, onChoose, onClear }: ReturningCustomerSearchProps) {
   const id = useId()

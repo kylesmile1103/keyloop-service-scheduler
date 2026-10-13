@@ -12,63 +12,35 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 import { cachedWriterFor, type WriteKind } from "@/lib/session"
 import { type BoundWrite, bindWrite, CallerChangedError, WriteNotAllowedError } from "@/lib/session-cache"
 
-/** What a write's `mutationFn` is given to send with: the account check for each request, and for each step awaited. */
+/** Request-level account guards passed to a write's `mutationFn`. */
 export type WriteSend = Pick<BoundWrite, "fetch" | "guard">
 
 export interface WriteMutationOptions<TData, TError, TVariables extends object, TOnMutateResult>
   extends Omit<UseMutationOptions<TData, TError, TVariables, TOnMutateResult>, "mutationFn"> {
-  /**
-   * Sends the write. Every request it makes must be given `write.fetch(...)` as its `fetch` option (wrapping a span's
-   * traced fetch, if any): the account is checked there, as the generated client hands it the request, immediately before
-   * it leaves. Call `write.guard()` after each step awaited (reading a photo, an upload) before using what it answered:
-   * it throws when the caller changed or is no longer the account the write is bound to (`bindWrite`).
-   */
+  /** Executes the write using `write.fetch` for requests and `write.guard()` after async steps. */
   mutationFn: (variables: TVariables, write: WriteSend, context: MutationFunctionContext) => Promise<TData>
-  /** An answer thrown away because who is signed in changed while the write ran (the view may say so). */
+  /** Called when a response is discarded because the signed-in caller changed while the write was in flight. */
   onDiscarded?: (variables: TVariables) => void
-  /**
-   * Whose write it is: `bookings` (the default; book, cancel, suggestions: `CurrentUser.writer`) or `admin` (an edit in the
-   * Resources area, Task 30: `CurrentUser.adminWriter`, an Admin's email). The account checks below all use that writer.
-   */
+  /** Permission scope: `"bookings"` (default, `CurrentUser.writer`) or `"admin"` (`CurrentUser.adminWriter`). */
   writes?: WriteKind
 }
 
-/** Sends one write now, if it may still be sent: whether it was. */
 export type SendWrite<TVariables> = (variables: TVariables) => boolean
 
 export interface WriteMutationResult<TData, TError, TVariables, TOnMutateResult>
   extends Omit<UseMutationResult<TData, TError, TVariables, TOnMutateResult>, "mutate" | "mutateAsync"> {
   /**
-   * Starts a write that is sent later, once a form's checks have passed: it is bound now to the account the view was
-   * drawn for, and `null` unless the identity in the cache is that account (so a press that comes after `/me` named
-   * another caller, even one that may write, starts nothing). The function it returns sends the write only if, by then,
-   * the view is still there (a discarded booking's view is not) and the cache still names that account; else it sends
-   * nothing and returns false.
+   * Binds a write to the writer the view was rendered for, returning a sender that verifies the view is still mounted
+   * and the cached writer has not changed before dispatching (`null` if no longer authorised).
    */
   begin: () => SendWrite<TVariables> | null
-  /** `begin` and its send at once, for a write with no checks to wait for: whether it was sent. */
+  /** Immediately begins and dispatches the write; returns `true` if sent. */
   mutate: SendWrite<TVariables>
 }
 
 /**
- * `useMutation` for a write the API reserves for a role (book, cancel, ask for suggestions and upload their photos; with
- * `writes: "admin"`, an Admin's edit of a technician, a bay or the requirement policy), bound to the account it was made
- * for (ARCHITECTURE §15):
- * - a write belongs to the writer the view was drawn for (`CurrentUser.writer`: the email of an account that may write).
- *   It is sent only while the identity in the cache is that account: checked when it is started (`begin`, `mutate`), again
- *   when it is sent (after a form's checks, and only while its view is still mounted), as its `mutationFn` starts, after
- *   each step awaited (`write.guard`), and last inside the fetch the generated client calls for each request
- *   (`write.fetch`), after the client's own awaited preparation and interceptors and immediately before the request is
- *   forwarded. A press can come after `/me` changed but before the view has drawn it, so the cache decides, not the last
- *   render; two roles that may write for the same email are the same writer, and a write's requests all leave as one
- *   caller (`bindWrite`);
- * - a write stopped before its request left keeps nothing: its mutation is removed from the cache and this hook goes back
- *   to idle at once, whatever it has rendered, so no mutation state holds its variables;
- * - an answer, success or failure, that arrives once the identity has changed since the write's first request left
- *   (`callerGeneration`, which every change of caller advances, the same email's included) is thrown away: it is not
- *   returned (so nothing caches it), `onSuccess`, `onError` and `onSettled` do not run (no toast, no closing, no field
- *   errors for the next caller), its mutation is removed and this hook goes back to idle; `onDiscarded` says so.
- * A request that left before the change is not recalled: the API answers it as the account that sent it.
+ * Wraps `useMutation` to bind role-protected writes to the account the view was rendered for.
+ * Aborts requests before dispatch if the cached writer changes, and discards responses if the caller changes in flight.
  */
 export function useWriteMutation<TData = unknown, TError = DefaultError, TVariables extends object = object, TOnMutateResult = unknown>(
   options: WriteMutationOptions<TData, TError, TVariables, TOnMutateResult>
@@ -77,11 +49,8 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
   const current = useCurrentUser()
   const { mutationFn, onSuccess, onError, onSettled, onDiscarded, writes = "bookings", ...rest } = options
   const writer = writes === "admin" ? current.adminWriter : current.writer
-  // The account each write was sent for, and the send bound to it (which caller its requests left as), by its variables
-  // (one object per send).
   const boundTo = useRef(new WeakMap<object, string>())
   const sends = useRef(new WeakMap<object, BoundWrite>())
-  // The writer this view was last drawn for, whether it is still mounted, and the write its observer holds now.
   const drawnFor = useRef<string | null>(null)
   const mounted = useRef(false)
   const holding = useRef<TVariables | null>(null)
@@ -89,8 +58,6 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
 
   const stale = (variables: TVariables) => sends.current.get(variables)?.stale() ?? true
   const ours = (error: unknown) => error instanceof CallerChangedError || error instanceof WriteNotAllowedError
-  // Nothing of a write that was stopped or thrown away stays: its mutation leaves the cache, and the hook goes back to idle
-  // if it still holds it (it may have moved on to a newer one). Decided by the send, not by what the hook has rendered.
   const forget = (variables: TVariables) => {
     if (holding.current === variables) {
       holding.current = null
@@ -110,7 +77,6 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
       try {
         data = await mutationFn(variables, { fetch: write.fetch, guard: write.guard }, context)
       } catch (error) {
-        // Stopped before its next request left (by its fetch, or a guard): there is no answer to throw away.
         if (error instanceof WriteNotAllowedError) throw error
         throw write.stale() ? new CallerChangedError() : error
       }
@@ -150,8 +116,6 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
     }
   }, [])
 
-  // Whether a write bound to `owner` may still be sent: its view is mounted and drawn for that account, and the identity
-  // in the cache is that account.
   const mayStill = (owner: string | null) =>
     owner !== null && mounted.current && drawnFor.current === owner && cachedWriterFor(writes, queryClient) === owner
 
@@ -167,6 +131,5 @@ export function useWriteMutation<TData = unknown, TError = DefaultError, TVariab
     }
   }
 
-  // TanStack's own `mutate` and `mutateAsync` are not offered: every send goes through `begin`.
   return { ...result, begin, mutate: (variables) => begin()?.(variables) ?? false }
 }

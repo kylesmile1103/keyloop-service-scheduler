@@ -4,11 +4,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Fails every command whose SQL contains <paramref name="sqlFragment"/> with a <see cref="PostgresException"/> of <paramref name="sqlState"/>
-/// (e.g. <c>40P01</c> on <c>INSERT INTO appointments</c>), before it reaches the server, and counts how often such a command was sent:
-/// more than one means the operation was retried.
-/// </summary>
+/// <summary>Fails every command containing <paramref name="sqlFragment"/> with a <see cref="PostgresException"/> of <paramref name="sqlState"/> and counts executions.</summary>
 public sealed class SqlStateInjector(string sqlFragment, string sqlState) : DbCommandInterceptor
 {
     private int _executions;

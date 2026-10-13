@@ -43,10 +43,10 @@ public sealed class SchedulerDbContext(DbContextOptions<SchedulerDbContext> opti
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // btree_gist lets the exclusion constraints' GiST index combine uuid equality with range overlap (ARCHITECTURE §7.3).
+        // btree_gist lets the exclusion constraints' GiST index combine uuid equality with range overlap.
         modelBuilder.HasPostgresExtension("btree_gist");
 
-        // Listed explicitly rather than ApplyConfigurationsFromAssembly: no assembly scanning (ADR-016).
+        // Apply entity configurations explicitly to avoid reflection-based assembly scanning.
         modelBuilder.ApplyConfiguration(new DealershipConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceBayConfiguration());
         modelBuilder.ApplyConfiguration(new TechnicianConfiguration());

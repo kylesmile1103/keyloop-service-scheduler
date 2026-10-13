@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/calendar.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/calendar.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 "use client"
 
 import * as React from "react"
@@ -125,7 +124,6 @@ function Calendar({
           "relative isolate z-0 rounded-r-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-muted",
           defaultClassNames.range_end
         ),
-        // Today is a signal ring, so it never reads as the selected day (UI_DESIGN 11.4).
         today: cn(
           "rounded-(--cell-radius) text-foreground ring-1 ring-signal ring-inset data-[selected=true]:rounded-none",
           defaultClassNames.today

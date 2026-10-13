@@ -73,7 +73,6 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
             evFault.RequiredBayCapabilities.ShouldBe([BayCapability.EvHighVoltage]);
             evFault.RequiredCertifications.ShouldBe([Certification.HighVoltageElectrical, Certification.Diagnostics], ignoreOrder: true);
 
-            // Every Reading service type is bookable somewhere at Reading.
             var bays = await db.ServiceBays.AsNoTracking().Where(b => b.DealershipId == ReferenceDataSeed.ReadingDealershipId).ToListAsync(Ct);
             var technicians = await db.Technicians.AsNoTracking().Where(t => t.DealershipId == ReferenceDataSeed.ReadingDealershipId).ToListAsync(Ct);
             foreach (var serviceType in await db.ServiceTypes.AsNoTracking().ToListAsync(Ct))
@@ -101,7 +100,6 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
             appointments.ShouldAllBe(a => a.DealershipId == ReferenceDataSeed.ReadingDealershipId && a.Status == AppointmentStatus.Confirmed);
             appointments.ShouldAllBe(a => a.Slot.StartUtc >= TestData.Now, "nothing is seeded in the past");
 
-            // Every open local date of the coming week gets 4-6 appointments; the closed Sunday gets none.
             var today = LocalTimeConverter.ToLocalDate(TestData.Now, reading.TimeZone);
             var byDate = appointments.GroupBy(a => LocalTimeConverter.ToLocalDate(a.Slot.StartUtc, reading.TimeZone)).ToDictionary(g => g.Key, g => g.Count());
             byDate.Keys.ShouldAllBe(d => d >= today && d < today.AddDays(7));
@@ -120,12 +118,10 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
                 }
             }
 
-            // The invariant the exclusion constraints guarantee, asserted independently.
             var active = appointments.Where(a => a.IsActive).ToList();
             var overlaps = active.SelectMany(a => active.Where(b => b.Id != a.Id && a.Slot.Overlaps(b.Slot) && (a.BayId == b.BayId || a.TechnicianId == b.TechnicianId)));
             overlaps.ShouldBeEmpty();
 
-            // Each appointment's resources are qualified, and seeding went through the aggregate (one Booked history row each).
             var bays = await db.ServiceBays.AsNoTracking().ToDictionaryAsync(b => b.Id, Ct);
             var technicians = await db.Technicians.AsNoTracking().ToDictionaryAsync(t => t.Id, Ct);
             var serviceTypes = await db.ServiceTypes.AsNoTracking().ToDictionaryAsync(s => s.Id, Ct);
@@ -150,7 +146,6 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
         second.ShouldBe(0);
         (await _factory.WithDbAsync(db => db.Appointments.CountAsync(Ct))).ShouldBe(first);
 
-        // A fresh context (as on the next application start) sees the same state and also adds nothing.
         (await _factory.WithDbAsync(db => DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, _factory.Clock, Ct))).ShouldBe(0);
     }
 
@@ -172,8 +167,6 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
             return onTuesday.Count;
         });
 
-        // Tuesday now has no active appointment, so the seeder revisits it; the pattern's deterministic ids already belong to the
-        // cancelled rows, so it must skip them rather than fail with a primary-key violation.
         var created = await _factory.WithDbAsync(db => DemoAppointmentSeeder.EnsureUpcomingWeekAsync(db, _factory.Clock, Ct));
 
         cancelled.ShouldBeInRange(4, 6);
@@ -199,9 +192,8 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
         await using var parent = new SchedulerApiFactory(pg.ConnectionString, _factory.Clock, logs);
         await using var instance = parent.WithWebHostBuilder(builder => builder
             .UseSetting("Database:MigrateOnStartup", "false").UseSetting("Database:SeedDemoData", "true"));
-        _ = instance.Services; // its own startup seeds a fresh v2 database and the demo week
+        _ = instance.Services;
 
-        // Turn it back into a database seeded before Task 32a: policy v1 without hv-post-collision and no damage assessment service.
         await _factory.WithDbAsync(async db =>
         {
             await db.RequirementRules.ExecuteDeleteAsync(Ct);
@@ -215,7 +207,6 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
         });
         var logged = logs.Entries.Count;
 
-        // Hold inserts into requirement_rules (reads still pass) until both startups are waiting, so they really overlap.
         await using var blocker = new NpgsqlConnection(pg.ConnectionString);
         await blocker.OpenAsync(Ct);
         await using var hold = await blocker.BeginTransactionAsync(Ct);
@@ -236,15 +227,9 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
                 .OrderBy(g => g.Key).ToListAsync(Ct);
             versions.Select(v => (v.Key, v.Count)).ShouldBe([(1, 12), (2, 14)]);
         });
-        logs.Entries.Skip(logged).Count(e => e.EventId.Id == 1107).ShouldBe(2); // one publication per dealership, by one instance
+        logs.Entries.Skip(logged).Count(e => e.EventId.Id == 1107).ShouldBe(2);
     }
 
-    /// <summary>
-    /// Event 1107 is written after the seeding transaction commits, from what the committed attempt returned, never inside the retried
-    /// unit of work. A first attempt whose commit fails before reaching the server rolls back and logs nothing; the retry publishes and
-    /// logs each version once. If instead the commit succeeds and only its acknowledgement is lost, the retry finds both versions and
-    /// publishes nothing, so nothing is logged: at most once per committed version, never twice.
-    /// </summary>
     [Theory]
     [InlineData(true, 2)]
     [InlineData(false, 0)]
@@ -259,13 +244,13 @@ public sealed class SeedingTests(PostgresFixture pg) : IAsyncLifetime
             .ConfigureTestServices(services =>
             {
                 services.AddSingleton<ILoggerProvider>(probe);
-                services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss)); // inert until armed
+                services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(loss));
             }));
-        _ = instance.Services; // its own startup seeds a fresh v2 database and the demo week
+        _ = instance.Services;
         await _factory.WithDbAsync(db => PolicyPublicationProbe.RevertToBeforeTask32aAsync(db, Ct));
         var logged = logs.Entries.Count;
 
-        loss.Arm(); // the seeding transaction's first commit is the next commit in this host
+        loss.Arm();
         await DatabaseInitializer.InitializeAsync(instance.Services, Ct);
 
         loss.Fired.ShouldBe(1);

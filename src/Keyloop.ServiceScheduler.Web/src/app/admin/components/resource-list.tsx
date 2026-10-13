@@ -38,25 +38,17 @@ interface ResourceListProps<TRow extends { id: string }> {
   read: ResourceRead<TRow>
   /** The phone presentation of the current page's rows, in the table's order. */
   cards: (rows: readonly TRow[]) => ReactNode
-  /**
-   * A dealership with none of these yet. Its picture is the empty schedule unless the list has its own (the empty locker
-   * for the technicians and bays), which is then described: it shows what the headline does not say.
-   */
+  /** Empty state copy and optional illustration when the dealership has no records. */
   empty: { title: string; text: string; illustration?: Illustration }
-  /** Each row's actions (an Admin's menu, Task 30b): a trailing cell in the table; the cards place their own. */
+  /** Optional row action menu for Admin users. */
   rowActions?: (row: TRow) => ReactNode
-  /** The list's own action in its header (Add technician, Add bay), at the right of the dealership's name. */
+  /** Header action button (e.g. Add technician, Add bay). */
   action?: ReactNode
-  /** A note under the header: why the action is unavailable to this role (`ReadOnlyNote`), or what just happened. */
+  /** Notice shown beneath the header (e.g. read-only reason or status message). */
   notice?: ReactNode
 }
 
-/**
- * One dealership's resource list, in the appointments list's frame (UI_DESIGN 11.17): a card headed by the dealership, its
- * hours today in its own zone (which names the zone of every figure) and when it was read; the toolbar (search, faceted
- * filters with counts, Reset, View); the table; the count and the pages. Below 768 px the rows become cards, the search
- * stays above them and sorting and filters move into a Filters sheet. Loading, failed and empty states are the app's own.
- */
+/** Filterable, sortable resource list rendered as a table on desktop and cards on mobile. */
 export function ResourceList<TRow extends { id: string }>({
   dealership,
   today,
@@ -181,7 +173,7 @@ function ListFrame({ ref, phone, headingId, children }: ListFrameProps) {
   )
 }
 
-/** The list's rows while they load (UI_DESIGN 11.18): table rows, or cards on a phone. */
+/** Loading skeleton for the resource list body. */
 function ListBodySkeleton({ phone }: { phone: boolean }) {
   if (phone) {
     return (

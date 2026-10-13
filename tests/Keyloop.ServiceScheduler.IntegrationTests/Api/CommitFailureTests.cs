@@ -15,18 +15,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// A commit that succeeded on the server but whose acknowledgement was lost (ARCHITECTURE §7.4, transient row): the retrying execution
-/// strategy runs the unit of work again, and that must not book a second appointment or turn a cancellation that happened into a 409.
-/// Booking: the appointment id is minted once per request, the strategy verifies a failed commit by looking for it, and each run looks
-/// for it again after taking the lock. Cancellation: the strategy verifies by the row version the cancel wrote (its <c>xmin</c>), and
-/// every run after an in-doubt commit locks the row before reading it, so that read is conclusive.
-/// </summary>
-/// <remarks>
-/// The fault is raised after the commit, from a transaction interceptor. Placed after the audit interceptor, the audit's post-commit
-/// hook has already notified the observers (the reviewer's probe). Placed before it, the hook never runs and EF Core reports the commit
-/// as failed, as a real dropped connection does: the events are then in doubt and released once the commit is verified.
-/// </remarks>
+/// <summary>Tests execution strategy recovery when a transaction commit succeeds on the server but its acknowledgement is lost.</summary>
 public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
 {
     private const string CancelReason = "Customer called to reschedule.";
@@ -82,7 +71,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
         });
         _logs.Entries.Count(e => e.EventId.Id == 1001).ShouldBe(1, "BookingConfirmed once per committed appointment");
 
-        // The only error is EF Core's report of the failed commit itself (an infrastructure fault worth seeing), not a booking error.
         _logs.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => e.EventId.Name).ShouldBe(["Microsoft.EntityFrameworkCore.Database.Transaction.TransactionError"]);
     }
 
@@ -113,9 +101,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("in-doubt")]
     public async Task Lost_commit_acknowledgement_the_verification_cannot_see_is_settled_under_the_lock(string? key)
     {
-        // The commit happened, but the strategy's verification read before it was visible (here: its read answers no rows). That
-        // "not found" is inconclusive, so it must leave the run's events in doubt: the next run takes the lock, finds the minted
-        // appointment and releases them, once.
         Start(faultBeforeAudit: true);
         _commitLoss.Arm();
         _verification.Arm();
@@ -136,7 +121,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_commit_that_really_failed_is_retried_and_books_once()
     {
-        // The fault fires before the commit reaches the server: nothing committed, the verification finds nothing, the run repeats.
         Start(faultBeforeAudit: false, beforeCommit: true);
         _commitLoss.Arm();
 
@@ -186,9 +170,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task A_run_after_an_in_doubt_cancel_waits_for_the_row_lock_before_reading_the_row()
     {
-        // While the verification runs, the test takes the appointment's row lock in its own transaction: it stands in for the earlier
-        // run's transaction still open on the server (its COMMIT in flight). The next run must wait for that transaction to end before
-        // it reads the row, or it could read the version before the commit and answer the client's own cancellation with a 409.
         var appointment = await SaveBookedAsync();
         await using var holder = new NpgsqlConnection(pg.ConnectionString);
         await holder.OpenAsync(Ct);
@@ -219,11 +200,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData(2)]
     public async Task Lost_commit_acknowledgement_of_a_cancel_stays_in_doubt_when_the_next_run_fails_before_settling_it(int verificationsHidden)
     {
-        // Run 1 commits, its acknowledgement is lost and the verification after it sees nothing. Run 2 then fails transiently at its
-        // first statement, the row lock (as when it times out behind run 1's transaction, still open on the server), so it settles
-        // nothing. Run 1's commit is still in doubt: the verification after run 2 finds it when it can see the row (1 hidden), and
-        // otherwise run 3 locks the row and finds it (2 hidden). Forgetting the doubt would answer the client's own cancellation with
-        // a 409 and lose its 1010.
         var appointment = await SaveBookedAsync();
         Start(faultBeforeAudit: true);
         _commitLoss.Arm();
@@ -236,15 +212,12 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
         await ShouldBeCancelledOnceAsync(response, appointment.Id);
         _verification.Fired.ShouldBe(verificationsHidden, "every armed verification read was hidden");
 
-        // The only error is EF Core's report of the failed commit, not an unhandled exception (the failed row lock is EF Core's
-        // CommandError, which Program.cs logs at Information).
         _logs.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => e.EventId.Name).ShouldBe(["Microsoft.EntityFrameworkCore.Database.Transaction.TransactionError"]);
     }
 
     [Fact]
     public async Task A_cancel_whose_commit_really_failed_is_retried_and_cancels_once()
     {
-        // The fault fires before the commit reaches the server: nothing committed, the verification finds the old version, the run repeats.
         var appointment = await SaveBookedAsync();
         Start(faultBeforeAudit: true, beforeCommit: true);
         _commitLoss.Arm();
@@ -292,7 +265,7 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
             services.AddSingleton<ILoggerProvider>(_logs);
             if (faultBeforeAudit)
             {
-                // Options configurations apply in registration order: inserting ours first puts the fault ahead of the audit interceptor.
+                // Insert before the audit interceptor so the fault triggers before post-commit audit hooks run.
                 var first = services.TakeWhile(d => d.ServiceType != typeof(IDbContextOptionsConfiguration<SchedulerDbContext>)).Count();
                 services.Insert(first, ServiceDescriptor.Singleton<IDbContextOptionsConfiguration<SchedulerDbContext>>(new AddInterceptor(_commitLoss)));
             }
@@ -301,7 +274,6 @@ public sealed class CommitFailureTests(PostgresFixture pg) : IAsyncLifetime
                 services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_commitLoss));
             }
 
-            // Inert until armed.
             services.ConfigureDbContext<SchedulerDbContext>(options => options.AddInterceptors(_verification, _rowLockFault));
         }));
         _client = _factory.CreateClient();

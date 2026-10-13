@@ -23,12 +23,7 @@ interface HvLevelFieldProps {
   disabled?: boolean
 }
 
-/**
- * The HV level as a staircase of five radio steps (UI_DESIGN 11.24), from "No HV" to "HV 4", each a step taller: the chosen
- * one in the signal fill, the steps below it tinted, so the level reads like the ladder of the HV badge (11.23). Under it
- * the chosen level's IMI-style name and what it allows. A Base UI radio group: arrow keys move between levels, Tab enters
- * and leaves; each step is named "Level 3, Component repair" and described by its sentence.
- */
+/** Five-step radio group for selecting a technician's HV competence level (No HV to HV 4). */
 export function HvLevelField({ ref, value, onChange, labelledBy, disabled = false }: HvLevelFieldProps) {
   const descriptionId = useId()
   return (

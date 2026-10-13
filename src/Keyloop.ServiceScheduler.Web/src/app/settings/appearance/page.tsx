@@ -18,12 +18,7 @@ const CHOICES: ReadonlyArray<{ value: Theme; title: string; description: (system
   { value: "system", title: "Match system", description: (system) => `Follows this device, ${system} at the moment.` },
 ]
 
-/**
- * Appearance (`/settings/appearance`): the theme, from the template's appearance settings without its font, sidebar and
- * width selects (the design system fixes those) or its Save button: a choice applies at once, through the same theme
- * provider as the header's toggle, and is kept on this device. Each choice is a card in a radio group (UI_DESIGN 11.6:
- * arrow keys move between them) with a miniature of the board drawn in that theme's tokens.
- */
+/** Appearance settings page for selecting light, dark, or system theme. */
 export default function AppearancePage() {
   const { theme, resolvedTheme, setTheme } = useTheme()
   const headingId = useId()
@@ -70,7 +65,6 @@ function ThemeChoice({ value, title, description }: { value: Theme; title: strin
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       className={cn(
-        // A row on a phone (a small preview beside the words), a column of three from 640 px.
         "group/theme flex cursor-pointer items-center gap-3 rounded-chip border border-input bg-card p-2.5 text-left outline-none sm:flex-col sm:items-stretch",
         "hover:not-data-checked:bg-accent data-checked:border-primary data-checked:ring-1 data-checked:ring-primary",
         "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -80,7 +74,6 @@ function ThemeChoice({ value, title, description }: { value: Theme; title: strin
         {value === "system" ? (
           <>
             <ThemePreview theme="light" className="absolute inset-0" />
-            {/* The dark half, cut on a diagonal: the device decides which one shows. */}
             <ThemePreview theme="dark" className="absolute inset-0 [clip-path:polygon(60%_0,100%_0,100%_100%,40%_100%)]" />
           </>
         ) : (
@@ -88,7 +81,6 @@ function ThemeChoice({ value, title, description }: { value: Theme; title: strin
         )}
       </span>
       <span className="flex items-start gap-2.5 px-0.5 pb-0.5">
-        {/* The radio mark: filled when chosen, so the choice never rests on the border alone. */}
         <span
           aria-hidden="true"
           className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-input group-data-checked/theme:border-primary group-data-checked/theme:bg-primary"

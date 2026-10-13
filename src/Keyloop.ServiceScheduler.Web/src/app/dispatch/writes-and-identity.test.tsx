@@ -18,9 +18,7 @@ import { brakesServiceType, triageAnswer, triageEnabled, triageUnavailable } fro
 import { BookingTriageIntake } from "./components/booking-triage"
 import { useBookingTriage } from "./hooks/use-booking-triage"
 
-// Writes and who is signed in (Task 27b, review round 1): an answer that arrives after the identity changed is thrown
-// away (never cached, never kept in a mutation, no toast or other effect for the next caller), and every write checks,
-// as it is sent and after each step it awaits, that the caller may still write.
+// Writes and caller identity: responses arriving after an identity change are discarded, and writes verify caller permissions before sending.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")
@@ -375,9 +373,7 @@ function expectDraftNowhere(queryClient: QueryClient) {
   expect(queryClient.isMutating()).toBe(0)
 }
 
-// Review round 2: a booking discarded because the caller changed is never sent, by any path, for any later caller. A
-// submission is bound to the account the dialog was drawn for before the form's checks run, and sent only if the identity
-// in the cache is still that account when they pass and the booking has not been discarded meanwhile.
+// Discarded bookings after a caller identity change are never sent for a subsequent caller.
 describe("a booking discarded because the caller changed", () => {
   it.each<[string, CurrentUserResponse]>([
     ["signs out", anonymous],
@@ -559,9 +555,7 @@ describe("a booking discarded because the caller changed", () => {
   })
 })
 
-// Review round 2's audit of the other writes for the same gap: each is bound to the account its view was drawn for, so a
-// press after /me names another account (even one that may write) sends nothing, and a write stopped before its request
-// leaves nothing in the mutation cache.
+// Other writes bound to the caller account that opened the view.
 describe("the other writes, bound to the account their view was drawn for", () => {
   it("sends no cancellation once another account that may cancel is in the cache, before the sheet has closed", async () => {
     let me: CurrentUserResponse = admin

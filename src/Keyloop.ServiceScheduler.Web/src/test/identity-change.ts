@@ -5,12 +5,7 @@ import { expect } from "vitest"
 import type { AppointmentListItemResponse, WorkshopScheduleResponse } from "@/api/types.gen"
 import { currentUserQueryKey } from "@/lib/session"
 
-/**
- * What the pages' identity tests share (ARCHITECTURE §15): who is signed in changes while a view is open, and nothing read
- * or entered as the previous caller may stay on screen, in the cache or in a write's answer.
- */
-
-/** The window losing and regaining focus: `/me`, and every stale read on screen, are read again. */
+/** Simulates window focus loss and recovery so `/me` and active stale queries revalidate. */
 export function refocus() {
   act(() => {
     focusManager.setFocused(false)

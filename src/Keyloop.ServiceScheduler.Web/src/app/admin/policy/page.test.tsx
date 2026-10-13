@@ -12,11 +12,6 @@ import { admin, serviceAdvisor, viewer } from "@/test/identities"
 import { renderBoard, viewportOf } from "@/test/render-board"
 import { vehicleAwareOn } from "@/test/vehicle"
 
-// Task 30b: the requirement policy editor. The rules are a table of typed rules in words (ADR-029's vocabulary, no
-// expressions); an Admin edits a draft, previews what it would change with today's roster (the API's dry-run), and only
-// then publishes it as version n+1, with the version it was made from as If-Match. The version history comes from the
-// change history. A Service advisor or a Viewer is told the policy is the Admin's, and nothing is read for them.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/policy/page")])
 })
@@ -124,7 +119,6 @@ describe("the requirement policy, as an Admin", () => {
     expect(screen.getByRole("button", { name: "Add rule" })).toHaveFocus()
     const [, published] = policyWrites(api.requests)
     expect(published.headers.get("If-Match")).toBe(policyETagOf(2))
-    // The publication carries the token of the preview the Admin saw (Task 30c), and nothing else differs.
     expect(await bodyOf(published)).toEqual({ ...sentPreview, dryRun: false, previewToken: expect.stringMatching(/^preview-/) })
     expect(sentPreview.previewToken).toBeUndefined()
     expect(await screen.findByRole("heading", { level: 2, name: "Version 3" })).toBeInTheDocument()
@@ -330,8 +324,7 @@ describe("the requirement policy, as an Admin", () => {
     expect(policyWrites(api.requests)).toHaveLength(0)
   })
 
-  // Everything the editor holds is the Admin's it was made for (Codex check of Task 30b): a 412's comparison (whose Keep
-  // would carry the rules into the next Admin's draft), an open rule and the last write's failure go with the draft.
+  // Clear draft, conflict, and open dialog state when the signed-in Admin changes.
   const signInAs = async (session: { me: CurrentUserResponse }, queryClient: { setQueryData: (key: readonly unknown[], data: unknown) => unknown }) => {
     const other = { ...admin, email: "another.admin@keyloop.test" }
     session.me = other

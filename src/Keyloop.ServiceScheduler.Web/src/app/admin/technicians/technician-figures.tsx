@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/stat-cards.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { CalendarCheck, Clock, Gauge, UsersRound } from "lucide-react"
 
 import { NO_FIGURE, ShareMeter, StatCard } from "@/components/stat-card"
@@ -15,12 +15,7 @@ interface TechnicianFiguresProps {
   failed: boolean
 }
 
-/**
- * The roster in four figures (the users app's stat cards, UI_DESIGN 11.11): the technicians, those working today, the time
- * booked today and the technicians' load, measured as the board measures bay utilisation (booked time over open time, a
- * no-show none). A closed day says so; an open day with no active technician has nothing to measure the load against.
- * No trend badges: the API keeps no history to compare with.
- */
+/** Summary stat cards for the technician roster and today's workload. */
 export function TechnicianFigures({ rows, day, failed }: TechnicianFiguresProps) {
   const figures = rows && day ? technicianFigures(rows, day) : undefined
   const closed = figures?.capacityMinutes === null

@@ -31,8 +31,6 @@ public sealed class DealershipLockTests(PostgresFixture pg)
     [Fact]
     public void Time_ordered_ids_from_the_same_millisecond_get_distinct_keys()
     {
-        // UUIDv7 ids created together share their first eight bytes except 12 random bits, so a first-eight-bytes key would collide
-        // after about 4096 of them; folding in the random second half keeps every key distinct.
         var timestamp = new DateTimeOffset(2026, 10, 13, 9, 0, 0, TimeSpan.Zero);
         var ids = Enumerable.Range(0, 20_000).Select(_ => Guid.CreateVersion7(timestamp)).ToArray();
 

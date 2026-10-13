@@ -9,10 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Catalog.GetServiceTypes;
 
-/// <summary>
-/// The whole service catalogue (service types are global), ordered by name, with <see cref="ServiceTypeResponse.Bookable"/>
-/// computed for one dealership. Throws <see cref="NotFoundException"/> (404 <c>not-found</c>) for an unknown dealership.
-/// </summary>
+/// <summary>Reads the global service catalogue ordered by name with bookability evaluated for the requested dealership.</summary>
 public sealed class GetServiceTypesHandler(SchedulerDbContext db, ServiceCatalogueReader catalogue, TimeProvider clock, IOptions<SchedulingOptions> options)
 {
     public async Task<IReadOnlyList<ServiceTypeResponse>> HandleAsync(Guid dealershipId, CancellationToken ct)

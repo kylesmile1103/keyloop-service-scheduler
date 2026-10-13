@@ -21,10 +21,7 @@ export interface DayLoad {
   windowMinutes: number | null
 }
 
-/**
- * A technician of the roster, with today's work. For an Admin (Task 30b) it is the Admin read, with the `version` an edit
- * is sent against (`If-Match`) and every competence field; for any other role, the schedule's row (no version).
- */
+/** Roster technician with today's workload and optional optimistic concurrency `version`. */
 export interface TechnicianRecord extends TechnicianResponse {
   today: DayLoad
   version?: number
@@ -76,10 +73,7 @@ export function technicianRecords(schedule: WorkshopScheduleResponse): Technicia
   }))
 }
 
-/**
- * The roster as the Admin reads it (by name, with versions and every competence field), each technician with the work the
- * day's schedule lists for them (none when the schedule does not list them).
- */
+/** Merges Admin technician records with today's schedule workload, sorted by name. */
 export function adminTechnicianRecords(people: readonly AdminTechnicianResponse[], schedule: WorkshopScheduleResponse): TechnicianRecord[] {
   const work = allAppointments(schedule)
   return [...people]
@@ -105,11 +99,7 @@ export function bayRecords(schedule: WorkshopScheduleResponse): BayRecord[] {
   return schedule.bays.map(({ appointments, ...bay }) => ({ ...bay, today: dayLoad(schedule, appointments) }))
 }
 
-/**
- * The catalogue (the API's order, by name) with each service's appointments today. For a service the dealership cannot
- * book (the API's `bookable`), what is missing: the required capabilities no active bay has and the certifications no
- * active technician holds, as the booking's `422 no-qualified-resources` names them.
- */
+/** Enriches service catalogue entries with today's booking count and any resource capability/certification shortfalls. */
 export function serviceRecords(catalogue: readonly ServiceTypeResponse[], schedule: WorkshopScheduleResponse): ServiceRecord[] {
   const work = allAppointments(schedule)
   const activeBays = schedule.bays.filter((bay) => bay.isActive)

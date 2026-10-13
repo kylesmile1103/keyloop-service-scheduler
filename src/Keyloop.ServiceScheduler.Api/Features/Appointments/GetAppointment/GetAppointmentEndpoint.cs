@@ -23,11 +23,7 @@ public sealed class GetAppointmentEndpoint : IEndpoint
             .ProducesRateLimitedProblem();
 
     /// <summary>Get an appointment</summary>
-    /// <remarks>
-    /// The appointment in whatever status it is now (cancelled ones included), with its service, the bay and technician reserved for
-    /// it, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's <c>Location</c>
-    /// header points here.
-    /// </remarks>
+    /// <remarks>Returns an appointment in any status (including cancelled), with its service, bay, technician, local times, customer, and vehicle.</remarks>
     /// <param name="appointmentId">The appointment's id, as returned by the booking (its <c>id</c>, or the last segment of its <c>Location</c>).</param>
     /// <param name="handler">Reads the appointment and what it references.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>

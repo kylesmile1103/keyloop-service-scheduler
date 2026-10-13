@@ -19,14 +19,14 @@ internal static class NotificationOutcomes
     public const string ReservedDomain = "ReservedDomain";
 }
 
-/// <summary>Immutable appointment snapshot and durable delivery state (ARCHITECTURE §8.9).</summary>
+/// <summary>Immutable appointment snapshot and durable delivery state.</summary>
 public sealed class NotificationOutboxEntry
 {
     private NotificationOutboxEntry() { }
     public Guid Id { get; private set; }
     public Guid AppointmentId { get; private set; }
     public NotificationKind Kind { get; private set; }
-    /// <summary>A column of its own: the dispatcher's recipient policy (and Task 20's caps) read it without the payload.</summary>
+    /// <summary>Stored in its own column so recipient policy checks can read it without deserializing the payload.</summary>
     public string Recipient { get; private set; } = string.Empty;
     /// <summary>The <see cref="NotificationSnapshot"/> as JSON (a <c>jsonb</c> column), rendered into the email at dispatch.</summary>
     public string Payload { get; private set; } = string.Empty;
@@ -40,9 +40,7 @@ public sealed class NotificationOutboxEntry
     public string? LastFailure { get; private set; }
 
     /// <summary>
-    /// Staged inside the booking or cancel's SaveChanges: in-memory work only, so it cannot fail or slow the change. The fixed recipient
-    /// policy is applied here: a row for a reserved domain is staged <see cref="NotificationStatus.Suppressed"/>, never Pending, so it is
-    /// neither claimed nor counted as backlog, whether or not dispatch is enabled (ARCHITECTURE §8.9, §12.3).
+    /// Creates an outbox entry staged during <c>SaveChanges</c>, immediately suppressing reserved recipient domains.
     /// </summary>
     internal static NotificationOutboxEntry Create(NotificationKind kind, string recipient, NotificationSnapshot snapshot, DateTime occurredAtUtc)
     {

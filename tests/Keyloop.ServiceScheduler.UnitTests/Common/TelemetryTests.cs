@@ -14,7 +14,7 @@ public class TelemetryTests
     [Fact]
     public void Instrument_names_units_and_kinds_match_the_design()
     {
-        // ARCHITECTURE §12.1: dashboards and alerts depend on these names; renaming one is a breaking change.
+        // Dashboards and alerts depend on these metric names; renaming one is a breaking change.
         var published = new List<(string Name, string? Unit, string Kind)>();
         using (var listener = new MeterListener())
         {

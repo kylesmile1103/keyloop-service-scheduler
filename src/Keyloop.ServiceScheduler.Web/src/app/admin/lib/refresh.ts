@@ -1,13 +1,7 @@
 import { type Query, useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 
-/**
- * What an Admin's saved edit makes stale (Task 30b): a technician's, a bay's or the policy's change can change the day's
- * schedule and its competence warnings, which services the dealership can book (the catalogue's `bookable`), the free
- * starts, the range reads' and a booking record's warnings, the Admin reads and the change history. So every read of the
- * dealership that depends on its resources is marked stale, and with it every list Refine holds (its keys start with
- * `"data"`); the views on screen read again, the rest when next shown. Reads of other dealerships stay.
- */
+/** Query operations invalidated when an Admin saves a technician, bay, or policy change. */
 const DEPENDS_ON_RESOURCES = new Set([
   "getWorkshopSchedule",
   "getServiceTypes",

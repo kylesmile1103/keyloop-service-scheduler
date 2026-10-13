@@ -13,26 +13,16 @@ using Microsoft.AspNetCore.WebUtilities;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Contract;
 
-/// <summary>
-/// The OpenAPI contract (ADR-008, Addendum B §B1). <c>dotnet build</c> of the API writes <c>contracts/openapi/v1.json</c>, which is
-/// committed and from which the dispatch board's client is generated (HeyAPI). These tests pin that the document the API serves at
-/// runtime (SystemTest) is exactly that file, and that the file types the API precisely for a generator: stable operation ids,
-/// string enums, problem responses, resolvable schemas, and required/nullable flags that say what the API actually writes.
-/// </summary>
+/// <summary>Verifies the served OpenAPI contract matches the committed build-time document and schema conventions.</summary>
 [Trait("Category", "Contract")]
 public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 {
     private const string Drift =
         "runtime/build-time contract mismatch: inspect environment-dependent endpoint metadata first; scripts/export-openapi.sh regenerates the build-time document, and CI git diff --exit-code contracts/ detects uncommitted drift";
 
-    /// <summary>Every operation, in route order.</summary>
     private static readonly string[] OperationIds =
         ["GetDealerships", "GetServiceTypes", "GetAvailability", "BookAppointment", "ListAppointments", "GetAppointment", "CancelAppointment", "GetWorkshopSchedule", "GetBookingTriageStatus", "TriageBookingRequest", "UploadBookingTriageImage", "GetCurrentUser", "ResolveVehicleProfile", "GetFeatures", "ListAdminTechnicians", "CreateTechnician", "GetAdminTechnician", "EditTechnician", "ConfirmTechnicianHvLevel", "ListAdminBays", "CreateBay", "GetAdminBay", "EditBay", "GetRequirementPolicy", "EditRequirementPolicy", "GetAdminHistory", "FindReturningCustomers"];
 
-    /// <summary>
-    /// Every type a success response contains, as the serializer sees it. The API writes every property (the JSON context uses
-    /// <c>JsonIgnoreCondition.Never</c>), and null only where the property is annotated nullable.
-    /// </summary>
     private static readonly JsonTypeInfo[] ResponseTypes =
     [
         SchedulerJsonContext.Default.ReturningCustomerResponse,
@@ -86,7 +76,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    /// <summary><c>contracts/openapi/v1.json</c> under the repository root (the directory holding the solution file).</summary>
     private static string ContractPath { get; } = LocateContract();
 
     public ValueTask InitializeAsync()
@@ -109,8 +98,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         File.Exists(ContractPath).ShouldBeTrue($"{ContractPath} is missing. {Drift}");
         var committed = JsonNode.Parse(await File.ReadAllTextAsync(ContractPath, Ct))!;
 
-        // Normalised JSON (formatting aside), compared in order: the build-time generator and the runtime document come from the same
-        // composition root, so any difference - a value, a member, or the order of members - is drift or non-determinism.
         if (committed.ToJsonString(Canonical) != served.ToJsonString(Canonical))
         {
             var differences = Differences(committed, served, "$").Take(15).ToList();
@@ -195,16 +182,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             enumSchema["enum"].ShouldNotBeNull(schema).AsArray().Select(v => v!.GetValue<string>()).ShouldBe(names, schema);
         }
 
-        // No integer-valued enum anywhere (a nullable enum may add null to its values).
         Descendants(document).Where(n => n.Name == "enum").SelectMany(n => n.Node!.AsArray())
             .Where(value => value is not null && value.GetValueKind() != JsonValueKind.String).Select(value => value!.ToJsonString())
             .ShouldBeEmpty("non-string enum values");
     }
 
-    /// <summary>
-    /// Task 30a's closed vocabularies are written as plain strings, so the contract enumerates them from their single source in code:
-    /// a renamed or added reason, action or resource kind changes the contract and the generated client instead of passing silently.
-    /// </summary>
     [Fact]
     public async Task Admin_and_competence_vocabularies_are_closed_string_enums()
     {
@@ -218,7 +200,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         schemas.ContainsKey("JsonElement").ShouldBeFalse("no empty, unreferenced component");
     }
 
-    /// <summary>Admin operations document the headers they send and only the problems they can return.</summary>
     [Fact]
     public async Task Admin_operations_document_their_headers_and_only_reachable_problems()
     {
@@ -230,7 +211,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             headers.ContainsKey("ETag").ShouldBeTrue(create);
             Text(headers["Location"]?["schema"]?["format"]).ShouldBe("uri-reference", create);
         }
-        // The confirmation reads no body, so it can return neither field errors nor 413.
         var confirm = operations["ConfirmTechnicianHvLevel"]["responses"]!.AsObject();
         confirm.ContainsKey("400").ShouldBeFalse();
         confirm.ContainsKey("413").ShouldBeFalse();
@@ -281,8 +261,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         var errors = Operations(document)
             .SelectMany(o => o.Operation["responses"]!.AsObject().Where(r => r.Key[0] is '4' or '5').Select(r => (o.Name, Status: r.Key, Response: r.Value!)))
             .ToList();
-        // The global rate limiter covers every route, so every operation documents its 429 (Addendum B §B2: a <response> for every
-        // status the endpoint can return).
         Operations(document).Where(o => o.Operation["responses"]!["429"] is null).Select(o => o.Name)
             .ShouldBeEmpty("operations without a 429: declare .ProducesRateLimitedProblem() and a <response code=\"429\"> comment");
         errors.Select(e => (e.Name, e.Status)).ShouldBe(
@@ -418,13 +396,11 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
         foreach (var (name, status, response) in errors)
         {
-            // RFC 9457: problems, and only problems, are application/problem+json. A 400 adds the field-keyed errors.
             var content = response["content"].ShouldNotBeNull($"{name} {status}").AsObject();
             content.Select(c => c.Key).ShouldBe(["application/problem+json"], $"{name} {status}");
             Text(content["application/problem+json"]!["schema"]!["$ref"])
                 .ShouldBe(status == "400" ? "#/components/schemas/HttpValidationProblemDetails" : "#/components/schemas/ProblemDetails", $"{name} {status}");
 
-            // A <response> comment describes it, not the reason phrase; a 429 says when to retry.
             Text(response["description"]).ShouldNotBe(ReasonPhrases.GetReasonPhrase(int.Parse(status, CultureInfo.InvariantCulture)), $"{name} {status}");
             if (status == "429")
             {
@@ -445,7 +421,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             var properties = problem["properties"]!.AsObject();
             properties.Select(p => p.Key).ShouldBe(members, ignoreOrder: true, customMessage: schema);
 
-            // Every problem this API writes carries the W3C trace id of the request (ARCHITECTURE §8.7, §12.2), so the client may rely on it.
             Text(properties["traceId"]!["type"]).ShouldBe("string", schema);
             Text(properties["traceId"]!["description"]).ShouldNotBeNullOrWhiteSpace(schema);
             Required(problem).ShouldContain("traceId", schema);
@@ -457,8 +432,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     {
         var document = await ServedAsync();
 
-        // Microsoft.AspNetCore.OpenApi 10.0's XML-comment transformer copies every <param> that matches no operation parameter (the
-        // body, injected services, the cancellation token) onto the request body, so the last such tag would describe it.
         var bodies = Operations(document).Where(o => o.Operation["requestBody"] is not null)
             .Select(o => (o.Operation["operationId"]!.GetValue<string>(), Text(o.Operation["requestBody"]!["description"])))
             .ToList();
@@ -484,7 +457,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         var document = await ServedAsync();
         var schemas = document["components"]!["schemas"]!.AsObject();
 
-        // The success bodies. A type missing from SchedulerJsonContext fails the document request itself (reflection-free JSON, ADR-016).
         var successes = Operations(document)
             .SelectMany(o => o.Operation["responses"]!.AsObject().Where(r => r.Key[0] == '2').Select(r => (o.Name, Status: r.Key, Schema: SuccessSchema(r.Value!))))
             .ToList();
@@ -541,7 +513,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         var document = await ServedAsync();
         var schemas = document["components"]!["schemas"]!.AsObject();
 
-        // The component schemas the success responses reach are exactly the response types listed above.
         var reached = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var operation in Operations(document))
         {
@@ -561,7 +532,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
             var properties = schema["properties"]!.AsObject();
             properties.Select(p => p.Key).ShouldBe(typeInfo.Properties.Select(p => p.Name), name);
 
-            // Required: HeyAPI types a property that is not required as optional (`id?: string`), which this API never omits.
             Required(schema).ShouldBe(typeInfo.Properties.Where(p => !MayBeOmitted(name, p.Name)).Select(p => p.Name), ignoreOrder: true, customMessage: $"{name}.required");
 
             foreach (var property in typeInfo.Properties)
@@ -630,11 +600,10 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     {
         var description = Text(Operations(await ServedAsync()).Single(o => Text(o.Operation["operationId"]) == operationId).Operation["description"]);
 
-        // The same values PersonalData.ForCaller returns: initials, the domain's Vin.Masked and the fixed full registration mask.
         description.ShouldNotBeNull().ShouldContain("`ALS`", Case.Sensitive, operationId);
         description.ShouldContain("`***********123456`", Case.Sensitive, operationId);
         description.ShouldContain("`*******`", Case.Sensitive, operationId);
-        description.ShouldNotContain("VIN's last six", Case.Sensitive, operationId); // the earlier wording implied a bare suffix
+        description.ShouldNotContain("VIN's last six", Case.Sensitive, operationId);
     }
 
     [Fact]
@@ -656,7 +625,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
 
         var status = parameters.Single(p => Text(p?["name"]) == "status")!;
         (status["required"]?.GetValue<bool>() ?? false).ShouldBeFalse();
-        // OpenAPI omits these when they equal the query-parameter defaults: form style, with explode=true.
         (Text(status["style"]) ?? "form").ShouldBe("form");
         (status["explode"]?.GetValue<bool>() ?? true).ShouldBeTrue();
         Text(status["schema"]?["type"]).ShouldBe("array");
@@ -664,7 +632,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         status["example"]!.AsArray().Select(v => v!.GetValue<string>()).ShouldBe(["Confirmed", "Completed"]);
     }
 
-    /// <summary>Each operation as <c>"METHOD /path"</c>, in document order.</summary>
     private static IEnumerable<(string Name, JsonObject Operation)> Operations(JsonNode document) =>
         document["paths"]!.AsObject().SelectMany(path => path.Value!.AsObject()
             .Where(member => member.Key is "get" or "put" or "post" or "delete" or "patch")
@@ -681,18 +648,15 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
     private static string ComponentName(JsonNode schema) =>
         schema["$ref"].ShouldNotBeNull("an inline schema where a component reference was expected").GetValue<string>()["#/components/schemas/".Length..];
 
-    /// <summary>A string member's value, or null when the member is absent (so the assertion on it runs, and fails, rather than being skipped).</summary>
     private static string? Text(JsonNode? node) => node?.GetValue<string>();
 
     private static List<string> Required(JsonNode schema) =>
         schema["required"]?.AsArray().Select(r => r!.GetValue<string>()).ToList() ?? [];
 
-    /// <summary>OpenAPI 3.1 nullability: <c>type: [..., "null"]</c>, or a <c>oneOf</c> with a <c>null</c> branch for a nullable reference.</summary>
     private static bool IsNullable(JsonNode schema) =>
         (schema["type"] is JsonArray types && types.Any(t => t!.GetValue<string>() == "null"))
         || (schema["oneOf"] is JsonArray branches && branches.Any(b => b!["type"]?.GetValueKind() == JsonValueKind.String && b["type"]!.GetValue<string>() == "null"));
 
-    /// <summary>Adds every component schema reachable from <paramref name="schema"/> to <paramref name="reached"/>.</summary>
     private static void Reach(JsonNode schema, JsonObject schemas, SortedSet<string> reached)
     {
         foreach (var (name, node) in Descendants(schema).Prepend((Name: "", Node: (JsonNode?)schema)))
@@ -704,7 +668,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         }
     }
 
-    /// <summary>Every member of every object below <paramref name="node"/>, depth first.</summary>
     private static IEnumerable<(string Name, JsonNode? Node)> Descendants(JsonNode? node)
     {
         switch (node)
@@ -730,7 +693,6 @@ public sealed class OpenApiContractTests(PostgresFixture pg) : IAsyncLifetime
         }
     }
 
-    /// <summary>Where two documents differ, as JSON paths: values, members present on one side only, member order, array lengths.</summary>
     private static IEnumerable<string> Differences(JsonNode? committed, JsonNode? served, string path)
     {
         switch (committed, served)

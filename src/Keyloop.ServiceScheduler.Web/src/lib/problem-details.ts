@@ -1,12 +1,4 @@
-/**
- * Reading what went wrong with an API call. Every application error from the API is an RFC 9457 problem with a `traceId`
- * (ARCHITECTURE §8.7); anything else is a failure outside the API (no answer at all, or a proxy's bare status).
- */
-
-/**
- * A problem body. The generated `ProblemDetails` type declares only the standard members; the extensions the catalogue adds
- * (`errors`, `suggestedSlots`, `retryAfterSeconds`, …) arrive as extra members.
- */
+/** RFC 9457 Problem Details payload with optional validation and domain extension fields. */
 export interface ProblemDetails {
   type?: string
   title?: string
@@ -19,11 +11,7 @@ export interface ProblemDetails {
   [k: string]: unknown
 }
 
-/**
- * An error response without a problem body, such as the empty 502 the Vite proxy sends while the API is down, or a gateway's
- * HTML page. The generated client would otherwise report it as `{}` or a string and lose the status; src/lib/api-client.ts
- * turns such responses into this error.
- */
+/** Error wrapper for non-OK HTTP responses that do not carry a Problem Details body. */
 export class UnexpectedResponseError extends Error {
   override readonly name = "UnexpectedResponseError"
   readonly status: number
@@ -49,20 +37,14 @@ function isProblem(value: unknown): value is ProblemDetails {
   )
 }
 
-/**
- * The problem in an error from the generated client: the thrown body (query and mutation options use `throwOnError`) or the
- * `error` member of a non-throwing SDK call's result. `null` when the failure carries no problem.
- */
+/** Extracts a `ProblemDetails` object from a thrown error or SDK `{ error }` result, or returns `null`. */
 export function parseProblem(error: unknown): ProblemDetails | null {
   if (isProblem(error)) return error
   if (isRecord(error) && isProblem(error.error)) return error.error
   return null
 }
 
-/**
- * The HTTP status behind a failure, whichever shape it took: a problem's `status`, a bare error response's status, or the
- * `statusCode` of the admin area's Refine `HttpError` (or of the failure it wraps). `undefined` when no response arrived.
- */
+/** Extracts the HTTP status code from a Problem Details object, `UnexpectedResponseError`, or Refine `HttpError`. */
 export function failureStatus(error: unknown): number | undefined {
   const problem = parseProblem(error)
   if (typeof problem?.status === "number") return problem.status
@@ -74,23 +56,17 @@ export function failureStatus(error: unknown): number | undefined {
   return undefined
 }
 
-/**
- * The headline for a refused write in the words of what was being done ("book", "cancel the appointment"): a `401` says
- * the user is signed out, a `403` that the role does not allow it. The API's titles ("Authentication required",
- * "Forbidden") are the catalogue's, not the screen's.
- */
+/** Formats a user-facing alert title for a 401 or 403 write refusal. */
 export function authRefusalTitle(status: 401 | 403, action: string): string {
   return status === 401 ? `Couldn’t ${action}: you’re signed out` : `Couldn’t ${action}: your role doesn’t allow it`
 }
 
 export interface FailureDescription {
-  /** One or two sentences for the person at the screen. */
   summary: string
-  /** The API's trace id, for the Aspire dashboard's trace search (§12.2). */
   traceId?: string
 }
 
-/** What to tell the user about a failed call, whichever shape the failure took. */
+/** Formats an unknown API failure into a user-facing summary and optional trace ID. */
 export function describeFailure(error: unknown): FailureDescription {
   const problem = parseProblem(error)
   if (problem) {
@@ -98,7 +74,6 @@ export function describeFailure(error: unknown): FailureDescription {
     return problem.traceId ? { summary, traceId: problem.traceId } : { summary }
   }
   if (error instanceof UnexpectedResponseError) return { summary: error.message }
-  // fetch rejects with a TypeError when no response arrives (offline, refused connection, CORS).
   if (error instanceof TypeError) {
     return { summary: "The server could not be reached. Check the connection, then try again." }
   }
@@ -108,11 +83,7 @@ export function describeFailure(error: unknown): FailureDescription {
 const failureKeys = new WeakMap<object, number>()
 let lastFailureKey = 0
 
-/**
- * A React key for a failure's explanation: the same for the same error object, new for every other one. A screen reader
- * reads out what an alert gains, not text that stays, so an explanation keyed with it is read out again when a retry
- * fails in the same words as before, while the alert and its focused Try again stay.
- */
+/** Returns a stable React key per distinct error instance so screen readers re-announce repeated failures on retry. */
 export function failureKey(error: unknown): string {
   if (typeof error !== "object" || error === null) return `value:${String(error)}`
   let key = failureKeys.get(error)
@@ -122,17 +93,12 @@ export function failureKey(error: unknown): string {
 
 const catalogue = "https://api.keyloop.example/problems/"
 
-/**
- * The problem's slug from the catalogue (ARCHITECTURE §8.7): the last path segment of its `type`, such as
- * `invalid-state-transition`. Empty for a problem outside the catalogue (the framework's RFC links) or without a type, so
- * branching on the slug never matches by accident.
- */
+/** Extracts the problem slug from `problem.type` when it belongs to the API problem catalogue, or `""`. */
 export function problemSlug(problem: ProblemDetails): string {
   if (!problem.type?.startsWith(catalogue)) return ""
   return problem.type.slice(catalogue.length).split("/").filter(Boolean).at(-1) ?? ""
 }
 
-/** A JSON path with each segment's first letter lowered: `Vehicle.Vin` and `vehicle.vin` name the same field. */
 const camelPath = (path: string) =>
   path
     .split(".")
@@ -140,14 +106,8 @@ const camelPath = (path: string) =>
     .join(".")
 
 /**
- * A validation problem's field errors, one sentence per field, keyed by the form's field paths. The API already keys `errors`
- * by camelCase JSON path (`customer.email`); each segment's first letter is lowered too, so a PascalCase path
- * (`Vehicle.Vin`) maps onto the same field. Several messages for one field are joined.
- *
- * The API's sentences name their field by that path ("customer.email must be an email address ..."), which is the request
- * body's vocabulary, not the screen's. Given the form's label for a path (`{ "customer.email": "Email" }`), a message that
- * opens with the path opens with the label instead ("Email must be an email address ..."); other messages, and fields
- * without a label, keep the API's words.
+ * Normalises `problem.errors` keys to camelCase paths and replaces leading field paths in messages
+ * with human-readable labels when provided.
  */
 export function fieldErrors(problem: ProblemDetails, labels: Readonly<Record<string, string>> = {}): Record<string, string> {
   const named = (message: string, path: string) => {

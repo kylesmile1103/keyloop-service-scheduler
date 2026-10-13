@@ -1,12 +1,6 @@
 namespace Keyloop.ServiceScheduler.Domain.Dealerships;
 
-/// <summary>
-/// Whole-minute wall-clock opening hours for one weekday in the dealership's time zone. A closed day has both times null.
-/// </summary>
-/// <remarks>
-/// Declared with an explicit constructor (rather than a positional primary constructor) so the invariants are
-/// checked on every construction, including EF Core materialisation, which binds this constructor by parameter name.
-/// </remarks>
+/// <summary>Whole-minute wall-clock opening hours for one weekday in the dealership's time zone. A closed day has both times null.</summary>
 public sealed record DayOperatingHours
 {
     public DayOperatingHours(DayOfWeek day, TimeOnly? opensAt, TimeOnly? closesAt)

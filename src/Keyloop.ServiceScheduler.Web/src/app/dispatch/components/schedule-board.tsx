@@ -35,7 +35,7 @@ interface ScheduleBoardProps {
   lanes: readonly Lane[]
   /** How many lanes the view has before filtering. */
   laneCount: number
-  /** How many of the day's appointments are flagged for review (Task 30b; 0 for a visitor, who sees no warning). */
+  /** Number of appointments on the day flagged for competence review. */
   reviewCount?: number
   onShowAllLanes: () => void
   onDateChange: (date: string | null) => void
@@ -44,10 +44,7 @@ interface ScheduleBoardProps {
   now: Date
   /** The booking whose details are open: its block is marked. */
   selectedId: string | null
-  /**
-   * How a block shows its details: a sheet over the board (a dialog), or the inspector docked beside it (from 1280 px),
-   * where the chosen block is the current one.
-   */
+  /** How a block shows its details: a modal sheet or the docked inspector. */
   details?: BlockDetails
   /** The docked inspector takes room beside the board: the timeline's lane column narrows to the tablet's 160 px. */
   narrow?: boolean
@@ -108,7 +105,6 @@ export function ScheduleBoard({
         illustration="error-connection"
         title="Couldn’t load the schedule"
         action={
-          // It stays while the day is read again, disabled but focused, ready for another try if that one fails too.
           <Button type="button" onClick={() => void schedule.refetch()} disabled={schedule.isFetching} focusableWhenDisabled>
             <RotateCw aria-hidden="true" className={cn(schedule.isFetching && "animate-spin")} />
             Try again
@@ -191,8 +187,6 @@ export function ScheduleBoard({
         <p>{mode === "bays" ? "Every bay is free all day." : "Every technician is free all day."}</p>
       </IllustratedState>
     )
-    // On a phone the message replaces a list of empty lanes; on wider screens it follows the real, empty timeline, which
-    // still shows the day's hours, closed time and now line.
     body = agenda ? (
       message
     ) : (
@@ -250,7 +244,6 @@ export function ScheduleBoard({
         </h2>
         <p className="text-sm text-muted-foreground tabular-nums">{daySentence(dealership, date, today, data)}</p>
         {data && reviewCount > 0 && (
-          // The day's flagged appointments in one line, so a dispatcher knows to look for the marks (UI_DESIGN 11.24).
           <p className="flex items-start gap-1.5 text-sm text-pretty text-warning">
             <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             {`${reviewCount === 1 ? "1 appointment needs" : `${reviewCount} appointments need`} review: ${

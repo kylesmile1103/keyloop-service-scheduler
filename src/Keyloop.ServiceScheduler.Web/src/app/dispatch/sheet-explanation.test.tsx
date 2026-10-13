@@ -9,9 +9,7 @@ import { renderBoard } from "@/test/render-board"
 import { interimDetails, technicians } from "@/test/schedules"
 import { allocation, readingTuesdayWithCompetence, vehicleAwareOn } from "@/test/vehicle"
 
-// The details' "Why this allocation" names a preference the allocation did not follow from the day's bays and technicians
-// (Task 31b merged with Task 28b): on the board (its docked inspector), the Overview and the Calendar (their sheet) alike,
-// the details read the appointment's own day's schedule for it, only when the record says a preference was not followed.
+// Allocation explanation in appointment details: loads the appointment day's schedule when a resource preference was not followed.
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/overview/page"), import("@/app/calendar/page")])

@@ -6,10 +6,7 @@ import { featureList } from "@/lib/features"
 
 import { type DayLoad, matchesSearch } from "./resources"
 
-/**
- * A faceted filter over values a row derives (one, such as its active state, or several, such as its certifications): the
- * row stays when any of its values is among those chosen. An empty choice removes the filter.
- */
+/** Multi-select faceted filter matching rows that contain any selected value. */
 export function facetFilter<TRow extends RowData>(valuesOf: (row: TRow) => readonly string[]): FilterFn<DataTableFeatures, TRow> {
   const filter: FilterFn<DataTableFeatures, TRow> = (row, _columnId, selected: readonly string[] | undefined) =>
     !selected || selected.length === 0 || valuesOf(row.original).some((value) => selected.includes(value))

@@ -1,5 +1,5 @@
-/* Adopted from shadcn-dashboard-landing-template (vite-version) `src/index.css` (its Tailwind v4 setup and theme
- * tokens), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section). */
+/* Adopted from shadcn-dashboard-landing-template (vite-version) `src/index.css`,
+ * Copyright (c) 2025 ShadcnStore, MIT License. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -7,34 +7,33 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  /* Type: IBM Plex Sans for UI and body, Plus Jakarta Sans for headings and figures, IBM Plex Mono for VINs,
-     registrations and trace ids */
+  /* Fonts: IBM Plex Sans for UI/body, Plus Jakarta Sans for headings/figures, IBM Plex Mono for codes/plates */
   --font-sans: var(--font-ui);
   --font-heading: var(--font-display);
   --font-mono: var(--font-code);
-  /* 13/18 dense text: timeline blocks, agenda meta, table cells (Addendum B section B4) */
+  /* 13/18 dense text: timeline blocks, agenda meta, table cells */
   --text-dense: 0.8125rem;
   --text-dense--line-height: 1.125rem;
-  /* 11/16 small print: the "now" time pill and the initials avatar in timeline blocks */
+  /* 11/16 small print: "now" time pill and initials avatar in timeline blocks */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
-  /* 17/24: the "Keyloop" wordmark in the header */
+  /* 17/24: "Keyloop" wordmark in header */
   --text-wordmark: 1.0625rem;
   --text-wordmark--line-height: 1.5rem;
-  /* Radius from the 6px control radius: controls 6, chips 8, cards 12, toasts and sheets 16, pills full */
+  /* Radius scale derived from 6px control radius */
   --radius-sm: calc(var(--radius) * 0.5); /* 3px: checkbox, kbd */
   --radius-md: calc(var(--radius) - 2px); /* 4px: menu items, tab triggers, tooltips, timeline blocks, plate chip */
   --radius-lg: var(--radius); /* 6px: buttons, inputs, selects, popovers, alerts */
   --radius-chip: calc(var(--radius) + 2px); /* 8px: slot chips, status icon tiles, agenda job cards, domain tag */
-  --radius-xl: calc(var(--radius) * 2); /* 12px: cards, dialogs, the inset work surface */
+  --radius-xl: calc(var(--radius) * 2); /* 12px: cards, dialogs, inset work surface */
   --radius-2xl: calc(var(--radius) * 2 + 4px); /* 16px: toasts, bottom-sheet top corners */
-  /* Elevation: geometry here, ink per theme. Light is soft; dark leans on borders and keeps shadows for overlays. */
+  /* Elevation shadows */
   --shadow-xs: 0 1px 2px 0 var(--shadow-ink-soft);
   --shadow-sm: 0 1px 3px 0 var(--shadow-ink), 0 1px 2px -1px var(--shadow-ink-soft);
   --shadow-md: 0 4px 8px -2px var(--shadow-ink), 0 2px 4px -2px var(--shadow-ink-soft);
   --shadow-lg: 0 12px 16px -4px var(--shadow-ink), 0 4px 6px -2px var(--shadow-ink-soft);
   --shadow-xl: 0 20px 25px -5px var(--shadow-ink), 0 8px 10px -6px var(--shadow-ink-soft);
-  /* Motion: enter with ease-standard, leave with ease-exit. A new booking's block draws three fading halos. */
+  /* Motion curves and booking halo animation */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --animate-booked: booked-halo 1s var(--ease-standard) 3;
@@ -95,7 +94,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* Appointment status (bg-status-*-bg, border-status-*-border, text-status-*-fg) */
+  /* Appointment status tokens */
   --color-status-confirmed-bg: var(--status-confirmed-bg);
   --color-status-confirmed-border: var(--status-confirmed-border);
   --color-status-confirmed-fg: var(--status-confirmed-fg);
@@ -116,18 +115,17 @@
   --color-status-cancelled-fg: var(--status-cancelled-fg);
 }
 
-/* The light tokens are the default; `.light` also scopes them to an element inside the dark theme (the Appearance page's
-   light preview), as `.dark` scopes the dark ones. */
+/* Light tokens default on :root and scope via .light inside dark contexts (e.g. Appearance preview). */
 .light,
 :root {
   color-scheme: light;
-  /* Type families (self-hosted with @fontsource, loaded in src/main.tsx) */
+  /* Self-hosted font families (loaded in src/main.tsx) */
   --font-display: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-ui: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-code: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* Radius base = the control radius (6px). The scale is derived in the theme block. */
+  /* Base control radius (6px) */
   --radius: 0.375rem;
-  /* Keyloop brand palette, reference values for both themes. Components never use these directly. */
+  /* Keyloop brand palette reference values */
   --kl-carbon-black: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
   --kl-deep-graphite: oklch(0.244 0.02 230.3); /* #162228 brand-deepgraphite */
   --kl-navy: oklch(0.294 0.035 247.5); /* #1e2e3d brand-navy / brand-foreground */
@@ -146,8 +144,7 @@
   --kl-pulse-green: oklch(0.8047 0.1662 164.93); /* #18e0a4 brand-pulsegreen / success */
   --kl-amber: oklch(0.827 0.171 80.5); /* #ffb800 brand-warning */
   --kl-red: oklch(0.673 0.214 24.5); /* #ff4d4f brand-error */
-  /* Fusion domain gradients (90deg, a, b 30%, c), interpolated in Oklab. OWNERSHIP is this app's domain. Carbon text is
-     7.65:1 or more everywhere on OWNERSHIP and 5.0:1 or more on the other three. */
+  /* Fusion domain gradients interpolated in Oklab */
   --domain-demand: linear-gradient(90deg, oklch(0.631 0.139 271.7), oklch(0.7182 0.1377 235.94) 30%, oklch(0.8254 0.1451 214.09)); /* #6c82dd #35b0ee #00ddff DEMAND: sales and marketing */
   --domain-supply: linear-gradient(90deg, oklch(0.631 0.139 271.7), oklch(0.688 0.129 283) 30%, oklch(0.746 0.125 295.4)); /* #6c82dd #908fe8 #b39cf3 SUPPLY: inventory */
   --domain-ownership: linear-gradient(90deg, oklch(0.746 0.125 295.4), oklch(0.76 0.052 356) 30%, oklch(0.786 0.099 64.5)); /* #b39cf3 #cda4b2 #e6ac74 OWNERSHIP: aftersales and service, this app */
@@ -172,7 +169,7 @@
   --border: oklch(0.903 0.009 232.4); /* #d9e0e4 brand-uiborder (decorative hairlines) */
   --input: oklch(0.62 0.025 245); /* #7a8895 control boundary, 3:1 or more on every light surface, tint and highlight */
   --ring: oklch(0.6 0.17 250); /* #0083e0 signal blue focus indicator and default outline colour, 3:1 or more on every light surface */
-  /* Feedback: X is text-safe ink, bg-X + text-X-foreground a solid fill, bg-X-subtle + text-X a banner */
+  /* Feedback tokens */
   --success: oklch(0.5 0.11 165); /* #007653 AA-corrected brand-pulsegreen (#18e0a4 is 1.7:1 on white) */
   --success-foreground: oklch(1 0 0); /* #ffffff white */
   --success-subtle: oklch(0.962 0.045 165); /* #d8fdeb mint tint: banners and inline feedback */
@@ -183,18 +180,18 @@
   --info-foreground: oklch(1 0 0); /* #ffffff white */
   --info-subtle: oklch(0.958 0.025 245); /* #e4f3ff signal-blue tint */
   --destructive-subtle: oklch(0.957 0.025 20); /* #ffebea red tint */
-  /* Brand extensions: signal blue for interaction, cyan accent for the floating action and toast action */
+  /* Brand extensions */
   --signal: oklch(0.51 0.15 250); /* #0068b7 AA-corrected brand-signalblue: links, outline buttons, selected indicators */
   --signal-foreground: oklch(1 0 0); /* #ffffff white */
   --brand-accent: oklch(0.64 0.118 218); /* #009dbc brand-cyan deepened to 3.2:1 on white; carbon text on it */
   --brand-accent-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
-  /* Data visualisation, fixed categorical order (validated for colour-vision deficiency) */
+  /* Data visualisation categorical palette */
   --chart-1: oklch(0.58 0.17 250); /* #007cd9 signal blue */
   --chart-2: oklch(0.66 0.14 60); /* #cf7b26 ownership amber */
   --chart-3: oklch(0.55 0.2 293); /* #7a4fd9 hyper violet */
   --chart-4: oklch(0.6 0.105 189); /* #00948d operate teal */
   --chart-5: oklch(0.6 0.19 30); /* #da4433 energy coral */
-  /* Sidebar (the app frame around the inset work surface) */
+  /* Sidebar tokens */
   --sidebar: oklch(0.959 0.003 286.3); /* #f1f1f3 brand-websitegrey: the app frame */
   --sidebar-foreground: oklch(0.294 0.035 247.5); /* #1e2e3d brand-navy */
   --sidebar-primary: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
@@ -203,12 +200,12 @@
   --sidebar-accent-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
   --sidebar-border: oklch(0.89 0.008 240); /* #d6dbe0 decorative */
   --sidebar-ring: oklch(0.6 0.17 250); /* #0083e0 same as ring */
-  /* Elevation ink (the shadow geometry lives in the theme block) */
+  /* Elevation ink */
   --shadow-ink: oklch(0.204 0.013 233.3 / 8%); /* carbon at 8% */
   --shadow-ink-soft: oklch(0.204 0.013 233.3 / 5%); /* carbon at 5% */
-  /* Scrim behind dialogs and sheets (bg-overlay; replaces the vendored bg-black/10) */
+  /* Dialog/sheet scrim */
   --overlay: oklch(0.204 0.013 233.3 / 10%); /* carbon at 10% */
-  /* Appointment status (Addendum B section B4): -bg tint, -border solid marker, -fg text on the tint */
+  /* Appointment status: -bg tint, -border solid marker, -fg text on tint */
   --status-confirmed-bg: oklch(0.955 0.024 272); /* #eaf0ff fusion purple tint */
   --status-confirmed-border: oklch(0.633 0.196 270.5); /* #5f7cff brand-fusionpurple */
   --status-confirmed-fg: oklch(0.45 0.17 270); /* #3347b2 deep fusion purple */
@@ -251,7 +248,7 @@
   --border: oklch(0.33 0.025 237); /* #293841 decorative hairlines */
   --input: oklch(0.595 0.03 240); /* #6f828f control boundary, 3:1 or more on every dark surface, tint and highlight */
   --ring: oklch(0.704 0.162 248.7); /* #3da5ff brand-signalblue */
-  /* Feedback: X is text-safe ink, bg-X + text-X-foreground a solid fill, bg-X-subtle + text-X a banner */
+  /* Feedback tokens */
   --success: oklch(0.8047 0.1662 164.93); /* #18e0a4 brand-pulsegreen */
   --success-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
   --success-subtle: oklch(0.3 0.05 165); /* #103627 pulse green on graphite */
@@ -262,18 +259,18 @@
   --info-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
   --info-subtle: oklch(0.3 0.05 250); /* #192f46 signal blue on graphite */
   --destructive-subtle: oklch(0.31 0.065 20); /* #4c2122 red on graphite */
-  /* Brand extensions: signal blue for interaction, cyan accent for the floating action and toast action */
+  /* Brand extensions */
   --signal: oklch(0.704 0.162 248.7); /* #3da5ff brand-signalblue */
   --signal-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
   --brand-accent: oklch(0.7138 0.1285 218.27); /* #00b5d8 brand-cyan */
   --brand-accent-foreground: oklch(0.204 0.013 233.3); /* #11181c brand-carbonblack */
-  /* Data visualisation, fixed categorical order (validated for colour-vision deficiency) */
+  /* Data visualisation categorical palette */
   --chart-1: oklch(0.66 0.16 250); /* #3496ef signal blue */
   --chart-2: oklch(0.655 0.14 62); /* #cc7a20 ownership amber */
   --chart-3: oklch(0.64 0.18 293); /* #9371ee hyper violet */
   --chart-4: oklch(0.66 0.11 189); /* #1aa7a0 operate teal */
   --chart-5: oklch(0.65 0.18 30); /* #e85a48 energy coral */
-  /* Sidebar (the app frame around the inset work surface) */
+  /* Sidebar tokens */
   --sidebar: oklch(0.175 0.012 233); /* #0b1115 carbon, one step deeper: the app frame */
   --sidebar-foreground: oklch(0.959 0.003 286.3); /* #f1f1f3 brand-websitegrey */
   --sidebar-primary: oklch(0.959 0.003 286.3); /* #f1f1f3 brand-websitegrey */
@@ -282,12 +279,12 @@
   --sidebar-accent-foreground: oklch(0.959 0.003 286.3); /* #f1f1f3 brand-websitegrey */
   --sidebar-border: oklch(0.27 0.02 235); /* #1d282f decorative */
   --sidebar-ring: oklch(0.704 0.162 248.7); /* #3da5ff brand-signalblue */
-  /* Elevation ink (the shadow geometry lives in the theme block) */
+  /* Elevation ink */
   --shadow-ink: oklch(0 0 0 / 50%); /* black at 50%: dark relies on borders, shadows only separate overlays */
   --shadow-ink-soft: oklch(0 0 0 / 32%); /* black at 32% */
-  /* Scrim behind dialogs and sheets */
+  /* Dialog/sheet scrim */
   --overlay: oklch(0 0 0 / 40%); /* black at 40%: a 10% scrim does not register on carbon */
-  /* Appointment status (Addendum B section B4): -bg tint, -border solid marker, -fg text on the tint */
+  /* Appointment status: -bg tint, -border solid marker, -fg text on tint */
   --status-confirmed-bg: oklch(0.31 0.07 272); /* #242d53 fusion purple on graphite */
   --status-confirmed-border: oklch(0.68 0.17 270.5); /* #718fff brand-fusionpurple, lifted */
   --status-confirmed-fg: oklch(0.88 0.06 272); /* #c9d6ff pale fusion purple */
@@ -309,8 +306,7 @@
 }
 
 @layer base {
-  /* The default outline colour is the solid ring, so an outline without its own colour (a link, the skip link,
-     ScrollArea's focus-visible:outline-1) still clears 3:1. At ring/50 it was 1.9:1 on white. */
+  /* Use solid ring as default outline colour so uncoloured outlines clear 3:1 contrast. */
   * {
     @apply border-border outline-ring;
   }
@@ -331,10 +327,8 @@
   }
 }
 
-/* Only what a token cannot express. Everything else is Tailwind utilities on semantic tokens (docs/UI_DESIGN.md). */
 @layer components {
-  /* Fusion domain tag, as on Service Hub's header: uppercase, 0.2em tracking, weight 600, 8px radius, carbon text on
-     the domain gradient. The end padding subtracts the tracking that follows the last letter. */
+  /* Fusion domain tag: uppercase pill with carbon text over a domain gradient. */
   .domain-tag {
     display: inline-flex;
     align-items: center;
@@ -363,7 +357,7 @@
     background-image: var(--domain-operate);
   }
 
-  /* Vehicle registration, as on Service Hub's job cards: an outlined plate in mono capitals. */
+  /* Outlined monospace vehicle registration chip. */
   .plate-chip {
     display: inline-flex;
     align-items: center;
@@ -384,20 +378,17 @@
   }
 }
 
-/* Ensure consistent font rendering across different DPI levels */
 @media (-webkit-min-device-pixel-ratio: 1.5), (min-resolution: 144dpi) {
   body {
     -webkit-font-smoothing: subpixel-antialiased;
   }
 }
 
-/* Smooth scrolling for the entire page */
 html {
   scroll-behavior: smooth;
 }
 
-/* Route progress bar (components/router/root-layout.tsx). Fades in after
-   150ms so fast navigations don't flash it. */
+/* Route progress bar: delays fade-in by 150ms so fast navigations do not flash. */
 @keyframes route-progress-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -416,13 +407,12 @@ html {
   .route-progress-bar { animation: none; width: 100%; opacity: 0.6; }
 }
 
-/* Time the workshop is not working (a closed day, the hours outside the operating window): a diagonal hatch in the border
-   colour, so it reads as "unavailable" in both themes without borrowing a status colour (Addendum B §B4). */
+/* Diagonal hatch pattern for closed days and hours outside the operating window. */
 @utility bg-hatch {
   background-image: repeating-linear-gradient(-45deg, var(--color-border) 0 1px, transparent 1px 7px);
 }
 
-/* Respect the reduced-motion preference everywhere: no smooth scrolling, pulses or transitions (Addendum B §B4). */
+/* Disable smooth scrolling, pulses, and transitions when reduced motion is preferred. */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -5,9 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The availability query's shape rules. The clock is Monday 2026-10-12 08:00Z with a 90-day horizon, so the accepted dates are
-/// 2026-10-11 (yesterday in UTC terms) to 2027-01-11 (today + 90 + 1): loose by a day either side, because the date is local to
-/// the dealership. Booking applies the exact policy.
+/// Verifies query parameter validation for availability requests.
 /// </summary>
 public class GetAvailabilityValidatorTests
 {

@@ -37,7 +37,7 @@ interface BayFormValues {
   isActive: boolean
 }
 
-/** The API's check of a bay's name, before anything is sent (written out, not zod: see the technician form). */
+/** Validates the bay name before submission. */
 const resolver: Resolver<BayFormValues> = async (values) => {
   const name = values.name.trim()
   const message = !name ? "Enter the bay's name." : name.length > 100 ? "Keep the name to 100 characters." : null
@@ -72,11 +72,7 @@ interface BaySheetProps {
   onDiscarded: () => void
 }
 
-/**
- * Adding or editing a bay (Task 30b, UI_DESIGN 11.24): the technician form's pattern (the record read once through Refine's
- * `useForm`, the whole state sent with its version as a write bound to the Admin, the 412 comparison) for a bay's name, its
- * equipment and whether it is in service, with the upcoming-work preview when it is taken out of service.
- */
+/** Sheet for adding or editing a service bay, with optimistic concurrency conflict resolution. */
 export function BaySheet({ editing, open, onOpenChange, dealership, today, phone, returnFocus, onSaved, onDiscarded }: BaySheetProps) {
   const firstField = useRef<HTMLInputElement>(null)
   return (
@@ -125,11 +121,8 @@ function BaySheetBody(props: BodyProps) {
     redirect: false,
     queryOptions: { enabled: editing.mode === "edit", refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false, staleTime: Infinity, gcTime: 0 },
   })
-  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
-  // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
+  // Keep the initial read so background refetches do not overwrite in-progress edits.
   const [kept, setKept] = useState<AdminBayResponse | null>(null)
-  // Try again (a failed first read) goes when the form is drawn: focus moves to the sheet first, so nothing focused is taken
-  // away, and the form's first field takes it once drawn (UI_DESIGN 11.24).
   const [retried, setRetried] = useState(false)
   const retry = () => {
     const sheet = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>('[role="dialog"]') : null

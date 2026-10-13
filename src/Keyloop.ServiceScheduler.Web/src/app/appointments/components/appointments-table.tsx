@@ -14,13 +14,7 @@ import { OpenAppointmentContext } from "../lib/row-actions"
 
 const ariaSort = { asc: "ascending", desc: "descending" } as const
 
-/**
- * The time column stays in view while a narrow table scrolls sideways inside its card (a tablet held upright), as the
- * board's lane column does. A sticky cell needs an opaque fill, so it paints the row's translucent tints over the card:
- * the header's `muted/50`, a hovered or menu-open row's `muted/50`, a selected row's `muted`.
- */
 const halfMuted = "bg-[color-mix(in_srgb,var(--muted)_50%,var(--card))]"
-// Below 1024 px, where the table can scroll, a hairline on its right edge keeps passing cells apart from it.
 const stickyEdge = "sticky left-0 z-10 max-lg:shadow-[inset_-1px_0_0_var(--border)]"
 const stickyHead = cn(stickyEdge, halfMuted)
 const stickyCell = cn(
@@ -30,10 +24,6 @@ const stickyCell = cn(
   "group-data-[state=selected]/row:bg-muted"
 )
 
-/**
- * Each row's status marker bar (UI_DESIGN 11.12's 3 px left bar), drawn inside the sticky first cell so it stays with
- * it (a collapsed table border would scroll away). Full class names, so Tailwind sees them.
- */
 const statusBar: Record<AppointmentStatus, string> = {
   Confirmed: "before:bg-status-confirmed-border",
   CheckedIn: "before:bg-status-checked-in-border",
@@ -45,23 +35,16 @@ const statusBar: Record<AppointmentStatus, string> = {
 
 interface AppointmentsTableProps {
   table: ReactTable<DataTableFeatures, AppointmentRow>
-  /** The appointment whose details sheet is open, highlighted in its row. */
   selectedId: string | null
 }
 
-/**
- * The day's appointments as a table, adopted from the template's tasks `data-table.tsx`. Each row starts with its status's
- * marker bar, so the list reads as the board's status map. A click anywhere on a row opens its details, as a block does
- * on the board; keyboard users have the row's actions button, which is also where focus returns when the sheet closes.
- * Wider than its card on a narrow screen, it scrolls sideways inside the card, never the page.
- */
+/** Data table rendering the day's appointments with sticky time column and status bars. */
 export function AppointmentsTable({ table, selectedId }: AppointmentsTableProps) {
   const open = use(OpenAppointmentContext)
   const rows = table.getRowModel().rows
   const columnCount = table.getVisibleLeafColumns().length
 
   const openFromRow = (row: AppointmentRow, event: MouseEvent<HTMLTableRowElement>) => {
-    // The row's own controls (its actions menu) handle their clicks.
     if (event.target instanceof Element && event.target.closest("button, a, input, [role=menu], [role=menuitem]")) return
     const trigger = event.currentTarget.querySelector<HTMLElement>("[data-row-actions]")
     open(row, "details", trigger ?? event.currentTarget)
@@ -103,7 +86,6 @@ export function AppointmentsTable({ table, selectedId }: AppointmentsTableProps)
                   key={cell.id}
                   className={cn(
                     "px-1.5",
-                    // The status marker bar, and the first column's text in line with the card's 16 px edge.
                     index === 0 && cn("pl-4 before:absolute before:inset-y-0 before:left-0 before:w-0.75", statusBar[row.original.status], stickyCell),
                     cell.column.columnDef.meta?.className
                   )}

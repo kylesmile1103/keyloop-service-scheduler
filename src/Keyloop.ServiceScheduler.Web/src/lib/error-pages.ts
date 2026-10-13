@@ -1,4 +1,3 @@
-/** Where the error pages live, so any page can send the user to one (`navigate(ERROR_PAGES.forbidden)`). */
 export const ERROR_PAGES = {
   unauthorized: "/errors/unauthorized",
   forbidden: "/errors/forbidden",
@@ -7,16 +6,13 @@ export const ERROR_PAGES = {
   underMaintenance: "/errors/under-maintenance",
 } as const
 
-/**
- * What a page can hand an error page as navigation state: the address to try again (`from`, with its search) and the
- * failure's trace id, for the Aspire dashboard's trace search.
- */
+/** Navigation state passed to error pages (`from` return path and `traceId`). */
 export interface ErrorPageState {
   from?: string
   traceId?: string
 }
 
-/** The error page for an HTTP status that ends a whole view (401, 403, 404, 5xx), or `null` for one a view handles in place. */
+/** Maps a terminal HTTP status (401, 403, 404, 5xx) to its error page route, or `null` for inline errors. */
 export function errorPageFor(status: number): string | null {
   if (status === 401) return ERROR_PAGES.unauthorized
   if (status === 403) return ERROR_PAGES.forbidden

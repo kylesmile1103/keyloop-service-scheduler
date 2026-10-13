@@ -16,29 +16,21 @@ import { formatDay, shiftDate } from "@/lib/calendar-date"
 import { cn } from "@/lib/utils"
 
 interface UpcomingAppointmentsProps {
-  /** The next appointments; `undefined` while the range read loads. */
   appointments: readonly AppointmentListItemResponse[] | undefined
   today: string
   timeZone: string
-  /** The calendar, on this dealership. */
   calendar: To
   selectedId: string | null
   onSelect: (appointment: AppointmentListItemResponse, row: HTMLElement) => void
 }
 
-/** "Today", "Tomorrow" or "Wed 14 Oct": an appointment's day, near today in words. */
 function dayWord(date: string, today: string): string {
   if (date === today) return "Today"
   if (date === shiftDate(today, 1)) return "Tomorrow"
   return formatDay(date, "short")
 }
 
-/**
- * The work still to do, soonest first (adopted from the template's `recent-transactions`): each row a button with the
- * status marker bar of the board's blocks, its day and time in the dealership's zone, the service, the customer and plate
- * as the API gives them (masked for a visitor), the bay and technician, and the status badge. A row opens the board's
- * details sheet. The template's avatars, amounts and per-row menu are not kept: the sheet is where an appointment is acted on.
- */
+/** List of upcoming confirmed, checked-in, and in-progress appointments. */
 export function UpcomingAppointments({ appointments, today, timeZone, calendar, selectedId, onSelect }: UpcomingAppointmentsProps) {
   const headingId = useId()
 

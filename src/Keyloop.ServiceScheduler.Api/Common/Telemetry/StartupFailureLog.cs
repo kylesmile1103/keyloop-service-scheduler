@@ -3,12 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
-/// <summary>
-/// Records why the composition root's early configuration check failed (<c>Program.cs</c>), so the crash leaves a structured
-/// Critical record under JSON and OTLP logging: 1103 <c>StartupValidationFailed</c> per failing options type, and 1104
-/// <c>StartupConfigurationFailed</c> for anything else, typically a value the configuration binder could not convert. No
-/// configured value is logged; the exception itself is not attached, because its message and inner exceptions can repeat one.
-/// </summary>
+/// <summary>Logs structured Critical records for startup options validation or configuration binding failures without exposing secrets.</summary>
 internal static partial class StartupFailureLog
 {
     public static void Write(ILogger logger, Exception exception)
@@ -16,7 +11,6 @@ internal static partial class StartupFailureLog
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(exception);
 
-        // The startup validator throws one OptionsValidationException, or an AggregateException of them when several types fail.
         IEnumerable<Exception> failures = exception is AggregateException aggregate ? aggregate.InnerExceptions : [exception];
         foreach (var failure in failures)
         {
@@ -31,8 +25,6 @@ internal static partial class StartupFailureLog
         }
     }
 
-    // Only the exact binder conversion diagnostic is recognised. Arbitrary messages, including text before/after a binder-like
-    // substring, may contain secrets. Never pass them or an exception object to a logging provider.
     private static string SafeDetail(string message)
     {
         var match = BinderConversionFailure().Match(message);

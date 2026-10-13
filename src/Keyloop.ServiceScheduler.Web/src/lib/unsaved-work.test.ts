@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest"
 import { useUnsavedWork } from "@/hooks/use-unsaved-work"
 import { hasUnsavedWork, holdUnsavedWork } from "@/lib/unsaved-work"
 
-// What a session renewal's navigation would lose (Task 36): views hold a claim while they have work on screen.
-
 describe("unsaved work", () => {
   it("is held while any claim is, and a release twice does not drop another view's claim", () => {
     expect(hasUnsavedWork()).toBe(false)

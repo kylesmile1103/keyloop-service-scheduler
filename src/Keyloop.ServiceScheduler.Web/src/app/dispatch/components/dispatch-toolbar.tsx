@@ -32,23 +32,18 @@ interface DispatchToolbarProps {
   dealershipSelect: ReactNode
   /** The day, lane and refresh controls, once a dealership is selected. */
   board?: BoardControls
-  /** Opens the booking dialog (Task 17), or the sign-in prompt; the action is not shown until there is one. */
+  /** Opens the booking dialog or sign-in prompt. */
   onBookAppointment?: () => void
-  /** Book appointment's availability for this account: unavailable but focusable, with its reason (UI_DESIGN 11.20). */
+  /** Availability state for the Book appointment button. */
   bookState?: { disabled: boolean; focusableWhenDisabled: boolean; "aria-describedby"?: string }
 }
 
 /**
- * The board's controls. Wide screens: dealership and day on the left; lane view, lane filter, auto-refresh and booking on
- * the right, wrapping into two clean rows below 1280 px. Phones: the dealership select at full width, the day control, then
- * the lane view with a Filters sheet holding auto-refresh, the lane filter and the legend.
- * The lane toggle is the tab list of the board's `Tabs` (the page wraps toolbar and board in it).
+ * Dispatch board toolbar containing dealership selector, day navigation, lane tabs, filter controls, auto-refresh, and booking trigger.
  */
 export function DispatchToolbar({ dealershipSelect, board, onBookAppointment, bookState }: DispatchToolbarProps) {
   const isMobile = useIsMobile()
 
-  // On a touch screen each tab is 44 px tall (the touch-target rule), so the list grows to hold it inside its 3 px inset:
-  // `min-h-12.5` wins over the list's fixed height without a specificity contest.
   const laneTabs = (
     <TabsList
       aria-label="Lanes"
@@ -78,7 +73,6 @@ export function DispatchToolbar({ dealershipSelect, board, onBookAppointment, bo
         {board && (
           <>
             <DateNavigator dealership={board.dealership} date={board.date} today={board.today} onDateChange={board.onDateChange} />
-            {/* Stretched, so the Filters button matches the lane tabs' height on a touch screen. */}
             <div className="flex items-stretch gap-2">
               {laneTabs}
               <FiltersSheet
@@ -103,8 +97,6 @@ export function DispatchToolbar({ dealershipSelect, board, onBookAppointment, bo
         {board && <DateNavigator dealership={board.dealership} date={board.date} today={board.today} onDateChange={board.onDateChange} />}
       </div>
       {(board || book) && (
-        // Right-aligned beside the day controls, so when the row runs out Book appointment ends the second row at the right
-        // edge (Addendum B section B4) instead of sitting under the lane tabs.
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 xl:justify-end">
           {board && (
             <>

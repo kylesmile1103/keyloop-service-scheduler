@@ -1,9 +1,6 @@
 import type { ReturningCustomerResponse } from "@/api/types.gen"
 
-/**
- * `POST /dealerships/{id}/customer-lookups` answers (Task 39), as the API returns them: the most recent booking's customer
- * and vehicle of each matching customer-and-vehicle pair, latest first, with how many bookings the pair has.
- */
+/** Test fixtures for `POST /dealerships/{id}/customer-lookups`. */
 
 /** Grace Hopper's Golf: three visits, the last on Monday 12 October 2026 at 10:00 in Reading (09:00 UTC). */
 export const graceGolf: ReturningCustomerResponse = {

@@ -4,9 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Conversions;
 
 /// <summary>
-/// Persists the domain's enum sets (<see cref="IReadOnlySet{T}"/> backed by <see cref="HashSet{T}"/>) as sorted <c>text[]</c>
-/// columns of member names. The conversion and comparison logic lives in public static methods that the converter and comparer
-/// expressions call, which keeps the model compatible with <c>dotnet ef dbcontext optimize</c> (Addendum A §A7).
+/// Persists enum sets (<see cref="IReadOnlySet{T}"/>) as sorted <c>text[]</c> columns using static conversion and comparison helpers.
 /// </summary>
 internal static class EnumArrayConversions
 {

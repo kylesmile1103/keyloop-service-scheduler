@@ -24,7 +24,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Endpoints;
 
-/// <summary>Every endpoint of the API, listed explicitly (ADR-016, Addendum A §A3): no assembly scanning or reflection-based discovery.</summary>
+/// <summary>Maps all <c>/api/v1</c> endpoints explicitly.</summary>
 public static class EndpointRegistry
 {
     public static IEndpointRouteBuilder MapSchedulerEndpoints(this WebApplication app)
@@ -32,7 +32,6 @@ public static class EndpointRegistry
         ArgumentNullException.ThrowIfNull(app);
         var group = app.MapGroup("/api/v1").WithGroupName("v1");
 
-        // Each slice adds its line here (Tasks 8–12), in API order.
         GetDealershipsEndpoint.Map(group);
         GetServiceTypesEndpoint.Map(group);
         GetAvailabilityEndpoint.Map(group);
@@ -61,8 +60,6 @@ public static class EndpointRegistry
         GetAdminHistoryEndpoint.Map(group);
         FindReturningCustomersEndpoint.Map(group);
 
-
-        // Demo tooling, outside the contract: only where demo data is seeded and the AppHost supplied a key (Addendum C §C3).
         var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Value;
         if (app.Services.GetRequiredService<IOptions<DemoOptions>>().Value.ReseedEnabled(database))
         {

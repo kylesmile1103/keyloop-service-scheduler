@@ -12,11 +12,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 
 /// <summary>
-/// <c>GET /api/v1/__throw?kind=…</c>, mapped only in the SystemTest environment and excluded from the OpenAPI document (Addendum B
-/// §B1). It throws each exception <see cref="GlobalExceptionHandler"/> maps, with extension values of the same runtime types the
-/// domain and handlers use, so the integration suite proves every problem shape serialises under reflection-free JSON.
-/// <c>kind=ok</c> returns 204 (a cheap endpoint for header, CORS and rate-limit tests); <c>kind=actor</c> returns the request's
-/// <see cref="CurrentActor"/> name (forwarded-headers tests).
+/// SystemTest-only probe endpoint (<c>GET /api/v1/__throw</c>) used by integration tests to verify problem serialization, headers, and actor resolution.
 /// </summary>
 internal sealed class ProblemProbeEndpoint : IEndpoint
 {

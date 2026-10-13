@@ -37,14 +37,10 @@ const keys = {
   triageStatus: getBookingTriageStatusQueryKey(),
   schedule: getWorkshopScheduleQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } }),
   range: listAppointmentsQueryKey({ path: { dealershipId }, query: { from: "2026-10-13", to: "2026-10-19" } as ListAppointmentsData["query"] }),
-  // The Overview's read, built as the page builds it (Task 28b).
   overview: rangeReadOptions(dealershipId, overviewWindow("2026-10-13").from, overviewWindow("2026-10-13").to).queryKey,
-  // The Calendar's month, built as the page builds it.
   calendar: rangeReadOptions(dealershipId, calendarRange("month", "2026-10-13").from, calendarRange("month", "2026-10-13").to).queryKey,
-  // The Calendar's week, its default view.
   calendarWeek: rangeReadOptions(dealershipId, calendarRange("week", "2026-10-13").from, calendarRange("week", "2026-10-13").to).queryKey,
   availability: getAvailabilityQueryKey({ path: { dealershipId }, query: { date: "2026-10-13" } as GetAvailabilityData["query"] }),
-  // Task 31b: the environment's switches stay; availability read for a vehicle (its profile in the key) goes like any other.
   features: getFeaturesQueryKey(),
   vehicleAvailability: getAvailabilityQueryKey({
     path: { dealershipId },
@@ -58,7 +54,6 @@ const keys = {
     },
   }),
   details: getAppointmentQueryKey({ path: { appointmentId: "8c1f6b3e-5d2a-4f7b-9e1c-3a2b4c5d6e7f" } }),
-  // The admin area's Refine cache, whose lists come from the schedule.
   refine: ["default", "technicians", "list", {}],
 }
 

@@ -6,10 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Persistence;
 
-/// <summary>
-/// PostgreSQL's <c>xmin</c> is the appointment's optimistic concurrency token (ARCHITECTURE §7.3 layer 3, mapped with
-/// <c>IsRowVersion()</c>): a transition saved from a stale read must fail rather than overwrite a newer one (first writer wins).
-/// </summary>
+/// <summary>Verifies PostgreSQL <c>xmin</c> optimistic concurrency token behavior on appointments.</summary>
 public sealed class AppointmentConcurrencyTokenTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -57,7 +54,7 @@ public sealed class AppointmentConcurrencyTokenTests(PostgresFixture pg) : IAsyn
 
         first.CheckIn(TestData.Now);
         await firstDb.SaveChangesAsync(Ct);
-        second.Cancel("Customer called to reschedule.", TestData.Now); // legal from the Confirmed state the second context read
+        second.Cancel("Customer called to reschedule.", TestData.Now);
 
         var conflict = await Should.ThrowAsync<DbUpdateConcurrencyException>(() => secondDb.SaveChangesAsync(Ct));
 
@@ -82,7 +79,7 @@ public sealed class AppointmentConcurrencyTokenTests(PostgresFixture pg) : IAsyn
         return appointment;
     }
 
-    /// <summary>The row's <c>xmin</c> as PostgreSQL reports it (an <c>xid</c>, read as text so no driver mapping is involved).</summary>
+    /// <summary>Reads the row's <c>xmin</c> directly from PostgreSQL.</summary>
     private static async Task<uint> XminAsync(SchedulerDbContext db, Guid appointmentId) =>
         checked((uint)await db.Database.SqlQuery<long>($"""SELECT xmin::text::bigint AS "Value" FROM appointments WHERE id = {appointmentId}""").SingleAsync(Ct));
 }

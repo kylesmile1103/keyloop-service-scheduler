@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/layouts/base-layout.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 "use client"
 
 import * as React from "react"
@@ -11,24 +11,22 @@ import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
-/** The full layout's width (Tailwind `xl`): below it the sidebar starts off-canvas, opened from the header. */
+/** Breakpoint (`xl`) below which the sidebar starts off-canvas. */
 const WIDE_LAYOUT = "(min-width: 1280px)"
 
 interface BaseLayoutProps {
   children: React.ReactNode
   title?: string
-  /** The browser tab's title when the page shows no title row of its own (a page whose state is its heading). */
+  /** Browser tab title when the page renders no heading row of its own. */
   documentTitle?: string
   description?: string
-  /** Page-level controls shown to the right of the title (dealership, date, actions). */
+  /** Page-level controls shown to the right of the title. */
   actions?: React.ReactNode
-  /** The decorative header band (UI_DESIGN 12.3); the dispatch board only. */
+  /** Renders the decorative header band on the dispatch board. */
   band?: boolean
 }
 
 export function BaseLayout({ children, title, documentTitle, description, actions, band = false }: BaseLayoutProps) {
-  // Expanded on wide screens, off-canvas on tablets (phones always use the template's sheet). The sidebar follows the
-  // breakpoint when the window crosses it, and otherwise stays as the user left it.
   const wide = useMediaQuery(WIDE_LAYOUT)
   const [open, setOpen] = React.useState(wide)
   const [openFor, setOpenFor] = React.useState(wide)
@@ -57,7 +55,6 @@ export function BaseLayout({ children, title, documentTitle, description, action
         Skip to content
       </a>
       <AppSidebar variant="inset" collapsible="offcanvas" />
-      {/* isolate: the band sits behind the work surface's content (z -1) but above its background. */}
       <SidebarInset className="isolate">
         {band && <HeaderBand />}
         <SiteHeader />
@@ -89,10 +86,7 @@ export function BaseLayout({ children, title, documentTitle, description, action
   )
 }
 
-/**
- * The OWNERSHIP glow (light) or the fusion-blue aurora (dark) behind the 56 px header: an 80 px band that fades out over its
- * last 24 px, so the page title, toolbar and cards sit on the plain work surface (UI_DESIGN 12.3). Decorative.
- */
+/** Decorative header backdrop that fades into the work surface. */
 function HeaderBand() {
   const common =
     "pointer-events-none absolute inset-x-0 top-0 -z-10 h-20 w-full select-none object-cover mask-b-from-70% md:rounded-t-xl"

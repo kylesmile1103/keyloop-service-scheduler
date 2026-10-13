@@ -11,9 +11,6 @@ import { renderBoard } from "@/test/render-board"
 import { bays, technicians } from "@/test/schedules"
 import { vehicleAwareOn } from "@/test/vehicle"
 
-// Task 30b: the change history (Task 30a's audit), for an Admin: who changed a technician, a bay or the requirement policy,
-// when, and what changed, field by field, newest first; filtered by kind or one resource, with older changes on request.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/history/page"), import("@/app/admin/technicians/page")])
 })

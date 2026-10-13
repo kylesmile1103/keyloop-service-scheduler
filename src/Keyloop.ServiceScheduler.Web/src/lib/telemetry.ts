@@ -1,42 +1,28 @@
 import { context, propagation, SpanStatusCode, trace, type Attributes, type Span } from "@opentelemetry/api"
 import type { SpanProcessor } from "@opentelemetry/sdk-trace-base"
 
-/**
- * Browser tracing (ARCHITECTURE §12.2, Addendum C §C5). The dispatch board sends its own spans to the Aspire dashboard
- * over OTLP/HTTP, and `traceparent` rides on same-origin `/api` calls, so one trace runs from a click through the API to
- * PostgreSQL.
- *
- * Only the small `@opentelemetry/api` package is bundled with the app; the SDK (lib/telemetry-sdk.ts) is loaded on demand
- * when an endpoint is configured.
- *
- * Security: `headers` carries the dashboard's OTLP API key. vite.config.ts compiles it into the bundle only for the
- * development dev server; every other build ships it empty and, unless a secret-free collector endpoint is named at
- * build time, ships with tracing off.
- */
+/** Configuration for browser OpenTelemetry OTLP trace export. */
 export interface TelemetryConfig {
-  /** OTLP/HTTP base URL, e.g. https://localhost:21268. Empty turns tracing off. */
+  /** OTLP/HTTP base URL. Empty disables tracing. */
   endpoint: string
-  /** `key=value` pairs sent with every export (OTEL_EXPORTER_OTLP_HEADERS). */
+  /** Comma-separated `key=value` headers sent with each export. */
   headers: string
-  /** `key=value` resource attributes (OTEL_RESOURCE_ATTRIBUTES). */
+  /** Comma-separated `key=value` resource attributes. */
   resourceAttributes: string
-  /** The Aspire resource name (OTEL_SERVICE_NAME); browser spans report as `<name>-browser`. */
+  /** Service resource name; browser spans report as `<name>-browser`. */
   serviceName: string
 }
 
 export interface TelemetryHandle {
   readonly enabled: boolean
-  /** Stops exporting, removes the fetch instrumentation and unregisters the global tracer. */
+  /** Stops exporting, removes fetch instrumentation, and unregisters the global tracer. */
   shutdown(): Promise<void>
 }
 
-/** What a traced call receives: its span, and a `fetch` that keeps requests inside that span. */
+/** Active span and context-preserving `fetch` wrapper passed to a traced callback. */
 export interface TracedCall {
   span: Span
-  /**
-   * Pass this to the generated client (`{ fetch }` request option). The browser has no async context propagation, so a
-   * request the client makes after an `await` would otherwise lose its parent span and start a separate trace.
-   */
+  /** Context-bound `fetch` to pass to the API client so requests after `await` remain attached to `span`. */
   fetch: typeof fetch
 }
 

@@ -134,7 +134,7 @@ public class GlobalExceptionHandlerTests
         problem.Type.ShouldBe(ProblemTypes.ValidationError);
         problem.Title.ShouldBe("Validation failed");
         problem.Detail.ShouldNotBeNull().ShouldNotContain("BookAppointmentRequest");
-        problem.ShouldBeOfType<HttpValidationProblemDetails>().Errors.ShouldBeEmpty(); // validation-error always carries `errors` (§8.7)
+        problem.ShouldBeOfType<HttpValidationProblemDetails>().Errors.ShouldBeEmpty(); // validation-error always carries `errors`
     }
 
     [Fact]

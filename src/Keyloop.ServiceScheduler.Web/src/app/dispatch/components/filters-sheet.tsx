@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar.tsx` (its mobile
-// sheet), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { SlidersHorizontal } from "lucide-react"
 
 import { Button } from "@/components/ui/button"

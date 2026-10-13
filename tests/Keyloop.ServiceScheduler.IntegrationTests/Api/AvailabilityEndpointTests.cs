@@ -15,10 +15,7 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// <c>GET /api/v1/dealerships/{dealershipId}/availability?serviceTypeId=&amp;date=</c>: the domain calculator over one indexed read of
-/// the dealership-day, with the local date strictly <c>yyyy-MM-dd</c>.
-/// </summary>
+/// <summary>Tests the dealership availability endpoint across operating hours, resource qualifications, and time zones.</summary>
 public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifetime
 {
     private static readonly TimeSpan Grid = TimeSpan.FromMinutes(15);
@@ -92,7 +89,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         availability.Slots.Select(s => (s.StartUtc, s.EndUtc, s.FreeBays, s.FreeTechnicians))
             .ShouldBe(expected.Select(s => (s.StartUtc, s.EndUtc, s.FreeBays, s.FreeTechnicians)));
 
-        // The appointments shaped the answer: 09:00 collides on both bays, and the cancelled 14:00 job holds nothing.
         availability.Slots.Select(s => s.StartUtc).ShouldNotContain(TestData.LondonTime(9));
         availability.Slots.ShouldContain(s => s.StartUtc == TestData.LondonTime(14) && s.FreeBays == 2 && s.FreeTechnicians == 2);
     }
@@ -121,7 +117,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_reports_no_qualified_resources()
     {
-        // The technician is certified; the dealership has no EV bay, so the service can never be booked here.
         var dealership = TestData.NewDealership("Standard Motors");
         var ev = TestData.NewServiceType("EV-BATTERY-CHECK", 60, [BayCapability.EvHighVoltage], [Certification.HighVoltageElectrical]);
         await SaveAsync(
@@ -140,8 +135,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_reports_no_qualified_resources_when_no_technician_is_certified()
     {
-        // The technician-side half: an active EV bay qualifies, but the only technician lacks the high-voltage certification (and
-        // a certified colleague is inactive), so the service can never be booked here either.
         var dealership = TestData.NewDealership("Uncertified Motors");
         var ev = TestData.NewServiceType("EV-BATTERY-CHECK", 60, [BayCapability.EvHighVoltage], [Certification.HighVoltageElectrical]);
         await SaveAsync(
@@ -161,7 +154,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_for_a_service_longer_than_the_opening_hours_is_empty_without_a_reason()
     {
-        // Open 08:00–10:00 on the booking day; a three-hour service fits no start, yet the day is open and the resources qualify.
         var dealership = TestData.NewDealership("Short Day Motors", hours: OperatingHours.MondayToFriday(new TimeOnly(8, 0), new TimeOnly(10, 0)));
         var major = TestData.NewServiceType("MAJOR-SERVICE", 180, [BayCapability.StandardLift], [Certification.GeneralService]);
         await SaveAsync(
@@ -180,7 +172,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_ignores_inactive_and_unqualified_resources()
     {
-        // One active qualified bay and technician; an inactive copy of each, and an active MOT-only pair, must add no capacity.
         var dealership = TestData.NewDealership("Dormant Bay Motors");
         var interim = TestData.NewServiceType("INTERIM-SERVICE", 60, [BayCapability.StandardLift], [Certification.GeneralService]);
         await SaveAsync(
@@ -209,7 +200,6 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
 
         var (availability, _) = await GetAvailabilityAsync(workshop.Dealership.Id, workshop.Interim.Id, TestData.BookingDay);
 
-        // Half-open slots: 09:00–10:00 ends as the bookings start and 11:00–12:00 starts as they end; nothing in between fits.
         var starts = availability.Slots.Select(s => s.StartUtc).ToList();
         starts.ShouldContain(TestData.LondonTime(9));
         starts.ShouldContain(TestData.LondonTime(11));
@@ -232,10 +222,9 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         availability.TimeZoneId.ShouldBe("Europe/Berlin");
         availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(
             new DateTime(2026, 10, 13, 5, 30, 0, DateTimeKind.Utc), new DateTime(2026, 10, 13, 16, 30, 0, DateTimeKind.Utc), "2026-10-13T07:30+02:00", "2026-10-13T18:30+02:00"));
-        availability.Slots[0].StartLocal.ShouldBe("2026-10-13T07:30+02:00"); // 05:30Z in CEST (UTC+2)
+        availability.Slots[0].StartLocal.ShouldBe("2026-10-13T07:30+02:00");
         availability.Slots[^1].StartLocal.ShouldBe("2026-10-13T17:30+02:00");
 
-        // The wire format of one slot: instants in UTC with Z, the local start as ISO-8601 with the zone's offset that day.
         using var body = JsonDocument.Parse(json);
         body.RootElement.GetProperty("slots")[0].GetRawText().ShouldBe(
             """{"startUtc":"2026-10-13T05:30:00Z","endUtc":"2026-10-13T06:30:00Z","startLocal":"2026-10-13T07:30+02:00","freeBays":1,"freeTechnicians":1}""");
@@ -244,8 +233,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_on_fall_back_day_returns_unique_ascending_grid_aligned_starts()
     {
-        // Europe/London leaves BST at 02:00 on 2026-10-25, so 01:00–02:00 local happens twice. Open 01:00–04:00 that Sunday: the
-        // ambiguous opening resolves to the earlier instant (01:00 BST = 00:00Z), so the window is four hours long in absolute time.
+        // Europe/London falls back at 02:00 on 2026-10-25; ambiguous 01:00 resolves to 01:00 BST (00:00Z).
         var sunday = new DateOnly(2026, 10, 25);
         var hours = OperatingHours.Create(Enum.GetValues<DayOfWeek>().Select(day => day == DayOfWeek.Sunday
             ? new DayOperatingHours(day, new TimeOnly(1, 0), new TimeOnly(4, 0))
@@ -263,11 +251,10 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         var opens = new DateTime(2026, 10, 25, 0, 0, 0, DateTimeKind.Utc);
         availability.OperatingWindow.ShouldBe(new OperatingWindowResponse(opens, opens.AddHours(4), "2026-10-25T01:00+01:00", "2026-10-25T04:00+00:00"));
         var starts = availability.Slots.Select(s => s.StartUtc).ToList();
-        starts.ShouldBe([.. Enumerable.Range(0, 13).Select(k => opens + (k * Grid))]); // 00:00Z to 03:00Z: none duplicated, none skipped
+        starts.ShouldBe([.. Enumerable.Range(0, 13).Select(k => opens + (k * Grid))]);
         starts.ShouldBeUnique();
         starts.ShouldAllBe(s => (s - opens).Ticks % Grid.Ticks == 0);
 
-        // The repeated hour shows the same wall-clock time twice; the offset tells the two apart (startUtc stays the identity of a slot).
         availability.Slots.Where(s => s.StartLocal.StartsWith("2026-10-25T01:00", StringComparison.Ordinal)).Select(s => (s.StartUtc, s.StartLocal))
             .ShouldBe([(opens, "2026-10-25T01:00+01:00"), (opens.AddHours(1), "2026-10-25T01:00+00:00")]);
         availability.Slots.Select(s => s.StartLocal).ShouldBeUnique();
@@ -276,8 +263,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task Availability_on_a_window_lost_to_spring_forward_is_empty_without_a_reason()
     {
-        // Europe/London skips 01:00–02:00 on 2027-03-28. Open 01:15–01:45 that Sunday: both ends advance to 02:00 BST (01:00Z), so
-        // the dealership is open for no time at all. That is not "closed" (it has hours that day) and not a resource gap.
+        // Europe/London skips 01:00–02:00 on 2027-03-28, collapsing a 01:15–01:45 window to zero duration.
         _factory.Clock.SetUtcNow(new DateTimeOffset(2027, 3, 20, 8, 0, 0, TimeSpan.Zero));
         var hours = OperatingHours.Create(Enum.GetValues<DayOfWeek>().Select(day => day == DayOfWeek.Sunday
             ? new DayOperatingHours(day, new TimeOnly(1, 15), new TimeOnly(1, 45))
@@ -300,8 +286,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
 
     [Theory]
     [InlineData("serviceTypeId=00000000-0000-0000-0000-000000000000&date=2026-10-13", "serviceTypeId must not be the empty id.")]
-    [InlineData("date=2026-10-13", "serviceTypeId is required and must be a GUID.")] // missing
-    // Not a GUID: the generated binder leaves the nullable parameter null and, because the endpoint has a filter, still runs it.
+    [InlineData("date=2026-10-13", "serviceTypeId is required and must be a GUID.")]
     [InlineData("serviceTypeId=not-a-guid&date=2026-10-13", "serviceTypeId is required and must be a GUID.")]
     public async Task Availability_invalid_service_type_id_400(string queryString, string message)
     {
@@ -315,12 +300,12 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
     }
 
     [Theory]
-    [InlineData("date=13%2F10%2F2026")] // day-first
-    [InlineData("date=10%2F13%2F2026")] // month-first, which DateOnly binding would silently accept
+    [InlineData("date=13%2F10%2F2026")]
+    [InlineData("date=10%2F13%2F2026")]
     [InlineData("date=2026-10-13T00%3A00")]
     [InlineData("date=2026-02-30")]
     [InlineData("date=")]
-    [InlineData("")] // missing
+    [InlineData("")]
     public async Task Availability_rejects_a_date_that_is_not_yyyy_MM_dd_400(string dateQuery)
     {
         var dealership = TestData.NewDealership();
@@ -329,7 +314,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         using var response = await _client.GetAsync($"/api/v1/dealerships/{dealership.Id}/availability?serviceTypeId={Guid.NewGuid()}&{dateQuery}", Ct);
 
         using var problem = await ShouldBeValidationErrorAsync(response, ["date"]);
-        problem.RootElement.GetProperty("errors").GetProperty("date").GetArrayLength().ShouldBe(1); // the first rule that fails, not a cascade
+        problem.RootElement.GetProperty("errors").GetProperty("date").GetArrayLength().ShouldBe(1);
     }
 
     [Fact]
@@ -339,7 +324,7 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
 
         using var response = await _client.GetAsync($"/api/v1/dealerships/{workshop.Dealership.Id}/availability?serviceTypeId={workshop.Interim.Id}&date=9999-12-31", Ct);
 
-        await response.ShouldBeValidationErrorAsync(["date"], Ct); // the availability contract bounds dates at validation (400)
+        await response.ShouldBeValidationErrorAsync(["date"], Ct);
     }
 
     [Fact]

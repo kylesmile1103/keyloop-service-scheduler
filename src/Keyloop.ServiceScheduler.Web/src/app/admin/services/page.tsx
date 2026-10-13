@@ -28,11 +28,7 @@ const SORTS: readonly SortChoice[] = [
   { value: "booked", label: "Most booked today", sorting: [{ id: "bookedToday", desc: true }] },
 ]
 
-/**
- * Which columns show. All six fit from 1536 px; below that the code is left out (the search still finds a service by it),
- * so the table fits its card without scrolling sideways from 1024 px up. View brings it back, and once the user has chosen,
- * the choice stands whatever the width (the appointments list's rule, UI_DESIGN 11.17).
- */
+/** Hides the service code column below 1536 px unless explicitly toggled via the View menu. */
 function useColumnVisibility() {
   const wide = useMediaQuery("(min-width: 1536px)")
   const [chosen, setChosen] = useState<ColumnVisibilityState | null>(null)
@@ -47,7 +43,7 @@ function useColumnVisibility() {
 /** Stable empty rows: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: ServiceRecord[] = []
 
-/** The Services page (`/resources/services`): the service catalogue at the dealership, read-only until Task 30. */
+/** Services catalogue page (`/resources/services`). */
 export default function ServicesPage() {
   return (
     <ResourcePage title="Services" description="The service catalogue: how long each job takes, what it needs, and whether this dealership can book it.">

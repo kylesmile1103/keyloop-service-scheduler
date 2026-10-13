@@ -7,9 +7,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Infrastructure.Triage;
 
 /// <summary>
-/// Private R2 access via Container outboundByHost, with a bounded transient local equivalent. The relay accepts any well-formed
-/// dealership segment, so dealership scoping and the read-side expiry check live here. Failures are logged as event 1400 with a safe
-/// reason only: never the relay URL, an image id, bytes or exception text.
+/// Dealership-scoped triage image store backed by private R2 relay or bounded transient local storage.
 /// </summary>
 public sealed class TriageImageStore(HttpClient http, IOptions<TriageConnectionOptions> options,
     TransientTriageImages local, TimeProvider clock, ILogger<TriageImageStore> logger)

@@ -53,8 +53,6 @@ public class VinTests
     [Fact]
     public void Vehicle_ToString_masks_both_the_VIN_and_the_whole_registration()
     {
-        // Nothing logs a vehicle today; if anything ever formats one (a log, an exception, a record's generated ToString), no plate
-        // character or length escapes, matching the anonymous reads' registration mask.
         var vehicle = new VehicleDetails(Vin.Create("WVWZZZ1KZAW123456"), "ab12 cde", "VW", "Golf");
 
         vehicle.ToString().ShouldBe("***********123456 ******* VW Golf");

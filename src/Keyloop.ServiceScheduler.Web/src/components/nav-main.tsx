@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/nav-main.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 "use client"
 
 import * as React from "react"
@@ -24,10 +24,7 @@ export function NavMain({
     title: string
     url: string
     icon?: LucideIcon
-    /**
-     * Search parameters the link carries over from the current address (the workshop pages share the dealership and the
-     * day). A link to the page already open keeps its whole address, so it never resets that page's own view.
-     */
+    /** Search parameters carried over from the current URL when navigating to a different route. */
     carry?: readonly string[]
   }[]
 }) {

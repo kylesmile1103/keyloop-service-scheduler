@@ -61,8 +61,6 @@ public sealed class DealershipsEndpointTests(PostgresFixture pg) : IAsyncLifetim
             new DayOperatingHoursResponse(DayOfWeek.Sunday, null, null),
         ]);
 
-        // The wire format itself: day names rather than numbers, minutes kept, and closed days with explicit nulls (a typed read
-        // accepts numeric enums and treats a missing member as null, so it cannot show this).
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         var munich = body.RootElement.EnumerateArray().Single(d => d.GetProperty("id").GetGuid() == ReferenceDataSeed.MunichDealershipId);
         var days = munich.GetProperty("operatingHours").EnumerateArray().Select(day => day.GetRawText()).ToList();

@@ -21,15 +21,9 @@ interface ConflictPanelProps {
   className?: string
 }
 
-/**
- * A `412 precondition-failed` (UI_DESIGN 11.24): another Admin saved first. In the warning treatment, a region named by
- * its title, focusable so focus can move to it (the Save that was pressed is no longer the next step), with the fields that
- * differ as a table: the field, as it was when the form was opened, as it is now, and as this Admin had it ("No change"
- * when this Admin left it). Below 640 px each row stacks its three values under the field's name; the explicit table roles
- * keep it a table to assistive technology when CSS changes its display.
- */
 const COLUMNS = { field: "Field", opened: "When you opened it", now: "Now" }
 
+/** Displays a `412 precondition-failed` conflict diff table with actions to reapply or discard changes. */
 export function ConflictPanel({ ref, title, children, rows, actions, showYours = true, columns = COLUMNS, className }: ConflictPanelProps) {
   const headingId = useId()
   return (

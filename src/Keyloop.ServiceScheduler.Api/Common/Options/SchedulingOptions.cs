@@ -3,12 +3,12 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Options;
 
-/// <summary>Booking rules that vary by environment (ARCHITECTURE §10). Validated at startup by <see cref="SchedulingOptionsValidator"/>.</summary>
+/// <summary>Booking window, slot granularity, and scheduling feature configuration.</summary>
 public sealed class SchedulingOptions : IValidatableObject
 {
     public const string SectionName = "Scheduling";
 
-    /// <summary>Enable ADR-029 Phase 1 requirements. Defaults off in every environment until booking UI support ships.</summary>
+    /// <summary>Whether vehicle-aware technician and bay requirements are enforced during availability and booking.</summary>
     [Required]
     public bool VehicleAwareRequirements { get; set; }
 
@@ -16,22 +16,19 @@ public sealed class SchedulingOptions : IValidatableObject
     [Range(5, 60)]
     public int SlotGranularityMinutes { get; set; } = 15;
 
-    /// <summary>The earliest bookable start is now plus this (UAT/Production one hour; Development/SystemTest zero).</summary>
+    /// <summary>Minimum lead time from now before the earliest bookable slot start.</summary>
     public TimeSpan MinimumLeadTime { get; set; } = TimeSpan.Zero;
 
-    /// <summary>The latest bookable start is now plus this many days.</summary>
+    /// <summary>Maximum number of days in the future for bookable slot starts.</summary>
     [Range(1, 365)]
     public int BookingHorizonDays { get; set; } = 90;
 
-    /// <summary>How many alternative slots a 409 suggests.</summary>
+    /// <summary>Maximum number of alternative slots suggested on a 409 slot conflict.</summary>
     [Range(0, 10)]
     public int SuggestedSlotCount { get; set; } = 3;
 
-    // BookingWindowPolicy requires horizon > lead time; checking here fails the deployment at startup instead of on the first request.
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        // Range(Type, string, string) uses a trim-unsafe TypeConverter even under the options generator. Keep this typed and
-        // field-keyed; [OptionsValidator] invokes IValidatableObject directly without reflection-based discovery.
         if (MinimumLeadTime < TimeSpan.Zero || MinimumLeadTime > TimeSpan.FromDays(7))
         {
             yield return new ValidationResult(
@@ -46,6 +43,5 @@ public sealed class SchedulingOptions : IValidatableObject
     }
 }
 
-/// <summary>Generated from the <see cref="SchedulingOptions"/> attributes (no reflection-based DataAnnotations validation, Addendum A §A4).</summary>
 [OptionsValidator]
 public sealed partial class SchedulingOptionsValidator : IValidateOptions<SchedulingOptions>;

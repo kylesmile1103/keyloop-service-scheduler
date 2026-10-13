@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/stat-cards.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { CalendarCheck, CircleCheck, ListChecks, Timer } from "lucide-react"
 
 import { NO_FIGURE, StatCard } from "@/components/stat-card"
@@ -14,10 +14,7 @@ interface ServiceFiguresProps {
   closed: boolean
 }
 
-/**
- * The catalogue in four figures (the users app's stat cards, UI_DESIGN 11.11): the services, those this dealership can
- * book, today's bookings and the range of durations.
- */
+/** Summary stat cards for the service catalogue. */
 export function ServiceFigures({ rows, failed, closed }: ServiceFiguresProps) {
   const figures = rows ? serviceFigures(rows) : undefined
   const unavailable = !figures && failed

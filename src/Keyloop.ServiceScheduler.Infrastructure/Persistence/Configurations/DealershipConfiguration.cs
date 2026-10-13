@@ -16,8 +16,7 @@ internal sealed class DealershipConfiguration : IEntityTypeConfiguration<Dealers
         builder.Ignore(d => d.TimeZone);
         builder.Ignore(d => d.DomainEvents);
 
-        // OperatingHours has no columns of its own; its seven days live in dealership_operating_hours keyed by
-        // (dealership_id, day_of_week) (ARCHITECTURE §8.8). Required, so EF never treats the column-less owner as absent.
+        // OperatingHours has no columns of its own; its seven days live in dealership_operating_hours keyed by (dealership_id, day_of_week).
         builder.OwnsOne(d => d.Hours, hours =>
         {
             hours.WithOwner();

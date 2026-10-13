@@ -11,15 +11,11 @@ import { problemResponse } from "@/test/mock-api"
 import { phoneViewport, pointerClick, renderBoard, search } from "@/test/render-board"
 import { appointments, availabilityOn, interimAvailability, interimServiceType } from "@/test/schedules"
 
-// The Overview (Task 28b): today at one dealership and the fortnight either side, from one range read, today's schedule and
-// the availability behind the next free start. Every day is the dealership's own.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/overview/page"), import("@/app/dispatch/page")])
 })
 
 beforeEach(() => {
-  // Tuesday 2026-10-13, 09:30 in Reading (BST). Only Date is faked; timers stay real for the UI.
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-10-13T08:30:00Z"))
 })
@@ -31,11 +27,9 @@ const overview = `/overview?dealership=${reading.id}`
 const pageHeading = () => screen.findByRole("heading", { level: 1, name: "Overview" })
 const card = (label: string) => screen.findByRole("group", { name: label })
 const rangeReads = (requests: readonly Request[]) => requestsTo(requests, "/appointments").filter((request) => request.method === "GET")
-/** The distinct ranges read (StrictMode mounts a page twice in development, so a read can be sent twice). */
 const rangesRead = (requests: readonly Request[]) => [...new Set(rangeReads(requests).map((request) => new URL(request.url).search))]
 const writes = (requests: readonly Request[]) => requests.filter((request) => request.method !== "GET")
 
-/** The default range with some appointments cancelled: today's brakes job and Monday's interim service. */
 function withCancellations(dealershipId: string, from: string, to: string): AppointmentListItemResponse[] {
   return rangeFromSchedules(dealershipId, from, to).map((item) =>
     item.id === appointments.brakes.id || (item.startLocal.startsWith("2026-10-12") && item.serviceType.code === "INTERIM-SERVICE")
@@ -75,7 +69,6 @@ describe("the range read", () => {
   })
 
   it("counts days on the dealership's calendar, not the browser's", async () => {
-    // 22:30 UTC on Tuesday is already Wednesday 00:30 in München.
     vi.setSystemTime(new Date("2026-10-13T22:30:00Z"))
     const { requests } = mockBoardApi()
     renderBoard(`/overview?dealership=${munich.id}`)
@@ -94,12 +87,10 @@ describe("today's figures", () => {
     expect(within(booked).getByText("6 confirmed")).toBeInTheDocument()
 
     const utilisation = await card("Bay utilisation today")
-    // 420 booked minutes over six bays open ten hours.
     await waitFor(() => expect(within(utilisation).getByText("12%")).toBeInTheDocument())
     expect(within(utilisation).getByText("7 h booked of 60 h across 6 bays")).toBeInTheDocument()
 
     const cancelled = await card("Cancelled, last 7 days")
-    // Wednesday 7 to Tuesday 13 October: six open days of six appointments (Sunday is closed).
     expect(within(cancelled).getByText("0")).toBeInTheDocument()
     expect(within(cancelled).getByText("None of 36 appointments due")).toBeInTheDocument()
 
@@ -133,7 +124,6 @@ describe("today's figures", () => {
   })
 
   it("says Closed today for the utilisation on a day the dealership does not open", async () => {
-    // Sunday 18 October, 10:00 in Reading.
     vi.setSystemTime(new Date("2026-10-18T09:00:00Z"))
     mockBoardApi()
     renderBoard(overview)
@@ -150,11 +140,9 @@ describe("bookings per day", () => {
     renderBoard(overview)
 
     const chart = await screen.findByRole("img", { name: "Bookings per day from Tuesday 29 September to Tuesday 27 October 2026" })
-    // Twelve open days of six behind today and twelve ahead (two Sundays each way).
     expect(chart).toHaveAccessibleDescription(
       "72 in the last 14 days, 6 today and 72 booked so far for the next 14. Busiest: Tuesday 29 September, with 6."
     )
-    // Today is marked on the chart and its axis.
     expect(within(chart).getAllByText("Today").length).toBeGreaterThan(0)
   })
 
@@ -185,9 +173,7 @@ describe("bookings per day", () => {
     fireEvent.click(within(region).getByRole("tab", { name: "Table" }))
     const link = within(await within(region).findByRole("table")).getByRole("link", { name: "Fri 16 Oct" })
 
-    // jsdom has no layout: the sizes are measured in a browser (Task 28b review round 1); here the classes that give them.
     for (const size of ["pointer-coarse:min-h-11", "max-md:min-h-11"]) expect(link).toHaveClass(size)
-    // The cell gives up its vertical padding there, so the link fills the 44 px row instead of growing it.
     for (const padding of ["pointer-coarse:py-0", "max-md:py-0"]) expect(link.closest("td")).toHaveClass(padding)
   })
 })

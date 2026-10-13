@@ -46,8 +46,7 @@ public sealed class VehicleAwareAllocationTests
                 concrete.BayCapabilities.IsSubsetOf(unknown.BayCapabilities).ShouldBeTrue();
                 concrete.Certifications.IsSubsetOf(unknown.Certifications).ShouldBeTrue();
             }
-            // Random equipment from every capability; about half the bays also carry the service's own, so each code stays feasible
-            // while rule-added capabilities (EV bay, heavy lift) are present only by chance.
+            // About half the bays carry the service's required capabilities so each service code stays feasible.
             var bays = Enumerable.Range(1, 5).Select(i => ServiceBay.Create(Id(i), Site, $"Bay {i}",
                 Enum.GetValues<BayCapability>().Where(_ => random.Next(2) == 0)
                     .Union(random.Next(2) == 0 ? service.RequiredBayCapabilities : []))).ToArray();

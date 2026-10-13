@@ -4,15 +4,12 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Options;
 
-/// <summary>CORS, rate limiting and forwarded headers (ARCHITECTURE §11.2). Validated at startup by <see cref="SecurityOptionsValidator"/>.</summary>
+/// <summary>CORS, rate limiting, HTTPS redirection, and forwarded headers configuration.</summary>
 public sealed class SecurityOptions : IValidatableObject
 {
     public const string SectionName = "Security";
 
-    /// <summary>
-    /// Exact origins allowed by CORS (scheme, host and optional port, e.g. <c>https://board.example</c>). Empty means default-deny
-    /// (Development uses the Vite proxy, so it stays same-origin). <c>*</c> is rejected: list the origins.
-    /// </summary>
+    /// <summary>Exact origins allowed by CORS (e.g. <c>https://board.example</c>). Empty means default-deny; <c>*</c> is rejected.</summary>
     public string[] AllowedOrigins { get; set; } = [];
 
     [ValidateObjectMembers]
@@ -42,10 +39,7 @@ public sealed class SecurityOptions : IValidatableObject
         && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
         && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && !origin.EndsWith('/');
 
-    /// <summary>
-    /// Explicit opt-in for an API HTTP listener with a reachable HTTPS destination. TLS-terminating deployments enforce
-    /// HTTPS at ingress; local HTTP proxies and SystemTest leave this off. Enabled redirection never discovers a port at runtime.
-    /// </summary>
+    /// <summary>Explicit opt-in for HTTP-to-HTTPS redirection with a required destination port.</summary>
     public sealed class HttpsRedirectionSettings : IValidatableObject
     {
         public bool Enabled { get; set; }
@@ -64,39 +58,31 @@ public sealed class SecurityOptions : IValidatableObject
         }
     }
 
-    /// <summary>Sliding-window limits per verified email, otherwise client IP; <see cref="Enabled"/> is false only in SystemTest.</summary>
+    /// <summary>Sliding-window rate limits partitioned by verified email or client IP.</summary>
     public sealed class RateLimitingOptions
     {
         [Range(1, 1000)]
         public int TriagePermitsPerMinute { get; set; } = 10;
         public bool Enabled { get; set; } = true;
 
-        /// <summary>The <c>global</c> limiter: every request except health probes.</summary>
+        /// <summary>Permits per minute for the global limiter applied to all non-health requests.</summary>
         [Range(1, 100_000)]
         public int GlobalPermitsPerMinute { get; set; } = 300;
 
-        /// <summary>The <c>booking</c> policy, the stricter write limit shared by booking and cancellation, on top of the global limiter.</summary>
+        /// <summary>Permits per minute for the stricter write policy shared by booking and cancellation.</summary>
         [Range(1, 100_000)]
         public int BookingPermitsPerMinute { get; set; } = 30;
     }
 
     /// <summary>
-    /// <c>X-Forwarded-For</c>/<c>X-Forwarded-Proto</c> from an ingress (UAT, Production, nginx in Demo), so rate-limit partitions, the
-    /// audit actor and HTTPS redirection see the client rather than the ingress. Only the listed peers are trusted, and only the
-    /// last hop is taken.
+    /// Trusted proxy and network configuration for <c>X-Forwarded-For</c> and <c>X-Forwarded-Proto</c> headers.
+    /// When enabled, at least one proxy or network must be specified.
     /// </summary>
-    /// <remarks>
-    /// UAT and Production enable it but ship both lists empty, so startup fails until the platform supplies its ingress addresses
-    /// (e.g. <c>Security__ForwardedHeaders__KnownNetworks__0</c>). A shipped default would be unsafe to override: configuration
-    /// arrays merge by index, so an environment variable for entry 0 replaces only that entry and keeps the rest trusted. Demo is the
-    /// exception: it ships the one network that the AppHost creates for its Compose bundle (an AppHost model test keeps the two equal),
-    /// and the API stays unpublished there, because that network includes the bridge gateway that carries published host traffic.
-    /// </remarks>
     public sealed class ForwardedHeadersSettings : IValidatableObject
     {
         public bool Enabled { get; set; }
 
-        /// <summary>Proxy addresses (e.g. <c>10.1.2.3</c>) whose forwarded headers are trusted.</summary>
+        /// <summary>Proxy IP addresses whose forwarded headers are trusted.</summary>
         public string[] KnownProxies { get; set; } = [];
 
         /// <summary>Proxy networks in CIDR notation (e.g. <c>10.0.0.0/8</c>) whose forwarded headers are trusted.</summary>
@@ -121,7 +107,6 @@ public sealed class SecurityOptions : IValidatableObject
                 }
             }
 
-            // With both lists empty the framework skips its peer check and trusts the headers from anyone.
             if (Enabled && KnownProxies.Length == 0 && KnownNetworks.Length == 0)
             {
                 yield return new ValidationResult(
@@ -133,6 +118,5 @@ public sealed class SecurityOptions : IValidatableObject
     }
 }
 
-/// <summary>Generated from the <see cref="SecurityOptions"/> attributes and <see cref="IValidatableObject"/> rules (Addendum A §A4).</summary>
 [OptionsValidator]
 public sealed partial class SecurityOptionsValidator : IValidateOptions<SecurityOptions>;

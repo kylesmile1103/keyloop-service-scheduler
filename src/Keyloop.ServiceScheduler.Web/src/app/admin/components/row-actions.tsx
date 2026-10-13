@@ -20,11 +20,7 @@ export interface RowAction {
   onSelect: (trigger: HTMLElement) => void
 }
 
-/**
- * A technician's or bay's actions for an Admin (UI_DESIGN 11.24, the appointments list's row menu): a ghost icon button
- * named for the resource ("Actions for Ben Okafor", 44 px on touch), the actions, then a separator and the resource's
- * change history (a router link).
- */
+/** Dropdown action menu for a technician or bay row, including a link to its change history. */
 export function RowActions({ id, name, actions, historyHref }: { id: string; name: string; actions: readonly RowAction[]; historyHref: string }) {
   const trigger = useRef<HTMLButtonElement>(null)
   return (

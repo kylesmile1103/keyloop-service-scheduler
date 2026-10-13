@@ -13,25 +13,17 @@ import { TwoPersonWarning } from "./vehicle-step"
 interface AllocationExplanationViewProps {
   appointment: AppointmentResponse
   allocation: AllocationDecision
-  /** The service's own needs (the catalogue's), for the skills the sentence names. */
+  /** Service catalogue requirements used to format the skill explanation. */
   service: Pick<ServiceTypeResponse, "requiredCertifications" | "requiredBayCapabilities"> | undefined
   roster: Roster | undefined
-  /** The vehicle's profile and its declaration (who and why): the details show it, the booked state does not. */
+  /** Whether to include the vehicle profile and declaration provenance. */
   showProfile?: boolean
-  /**
-   * Its own hairline frame and heading (the booked state). The appointment's details show it inside the Job card's
-   * disclosure instead, which names it: no frame, no heading, the section named "Why this allocation" all the same.
-   */
+  /** Whether to render a bordered frame and heading around the explanation. */
   framed?: boolean
   className?: string
 }
 
-/**
- * "Why this allocation" (ADR-029 §4): one sentence for the technician in the ADR's style ("Ben Okafor: the only free
- * technician at HV level 3 or above with Diagnostics, for a battery-electric vehicle (declared)"), one for the bay, the HV
- * level the job needed and the rules that set it, and why a preferred bay or technician was not chosen. Private: it comes
- * from the role-protected record or the booking's own answer, never from the public schedule.
- */
+/** Displays why the technician and bay were allocated, required HV level, fired rules, and unmet preferences. */
 export function AllocationExplanationView({
   appointment,
   allocation,

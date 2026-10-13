@@ -14,12 +14,7 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 import { createSchedulerDataProvider } from "./lib/data-provider"
 import { RESOURCES, refineOptions } from "./lib/refine"
 
-/**
- * The admin area's route element. The area needs a signed-in user with a role (ADR-027, ARCHITECTURE §15): until `/me`
- * answers it says it is checking; a visitor who is not signed in gets the 401 page in place (Sign in comes back to this
- * address), an account without a role the 403 page; a Viewer, Service advisor or Admin sees the read-only lists (Task 30
- * adds Admin-only editing). Refine is mounted only then, so nothing of the area is read for anyone else.
- */
+/** Route guard and layout for the Resources area, requiring an authenticated user with an assigned role. */
 export default function AdminLayout() {
   const current = useCurrentUser()
 
@@ -47,12 +42,7 @@ export default function AdminLayout() {
   return <ResourcesArea />
 }
 
-/**
- * Refine core, headless, around the resources pages (ARCHITECTURE §15, ADR-031). It is mounted for this route subtree
- * only, and the subtree is its own code-split chunk, so the dispatch board, calendar and overview never load Refine; they
- * keep their generated query hooks. Refine shares the app's QueryClient, follows the address through its React Router
- * binding and reads through the read-only data provider over the generated client.
- */
+/** Headless Refine provider scoped to the resources route subtree. */
 function ResourcesArea() {
   const queryClient = useQueryClient()
   const dataProvider = useMemo(() => createSchedulerDataProvider(queryClient), [queryClient])

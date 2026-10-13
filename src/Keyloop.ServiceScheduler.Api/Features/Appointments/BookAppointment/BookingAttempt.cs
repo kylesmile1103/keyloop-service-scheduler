@@ -4,42 +4,33 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
-/// <summary>
-/// How one run of the booking transaction ended. The execution strategy may run it more than once (a transient failure), so the
-/// transaction returns a value instead of throwing, and the handler turns the final value into the response outside it.
-/// </summary>
+/// <summary>Outcome of a single booking transaction attempt.</summary>
 public abstract record BookingAttempt
 {
     private BookingAttempt()
     {
     }
 
-    /// <summary>Committed: the appointment, its history row and (with a key) the memoised response.</summary>
+    /// <summary>The appointment, its history row, and any memoised idempotency response committed.</summary>
     public sealed record Confirmed(Appointment Appointment, ServiceBay Bay, Technician Technician) : BookingAttempt;
 
-    /// <summary>The locked pre-check found every qualified bay or every qualified technician busy (409 <c>slot-unavailable</c>).</summary>
+    /// <summary>All qualified bays or technicians were busy during the locked pre-check (409 <c>slot-unavailable</c>).</summary>
     public sealed record Unavailable() : BookingAttempt;
 
-    /// <summary>
-    /// The database refused the insert although the pre-check passed (409 <c>slot-conflict</c>): an exclusion constraint fired
-    /// (<see cref="Resource"/> <c>bay</c> or <c>technician</c>), or, against ADR-003, a deadlock was broken (<c>unknown</c>).
-    /// </summary>
+    /// <summary>The database rejected the insert due to an exclusion constraint or deadlock (409 <c>slot-conflict</c>).</summary>
     public sealed record Conflict(string Resource) : BookingAttempt;
 
-    /// <summary>The key's primary key refused the insert: the same key committed meanwhile at another dealership (whose lock is not ours).</summary>
+    /// <summary>The idempotency key primary key constraint rejected the insert.</summary>
     public sealed record DuplicateKey() : BookingAttempt;
 
-    /// <summary>Under the lock, the key turned out to be in use already (a concurrent request with it committed while this one waited).</summary>
+    /// <summary>A live idempotency key row already existed when checked under the dealership lock.</summary>
     public sealed record KeyInUse(IdempotencyKey Stored) : BookingAttempt;
 
-    /// <summary>
-    /// Under the lock, the dealership's latest requirement policy is newer than the version resolved before it (an Admin published while
-    /// this booking waited). Rolled back; the request resolves the new version and its qualified roster again (ADR-029 Task 30a amendment).
-    /// </summary>
+    /// <summary>A newer requirement policy version was published before the dealership lock was acquired.</summary>
     public sealed record PolicyChanged() : BookingAttempt;
 }
 
-/// <summary>The <c>outcome</c> tag of <c>scheduler.booking.requests</c> and <c>scheduler.booking.duration</c>, and of the <c>booking.outcome</c> span tag (ARCHITECTURE §12.1).</summary>
+/// <summary>Outcome tag values for booking metrics and trace spans.</summary>
 public static class BookingOutcomes
 {
     public const string Confirmed = "confirmed";

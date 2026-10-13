@@ -32,10 +32,7 @@ const offset = (line: number, grid: GridSpec) => `${Math.round(((line - 1) / gri
 const width = (from: number, to: number, grid: GridSpec) => `${Math.round(((to - from) / grid.columns) * 10_000) / 100}%`
 
 /**
- * The day as a resource timeline: one row per lane (bay or technician), one column per slot of the booking grid, drawn over
- * the operating window widened to whole local hours. A sticky ruler and a sticky lane column keep their place while the
- * timeline scrolls inside its card; hour lines, faint slot lines and alternating hour bands give the rhythm; closed time is
- * hatched; on today's board a "now" line marks the moment. Blocks are buttons in DOM order (lane, then time).
+ * Resource timeline grid with sticky hour ruler and lane headers, alternating hour bands, hatched closed hours, and current-time line.
  */
 export function TimelineGrid({
   lanes,

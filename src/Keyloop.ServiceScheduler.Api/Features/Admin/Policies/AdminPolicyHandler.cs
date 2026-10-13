@@ -26,8 +26,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
         var result = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             db.ChangeTracker.Clear();
-            // The seeding lock first: it serializes version publication with startup seeding, the demo reseed and other publications.
-            // A save then takes the dealership lock (below), the reseed's existing order, so the order stays cycle-free.
+            // Acquire the seeding lock before the dealership lock to preserve global lock ordering across seeding and policy publication.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             await SeedingLock.AcquireAsync(db, ct);
             var completed = await db.AdminChanges.AsNoTracking().SingleOrDefaultAsync(a => a.Id == changeId, ct);
@@ -52,9 +51,7 @@ public sealed class AdminPolicyHandler(SchedulerDbContext db, RequirementPolicyR
             var normalizedRules = PolicyPreviewToken.NormalizeRules(request.Rules);
             var nextRules = Rules(dealershipId, next, normalizedRules);
             var oldRules = Rules(dealershipId, current.Version, current.Rules);
-            // Take the existing publication lock before reading consequences, so a wait behind a booking cannot age the snapshot.
-            // A dry-run never takes it. Resource edits take this same lock, so the publication roster is stable until commit.
-            // No resource row is updated, and a booking never takes the seeding lock, so the order stays cycle-free.
+            // Lock the dealership before reading the roster when publishing so concurrent bookings or resource edits cannot invalidate the preview.
             if (!request.DryRun) { await DealershipLock.AcquireAsync(db, dealershipId, ct); }
             var roster = await new DayScheduleReader(db).ReadResourcesAsync(dealershipId, ct);
             var changes = new List<PolicyBookabilityChange>();

@@ -4,12 +4,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Fails one command transiently before it reaches the server: once armed, the next command whose SQL contains
-/// <paramref name="marker"/> throws a transient <see cref="NpgsqlException"/> (an <see cref="IOException"/> inside, as a dropped
-/// connection gives; a command timeout is just as transient), so the retrying execution strategy verifies and runs the unit of work
-/// again. Assert <see cref="Fired"/>, so a test cannot pass without the fault.
-/// </summary>
+/// <summary>Once armed, fails the next command whose SQL contains <paramref name="marker"/> with a transient <see cref="NpgsqlException"/>.</summary>
 public sealed class TransientCommandFault(string marker) : DbCommandInterceptor
 {
     private int _armed;

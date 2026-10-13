@@ -35,24 +35,20 @@ import { useBookedToast } from "./hooks/use-booked-toast"
 import type { BookedExplanation } from "./lib/allocation"
 import { type BoardAppointment, buildLanes, type LaneMode, reviewCount, withVisibleWarnings } from "./lib/schedule"
 
-/** How often the board reads its schedule again while auto-refresh is on (ARCHITECTURE §15). */
+/** Auto-refresh polling interval for the schedule query. */
 const AUTO_REFRESH_MS = 5000
 
-/** From this width a booking's details dock beside the board instead of opening a sheet over it (UI_DESIGN 11.14). */
+/** Minimum viewport width for docking appointment details beside the board. */
 const DOCKED_DETAILS = "(min-width: 1280px)"
 
 export default function DispatchPage() {
   const dealershipsOptions = getDealershipsOptions()
   const dealerships = useQuery(dealershipsOptions)
-  // Kept while Try again reads the list again, so the failure and its focused button stay until the answer.
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const isMobile = useIsMobile()
-  // The board waits for `/me` as it waits for its first reads (they run side by side), so its write controls appear in
-  // their final state: never usable first and then withdrawn, and never a reason that pushes the board down later.
   const identityKnown = useCurrentUser().status !== "loading"
 
-  // A failed background refresh keeps the list it already has; only a list that never arrived is a failure.
   const status: DealershipListStatus = dealerships.data
     ? dealerships.data.length > 0
       ? "ready"
@@ -119,29 +115,18 @@ interface Selection {
   appointment: BoardAppointment
   dealershipId: string
   open: boolean
-  /** Who it was selected as (`CurrentUser.identity`): the snapshot is that caller's view of the booking. */
+  /** Caller identity when selected (`CurrentUser.identity`). */
   identity: string
 }
 
 interface DealershipDayProps {
   dealership: DealershipResponse
   dealershipSelect: ReactNode
-  /** The phone presentation (agenda, bottom sheets, Filters sheet, full-screen booking, floating Book action). */
+  /** Uses the mobile agenda presentation with bottom sheets and floating Book action. */
   agenda: boolean
 }
 
-/**
- * One dealership's day: the toolbar, the day summary, the board in the chosen lane view, a booking's details and the
- * booking dialog. The day and the lane view live in the address (`?date=`, `?lanes=`), so a link reopens
- * the same board; there is one schedule query, which both lane views and both presentations draw from.
- *
- * A booking's details dock beside the board from 1280 px (the inspector: the board narrows and stays usable, and choosing
- * another booking swaps them in place); on narrower screens they open as a sheet over it (a bottom sheet on phones).
- *
- * Booking follows the signed-in role (UI_DESIGN 11.20): an Admin or Service advisor books; a visitor who is not signed in
- * gets the sign-in prompt instead of the dialog, before anything is typed; any other account sees every Book action
- * unavailable, with the reason on screen under the toolbar and read with each action.
- */
+/** Renders a dealership's daily schedule board, KPI summary, appointment details, and booking dialog. */
 function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayProps) {
   const now = useNow()
   const timeZone = dealership.timeZoneId
@@ -150,7 +135,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set())
   const [selection, setSelection] = useState<Selection | null>(null)
-  // A new session per opening, so every booking starts from a clean form and a new idempotency key.
   const [booking, setBooking] = useState({ session: 0, open: false })
   const opener = useRef<HTMLElement | null>(null)
   const board = useRef<HTMLDivElement>(null)
@@ -159,7 +143,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const docked = useMediaQuery(DOCKED_DETAILS) && !agenda
   const [signInPrompt, setSignInPrompt] = useState(false)
   const reasonId = useId()
-  // Every Book action is unavailable, but keeps focus, while it cannot book; the reason names it for screen readers.
   const bookState = {
     disabled: access.state === "checking" || access.state === "denied",
     focusableWhenDisabled: true,
@@ -169,18 +152,15 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const refetchInterval = autoRefresh ? AUTO_REFRESH_MS : false
   const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } })
   const schedule = useQuery({ ...scheduleOptions, refetchInterval, refetchOnWindowFocus: true })
-  // A day that never loaded stays failed while it is read again (Try again, a refresh), for the board and the figures alike.
   const scheduleFailure = useQueryFailure(schedule, scheduleOptions.queryKey)
 
-  // A competence warning (Task 30b) only for a signed-in workshop role, whatever the cache still holds.
   const canSeeWarnings = currentUser.canViewDetails
   const allLanes = useMemo(
     () => (schedule.data ? withVisibleWarnings(buildLanes(schedule.data, mode), canSeeWarnings) : []),
     [schedule.data, mode, canSeeWarnings]
   )
   const lanes = allLanes.filter((lane) => !hidden.has(lane.id))
-  // The selected booking is the previous caller's snapshot (full name, VIN, plate for a role) once the identity changes or
-  // cannot be checked: the sheet closes in the same render, so it never paints for the next caller (ARCHITECTURE §15).
+  // Close selected booking details immediately when caller identity changes.
   if (selection && selection.identity !== currentUser.identity) setSelection(null)
   const current = selection?.dealershipId === dealership.id && selection.identity === currentUser.identity ? selection : null
   const onBoard = new Set(lanes.flatMap((lane) => lane.appointments.map((appointment) => appointment.id)))
@@ -196,14 +176,13 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   const closeDetails = () => setSelection((previous) => (previous ? { ...previous, open: false } : previous))
 
   const queryClient = useQueryClient()
-  // Decided as it is pressed, from the cached `/me` (a press can land before the board has drawn a change of identity).
   const openBooking = () => {
     const now = cachedWriteAccess(queryClient)
     if (now.state === "allowed") setBooking((previous) => ({ session: previous.session + 1, open: true }))
     else if (now.state === "sign-in") setSignInPrompt(true)
   }
 
-  /** Shows a booking on the board: its day, then its block or card, scrolled into view with the booked halo. */
+  /** Navigates to an appointment's date and highlights it on the board. */
   const viewOnBoard = (appointment: AppointmentResponse) => {
     const day = appointment.startLocal.slice(0, 10)
     if (day !== date) setDate(day)
@@ -211,11 +190,9 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
     setBooking((previous) => ({ ...previous, open: false }))
   }
 
-  // The toast every page that books ends with on a wide screen; an explained one closes when who is signed in changes.
   const showBooked = useBookedToast(today)
   const onBooked = (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => {
     highlight(appointment.id, false)
-    // On a phone the sheet ends on its own success state; wide screens get the toast (UI_DESIGN 11.15).
     if (agenda) return
     showBooked(appointment, explanation, () => viewOnBoard(appointment))
   }
@@ -283,13 +260,8 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
           now={now}
           refetchInterval={refetchInterval}
         />
-        {/* The board and, once a booking is chosen on a wide screen, its details docked on the right: the board keeps every
-            width the inspector leaves it (`minmax(0, 1fr)`), and its timeline scrolls sideways inside its card when the
-            hours no longer fit. */}
         <div className={cn(inspected && "grid grid-cols-[minmax(0,1fr)_26rem] items-start gap-5")}>
           <div className="min-w-0">
-            {/* Out of the tab order: the panel holds focusable content (the timeline, its blocks, the agenda's lanes), so Tab
-                goes from the toolbar straight to it instead of stopping on a panel that shows no focus (WCAG 2.4.7). */}
             <TabsContent value="bays" tabIndex={-1}>
               {mode === "bays" && boardFor("bays")}
             </TabsContent>
@@ -305,8 +277,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
               timeZone={timeZone}
               onClose={closeDetails}
               onCancelled={(appointmentId) => {
-                // Its block is about to leave the board, so focus will go to the board. A cancellation that answers after
-                // another booking was chosen leaves that one's details open.
                 if (opener.current?.dataset.appointmentId === appointmentId) opener.current = null
                 setSelection((previous) => (previous?.appointment.id === appointmentId ? { ...previous, open: false } : previous))
               }}
@@ -345,7 +315,6 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
       <SignInPrompt open={signInPrompt} onOpenChange={setSignInPrompt} />
 
       {agenda && (
-        // The phone's Book action: Keyloop's cyan, clear of the home indicator (UI_DESIGN 14). The agenda leaves room under it.
         <Button
           type="button"
           variant="accent"
@@ -363,13 +332,7 @@ function DealershipDay({ dealership, dealershipSelect, agenda }: DealershipDayPr
   )
 }
 
-/**
- * Keeps keyboard focus sensible around the docked inspector, which has no focus trap: the booking it shows is scrolled into
- * the timeline's view when it opens or swaps (the board just narrowed, and the block may have left the visible hours), and
- * when it closes (its close button, Escape, a cancellation, a change of who is signed in) focus that the inspector took
- * with it goes back to the booking's block, or to the board once the block is gone, never to the page's body. Focus a
- * dialog holds (the session dialog) is left there.
- */
+/** Scrolls the inspected appointment into view and restores focus to its trigger or board when closed. */
 function useInspectorFocus(inspectedId: string | null, opener: RefObject<HTMLElement | null>, board: RefObject<HTMLElement | null>) {
   const shown = useRef<string | null>(null)
   useLayoutEffect(() => {
@@ -387,10 +350,7 @@ function useInspectorFocus(inspectedId: string | null, opener: RefObject<HTMLEle
   }, [inspectedId, opener, board])
 }
 
-/**
- * The booking to point at on the board: its block or card draws the booked halo for 3 s once it is on screen (and, after
- * "View on board", scrolls into view). A booking on another day waits until the board shows that day.
- */
+/** Highlights a newly booked appointment on the board for 3 seconds and optionally scrolls it into view. */
 function useBookedHighlight(onBoard: ReadonlySet<string>, board: RefObject<HTMLElement | null>) {
   const [booked, setBooked] = useState<{ id: string; scroll: boolean } | null>(null)
   const visible = booked !== null && onBoard.has(booked.id)

@@ -23,7 +23,6 @@ public sealed class LiveAiGoldenSetTests
     [Fact(Skip = "Requires stakeholder approval, KEYLOOP_LIVE_AI=1 and both Triage credentials.", SkipUnless = nameof(Enabled))]
     public async Task Measure_the_approved_golden_set_and_write_a_local_markdown_report()
     {
-        // No host, discovery, logging or retry middleware. Only this opt-in test can select the real transport.
         var settings = new TriageConnectionOptions
         {
             Enabled = true,
@@ -33,7 +32,6 @@ public sealed class LiveAiGoldenSetTests
         new TriageConnectionOptionsValidator().Validate(null, settings).Succeeded.ShouldBeTrue();
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan, MaxResponseContentBufferSize = 64 * 1024 };
         var client = new CloudflareTriageClient(http, Options.Create(settings), TimeProvider.System, NullLogger<CloudflareTriageClient>.Instance);
-        // Keep date expectations stable even if a long live run crosses local midnight.
         var questionClock = new FakeTimeProvider(TimeProvider.System.GetUtcNow());
         var dealership = Dealership.Create(ReferenceDataSeed.ReadingDealershipId, "Keyloop Motors Reading", "Europe/London",
             OperatingHours.MondayToFriday(new(8, 0), new(18, 0), new(13, 0)), questionClock.GetUtcNow().UtcDateTime);
@@ -67,11 +65,10 @@ public sealed class LiveAiGoldenSetTests
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Keyloop.ServiceScheduler.sln"))) { directory = directory.Parent; }
         var path = Path.Combine(directory!.FullName, "docs", "media", "triage-clef-flash-golden-set.md");
         await File.WriteAllTextAsync(path, TriageGoldenSetReport.Build(settings.Model, services, samples), TestContext.Current.CancellationToken);
-        // Measure first; stakeholder ratifies thresholds after reviewing per-question accuracy and confusion.
         samples.Count.ShouldBe(GoldenSet.Length);
     }
 
-    /// <summary>The stakeholder's own input from the 2026-10-13 test (task 32 brief), verbatim, typos included.</summary>
+    /// <summary>Verbatim multi-issue stakeholder test input, typos included.</summary>
     internal const string StakeholderDescription = "I crashed my Kia Sportage and headlines are broken, also the AC can't turn on, need check ASAP";
 
     /// <summary>One fixture. <paramref name="Code"/> and <paramref name="Uncovered"/> are the primary accepted pair.</summary>

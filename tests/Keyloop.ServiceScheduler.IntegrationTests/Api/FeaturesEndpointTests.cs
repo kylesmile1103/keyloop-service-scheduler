@@ -109,7 +109,6 @@ public sealed class FeaturesEndpointTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Configuration_reload_before_the_first_read_keeps_the_startup_switch(bool enabled)
     {
         await using var host = Configured(enabled);
-        // Starting the host must pin enforcement and discovery even if no scheduling request has resolved IOptions yet.
         var configuration = (IConfigurationRoot)host.Services.GetRequiredService<IConfiguration>();
         configuration["Scheduling:VehicleAwareRequirements"] = enabled ? "false" : "true";
         configuration.Reload();
@@ -160,7 +159,6 @@ public sealed class FeaturesEndpointTests(PostgresFixture pg) : IAsyncLifetime
     private static async Task AssertSwitchAsync(HttpResponseMessage response, bool enabled)
     {
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        // Exact JSON also rejects omitted false, extra configuration, secrets, identity and dealership data.
         (await response.Content.ReadAsStringAsync(Ct)).ShouldBe(enabled
             ? """{"vehicleAwareRequirements":true}"""
             : """{"vehicleAwareRequirements":false}""");

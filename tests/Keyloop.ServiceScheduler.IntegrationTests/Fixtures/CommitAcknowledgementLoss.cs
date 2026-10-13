@@ -4,20 +4,14 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Simulates a lost commit acknowledgement: once armed, the next transaction commit succeeds on the server and then throws a
-/// transient <see cref="NpgsqlException"/> (an <see cref="IOException"/> inside, as a dropped connection gives), so the retrying
-/// execution strategy sees a failed commit that in fact committed. With <see cref="BeforeCommit"/> the fault fires before the commit
-/// is sent, so the commit really fails. Register it after the host starts, then <see cref="Arm"/> it just
-/// before the request under test: the migrations and test-data saves commit too.
-/// </summary>
+/// <summary>Once armed, throws a transient <see cref="NpgsqlException"/> after (or before, when <see cref="BeforeCommit"/> is set) transaction commit.</summary>
 public sealed class CommitAcknowledgementLoss : DbTransactionInterceptor
 {
     private int _armed;
 
     public int Fired { get; private set; }
 
-    /// <summary>Fault before the commit instead (it then really fails: nothing reaches the server), for the control case.</summary>
+    /// <summary>Faults before the commit is sent instead of after it succeeds.</summary>
     public bool BeforeCommit { get; set; }
 
     public void Arm() => Interlocked.Exchange(ref _armed, 1);

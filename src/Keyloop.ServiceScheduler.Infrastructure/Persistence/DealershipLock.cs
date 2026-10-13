@@ -4,16 +4,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// The per-dealership booking lock (ARCHITECTURE §7.3 layer 2, ADR-003): a transaction-scoped PostgreSQL advisory lock that
-/// serialises check-then-insert for one dealership and is released at commit or rollback.
+/// Transaction-scoped PostgreSQL advisory lock that serialises check-then-insert operations for a dealership.
 /// </summary>
 public static class DealershipLock
 {
     /// <summary>
-    /// A stable 64-bit key from all 128 bits of the id: its two halves XOR-folded. Taking only the first eight bytes would leave
-    /// time-ordered ids (UUIDv7, the codebase's convention for new ids) created in the same millisecond with 12 distinguishing bits,
-    /// so unrelated dealerships could share a key and wait on each other. Changing this derivation breaks a rolling deployment
-    /// (old and new instances would lock different keys for one dealership); change it only with a full stop and start.
+    /// Derives a stable 64-bit advisory lock key by XOR-folding all 128 bits of <paramref name="dealershipId"/>.
     /// </summary>
     public static long KeyFor(Guid dealershipId)
     {

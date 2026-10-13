@@ -3,9 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 
 /// <summary>
-/// The fixed confirmation and cancellation content (ARCHITECTURE §8.9). Rendering happens at dispatch, never inside the booking or
-/// cancel transaction, and a render failure only fails its outbox row; these tests also pin that the renderer is total over every
-/// seeded zone, both daylight-saving changes and the longest values the domain accepts.
+/// Verifies email template rendering for booking confirmations and cancellations.
 /// </summary>
 public sealed class NotificationTemplateTests
 {
@@ -47,9 +45,7 @@ public sealed class NotificationTemplateTests
     [Fact]
     public void The_cancellation_notice_has_no_reason_field()
     {
-        // The reason is typed by an anonymous visitor (ADR-010) and could aim a link at any address, so it is not part of the
-        // details at all (proposal 2.4); the notice says only that the booking was cancelled. NotificationOutboxTests and
-        // NotificationDispatcherTests prove the reason is in neither the stored snapshot nor the sent email.
+        // Cancellation reasons are free-text caller input and are excluded from notification emails.
         var message = NotificationTemplate.Render(Guid.NewGuid(), NotificationKind.Cancellation, Details());
 
         foreach (var body in new[] { message.Subject, message.TextBody, message.HtmlBody })

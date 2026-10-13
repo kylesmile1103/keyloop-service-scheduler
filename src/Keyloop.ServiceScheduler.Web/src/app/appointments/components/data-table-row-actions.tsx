@@ -11,19 +11,13 @@ import { useWriteAccess } from "@/hooks/use-current-user"
 import { type AppointmentRow, rowName } from "../lib/appointments"
 import { OpenAppointmentContext, type RowIntent } from "../lib/row-actions"
 
-/**
- * A row's actions, adopted from the template's tasks table: the board's details sheet, and Cancel, which opens the same
- * sheet on its reason field (the same mutation and problem handling as on the board). Work that has started cannot be
- * cancelled, so its Cancel is unavailable. So is it for a role that cannot cancel, with the reason under it (UI_DESIGN
- * 11.20); a visitor who is not signed in gets the sheet's sign-in panel.
- */
+/** Row action menu for viewing appointment details or starting a cancellation. */
 export function DataTableRowActions({ row }: { row: AppointmentRow }) {
   const onOpen = use(OpenAppointmentContext)
   const trigger = useRef<HTMLButtonElement>(null)
   const access = useWriteAccess()
   const reasonId = useId()
   const denied = access.state === "denied" || access.state === "checking"
-  // The modal sheet takes focus as it opens, and gives it back to this trigger when it closes.
   const open = (intent: RowIntent) => {
     if (trigger.current) onOpen(row, intent, trigger.current)
   }
@@ -61,7 +55,6 @@ export function DataTableRowActions({ row }: { row: AppointmentRow }) {
           <Ban aria-hidden="true" />
           Cancel appointment
         </DropdownMenuItem>
-        {/* Outside the dimmed item, so the reason keeps its full contrast; the item names it for screen readers. */}
         {access.state === "denied" && canCancel(row.status) && (
           <p id={reasonId} className="px-2 pb-1.5 text-xs text-pretty text-muted-foreground">
             {access.reason}

@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `vite.config.ts`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -7,28 +7,20 @@ import { defineConfig, type ProxyOptions } from "vite"
 
 type Env = Record<string, string | undefined>
 
-/**
- * Where the dev server forwards `/api`, `/openapi` and `/scalar`. Under Aspire the `web` resource references the API, which
- * injects `API_HTTP` (and the older `services__api__http__0` form); a standalone run falls back to the API's `http` launch
- * profile. The HTTP endpoint keeps the proxy clear of dev-certificate trust problems.
- */
+/** Resolves the backend target URL for dev-server API proxying (Aspire env vars or local HTTP fallback). */
 export function apiProxyTarget(env: Env = process.env): string {
   return env.API_HTTP || env.services__api__http__0 || "http://localhost:5180"
 }
 
-/** Aspire owns the port when it sets `PORT`; then a busy port must fail loudly instead of silently moving. */
+/** Uses Aspire's `PORT` with `strictPort: true` when set, or falls back to 5173. */
 export function devServerPort(env: Env = process.env): { port: number; strictPort: boolean } {
   const port = Number(env.PORT)
   return Number.isInteger(port) && port > 0 ? { port, strictPort: true } : { port: 5173, strictPort: false }
 }
 
 /**
- * Browser telemetry settings, compiled into the bundle as `import.meta.env.VITE_OTEL_*`.
- *
- * Security: the OTLP headers carry the Aspire dashboard's API key, so they reach the browser ONLY from the development
- * dev server (`vite` in development mode, where Aspire injects `OTEL_*`). Every other build (production, a development-mode
- * `vite build`, tests) compiles them empty, so telemetry is off unless `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` names a
- * secret-free collector explicitly at build time.
+ * Compiles `import.meta.env.VITE_OTEL_*` browser telemetry settings.
+ * OTLP headers (containing the Aspire dashboard key) are only exposed to the development dev server.
  */
 export function otelDefines(command: "serve" | "build", mode: string, env: Env = process.env): Record<string, string> {
   const development = command === "serve" && mode === "development"
@@ -51,23 +43,13 @@ export function otelDefines(command: "serve" | "build", mode: string, env: Env =
   )
 }
 
-/**
- * Where the signed-in identity comes from, compiled in as `import.meta.env.VITE_IDENTITY_SOURCE` (src/lib/session.ts). The
- * development dev server always fronts an API in its Development auth mode (the AppHost's run mode sets it; so does the
- * API's own Development profile), whose identity is configuration: there is no Access login page and no session to end,
- * so the app explains how to change the configured identity instead of linking to them. Every build, and every other
- * mode (tests included), fronts Cloudflare Access.
- */
+/** Compiles `import.meta.env.VITE_IDENTITY_SOURCE` (`"configuration"` in dev server, `"access"` otherwise). */
 export function identityDefines(command: "serve" | "build", mode: string): Record<string, string> {
   const source = command === "serve" && mode === "development" ? "configuration" : "access"
   return { "import.meta.env.VITE_IDENTITY_SOURCE": JSON.stringify(source) }
 }
 
-/**
- * Vite's `build.assetsInlineLimit`: never inline a font. Vite inlines assets under 4 KB as `data:` URIs, and one Plus
- * Jakarta Sans subset is that small, but the production CSP (nginx/security-headers.conf, `font-src 'self'`) blocks a
- * `data:` font. `undefined` keeps Vite's 4 KB rule for everything else (`true` would inline every illustration too).
- */
+/** Prevents inlining `.woff`/`.woff2` fonts as `data:` URIs (blocked by production `font-src 'self'` CSP). */
 export function inlineAsset(file: string): boolean | undefined {
   return /\.woff2?$/.test(file) ? false : undefined
 }
@@ -76,7 +58,6 @@ function apiProxy(target: string): Record<string, ProxyOptions> {
   return Object.fromEntries(["/api", "/auth", "/openapi", "/scalar"].map((prefix) => [prefix, { target, changeOrigin: true }]))
 }
 
-// https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   const proxy = apiProxy(apiProxyTarget())
 

@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/sheet.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/sheet.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 "use client"
 
 import * as React from "react"
@@ -63,7 +62,6 @@ function SheetContent({
         {...props}
       >
         {children}
-        {/* When the sign-in is about to end while this is open (UI_DESIGN 11.20): the page's session banner is behind it. */}
         <SessionNoticeInModal />
         {showCloseButton && (
           <SheetPrimitive.Close

@@ -16,29 +16,19 @@ import { type BookingsSummary, chartSummary, type DayCount, lineRuns, OVERVIEW_D
 interface BookingsChartProps {
   dealershipId: string
   today: string
-  /** One entry per day of the window; `undefined` while the range read loads. */
   days: readonly DayCount[] | undefined
   summary: BookingsSummary | undefined
 }
 
-/** The chart's ceiling: the busiest day rounded up to an even number, never below 4, so a quiet fortnight is not drawn as a peak. */
 function ceiling(peak: number): number {
   return Math.max(4, Math.ceil(peak / 2) * 2)
 }
 
-/** "29 Sep" from "Tue 29 Sep". */
 const dayMonth = (date: string) => formatDay(date, "short").slice(4)
-/** "Tuesday 13 October" from "Tuesday 13 October 2026". */
 const longDay = (date: string) => formatDay(date, "long").replace(/ \d{4}$/, "")
 const bookings = (count: number) => `${count} ${count === 1 ? "booking" : "bookings"}`
 
-/**
- * Bookings per day, the fortnight either side of today (adopted from the template's `chart-area-interactive`, drawn without
- * a chart library: UI_DESIGN 13 and 11.19). One series in `chart-1`: a flat fill under a line, solid for the days that have
- * happened and dashed ahead of today, where bookings are still coming in. Today is marked as the board marks now (the
- * destructive line and pill); the dealership's closed days are hatched as on the board. The written summary under the
- * chart and the Table view say the same in words and numbers, each day linking to its board.
- */
+/** Daily bookings chart and table for the 14-day window either side of today. */
 export function BookingsChart({ dealershipId, today, days, summary }: BookingsChartProps) {
   const headingId = useId()
   const summaryId = useId()
@@ -90,7 +80,6 @@ export function BookingsChart({ dealershipId, today, days, summary }: BookingsCh
   )
 }
 
-/** Where the five date labels go: the window's ends, a week either side of today, and today. */
 const LABEL_STEPS = [-OVERVIEW_DAYS_AROUND, -7, 0, 7, OVERVIEW_DAYS_AROUND]
 
 function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]; summary: BookingsSummary; today: string; describedBy: string }) {
@@ -103,7 +92,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
   const runs = lineRuns(days)
   const line = (indices: readonly number[]) => indices.map((index, at) => `${at === 0 ? "M" : "L"}${x(index)},${y(days[index].count)}`).join(" ")
   const area = (run: readonly number[]) => `M${x(run[0])},100 ${run.map((index) => `L${x(index)},${y(days[index].count)}`).join(" ")} L${x(run[run.length - 1])},100 Z`
-  // A day with no neighbour to join draws as a dot (a path of one point draws nothing).
   const lonely = runs.filter((run) => run.length === 1).map((run) => run[0])
   const point = hovered !== null ? days[hovered] : null
   const first = days[0].date
@@ -111,7 +99,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2">
-      {/* The scale: the ceiling, half of it and zero, level with their gridlines. */}
       <div aria-hidden="true" className="relative h-52 w-6 text-right text-xs text-muted-foreground tabular-nums md:h-60">
         {[top, top / 2, 0].map((value) => (
           <span key={value} className="absolute right-0 -translate-y-1/2" style={{ top: `${y(value)}%` }}>
@@ -126,7 +113,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
         className="relative h-52 md:h-60"
         onPointerLeave={() => setHovered(null)}
       >
-        {/* Closed days, hatched as the board hatches closed time. */}
         <div aria-hidden="true" className="absolute inset-0 flex">
           {days.map((day) => (
             <div key={day.date} className={cn("h-full flex-1", day.closed && "bg-hatch")} />
@@ -166,7 +152,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
             style={{ left: `${x(index)}%`, top: `${y(days[index].count)}%` }}
           />
         ))}
-        {/* Today, marked as the board marks now. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-destructive" style={{ left: `${x(todayIndex)}%` }}>
           <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-destructive px-1.5 text-2xs font-semibold text-destructive-foreground">
             Today
@@ -194,7 +179,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
             </div>
           </>
         )}
-        {/* Pointer targets, one per day. */}
         <div aria-hidden="true" className="absolute inset-0 flex">
           {days.map((day, index) => (
             <div key={day.date} className="h-full flex-1" onPointerEnter={() => setHovered(index)} />
@@ -225,7 +209,6 @@ function Plot({ days, summary, today, describedBy }: { days: readonly DayCount[]
   )
 }
 
-/** The key to the chart's marks (UI_DESIGN 13: two or more series have a legend), in words beside each mark. */
 function ChartLegend() {
   const mark = "h-0 w-5 shrink-0 border-t-2 border-chart-1"
   return (
@@ -250,7 +233,6 @@ function ChartLegend() {
   )
 }
 
-/** The chart's numbers: one row per day, each day linking to its dispatch board. */
 function DayTable({ days, dealershipId, today }: { days: readonly DayCount[]; dealershipId: string; today: string }) {
   const boardOf = (date: string) => {
     const search = new URLSearchParams({ [DEALERSHIP_PARAM]: dealershipId })
@@ -270,7 +252,6 @@ function DayTable({ days, dealershipId, today }: { days: readonly DayCount[]; de
         <TableBody>
           {days.map((day) => (
             <TableRow key={day.date} data-today={day.when === "today" || undefined} className="data-today:bg-muted/50">
-              {/* On touch and below md the link is a 44 px target filling the row's height (the cell drops its padding). */}
               <TableCell className="max-md:py-0 pointer-coarse:py-0">
                 <Link
                   to={boardOf(day.date)}

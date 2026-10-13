@@ -25,14 +25,6 @@ import { availabilityOn, interimDetails, interimServiceType } from "@/test/sched
 
 import { calendarRange } from "./lib/calendar"
 
-// The Calendar and who is signed in (Task 28b, after Task 27b's review rounds 1 to 3, ARCHITECTURE §15). A chip's details
-// sheet holds the appointment as one caller read it, outside the query cache, so it closes in the same render as a change
-// of identity. The writes the page starts (New appointment, a day's New appointment, cancelling from the sheet) are the
-// board's dialog and sheet writes: bound to the account the page was drawn for, so nothing entered as one account is sent
-// as another (signed out, a Viewer or another account that may write), and checked last inside each request's fetch
-// (writes-at-departure.test.tsx has the Calendar's rows). An answer that arrives once the identity has changed since its
-// request left is thrown away, with no toast and no range read marked stale; one that is used marks them all.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/calendar/page"), import("@/app/dispatch/page")])
 })

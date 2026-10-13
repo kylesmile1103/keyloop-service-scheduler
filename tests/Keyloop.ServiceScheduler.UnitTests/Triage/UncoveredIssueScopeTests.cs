@@ -36,8 +36,6 @@ public sealed class UncoveredIssueScopeTests
         Enum.GetNames<TriageUncoveredCategory>().ShouldAllBe(c => sent.Contains(c));
     }
 
-    // Fixture 43 of the 2026-10-13 live run: Clef chose the accident assessment (confidence 0.409) and named ACCIDENT_OR_BODY_DAMAGE at
-    // 0.84, a notice telling the person to book separately the damage the chosen service inspects.
     [Theory]
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "ACCIDENT_OR_BODY_DAMAGE", 0.84)]
     [InlineData("AIRCON-REGAS", "AIR_CONDITIONING", 1.0)]
@@ -50,22 +48,21 @@ public sealed class UncoveredIssueScopeTests
     }
 
     [Theory]
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "AIR_CONDITIONING")] // rubric: not for an unrelated air-con fault (the stakeholder's case)
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "AIR_CONDITIONING")]
     [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "OTHER")]
-    // Impact damage is not something the categories can tell apart, and the live run chose the assessment for non-collision repairs.
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "LIGHTS_OR_ELECTRICAL_ACCESSORY")] // fixture 49, a blown bulb
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "GLASS")] // fixture 48, a windscreen replacement
-    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "TYRES_OR_WHEELS")] // fixture 31, a puncture
-    [InlineData("AIRCON-REGAS", "GLASS")] // fixture 41
-    [InlineData("AIRCON-REGAS", "OTHER")] // fixture 47's alternative pair
-    [InlineData("WHEEL-ALIGNMENT", "TYRES_OR_WHEELS")] // geometry only; rubric: not for tyre puncture repair
-    [InlineData("DIAG-FAULT-FINDING", "ACCIDENT_OR_BODY_DAMAGE")] // rubric: not for collision damage assessment
-    [InlineData("DIAG-FAULT-FINDING", "LIGHTS_OR_ELECTRICAL_ACCESSORY")] // rubric: not for headlight repair
-    [InlineData("DIAG-FAULT-FINDING", "AIR_CONDITIONING")] // only a switch-on failure is diagnosis; weak cooling is regas
-    [InlineData("MOT-TEST", "TYRES_OR_WHEELS")] // fixture 40: the test checks, it does not replace
-    [InlineData("INTERIM-SERVICE", "LIGHTS_OR_ELECTRICAL_ACCESSORY")] // fixture 39
-    [InlineData("BRAKES-PADS-DISCS", "ACCIDENT_OR_BODY_DAMAGE")] // fixture 43's accepted pair
-    [InlineData("EV-BATTERY-CHECK", "LIGHTS_OR_ELECTRICAL_ACCESSORY")] // rubric: not for a 12 volt battery fault
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "LIGHTS_OR_ELECTRICAL_ACCESSORY")]
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "GLASS")]
+    [InlineData("ACCIDENT-DAMAGE-ASSESSMENT", "TYRES_OR_WHEELS")]
+    [InlineData("AIRCON-REGAS", "GLASS")]
+    [InlineData("AIRCON-REGAS", "OTHER")]
+    [InlineData("WHEEL-ALIGNMENT", "TYRES_OR_WHEELS")]
+    [InlineData("DIAG-FAULT-FINDING", "ACCIDENT_OR_BODY_DAMAGE")]
+    [InlineData("DIAG-FAULT-FINDING", "LIGHTS_OR_ELECTRICAL_ACCESSORY")]
+    [InlineData("DIAG-FAULT-FINDING", "AIR_CONDITIONING")]
+    [InlineData("MOT-TEST", "TYRES_OR_WHEELS")]
+    [InlineData("INTERIM-SERVICE", "LIGHTS_OR_ELECTRICAL_ACCESSORY")]
+    [InlineData("BRAKES-PADS-DISCS", "ACCIDENT_OR_BODY_DAMAGE")]
+    [InlineData("EV-BATTERY-CHECK", "LIGHTS_OR_ELECTRICAL_ACCESSORY")]
     public void A_category_outside_the_chosen_services_scope_is_still_exposed_at_the_threshold(string chosen, string category)
     {
         var issue = Map(chosen, 0.6, category, new TriageOptions().UncoveredIssueThreshold).UncoveredIssue.ShouldNotBeNull();
@@ -73,8 +70,7 @@ public sealed class UncoveredIssueScopeTests
         issue.OutsideServiceTypeId.ShouldBe(Services.Single(s => s.Code == chosen).Id);
     }
 
-    // Fixture 48 of the 2026-10-13 live run: a windscreen replacement that should be no-match came back as the accident assessment at
-    // 0.485 (confirm) with GLASS at 0.62. The replacement is outside the assessment ("not the repair itself"), so the notice is correct.
+    // Windscreen replacement is outside the scope of an accident damage assessment.
     [Fact]
     public void A_glass_replacement_beside_the_accident_assessment_is_exposed()
     {

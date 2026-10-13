@@ -34,14 +34,8 @@ interface RuleDialogProps {
   onSave: (rule: RequirementRuleInput) => void
 }
 
-/**
- * Adding or editing one typed rule of the draft (UI_DESIGN 11.24): its code (a new rule's only: appointments name the rules
- * they were booked under by code), its order, when it applies (a service on some powertrains, a vehicle class, or live HV
- * diagnosis, each with only its own selectors), and what it adds (a minimum HV level on the technicians' staircase, bay
- * equipment, certifications). Saving changes the draft only; nothing is sent until the draft is previewed and published.
- */
+/** Dialog for adding or editing a requirement rule in the current policy draft. */
 export function RuleDialog({ editing, onOpenChange, others, services, onSave }: RuleDialogProps) {
-  // A rule being edited is work a session renewal's navigation would lose (hooks/use-unsaved-work).
   useUnsavedWork(editing !== null)
   return (
     <Dialog open={editing !== null} onOpenChange={onOpenChange}>
@@ -366,7 +360,7 @@ function RuleForm({
 
 const row = "flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 font-normal hover:bg-accent/50 pointer-coarse:min-h-11"
 
-/** A radio card (11.6's suggested-service card, smaller): a filled mark and the choice's name. */
+/** Radio card option styling. */
 const choice = cn(
   "group/choice flex min-h-11 cursor-pointer items-center gap-2.5 rounded-chip border border-input bg-card px-3 py-2 text-left text-sm outline-none",
   "hover:not-data-checked:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:border-primary data-checked:ring-1 data-checked:ring-primary"

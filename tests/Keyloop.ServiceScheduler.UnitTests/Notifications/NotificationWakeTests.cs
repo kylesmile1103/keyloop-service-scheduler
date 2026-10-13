@@ -3,9 +3,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 namespace Keyloop.ServiceScheduler.UnitTests.Notifications;
 
 /// <summary>
-/// A7: after a cycle the dispatcher sleeps until the earliest Pending row is due (a retry or a lease expiry), never less than a second
-/// (rows another instance holds must not make it spin) and never more than the idle interval; a commit nudge ends the sleep early.
-/// The hosted loop itself is covered by NotificationDispatcherTests.
+/// Verifies dispatcher sleep duration calculation between outbox polling cycles.
 /// </summary>
 public sealed class NotificationWakeTests
 {

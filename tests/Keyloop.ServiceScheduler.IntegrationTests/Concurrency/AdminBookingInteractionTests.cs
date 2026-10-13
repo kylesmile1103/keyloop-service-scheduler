@@ -16,11 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Concurrency;
 
-/// <summary>
-/// Admin edits against a real booking in flight (ADR-029 Task 30a amendment). Separate from the unchanged ten-case 30-way ADR-003 proof.
-/// Resource edits and policy publications commit under the dealership lock; bookings read the current roster under that lock.
-/// Read-time warnings still cover edits that commit after a booking and competence expiry.
-/// </summary>
+/// <summary>Verifies admin resource and policy edits interacting with in-flight bookings.</summary>
 public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -199,10 +195,6 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         metrics.Sum("scheduler.booking.deadlocks").ShouldBe(0);
     }
 
-    /// <summary>
-    /// A safety-motivated HV increase published while a booking waits for its lock is never undercut: the publication commits under the
-    /// dealership lock, the booking finds the newer version under its own lock and re-resolves, and level-4 routine work is refused.
-    /// </summary>
     [Fact]
     public async Task Stricter_policy_published_while_a_booking_waits_for_its_lock_is_enforced_by_revalidation()
     {
@@ -233,7 +225,6 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         metrics.Sum("scheduler.admin.edits").ShouldBe(1);
     }
 
-    /// <summary>A publication that leaves the booking qualified is not a refusal: the booking re-resolves and records the newer version.</summary>
     [Fact]
     public async Task Policy_published_while_a_booking_waits_for_its_lock_is_re_resolved_and_recorded()
     {
@@ -262,10 +253,6 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         (await WarningCodesAsync(admin, appointment.Id)).ShouldBeEmpty();
     }
 
-    /// <summary>
-    /// The other order: a booking that already holds the dealership lock commits under the version it resolved, and the publication waits
-    /// for it (seeding lock, then dealership lock: the reseed's existing order). That appointment predates the new version and keeps its own.
-    /// </summary>
     [Fact]
     public async Task Policy_publication_waits_for_a_booking_holding_the_dealership_lock()
     {
@@ -341,10 +328,7 @@ public sealed class AdminBookingInteractionTests(PostgresFixture pg) : IAsyncLif
         policy["previewToken"] = JsonNode.Parse(await response.Content.ReadAsStringAsync(Ct))!["previewToken"]!.GetValue<string>();
     }
 
-    /// <summary>
-    /// Once armed, pauses the next single-key <c>pg_advisory_xact_lock</c> (the dealership lock; the seeding lock has two keys): before it
-    /// is sent, so every pre-lock read is done, or after it returns, so the booking holds the lock.
-    /// </summary>
+    /// <summary>Pauses the next single-key <c>pg_advisory_xact_lock</c> before or after acquisition.</summary>
     private sealed class BookingLockPause(bool afterAcquired) : DbCommandInterceptor
     {
         private int _armed;

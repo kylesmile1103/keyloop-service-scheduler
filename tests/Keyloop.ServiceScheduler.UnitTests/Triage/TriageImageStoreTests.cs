@@ -10,8 +10,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Keyloop.ServiceScheduler.UnitTests.Triage;
 
 /// <summary>
-/// The production path: <c>Triage:ImageStoreUrl=http://triage-media.internal</c>, the Container's private R2 relay. In production the
-/// relay accepts any 32-hex dealership segment, so dealership scoping and the read-side expiry check live only in this class.
+/// Verifies dealership scoping, expiry enforcement, and failure handling in <see cref="TriageImageStore"/>.
 /// </summary>
 public sealed class TriageImageStoreTests : IDisposable
 {

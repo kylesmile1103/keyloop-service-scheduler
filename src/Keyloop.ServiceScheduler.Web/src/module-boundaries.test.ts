@@ -2,11 +2,7 @@ import { ESLint } from "eslint"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
 
-/**
- * The admin area (src/app/admin: Refine and the resources pages) and the workshop pages (dispatch, calendar, overview,
- * appointments) never import each other, so the board's first load never downloads Refine or admin code. Both may use
- * components, hooks, lib and api. ESLint enforces it; these cases pin the rule to the real configuration.
- */
+/** Verifies ESLint module boundaries keeping the admin area and workshop pages isolated. */
 const eslint = new ESLint({ cwd: path.resolve(import.meta.dirname, "..") })
 
 async function boundaryErrors(file: string, specifier: string): Promise<string[]> {
@@ -22,7 +18,6 @@ describe("module boundary between the workshop pages and the admin area", () => 
     ["src/app/admin/components/resource-table.tsx", "../../appointments/components/columns"],
     ["src/app/admin/layout.tsx", "@/app/calendar/page"],
     ["src/app/admin/layout.tsx", "@/app/overview/page"],
-    // Task 30b's editing, policy and history pages share code with the board only through components, hooks and lib.
     ["src/app/admin/technicians/technician-form.tsx", "@/app/dispatch/components/appointment-sheet"],
     ["src/app/admin/components/upcoming-work.tsx", "../../calendar/lib/calendar"],
     ["src/app/admin/policy/page.tsx", "@/app/dispatch/lib/allocation"],
@@ -54,7 +49,6 @@ describe("module boundary between the workshop pages and the admin area", () => 
     ["src/app/dispatch/page.tsx", "@/components/capability-badges"],
     ["src/app/appointments/page.tsx", "@/app/dispatch/lib/status"],
     ["src/config/routes.tsx", "@/app/admin/layout"],
-    // The competence warnings both areas show live in lib and components.
     ["src/app/dispatch/components/appointment-sheet.tsx", "@/components/competence-warning"],
     ["src/app/admin/components/upcoming-work.tsx", "@/lib/appointment-range"],
     ["src/app/dispatch/page.tsx", "@/lib/competence-warnings"],

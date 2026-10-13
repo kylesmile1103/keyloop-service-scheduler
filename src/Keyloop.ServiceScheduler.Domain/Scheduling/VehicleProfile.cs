@@ -6,7 +6,7 @@ namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 public enum Powertrain { Ice, MildHybrid, FullHybrid, PluginHybrid, BatteryElectric, FuelCell, Unknown }
 /// <summary>Workshop-relevant vehicle class; Heavy adds lift and task competence requirements.</summary>
 public enum VehicleClass { Car, LightCommercial, Heavy, Unknown }
-/// <summary>Per-attribute source. RegistryLookup and SuggestedConfirmed are reserved for later phases.</summary>
+/// <summary>Per-attribute provenance source.</summary>
 public enum ProfileSource { Unknown, Declared, VinDecoded, RegistryLookup, SuggestedConfirmed }
 
 /// <summary>Evidence for each attribute. Declaration accountability is private audit data, never telemetry or email content.</summary>

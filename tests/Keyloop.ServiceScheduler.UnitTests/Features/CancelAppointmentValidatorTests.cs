@@ -7,8 +7,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The cancellation request's shape rule (400 <c>validation-error</c> keyed <c>reason</c>). It measures the reason after trimming, as
-/// <see cref="Appointment.Cancel"/> does, so a reason the validator accepts never makes the aggregate throw (which would be a 500).
+/// Verifies shape validation rules for appointment cancellation requests.
 /// </summary>
 public class CancelAppointmentValidatorTests
 {

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Measure the remaining trim/AOT analyzer warnings (ADR-016, Addendum A §A8).
-# This is an analysis build, not a NativeAOT publish. CI treats it as informational.
+# Measures remaining trim/AOT analyzer warnings via an informational analysis build.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

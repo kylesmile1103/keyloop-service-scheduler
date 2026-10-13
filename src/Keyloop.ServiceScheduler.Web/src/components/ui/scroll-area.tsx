@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/scroll-area.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/scroll-area.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 "use client"
 
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area"

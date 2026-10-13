@@ -21,16 +21,10 @@ const PAGE = 20
 /** A publication's version, from its audit: the policy after it. */
 const isPolicy = (value: AdminHistoryItem["after"] | null): value is AdminPolicyResponse => value !== null && "rules" in value && "version" in value
 
-/**
- * The policy's versions (UI_DESIGN 11.24), newest first, from the change history (`resourceKind=policy`): each publication
- * as an article named by its version, when and by whom, and what it changed rule by rule against the version before ("hv-
- * routine: HV 2 to HV 4"). The oldest publication's "before" is the version the dealership started from. Older pages load
- * on request. Admin only, as the API's history is.
- */
+/** Displays the version history of the requirement policy from the Admin audit feed. */
 export function PolicyVersions({ dealership, current, services }: { dealership: DealershipResponse; current: number | undefined; services: readonly ServiceTypeResponse[] | undefined }) {
   const headingId = useId()
   const queryClient = useQueryClient()
-  // Show older versions, when the last page takes it away, hands focus to the first version it loaded (UI_DESIGN 11.24).
   const listRef = useRef<HTMLOListElement>(null)
   const loadOlder = useLastPageFocus(listRef)
   const armRetryFocus = useFocusAfterRetry(() => listRef.current?.querySelector<HTMLElement>("article"))

@@ -1,10 +1,6 @@
 import type { DayOfWeek } from "@/api/types.gen"
 
-/**
- * Calendar dates as the API writes them (`yyyy-MM-dd`): a day in the dealership's own calendar, with no time and no zone.
- * Arithmetic runs on UTC midnights, where every day has 24 hours, so moving across a daylight-saving change never skips or
- * repeats a day. Only `todayIn` looks at a clock, and it asks for the dealership's zone, never the browser's.
- */
+/** Dealership-local calendar date utilities (`yyyy-MM-dd`), using UTC-midnight arithmetic to avoid DST shifts. */
 
 const pattern = /^(\d{4})-(\d{2})-(\d{2})$/
 

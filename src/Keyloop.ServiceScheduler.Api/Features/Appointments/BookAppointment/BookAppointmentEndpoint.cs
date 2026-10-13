@@ -26,7 +26,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
             .RequireAuthorization(SchedulerAuthentication.BookingsWrite)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
-            .AddEndpointFilter<BookingValidationTelemetryFilter>() // outermost: sees every validation-error, from the body or the header
+            .AddEndpointFilter<BookingValidationTelemetryFilter>()
             .AddEndpointFilter<ValidationFilter<BookAppointmentRequest>>()
             .RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)
             .Produces<AppointmentResponse>(StatusCodes.Status201Created)
@@ -44,26 +44,13 @@ public sealed class BookAppointmentEndpoint : IEndpoint
 
     /// <summary>Book an appointment</summary>
     /// <remarks>
-    /// Reserves one bay with every capability the service requires and one technician with every certification it requires for the
-    /// whole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free
-    /// preferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's
-    /// load. Send an <c>Idempotency-Key</c> (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours
-    /// with the same key and body returns the stored 201 with <c>Idempotent-Replayed: true</c> and books nothing; only successes are stored.
-    /// With Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.
-    /// A concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.
-    /// Decoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.
-    /// Successful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.
+    /// Reserves a qualified bay and technician for the service slot, honouring optional preferences and <c>Idempotency-Key</c> replay within 24 hours.
+    /// When vehicle-aware requirements are enabled, optional vehicle profile facts and live-diagnosis flags refine qualification and allocation rules.
     /// </remarks>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership to book at (the example is the seeded Reading dealership).</param>
-    /// <param name="request">
-    /// The booking. Its OpenAPI description is <see cref="RequestDescription"/>, given by the <c>[Description]</c> attribute: the
-    /// XML-comment generator also copies the other parameters' tags here, so <c>SchedulerOpenApi</c> puts the attribute's text back.
-    /// </param>
-    /// <param name="idempotencyKey">
-    /// The optional <c>Idempotency-Key</c> header. Its OpenAPI description is <see cref="IdempotencyKeyHeader.Description"/>, given by the
-    /// <c>[Description]</c> attribute: the XML-comment generator matches this tag by the C# name, not the header name.
-    /// </param>
-    /// <param name="handler">Checks the rules, allocates and books under the dealership's lock.</param>
+    /// <param name="request">The booking request body.</param>
+    /// <param name="idempotencyKey">The optional <c>Idempotency-Key</c> header for safe retries.</param>
+    /// <param name="handler">Validates rules, allocates resources, and books the appointment.</param>
     /// <param name="httpContext">Carries the <c>Idempotent-Replayed</c> header on a replay.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="201">Booked: the appointment with its bay, technician and local times; <c>Location</c> is its path. A replay carries <c>Idempotent-Replayed: true</c>.</response>
@@ -71,7 +58,7 @@ public sealed class BookAppointmentEndpoint : IEndpoint
     /// <response code="404">No dealership or no service type has this id (<c>not-found</c>, with <c>resource</c> = <c>dealership</c> or <c>service-type</c> and the <c>id</c>).</response>
     /// <response code="409">The slot is taken: every qualified bay or technician is busy (<c>slot-unavailable</c>), or the database's overlap backstop fired (<c>slot-conflict</c>, with <c>conflictingResource</c>); both carry <c>suggestedSlots</c>, the nearest bookable starts that day. Repeated requirement-policy changes answer <c>concurrency-conflict</c>: no booking committed; refresh availability and retry the booking.</response>
     /// <response code="413">The request body exceeds the 64 KiB limit (framework RFC 9110 problem).</response>
-    /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, <c>idempotency-key-reuse</c>, <c>vehicle-profile-conflict</c>, or <c>vehicle-aware-requirements-disabled</c> (<c>needsLiveDiagnosis</c> or <c>vehicle.profile</c> sent while vehicle-aware requirements are disabled, named in <c>rejectedFields</c>; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand (null in this phase) and firedRules.</response>
+    /// <response code="422">A business rule refuses it: <c>outside-operating-hours</c>, <c>lead-time-not-met</c>, <c>beyond-booking-horizon</c>, <c>slot-not-aligned</c>, <c>no-qualified-resources</c>, <c>idempotency-key-reuse</c>, <c>vehicle-profile-conflict</c>, or <c>vehicle-aware-requirements-disabled</c> (<c>needsLiveDiagnosis</c> or <c>vehicle.profile</c> sent while vehicle-aware requirements are disabled, named in <c>rejectedFields</c>; refused rather than ignored). Vehicle-aware no-qualified-resources adds minimumHvLevel, requiredBrand and firedRules.</response>
     /// <response code="401">Sign-in required (<c>unauthenticated</c>, with <c>loginUrl</c>).</response>
     /// <response code="403">The caller's role does not permit this operation (<c>forbidden</c>).</response>
     /// <response code="429">Too many bookings from this client (<c>rate-limited</c>, with <c>retryAfterSeconds</c> and <c>Retry-After</c>).</response>
@@ -87,7 +74,6 @@ public sealed class BookAppointmentEndpoint : IEndpoint
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        // The attributes above only document the header (no DataAnnotations validation runs in minimal APIs); this is the check.
         if (IdempotencyKeyHeader.Validate(idempotencyKey) is { } error)
         {
             return ProblemResults.Validation(new Dictionary<string, string[]> { [IdempotencyKeyHeader.Name] = [error] });

@@ -9,10 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 /// <summary>
-/// Startup database work, gated per environment by <see cref="DatabaseOptions"/> (ARCHITECTURE §10): migrations when
-/// <c>MigrateOnStartup</c>; the reference catalogue and the demo week when <c>SeedDemoData</c>, in one transaction under the
-/// <see cref="SeedingLock"/>. UAT and Production set neither (migration bundles; no seed data), and SystemTest migrates but leaves
-/// seeding to the tests.
+/// Runs startup database migrations and optional demo seeding under <see cref="SeedingLock"/> as configured by <see cref="DatabaseOptions"/>.
 /// </summary>
 public static class DatabaseInitializer
 {
@@ -32,11 +29,7 @@ public static class DatabaseInitializer
 
         if (options.MigrateOnStartup)
         {
-            // Npgsql reads the migration history by trying the query, so on a fresh database the read fails: on a bare server at the
-            // connection (logged as an Error), in an empty database (as AddDatabase and POSTGRES_DB create it) on the missing history
-            // table (Information, since Program.cs lowers CommandError). MigrateAsync makes that read once itself, so the initializer
-            // does not: it creates a missing database first, as MigrateAsync would (the existence check expects the failed connection),
-            // probes for the history table and takes the pending list from the model until that table exists.
+            // Create the database if missing and check for the migrations history table before querying pending migrations.
             var creator = db.GetService<IRelationalDatabaseCreator>();
             var created = !await creator.ExistsAsync(ct);
             if (created)

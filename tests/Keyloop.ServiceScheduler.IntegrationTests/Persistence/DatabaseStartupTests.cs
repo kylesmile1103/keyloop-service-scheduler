@@ -16,7 +16,6 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    // A bare server (no database yet), and the empty database that Aspire's AddDatabase (run mode) or POSTGRES_DB (Compose) creates.
     [Theory]
     [InlineData("Development", false)]
     [InlineData("Development", true)]
@@ -46,8 +45,6 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
             using var client = factory.CreateClient();
 
             (await client.GetAsync("/health", Ct)).StatusCode.ShouldBe(System.Net.HttpStatusCode.OK);
-            // Nothing is logged as an error, and the only failed command EF reports is the history read that MigrateAsync makes itself
-            // before it creates the table: the initializer adds none, whether the database was missing or empty.
             logs.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => $"{e.Category}: {e.Message}").ShouldBeEmpty();
             FailedCommands(logs).ShouldBeLessThanOrEqualTo(1, string.Join(Environment.NewLine, logs.Entries
                 .Where(e => e.EventId.Id == RelationalEventId.CommandError.Id).Select(e => e.Message)));
@@ -61,7 +58,6 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
             var appointments = await db.Appointments.CountAsync(Ct);
             appointments.ShouldBeGreaterThan(0);
 
-            // A second startup initialization must neither reapply migrations nor duplicate the demo week.
             await DatabaseInitializer.InitializeAsync(factory.Services, Ct);
             (await db.Appointments.CountAsync(Ct)).ShouldBe(appointments);
             FailedCommands(logs).ShouldBe(failedAtStartup);
@@ -90,7 +86,6 @@ public sealed class DatabaseStartupTests(PostgresFixture pg)
                     context.Response.StatusCode.ShouldBe(200);
                     context.Connection.RemoteIpAddress.ShouldBe(System.Net.IPAddress.Parse(trusted ? "203.0.113.7" : peer));
                     context.Request.Scheme.ShouldBe(trusted ? "https" : "http");
-                    // Only the final hop is consumed, even when another forwarded address precedes it.
                     context.Request.Headers["X-Forwarded-For"].ToString().ShouldBe(trusted ? "192.0.2.9" : "192.0.2.9, 203.0.113.7");
                 }
             }

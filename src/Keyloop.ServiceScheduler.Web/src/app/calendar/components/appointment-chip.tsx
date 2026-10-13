@@ -7,18 +7,12 @@ import { cn } from "@/lib/utils"
 interface AppointmentChipProps {
   appointment: AppointmentListItemResponse
   timeZone: string
-  /** A week column's three lines, or a month cell's one. */
   density: "week" | "month"
   selected: boolean
   onSelect: (appointment: AppointmentListItemResponse, chip: HTMLElement) => void
 }
 
-/**
- * An appointment on the Calendar: a button in its status's tint, marker bar and ink with the status icon (UI_DESIGN 11.12's
- * block, never colour alone), named as the board's job cards are ("Interim Service, Bay 1 - Standard, 08:00 to 09:00,
- * Sophie Turner, Amelia Clarke, Confirmed"). A week column shows the time range, the service and the customer; a month
- * cell the start and the service on one line. A click opens the board's details sheet.
- */
+/** Compact appointment button for calendar week columns and month cells. */
 export function AppointmentChip({ appointment, timeZone, density, selected, onSelect }: AppointmentChipProps) {
   const { icon: StatusIcon, classes } = statusMeta[appointment.status]
   return (
@@ -41,7 +35,6 @@ export function AppointmentChip({ appointment, timeZone, density, selected, onSe
         <>
           <span className="flex min-w-0 items-center gap-1 font-semibold tabular-nums">
             <StatusIcon aria-hidden="true" className="size-3.5 shrink-0" />
-            {/* In a narrow week column (UI_DESIGN 11.22) the start alone; the name still reads the whole range. */}
             <span className="truncate @[8rem]/day:hidden">{formatLocalTime(appointment.startUtc, timeZone)}</span>
             <span className="hidden truncate @[8rem]/day:inline">{timeRange(appointment, timeZone)}</span>
           </span>

@@ -11,18 +11,12 @@ public sealed record ResourceBusy(Guid ResourceId, IReadOnlyList<TimeSlot> Busy)
 public sealed record AvailabilitySlot(DateTime StartUtc, DateTime EndUtc, int FreeBays, int FreeTechnicians);
 
 /// <summary>
-/// Availability for one service on one operating window (ARCHITECTURE §6.1–§6.2). Each resource's free time is shrunk to its
-/// <em>feasible-start</em> intervals before resources are combined, so a start counts only when a single bay and a single
-/// technician are each free for the full duration; the union of free sets would wrongly accept a slot that two bays cover only
-/// between them.
+/// Computes availability for a service within an operating window by shrinking each resource's free time to its feasible-start intervals.
 /// </summary>
 public static class AvailabilityCalculator
 {
     /// <summary>
-    /// Feasible start times on the granularity grid where at least one bay and at least one technician are free for the whole duration,
-    /// in ascending order. Candidates are <c>window.StartUtc + k × granularity</c> with <c>start + duration ≤ window.EndUtc</c>.
-    /// A zero-length window (which <see cref="Dealership.ResolveOperatingWindow"/> yields when opening and closing both fall in a DST
-    /// gap) has no slots; a window that ends before it starts is a programming error.
+    /// Returns feasible start times on the granularity grid where at least one bay and one technician are free for the full duration.
     /// </summary>
     public static IReadOnlyList<AvailabilitySlot> Compute(
         OperatingWindow window,

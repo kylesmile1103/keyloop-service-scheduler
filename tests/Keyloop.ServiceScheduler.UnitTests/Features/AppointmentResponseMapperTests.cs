@@ -9,7 +9,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
-/// <summary>The appointment response (Mapperly, Addendum A §A6): every member from the aggregate and its resources, local times in the dealership's zone.</summary>
+/// <summary>Verifies mapping of appointment aggregates and resources to response DTOs with dealership-local times.</summary>
 public class AppointmentResponseMapperTests
 {
     private static readonly DateTime Now = new(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc);

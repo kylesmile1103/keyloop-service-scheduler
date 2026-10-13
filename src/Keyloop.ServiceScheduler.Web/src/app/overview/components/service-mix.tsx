@@ -10,19 +10,10 @@ import { serviceMix } from "../lib/overview"
 
 const percent = (share: number) => `${Math.round(share * 100)}%`
 
-/** The row gathering every service after the first six. */
 const OTHER = "other"
-
-/** How many services get a row of their own. */
 const SHOWN = 6
 
-/**
- * Which services the bookings are for, over the Overview's window (adopted from the template's `revenue-breakdown`). The
- * template's pie becomes a list of bars: a catalogue has more services than the five chart colours (UI_DESIGN 13), and bars
- * in one hue, each with its count and share written beside it, read without a legend or a colour to match. Bars are scaled
- * to the longest row; the percentage is its share of every booking. Services after the first six share one row, drawn in the
- * neutral control tone.
- */
+/** Horizontal bar breakdown of bookings by service type over the overview window. */
 export function ServiceMix({ appointments }: { appointments: Parameters<typeof serviceMix>[0] | undefined }) {
   const mix = useMemo(() => (appointments ? serviceMix(appointments, SHOWN) : undefined), [appointments])
   const headingId = useId()
@@ -62,7 +53,6 @@ export function ServiceMix({ appointments }: { appointments: Parameters<typeof s
                   </span>
                 </span>
                 <span aria-hidden="true" className="block h-2 overflow-hidden rounded-full bg-muted">
-                  {/* The remainder in the neutral control tone, so it reads as the rest, not as one more service. */}
                   <span
                     className={cn("block h-full rounded-full", row.id === OTHER ? "bg-input" : "bg-chart-1")}
                     style={{ width: `${(row.count / largest) * 100}%` }}

@@ -18,11 +18,7 @@ export const NOTES_LIMIT = 1000
 /** An OEM code as the API accepts it: letters, digits and hyphens, at most 32 (`VehicleProfileRequestValidator`). */
 const MANUFACTURER_CODE = /^[A-Z0-9-]{1,32}$/
 
-/**
- * What the advisor declares about the vehicle (ADR-029), on the vehicle step: kept in the form, so it is part of the
- * booking being entered and is discarded with it. Sent only while vehicle-aware requirements are on (`toBookingRequest`).
- * The server assigns provenance; nothing here can claim a source.
- */
+/** Advisor-declared vehicle attributes on the booking form. */
 const vehicleProfile = z.object({
   powertrain: z.enum(POWERTRAINS),
   vehicleClass: z.enum(VEHICLE_CLASSES),
@@ -32,11 +28,7 @@ const vehicleProfile = z.object({
   declarationReason: z.string(),
 })
 
-/**
- * The booking dialog's form (Task 17), with the same rules as the API's validator (ARCHITECTURE §8.7, the
- * `BookAppointmentRequest` schema), so most mistakes are caught before a round trip. The server stays the authority: its
- * `400` field errors are mapped onto the same paths.
- */
+/** Validation schema for the appointment booking dialog. */
 export const bookingSchema = z.object({
   serviceTypeId: id("Choose a service"),
   /** The local date the slot was picked on, `yyyy-MM-dd` in the dealership's calendar. */

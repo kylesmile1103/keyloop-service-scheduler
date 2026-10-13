@@ -18,11 +18,11 @@ interface BookActionOptions {
   dealership: DealershipResponse
   /** Today on the dealership's calendar (`yyyy-MM-dd`). */
   today: string
-  /** Phones: the dialog is a full-screen sheet that ends on its own success state (UI_DESIGN 11.14). */
+  /** Renders the booking dialog full-screen on mobile. */
   fullScreen: boolean
 }
 
-/** A Book action's state for this account: unavailable but focusable, with its reason, unless it may book (UI_DESIGN 11.20). */
+/** Disabled/aria-describedby props for a Book button when the user cannot book. */
 export interface BookState {
   disabled: boolean
   focusableWhenDisabled: true
@@ -32,11 +32,7 @@ export interface BookState {
 export interface BookAction {
   access: WriteAccess
   bookState: BookState
-  /**
-   * Opens the booking dialog on a day (`yyyy-MM-dd`; today without one), or the sign-in prompt for a visitor, as the cached
-   * `/me` decides when it is called (`cachedWriteAccess`), not as the page was last drawn: the dialog exactly when the cache
-   * names an account that may book (`cachedWriter`, the account its writes are then bound to); nothing for any other.
-   */
+  /** Opens the booking dialog or sign-in prompt based on the current cached user identity. */
   open: (day?: string) => void
   /** The reason every Book action of the page names, on screen; `null` unless the account's role cannot book. */
   reason: ReactNode
@@ -45,36 +41,24 @@ export interface BookAction {
 }
 
 /**
- * Booking from a workshop page other than the board (the Overview's quick action, the Calendar's New appointment and its
- * days): the board's own booking dialog, structure untouched, opened on a chosen day, and the board's role rules (UI_DESIGN
- * 11.20). An Admin or Service advisor gets the dialog; a visitor who is not signed in gets the sign-in prompt before
- * anything is typed, and nothing is sent; any other account sees every Book action unavailable, with the reason on screen
- * and named by each. Which of these a press gets is decided as it happens, from the cached `/me`: a press that lands after
- * the identity changed but before the page has drawn the change opens nothing the new caller may not use. A booking's
- * toast (the board's, explained and stacked with vehicle-aware requirements on: `useBookedToast`), and the phone's success
- * state, lead to the board on the booked day.
+ * Provides the booking dialog, sign-in prompt, and role-based button state for pages outside the dispatch board.
  */
 export function useBookAction({ dealership, today, fullScreen }: BookActionOptions): BookAction {
   const access = writeAccessOf(useCurrentUser())
   const queryClient = useQueryClient()
   const reasonId = useId()
   const navigate = useNavigate()
-  // A new session per opening, so every booking starts from a clean form and a new idempotency key.
   const [booking, setBooking] = useState({ session: 0, open: false, initialDate: today })
   const [signInPrompt, setSignInPrompt] = useState(false)
 
-  // The dialog's preferred bay and technician come from a schedule's bays and technicians, which are the same every day;
-  // the starting day's is read once the dialog opens (the board shares the cache).
   const schedule = useQuery({
     ...getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date: booking.initialDate } }),
     enabled: booking.open,
   })
 
   const open = (day?: string) => {
-    // The caller now, not the one this render was for (the role's reason, if any, is drawn with the new answer).
     const now = cachedWriteAccess(queryClient)
     if (now.state === "allowed") {
-      // A past day or a closed one cannot be booked: the dialog starts on the next day the dealership opens.
       const initialDate = firstOpenDate(dealership, day && day >= today ? day : today)
       setBooking((previous) => ({ session: previous.session + 1, open: true, initialDate }))
     } else if (now.state === "sign-in") setSignInPrompt(true)
@@ -90,7 +74,6 @@ export function useBookAction({ dealership, today, fullScreen }: BookActionOptio
 
   const showBooked = useBookedToast(today)
   const onBooked = (appointment: AppointmentResponse, explanation?: BookedExplanation | null) => {
-    // On a phone the sheet ends on its own success state; wide screens get the board's toast (UI_DESIGN 11.15).
     if (fullScreen) return
     showBooked(appointment, explanation, () => viewOnBoard(appointment))
   }

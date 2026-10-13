@@ -6,8 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Queries;
 
 /// <summary>
-/// Read model for one dealership-day (ARCHITECTURE §5.3): the dealership, its resources and the appointments overlapping an
-/// operating window, read without tracking. Shared by availability, suggestions, allocation load and the workshop schedule.
+/// Read model for one dealership-day: the dealership, its resources, and appointments overlapping an operating window.
 /// </summary>
 public sealed class DayScheduleReader(SchedulerDbContext db)
 {

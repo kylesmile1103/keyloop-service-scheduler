@@ -8,20 +8,7 @@ using Aspire.Hosting.Testing;
 
 namespace Keyloop.ServiceScheduler.AspireTests;
 
-/// <summary>
-/// The composed application (Addendum C §C7, ARCHITECTURE §14.3, ADR-013): the AppHost itself, booted by Aspire.Hosting.Testing, with
-/// PostgreSQL from its parameters, the API migrating and seeding in Development behind its health check, web proxy discovery, the dashboard's Scalar link
-/// and the <em>Reseed demo data</em> command. Category <c>Aspire</c>: it needs Docker and takes about half a minute; CI runs it in its
-/// own step. Only one AppHost may run on a machine at a time. It lives in this project rather than the integration tests because
-/// Aspire.Hosting needs reflection-based JSON, which the integration test process disables to mirror the API (ADR-016).
-/// </summary>
-/// <remarks>
-/// Two things are made hermetic, and only for the test. The database password is supplied (as <c>Parameters:postgres-password</c>), so the
-/// persisted password default is never evaluated or written (configuration can still load user secrets). PostgreSQL and pgweb run with session lifetimes and without the named
-/// data volume, so the run leaves no container or volume behind and never touches the developer's persistent database. Everything else is
-/// the AppHost model, with testing's random ports and disabled dashboard; <see cref="Development_database_is_persistent_with_generated_secret_credentials"/>
-/// pins the persistence the run takes away.
-/// </remarks>
+/// <summary>End-to-end smoke tests for the composed AppHost with hermetic session-scoped containers.</summary>
 [Trait("Category", "Aspire")]
 public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) : IClassFixture<AppHostSmokeTests.RunningAppHost>
 {
@@ -82,9 +69,6 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     [Fact]
     public void Dashboard_runs_on_a_dev_localhost_name()
     {
-        // `aspire new`'s *.dev.localhost option. From the dashboard's name Aspire derives <resource>-scheduler.dev.localhost for every
-        // http(s) endpoint (tcp and smtp stay on localhost). The testing builder runs without a dashboard, so the per-resource names are
-        // only visible in a real run; the developer certificate covers *.dev.localhost.
         new Uri(RunningAppHost.LaunchProfileDashboardUrl()).Host.ShouldBe("scheduler.dev.localhost");
     }
 
@@ -93,8 +77,6 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     [InlineData("http", new[] { "http" })]
     public async Task Dashboard_links_Scalar_from_whichever_endpoint_the_launch_profile_gives_the_api(string launchProfile, string[] endpoints)
     {
-        // The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE): `https` gives it both endpoints, `http` plain HTTP only.
-        // The model only, nothing is started: the URL callbacks run as the orchestrator runs them, over one URL per endpoint.
         await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(
             [$"--DOTNET_LAUNCH_PROFILE={launchProfile}"], Ct);
         var api = builder.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api");
@@ -110,9 +92,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
             await annotation.Callback(context);
         }
 
-        // Preferably on https; a link on an endpoint the api does not have would be dropped.
         var scalar = context.Urls.Where(url => url.DisplayText == "Scalar API reference").ShouldHaveSingleItem();
-        // Absolute and on the endpoint's own host, so it keeps the dev.localhost name a relative link would lose.
         (scalar.Url, scalar.Endpoint?.EndpointName).ShouldBe(($"{endpoints[0]}://api-scheduler.dev.localhost:7180/scalar/v1", endpoints[0]));
         context.Urls.Where(url => url != scalar).Select(url => url.DisplayText).ShouldBe(endpoints.Select(name => $"API ({name})"));
     }
@@ -129,8 +109,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         appHost.App.ResourceNotifications.TryGetCurrentState("mailpit", out var resource).ShouldBeTrue();
         resource!.Snapshot.Urls.ShouldContain(u => u.DisplayProperties.DisplayName == "Mailpit inbox");
 
-        // Book through the API for an address that is not a reserved domain: the commit nudges the dispatcher, which sends over the
-        // composed SMTP wiring. Every seeded customer is @example.com, which the dispatcher suppresses, so this is the only message.
+        // Seeded @example.com addresses are suppressed, so only this non-reserved recipient receives mail.
         const string recipient = "aspire.smoke@inbox.keyloop.local";
         using var api = appHost.App.CreateHttpClient("api", "http");
         var booked = await BookAnyFreeSlotAsync(api, recipient);
@@ -202,11 +181,9 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         result.Success.ShouldBeTrue(result.Message);
         using (var outcome = JsonDocument.Parse(result.Data.ShouldNotBeNull("the command shows the API's answer").Value))
         {
-            // Any seven days from now hold open days at Reading, so the demo week is never empty.
             outcome.RootElement.GetProperty("appointmentsCreated").GetInt32().ShouldBeGreaterThan(0);
         }
 
-        // Only the command knows the key: the same request without it is answered like an unknown route.
         using var http = appHost.App.CreateHttpClient("api", "http");
         using var withoutKey = await http.PostAsync("/api/v1/admin/demo/reseed", content: null, Ct);
         withoutKey.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -215,7 +192,6 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
     [Fact]
     public async Task Development_database_is_persistent_with_generated_secret_credentials()
     {
-        // The model only: nothing is started, and no parameter value is read (reading the password would generate and persist one).
         await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Keyloop_ServiceScheduler_AppHost>(Ct);
 
         var postgres = builder.Resources.OfType<PostgresServerResource>().ShouldHaveSingleItem();
@@ -224,7 +200,6 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
         var volume = postgres.Annotations.OfType<ContainerMountAnnotation>().ShouldHaveSingleItem();
         (volume.Type, volume.Source, volume.Target).ShouldBe((ContainerMountType.Volume, "keyloop-scheduler-pgdata", "/var/lib/postgresql/data"));
 
-        // Generated on the first run and kept in the AppHost's user secrets (Addendum C §C1): never typed, never in a settings file.
         postgres.PasswordParameter.Name.ShouldBe("postgres-password");
         postgres.PasswordParameter.Secret.ShouldBeTrue();
         postgres.PasswordParameter.Default.ShouldNotBeNull().GetType().Name.ShouldBe("UserSecretsParameterDefault");
@@ -281,7 +256,6 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
                 }
                 catch (Exception cleanupFailure)
                 {
-                    // The reason the AppHost did not start stays first; a failed stop (e.g. its deadline) must not replace it.
                     throw new AggregateException("The AppHost did not start, and cleaning it up failed as well.", startupFailure, cleanupFailure);
                 }
 
@@ -289,7 +263,7 @@ public sealed class AppHostSmokeTests(AppHostSmokeTests.RunningAppHost appHost) 
             }
         }
 
-        /// <summary>The first applicationUrl of the AppHost's https launch profile, read from the file the developer runs with.</summary>
+        /// <summary>Returns the first applicationUrl of the AppHost's https launch profile.</summary>
         internal static string LaunchProfileDashboardUrl()
         {
             var directory = new DirectoryInfo(AppContext.BaseDirectory);

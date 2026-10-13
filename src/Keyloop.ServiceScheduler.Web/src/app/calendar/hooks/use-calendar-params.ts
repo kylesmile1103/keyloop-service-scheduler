@@ -6,18 +6,12 @@ import { DATE_PARAM } from "@/lib/workshop-params"
 
 import { type CalendarView, VIEW_PARAM } from "../lib/calendar"
 
-/**
- * The Calendar's view and the day it is anchored on, in the address next to `?dealership=` so a reload or a shared link
- * opens the same week or month: `?view=month` (absent for a week) and `?date=yyyy-MM-dd` (absent for today, the workshop
- * pages' shared day, so the board's day opens its week and the reverse). The date is validated and cleaned as on the board.
- * Moving to another week or month adds a history entry; switching the view replaces it, as the board's lane view does.
- */
+/** Synchronizes the calendar view (`week` or `month`) and anchor date with URL search parameters. */
 export function useCalendarParams(today: string) {
   const { date: anchor } = useBoardParams(today)
   const [searchParams, setSearchParams] = useSearchParams()
   const view: CalendarView = searchParams.get(VIEW_PARAM) === "month" ? "month" : "week"
 
-  /** Changes the view, the anchor or both in one navigation (`null` anchors on today). */
   const show = useCallback(
     (next: { view?: CalendarView; anchor?: string | null }, replace = false) =>
       setSearchParams(

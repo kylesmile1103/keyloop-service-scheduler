@@ -6,9 +6,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence.Interceptors;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// Wakes this instance's dispatcher when a booking or cancellation commits, so its email leaves at once without polling. A nudge that
-/// arrives while the dispatcher is busy is kept (capacity one) and costs one more cycle, so none is lost. Best effort by design: a commit
-/// whose events are never observed (an unresolved in-doubt commit, another instance) is picked up at the next due time or idle wake.
+/// Bounded channel signal that wakes the notification dispatcher immediately when a booking or cancellation commits.
 /// </summary>
 public sealed class NotificationSignal
 {

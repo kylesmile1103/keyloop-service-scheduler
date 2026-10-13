@@ -6,26 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 
-/// <summary>
-/// The route and query of <c>GET /dealerships/{dealershipId}/availability</c>, bound with <c>[AsParameters]</c> and checked by
-/// <see cref="GetAvailabilityValidator"/> before the handler runs. <see cref="ServiceTypeId"/> and <see cref="Date"/> bind as
-/// nullable, and the date as text, so that a missing or malformed value is a 400 <c>validation-error</c> naming the field: a
-/// <see cref="DateOnly"/> parameter would accept culture-dependent forms such as <c>10/13/2026</c> and fail on others without one.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Init-only properties rather than a positional record: the Request Delegate Generator (ASP.NET Core 10.0) emits
-/// <c>typeof(string?)</c>, which does not compile, when an <c>[AsParameters]</c> constructor takes a nullable reference type.
-/// </para>
-/// <para>
-/// <c>[Required]</c> and <c>[DataType(DataType.Date)]</c> only document the contract (<c>required: true</c>; <c>format: date</c>,
-/// see <c>SchedulerOpenApi</c>): no DataAnnotations validation runs, the validator enforces both. Descriptions and examples of the
-/// parameters are the <c>&lt;param&gt;</c> tags on <see cref="GetAvailabilityEndpoint"/>'s handler.
-/// </para>
-/// </remarks>
+/// <summary>Route and query parameters for <c>GET /dealerships/{dealershipId}/availability</c>.</summary>
 public sealed record GetAvailabilityQuery
 {
-    /// <summary>The only accepted form of <see cref="Date"/> (RFC 3339 full-date), parsed with the invariant culture.</summary>
+    /// <summary>Expected RFC 3339 full-date format for <see cref="Date"/>.</summary>
     public const string DateFormat = "yyyy-MM-dd";
 
     /// <summary>The dealership whose bays, technicians and opening hours are used.</summary>
@@ -42,11 +26,6 @@ public sealed record GetAvailabilityQuery
     [Required]
     [DataType(DataType.Date)]
     public string? Date { get; init; }
-
-    // The vehicle-aware parameters bind as text too, for the same reason: the validator accepts exactly one enum member name (a comma
-    // list or a repeated parameter, which binds joined by commas, would otherwise be ORed into another member) and a boolean, and
-    // rejects anything else as a field error. A nullable bool would bind a malformed value as null and end in the framework's bare
-    // 400. [EnumDataType] and [DataType("boolean")] only document the contract (SchedulerOpenApi.TransformParameterSchema).
 
     /// <summary>Optional powertrain, including Unknown. No VIN is accepted in a URL.</summary>
     [FromQuery(Name = "powertrain")]

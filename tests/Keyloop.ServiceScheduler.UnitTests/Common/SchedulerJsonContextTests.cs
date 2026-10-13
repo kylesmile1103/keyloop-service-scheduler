@@ -15,9 +15,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
 
 /// <summary>
-/// Reflection-based JSON is off in the API (ADR-016) and problem extensions are object-typed, so System.Text.Json resolves each
-/// value by its runtime type. These tests collect the values the real domain throw sites put into extensions and require each
-/// runtime type to be in <see cref="SchedulerJsonContext"/>; the integration suite then proves the HTTP write path.
+/// Verifies that runtime types of domain problem extensions and API contracts are registered in <see cref="SchedulerJsonContext"/>.
 /// </summary>
 public class SchedulerJsonContextTests
 {

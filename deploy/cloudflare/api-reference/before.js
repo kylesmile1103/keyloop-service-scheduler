@@ -1,4 +1,2 @@
-// Runs before Scalar's bundle. The Zod copy inside it probes for eval support with Function(""), which the site CSP
-// (script-src 'self', no 'unsafe-eval') blocks and reports as a violation even though the probe catches the error.
-// Jitless mode skips the probe and parses without generated code, so the page needs no CSP relaxation.
+// Enable Zod jitless mode before Scalar loads so the site CSP does not need 'unsafe-eval'.
 globalThis.__zod_globalConfig = { jitless: true }

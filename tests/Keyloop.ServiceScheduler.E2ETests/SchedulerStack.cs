@@ -71,10 +71,7 @@ public abstract class SchedulerStack : IAsyncLifetime
                 container.Annotations.OfType<ContainerMountAnnotation>().Where(m => m.Type == ContainerMountType.Volume)
                     .ToList().ForEach(m => container.Annotations.Remove(m));
             }
-            // The testing builder runs without a dashboard, but the web resource's OTLP exporter still hands the dev server the
-            // dashboard's collector address, so the browser posts telemetry to a port nobody listens on (refused on a CI runner).
-            // Browser telemetry is off in this stack, as in every build without an explicit endpoint; the journeys still assert
-            // that no other request fails.
+            // Disable browser OTLP export when running without the Aspire dashboard collector.
             builder.CreateResourceBuilder(builder.Resources.OfType<IResourceWithEnvironment>().Single(r => r.Name == "web"))
                 .WithEnvironment(context =>
                 {
@@ -83,10 +80,7 @@ public abstract class SchedulerStack : IAsyncLifetime
                         context.EnvironmentVariables.Remove(key);
                     }
                 });
-            // Every journey of a class is the same user (the Development identity), and the API's global limit is per user:
-            // 300 requests in any minute, shared by the whole class. Fifteen journeys finishing in under a minute went past
-            // it (Task 39b: the last journey's /me and /dealerships answered 429). The journeys test the pages, not the
-            // limiter (the integration tests do), so this stack gives that one user room; the booking limit is unchanged.
+            // Raise the per-user global rate limit so all journeys in the class can share the Development identity.
             builder.CreateResourceBuilder(builder.Resources.OfType<IResourceWithEnvironment>().Single(r => r.Name == "api"))
                 .WithEnvironment("Security__RateLimiting__GlobalPermitsPerMinute", "1200");
             app = await builder.BuildAsync(ct);
@@ -115,8 +109,7 @@ public abstract class SchedulerStack : IAsyncLifetime
         }
     }
 
-    // A local lock closes the race between two E2E runners; ps also respects unrelated developer/lane AppHosts.
-    // Never terminate somebody else's process. The deadline fails setup if it remains busy.
+    // Serialize AppHost instances across test runners via a lock file and process check.
     private async Task AcquireMachineAsync(CancellationToken ct)
     {
         while (machineLease is null)

@@ -2,11 +2,7 @@ import type { ServiceTypeResponse, TriageUncoveredCategory, TriageUncoveredIssue
 
 import { NOTES_LIMIT } from "./booking-schema"
 
-/**
- * The fixed words for a further problem the description mentioned (Task 32a's closed vocabulary, ARCHITECTURE §8.10): the
- * API sends only the category, and the screen says it in these client-owned words, never in the model's. `satisfies`
- * keeps the table complete for the generated union; `triage-copy.test.ts` checks the same against `types.gen.ts`.
- */
+/** Client-owned phrases for uncovered issue categories returned by triage. */
 export const uncoveredPhrases = {
   ACCIDENT_OR_BODY_DAMAGE: "accident or body damage",
   LIGHTS_OR_ELECTRICAL_ACCESSORY: "lights or electrical accessories",

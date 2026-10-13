@@ -10,11 +10,7 @@ import { ERROR_PAGES } from "@/lib/error-pages"
 import { ErrorPage } from "../components/error-page"
 import { useErrorPageState } from "../components/use-error-page-state"
 
-/**
- * 401 (`/errors/unauthorized`), also shown in place by the Resources area to a visitor who is not signed in: sign in to
- * continue. Its action is Sign in, to the API's Access login URL, coming back to the page that needed it: the address a
- * sending page passed, the page it is shown on in place, or the dispatch board when opened on its own.
- */
+/** 401 error page prompting the user to sign in and return to the originating route. */
 export default function UnauthorizedPage() {
   const { from } = useErrorPageState()
   const here = useReturnTo()

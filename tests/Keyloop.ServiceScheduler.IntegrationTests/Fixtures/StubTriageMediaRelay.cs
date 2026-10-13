@@ -3,11 +3,7 @@ using System.Net.Http.Headers;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Stands in for the Container's private R2 relay (deploy/cloudflare/src/triage-media.ts) behind
-/// <c>Triage:ImageStoreUrl=http://triage-media.internal</c>: objects keyed by path, the expiry returned as stored. Like the real relay it
-/// accepts any well-formed key, so dealership scoping must come from the API. No network access.
-/// </summary>
+/// <summary>In-memory stub for the private R2 triage media relay (<c>http://triage-media.internal</c>).</summary>
 internal sealed class StubTriageMediaRelay : HttpMessageHandler
 {
     private readonly Dictionary<string, (string ContentType, byte[] Bytes, string Expires)> _objects = new(StringComparer.Ordinal);

@@ -7,9 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// Places sample appointments at Reading over the coming week so the dispatch board is never empty (ARCHITECTURE A-14).
-/// Appointments are booked through the aggregate and allocated by the same calculator and policy as real bookings, so they are
-/// valid, audited (<c>Booked</c> history rows) and never overlap.
+/// Seeds deterministic, non-overlapping sample appointments at Reading over the upcoming week.
 /// </summary>
 public static class DemoAppointmentSeeder
 {

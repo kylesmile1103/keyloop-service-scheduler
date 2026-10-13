@@ -17,7 +17,7 @@ public enum PostgresFailure
     Other,
 }
 
-/// <summary>The single place SQLSTATEs are interpreted (ARCHITECTURE §7.4).</summary>
+/// <summary>Classifies PostgreSQL SQLSTATEs and constraint violations into domain-relevant failure kinds.</summary>
 public static class PostgresErrorClassifier
 {
     public const string BayConstraint = "ex_appointments_bay_no_overlap";

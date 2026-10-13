@@ -4,20 +4,13 @@ using Keyloop.ServiceScheduler.Infrastructure.Persistence;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
-/// <summary>
-/// What a refused insert means for the booking (ARCHITECTURE §7.4): the attempt to answer with, and the telemetry the refusal owes.
-/// <see cref="For"/> is pure; <see cref="Record"/> writes the telemetry. A failure that is not a refusal (<see langword="null"/>)
-/// propagates to the execution strategy and, unless it is transient, to a 500.
-/// </summary>
-/// <param name="Attempt">The attempt the booking transaction returns (after rolling back).</param>
-/// <param name="BackstopConstraint">The exclusion constraint that fired, counted on <c>scheduler.booking.constraint_backstop</c> and logged as 1003; null otherwise.</param>
-/// <param name="Deadlock">PostgreSQL broke a deadlock (40P01), counted on <c>scheduler.booking.deadlocks</c> and logged as 1004.</param>
+/// <summary>Maps a PostgreSQL constraint or deadlock failure during booking to a <see cref="BookingAttempt"/> and telemetry recording.</summary>
+/// <param name="Attempt">The attempt the booking transaction returns after rolling back.</param>
+/// <param name="BackstopConstraint">The exclusion constraint that fired, or null.</param>
+/// <param name="Deadlock">True when PostgreSQL terminated the transaction due to a deadlock (40P01).</param>
 public sealed record BookingRefusal(BookingAttempt Attempt, string? BackstopConstraint, bool Deadlock)
 {
-    /// <summary>
-    /// The refusal for <paramref name="failure"/>, or null when the booking transaction does not answer it. A 40P01 is answered here
-    /// (409 <c>slot-conflict</c>, <c>unknown</c>) rather than retried: ADR-003 says it cannot happen, so it is reported, not hidden.
-    /// </summary>
+    /// <summary>Maps <paramref name="failure"/> to a <see cref="BookingRefusal"/>, or returns null if unhandled.</summary>
     public static BookingRefusal? For(PostgresFailure failure) => failure switch
     {
         PostgresFailure.BayOverlap => new BookingRefusal(new BookingAttempt.Conflict(ProblemResources.Bay), PostgresErrorClassifier.BayConstraint, Deadlock: false),

@@ -6,10 +6,7 @@ using Keyloop.ServiceScheduler.Domain.Scheduling;
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 
 /// <summary>
-/// Shape rules for <see cref="BookAppointmentRequest"/>, applied by <c>ValidationFilter</c> (400 <c>validation-error</c>, keys such as
-/// <c>startUtc</c> and <c>customer.email</c>). Lengths are measured after trimming, as the domain constructors measure them, so a
-/// request that passes always constructs <see cref="CustomerDetails"/>, <see cref="VehicleDetails"/> and the appointment's notes.
-/// Business rules (opening hours, lead time, horizon, slot grid, resources) are the handler's 422s.
+/// Validates request shape and field lengths for <see cref="BookAppointmentRequest"/>.
 /// </summary>
 public sealed class BookAppointmentValidator : AbstractValidator<BookAppointmentRequest>
 {
@@ -17,7 +14,6 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
     {
         RuleFor(r => r.ServiceTypeId).NotEqual(Guid.Empty).WithMessage("serviceTypeId is required and must not be the empty id.");
 
-        // System.Text.Json reads "…Z" as Kind=Utc, an offset as machine-local time (Kind=Local) and no zone as Unspecified.
         RuleFor(r => r.StartUtc)
             .Cascade(CascadeMode.Stop)
             .Must(start => start.Kind == DateTimeKind.Utc).WithMessage("startUtc must be a UTC instant ending in Z, for example 2026-10-13T09:00:00Z.")

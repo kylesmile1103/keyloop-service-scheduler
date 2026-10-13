@@ -19,12 +19,7 @@ export interface ResourceRead<TRow> {
   retry: () => void
 }
 
-/**
- * A resource's list for one dealership's day, through Refine core's `useList` and the data provider (ADR-031); an Admin's
- * view (`view: "admin"`) carries each record's version for an edit.
- * The whole list arrives at once (`pagination` off): the page searches, filters, sorts and pages it with TanStack Table.
- * Like the workshop pages it is read again when the window regains focus.
- */
+/** Fetches an unpaginated resource list for a dealership and date via Refine's `useList`. */
 export function useResourceList<TRow extends BaseRecord>(
   resource: ResourceName,
   { dealership, today, view = "workshop" }: { dealership: DealershipResponse; today: string; view?: ResourceView }

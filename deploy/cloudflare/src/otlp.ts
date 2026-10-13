@@ -4,11 +4,7 @@ import { requiredSecret } from "./secrets.ts";
 export const MAX_OTLP_BYTES = 256 * 1024;
 type OtlpEnv = Pick<Env, "OTLP_RELAY_ENABLED" | "GRAFANA_OTLP_ENDPOINT" | "GRAFANA_OTLP_BASIC_BROWSER" | "OTLP_RELAY_LIMITER">;
 
-/**
- * The normalised base URL when the value is exactly a Grafana Cloud OTLP gateway base URL
- * (`https://otlp-gateway-<region>.grafana.net/otlp`, no trailing slash), otherwise null. Shared with settings.ts and the
- * container start, where it becomes the API's OTEL_EXPORTER_OTLP_ENDPOINT (the SDK appends /v1/<signal>).
- */
+/** Returns the normalized Grafana Cloud OTLP gateway base URL (`https://otlp-gateway-<region>.grafana.net/otlp`), or null if invalid. */
 export function grafanaOtlpBaseUrl(value: string): string | null {
   let endpoint: URL;
   try {

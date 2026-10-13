@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx` (its column
-// definitions), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/data-table.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { ColumnDef } from "@tanstack/react-table"
 
 import { CapabilityBadges } from "@/components/capability-badges"
@@ -20,10 +20,7 @@ export const baySearch = searchFilter<BayRecord>((row) => [row.name])
 /** A bay's load today: its booked share of the opening hours (0 on a closed day, which the cell says in words). */
 const loadShare = (row: BayRecord) => (row.today.windowMinutes ? row.today.bookedMinutes / row.today.windowMinutes : 0)
 
-/**
- * The bays' columns: the bay, its equipment as the board's badges, whether it is in service, and today's appointments and
- * load (booked time over the opening hours, the board's bay utilisation for one bay).
- */
+/** Column definitions for the service bays table. */
 export const bayColumns: ColumnDef<Features, BayRecord>[] = [
   {
     id: "name",

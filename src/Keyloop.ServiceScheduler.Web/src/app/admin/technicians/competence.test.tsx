@@ -9,8 +9,6 @@ import { columnTexts, headers, openFilter } from "@/test/resource-list"
 import { readingTuesday, technicians } from "@/test/schedules"
 import { readingTuesdayWithCompetence, vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
-// Task 31b: the Technicians page's HV competence (ADR-029 Phase 0), read-only until editing arrives (Task 30).
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/technicians/page")])
 })

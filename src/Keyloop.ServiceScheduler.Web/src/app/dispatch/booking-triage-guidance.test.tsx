@@ -16,7 +16,7 @@ import {
   uncovered,
 } from "@/test/triage"
 
-// Task 32b: the booking dialog's triage after the stakeholder's testing (2026-10-13).
+// Booking dialog triage guidance, uncovered issue notices, and photo picker tests.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")
@@ -140,7 +140,6 @@ describe("what else the description mentioned", () => {
     mockBoardApi({
       triageStatus: () => triageEnabled,
       serviceTypes: catalogue,
-      // The stakeholder's sentence as the Task 32a report shapes it: diagnosis for the air-con, the crash left uncovered.
       triage: () =>
         triageAnswer("suggest", [[diagnosticsServiceType, 0.53]], null, uncovered("ACCIDENT_OR_BODY_DAMAGE", diagnosticsServiceType)),
     })

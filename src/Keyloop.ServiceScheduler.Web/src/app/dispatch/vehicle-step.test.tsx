@@ -31,7 +31,7 @@ import {
   vehicleAwareOn,
 } from "@/test/vehicle"
 
-// Task 31b: the booking dialog's vehicle step (ADR-029), with vehicle-aware requirements on, and today's flow with them off.
+// Booking dialog vehicle step with vehicle-aware requirements enabled and disabled.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")
@@ -99,7 +99,7 @@ const bodyOf = async (request: Request) => (await request.clone().json()) as Boo
 const availabilityQueries = (requests: readonly Request[]) =>
   requestsTo(requests, "/availability").map((request) => Object.fromEntries(new URL(request.url).searchParams))
 
-/** No identifier or private text in any address the app asked for (ADR-029, §8.7). */
+/** Asserts that no private identifier or text appears in any request URL. */
 function expectNothingPrivateInUrls(requests: readonly Request[], ...secrets: string[]) {
   for (const request of requests) {
     const url = decodeURIComponent(request.url).toUpperCase()
@@ -388,8 +388,6 @@ describe("a declared manufacturer the VIN contradicts", () => {
   })
 
   it("holds a choice made without a look-up for that VIN only: Try again resends it as it was, a new VIN asks again", async () => {
-    // The checker's failure-and-edit probe (review round 0): the look-up fails, the API's conflict is answered with Use
-    // decoded data, that resend is lost, and the VIN is then changed to a Mercedes one.
     let lookupFails = true
     const failure = () => new Response("Temporary network failure", { status: 503 })
     const answers = [problemResponse(422, profileConflict), failure(), failure()]

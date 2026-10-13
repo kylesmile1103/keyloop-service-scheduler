@@ -8,10 +8,7 @@ using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// <c>GET /api/v1/dealerships/{dealershipId}/service-types</c>: the whole (global) catalogue, with <c>bookable</c> computed for the
-/// route dealership from its active bays and technicians.
-/// </summary>
+/// <summary>Tests for <c>GET /api/v1/dealerships/{dealershipId}/service-types</c>.</summary>
 public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifetime
 {
     private SchedulerApiFactory _factory = null!;
@@ -35,7 +32,6 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task GetServiceTypes_marks_ev_service_not_bookable_when_no_ev_bay()
     {
-        // The technician holds the high-voltage certification, so the only thing the EV service lacks here is a bay.
         var dealership = TestData.NewDealership("Standard Motors");
         await SaveAsync(
             dealership,
@@ -67,7 +63,6 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task GetServiceTypes_ignores_an_inactive_high_voltage_technician()
     {
-        // The EV bay is active and the only high-voltage technician is not; the general technician shows resources are read at all.
         var dealership = TestData.NewDealership("Absent Specialist Motors");
         await SaveAsync(
             dealership,
@@ -87,7 +82,6 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
     [Fact]
     public async Task GetServiceTypes_lists_requirements_in_declared_enum_order()
     {
-        // Given in reverse declared order, and stored sorted by name: neither order is the enumeration's declared order.
         var dealership = TestData.NewDealership("Ordering Motors");
         await SaveAsync(
             dealership,
@@ -120,7 +114,7 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
             ("Brake Pads & Discs", true),
             ("Diagnostic Fault Finding", false),
             ("EV Battery Health Check", true),
-            ("EV Charging Fault Diagnosis", false), // high-voltage and diagnostics are held by different technicians: all-of per person
+            ("EV Charging Fault Diagnosis", false),
             ("Four-Wheel Alignment", false),
             ("Full Service", true),
             ("Heavy Van Service", true),
@@ -128,7 +122,6 @@ public sealed class ServiceTypesEndpointTests(PostgresFixture pg) : IAsyncLifeti
             ("MOT Test", false),
         ]);
 
-        // The wire format of one entry: duration in minutes, requirement lists as enum names in declaration order.
         using var response = await _client.GetAsync($"/api/v1/dealerships/{ReferenceDataSeed.MunichDealershipId}/service-types", Ct);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
         var charging = body.RootElement.EnumerateArray().Single(s => s.GetProperty("code").GetString() == "EV-CHARGING-FAULT");

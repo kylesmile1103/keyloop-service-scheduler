@@ -4,16 +4,7 @@ import { getFeaturesOptions, getFeaturesQueryKey } from "@/api/@tanstack/react-q
 import { getFeatures } from "@/api/sdk.gen"
 import type { FeatureSwitchesResponse } from "@/api/types.gen"
 
-/**
- * The environment's rendering switches (`GET /api/v1/features`, Task 31b.0): today only whether vehicle-aware requirements
- * are on (ADR-029). The answer is the same for every caller and fixed for the API process (a restart changes it), so it is
- * read once and shared, and kept when who is signed in changes (lib/session-cache.ts).
- *
- * Freshness: five minutes in the app (`staleTime`), on top of the API's own `Cache-Control: public, max-age=60`. A restart
- * that turns the switch on is noticed on the next read after that, which only adds controls; one that turns it off can
- * answer a vehicle-aware request with `422 vehicle-aware-requirements-disabled` meanwhile, and `vehicleAwareRefused`
- * handles that at once. Reading it more often would buy nothing the 422 path does not already give.
- */
+/** Stale time (5 minutes) for `GET /api/v1/features`. */
 export const FEATURE_SWITCHES_STALE_MS = 5 * 60_000
 
 export const featureSwitchesQuery = () => ({
@@ -21,47 +12,32 @@ export const featureSwitchesQuery = () => ({
   staleTime: FEATURE_SWITCHES_STALE_MS,
 })
 
-/** The switch's query key, for a refresh or a test. */
 export const featureSwitchesQueryKey = () => getFeaturesQueryKey()
 
-/**
- * On only while the last read succeeded and said on. A read that failed after a successful one leaves the earlier answer
- * in the cache with the query in error: that counts as unreadable, so off, until a read succeeds again.
- */
+/** Returns true only when the latest fetch succeeded with `vehicleAwareRequirements: true`. */
 function switchedOn(state: { status: "pending" | "error" | "success"; data?: FeatureSwitchesResponse } | undefined): boolean {
   return state?.status === "success" && state.data?.vehicleAwareRequirements === true
 }
 
-/**
- * The switch for rendering: `on`, and whether its last read failed (`unreadable`), so a view can say the setting could
- * not be read rather than that it is off. Off until the switch has been read, and whenever it cannot be read: today's flow,
- * which every deployment accepts (with the switch on, an omitted vehicle profile is treated as Unknown, the conservative
- * default).
- */
+/** Returns whether vehicle-aware requirements are enabled (`on`) and whether the switch query failed (`unreadable`). */
 export function useVehicleAwareSwitch(): { on: boolean; unreadable: boolean } {
   const query = useQuery(featureSwitchesQuery())
   return { on: switchedOn(query), unreadable: query.status === "error" }
 }
 
-/** Whether vehicle-aware booking inputs, availability filters and allocation explanations are on (`useVehicleAwareSwitch`). */
+/** Whether vehicle-aware booking inputs, availability filters, and allocation explanations are enabled. */
 export function useVehicleAware(): boolean {
   return useVehicleAwareSwitch().on
 }
 
-/**
- * The switch as the cache holds it at this moment, for a decision taken outside rendering (a request as it is built): off
- * while the query is in error, as in rendering, even though the cache keeps an earlier answer.
- */
+/** Reads the vehicle-aware switch synchronously from the query cache outside rendering. */
 export function cachedVehicleAware(queryClient: QueryClient): boolean {
   return switchedOn(queryClient.getQueryState<FeatureSwitchesResponse>(featureSwitchesQueryKey()))
 }
 
 /**
- * The API refused a vehicle-aware input with `422 vehicle-aware-requirements-disabled`: the switch the app read is stale.
- * A read still out is cancelled (so it cannot put the old answer back), the cache says off, so no view sends another
- * vehicle-aware input, and the switch is read again past the browser's HTTP cache (`cache: "reload"`, which also replaces
- * the cached response every later read gets). Every view follows that answer. Unreadable, it stays off, which every
- * deployment accepts.
+ * Handles `422 vehicle-aware-requirements-disabled` by immediately disabling the cached switch
+ * and re-fetching `/api/v1/features` bypassing the browser HTTP cache (`cache: "reload"`).
  */
 export async function vehicleAwareRefused(queryClient: QueryClient): Promise<void> {
   const queryKey = featureSwitchesQueryKey()

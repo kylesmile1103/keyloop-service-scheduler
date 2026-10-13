@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/stat-cards.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import { CalendarCheck, Clock, Gauge, Warehouse } from "lucide-react"
 
 import { NO_FIGURE, ShareMeter, StatCard } from "@/components/stat-card"
@@ -15,11 +15,7 @@ interface BayFiguresProps {
   failed: boolean
 }
 
-/**
- * The bays in four figures (the users app's stat cards, UI_DESIGN 11.11): the bays, those in use today, the time booked in
- * them and the bay utilisation, the same figure the dispatch board's KPI strip shows for today (lib/booked-time). A closed
- * day says so; an open day with no bay in service has no bay time to measure against.
- */
+/** Summary stat cards for service bays and today's bay utilisation. */
 export function BayFigures({ rows, day, failed }: BayFiguresProps) {
   const figures = rows && day ? bayFigures(rows, day) : undefined
   const closed = figures?.capacityMinutes === null

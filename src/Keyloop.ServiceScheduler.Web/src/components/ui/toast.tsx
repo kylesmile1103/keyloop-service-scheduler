@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/toast.tsx`, a shadcn/ui primitive:
-// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License (the full notices are in
-// the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/ui/toast.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License, and Copyright (c) 2023 shadcn, MIT License.
 import * as React from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "cn"
@@ -141,7 +140,6 @@ function ToastClose({
 function ToastIcon({ type }: { type: string | undefined }) {
   let icon: React.ReactNode = null
 
-  // Service Hub's traffic light (UI_DESIGN 9): check, triangle, cross, each in its feedback ink.
   if (type === "success") {
     icon = <CircleCheckIcon className="text-success" aria-hidden="true" />
   }
@@ -176,10 +174,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   )
 }
 
-/**
- * A toast with several lines (`data: { stacked: true }`, the booked toast that explains its allocation): the text takes
- * the whole width and the action sits under it, so a sentence is not squeezed beside the button (UI_DESIGN 11.15).
- */
+/** Stacked layout (`data: { stacked: true }`) places the action below multi-line toast text. */
 const isStacked = (data: unknown) => typeof data === "object" && data !== null && (data as { stacked?: unknown }).stacked === true
 
 function ToastList() {

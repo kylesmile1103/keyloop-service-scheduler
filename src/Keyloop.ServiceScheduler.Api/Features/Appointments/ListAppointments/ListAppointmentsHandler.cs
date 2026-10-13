@@ -8,11 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.ListAppointments;
 
-/// <summary>
-/// Untracked projection of appointments whose start falls in the inclusive dealership-local calendar range. The UTC predicate
-/// uses the existing (dealership_id, start_utc) index; dates are converted once, never on the database column. Opening hours do not
-/// restrict this history read. Missing dealerships raise the standard 404 not-found problem.
-/// </summary>
+/// <summary>Queries appointments starting within an inclusive dealership-local date range.</summary>
 public sealed class ListAppointmentsHandler(SchedulerDbContext db)
 {
     public async Task<IReadOnlyList<AppointmentListItemResponse>> HandleAsync(ListAppointmentsQuery query, ClaimsPrincipal caller, CancellationToken ct)
@@ -25,7 +21,6 @@ public sealed class ListAppointmentsHandler(SchedulerDbContext db)
             ?? throw new NotFoundException(ProblemResources.Dealership, query.DealershipId);
         var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
         var startUtc = LocalTimeConverter.ToUtc(from, TimeOnly.MinValue, zone);
-        // There is no representable next local day after DateOnly.MaxValue. No stored instant can start on a later date.
         DateTime? endUtc = to == DateOnly.MaxValue ? null : LocalTimeConverter.ToUtc(to.AddDays(1), TimeOnly.MinValue, zone);
         var rows = await RangeQuery(query, startUtc, endUtc).ToListAsync(ct);
         return rows.Select(row => ListAppointmentsResponseMapper.Map(row, zone, caller)).ToList();
@@ -45,7 +40,6 @@ public sealed class ListAppointmentsHandler(SchedulerDbContext db)
             appointments = appointments.Where(a => statuses.Contains(a.Status));
         }
 
-        // Only the summary columns of the service, bay and technician are read, never their whole rows.
         return from appointment in appointments
             join serviceType in db.ServiceTypes on appointment.ServiceTypeId equals serviceType.Id
             join bay in db.ServiceBays on appointment.BayId equals bay.Id
@@ -57,10 +51,7 @@ public sealed class ListAppointmentsHandler(SchedulerDbContext db)
     }
 }
 
-/// <summary>
-/// The projected columns: the appointment's own, the service/bay/technician summary columns, and the personal data the audience
-/// policy masks. Contact details, notes and vehicle make/model are not read.
-/// </summary>
+/// <summary>Projected appointment row for date-range queries.</summary>
 internal sealed record AppointmentListRow(
     Guid Id, AppointmentStatus Status, DateTime StartUtc, DateTime EndUtc,
     Guid ServiceTypeId, string ServiceTypeCode, string ServiceTypeName, ServiceDuration ServiceTypeDuration,

@@ -53,11 +53,9 @@ import {
 import { type OpenAppointment, OpenAppointmentContext, type RowIntent } from "./lib/row-actions"
 import { useListParams } from "./lib/use-list-params"
 
-/** Stable empties: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: AppointmentRow[] = []
 const NO_OPTIONS: Record<FacetId, FilterChoice[]> = { status: [], bay: [], technician: [], service: [] }
 
-/** The phone's sort choices: the table's column headers, as one select. */
 const SORTS: readonly SortChoice[] = [
   { value: "time", label: "Time, earliest first", sorting: [{ id: "time", desc: false }] },
   { value: "time-desc", label: "Time, latest first", sorting: [{ id: "time", desc: true }] },
@@ -71,11 +69,9 @@ const SORTS: readonly SortChoice[] = [
 export default function AppointmentsPage() {
   const dealershipsOptions = getDealershipsOptions()
   const dealerships = useQuery(dealershipsOptions)
-  // Kept while Try again reads the list again, so the failure and its focused button stay until the answer.
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const phone = useIsMobile()
-  // The list waits for `/me` as the board does, so its Cancel actions and details sheet open in their final state.
   const identityKnown = useCurrentUser().status !== "loading"
 
   const status: DealershipListStatus = dealerships.data
@@ -100,7 +96,6 @@ export default function AppointmentsPage() {
     <BaseLayout title="Appointments" description="Search and filter one workshop day's bookings, and act on any of them.">
       <div className="flex min-w-0 flex-col gap-4 px-4 md:gap-5 md:px-6 xl:px-8">
         {selected && identityKnown ? (
-          // A new table per dealership: its bays, technicians and filters are its own.
           <DealershipAppointments key={selected.id} dealership={selected} dealershipSelect={dealershipSelect} phone={phone} />
         ) : (
           <>
@@ -140,7 +135,6 @@ export default function AppointmentsPage() {
   )
 }
 
-/** The page's controls: which dealership and which day (the same address state as the board's). */
 function PageToolbar({ phone, children }: { phone: boolean; children: ReactNode }) {
   return <div className={cn("flex gap-2", phone ? "flex-col" : "flex-wrap items-center")}>{children}</div>
 }
@@ -149,22 +143,16 @@ interface Selection {
   row: AppointmentRow
   intent: RowIntent
   open: boolean
-  /** Who it was selected as (`CurrentUser.identity`): the row is that caller's view of the booking. */
   identity: string
 }
 
 interface DealershipAppointmentsProps {
   dealership: DealershipResponse
   dealershipSelect: ReactNode
-  /** The phone presentation: job cards, a filter sheet and bottom sheets. */
   phone: boolean
 }
 
-/**
- * One dealership's day as a list: the board's schedule read (`GET /schedule`, shared with the board through its query key),
- * flattened into rows. The day lives in the address (`?date=`, absent for today) exactly as on the board; the table's
- * search, filters, sort and page are this page's own and stay while the day changes.
- */
+/** Daily appointments list for a dealership with search, filtering, and row details sheet. */
 function DealershipAppointments({ dealership, dealershipSelect, phone }: DealershipAppointmentsProps) {
   const now = useNow()
   const timeZone = dealership.timeZoneId
@@ -175,16 +163,12 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const opener = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const { identity } = useCurrentUser()
-  // A row selected as another caller (or before `/me` failed) is that caller's view: the sheet closes in the same render,
-  // so the full name, VIN and plate never paint for the next one (ARCHITECTURE §15).
   if (selection && selection.identity !== identity) setSelection(null)
   const selected = selection?.identity === identity ? selection : null
 
   const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date } })
   const schedule = useQuery({ ...scheduleOptions, refetchOnWindowFocus: true })
-  // A day that never loaded stays failed while it is read again, so Try again keeps focus until the answer.
   const failure = useQueryFailure(schedule, scheduleOptions.queryKey)
-  // The whole catalogue, so the service filter offers the same choices whatever the day holds (the board reads it too).
   const catalogue = useQuery(getServiceTypesOptions({ path: { dealershipId: dealership.id } }))
 
   const rows = useMemo(() => (schedule.data ? appointmentRows(schedule.data) : NO_ROWS), [schedule.data])
@@ -197,7 +181,6 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   const table = useTable({
     features: dataTableFeatures,
     data: rows,
-    // Rows keyed by record, not position: a re-sorted row (a rename) keeps its element, and with it any focus inside.
     getRowId: (row) => row.id,
     columns: appointmentColumns,
     initialState: { sorting: [{ id: "time", desc: false }], pagination: { pageIndex: 0, pageSize: PAGE_SIZES[0] } },
@@ -217,7 +200,6 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
     [identity]
   )
 
-  // A Try again that succeeds takes its own button away with the failure; focus then moves to the list (below).
   const retried = useRef(false)
   const retry = () => {
     retried.current = true
@@ -314,7 +296,6 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
         initialFocus={selected?.intent === "cancel" ? "reason" : "title"}
         returnFocus={() => (opener.current?.isConnected ? opener.current : list.current)}
         onCancelled={() => {
-          // Its row is about to leave the list: focus goes to the list instead.
           opener.current = null
         }}
       />
@@ -322,13 +303,7 @@ function DealershipAppointments({ dealership, dealershipSelect, phone }: Dealers
   )
 }
 
-/**
- * Which columns show. All ten fit from 1536 px; below that Duration is left out (the time range already says how long),
- * and below 1440 px VIN too (the registration names the vehicle; the details sheet and the search still have the VIN; the
- * sidebar stays open from 1280 px, so 1280 leaves the table less room than 1024). So the table fits its card without
- * scrolling sideways from 1024 px up; on a tablet held upright it scrolls inside its card, never the page. The View menu
- * brings either column back, and once the user has chosen, their choice stands whatever the width.
- */
+/** Responsive default visibility for `duration` and `vin` columns, overridable by user selection. */
 function useColumnVisibility() {
   const wide = useMediaQuery("(min-width: 1536px)")
   const roomy = useMediaQuery("(min-width: 1440px)")
@@ -341,7 +316,6 @@ function useColumnVisibility() {
   }
 }
 
-/** The status filter's choices carry the status marker the table's rows and badges use. */
 function withStatusMarks(options: Record<FacetId, FilterChoice[]>): Record<FacetId, FilterChoice[]> {
   return {
     ...options,
@@ -359,7 +333,6 @@ interface ListFrameProps {
   children: ReactNode
 }
 
-/** The list's region: a card on wide screens, the plain page on a phone (whose cards are the cards). */
 function ListFrame({ ref, phone, headingId, children }: ListFrameProps) {
   if (phone) {
     return (
@@ -386,7 +359,6 @@ interface ListHeaderProps {
   phone: boolean
 }
 
-/** The dealership, its hours that day in its own zone (which names the zone every time on the page is in), and freshness. */
 function ListHeader({ headingId, dealership, date, today, schedule, updatedAt, fetching, phone }: ListHeaderProps) {
   return (
     <div className={cn("flex flex-wrap items-end justify-between gap-x-4 gap-y-1", phone ? "px-1" : "border-b px-4 py-3")}>
@@ -406,7 +378,6 @@ function ListHeader({ headingId, dealership, date, today, schedule, updatedAt, f
   )
 }
 
-/** A day the dealership does not open (UI_DESIGN 12.1): no list, a way to the next open day. */
 function ClosedDay({
   dealership,
   date,
@@ -438,7 +409,6 @@ function ClosedDay({
   )
 }
 
-/** An open day with nothing booked (UI_DESIGN 12.1): booking lives on the board, so the action goes there, on this day. */
 function EmptyDay({ date, today }: { date: string; today: string }) {
   const { search } = useLocation()
   const dayName = formatDay(date, "long").replace(/ \d{4}$/, "")
@@ -461,7 +431,6 @@ function EmptyDay({ date, today }: { date: string; today: string }) {
   )
 }
 
-/** The list's shape while it loads (UI_DESIGN 11.18): rows of the table, or job cards on a phone. */
 function ListSkeleton({ phone, framed = true }: { phone: boolean; framed?: boolean }) {
   const body = phone ? (
     <div aria-hidden="true" className="flex flex-col gap-2">

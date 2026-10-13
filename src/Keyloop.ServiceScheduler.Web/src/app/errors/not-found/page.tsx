@@ -18,13 +18,7 @@ export default function NotFoundPage() {
   )
 }
 
-/**
- * A path that wraps only before a `/` (UI_DESIGN 12.1), so a line never ends inside a segment: each segment, with the `/`
- * that starts it, is one unbreakable box (its hyphens are no break either), with a break allowed between boxes. A segment
- * too long for a whole line is the exception: its box takes the line and wraps inside, so nothing runs out of the page.
- * What follows the path (the sentence's full stop) sits in the last box, in the sentence's own type, so it never starts a
- * line of its own.
- */
+/** Renders a URL path with line breaks allowed only before `/` segments. */
 function PathText({ path, children }: { path: string; children?: ReactNode }) {
   const segments = path.split(/(?=\/)/)
   return (

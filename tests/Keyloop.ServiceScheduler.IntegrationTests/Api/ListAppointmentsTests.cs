@@ -34,10 +34,10 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     public async Task Inclusive_range_selects_local_start_dates_and_orders_by_start()
     {
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
-        var before = Book(workshop, "2026-10-11T22:59:00Z"); // starts on the previous local day, ends inside the range
+        var before = Book(workshop, "2026-10-11T22:59:00Z");
         var first = Book(workshop, "2026-10-11T23:00:00Z", secondResource: true);
         var middle = Book(workshop, "2026-10-13T08:00:00Z");
-        var last = Book(workshop, "2026-10-13T22:59:00Z"); // ends outside the range, starts on the inclusive last day
+        var last = Book(workshop, "2026-10-13T22:59:00Z");
         var after = Book(workshop, "2026-10-13T23:00:00Z", secondResource: true);
         var elsewhere = await WorkshopInZoneAsync("Europe/London", workshop);
         var otherDealership = Book(elsewhere, "2026-10-13T08:00:00Z");
@@ -153,7 +153,6 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
         item.GetProperty("technician").GetRawText().ShouldBe($$"""{"id":"{{workshop.Technician1.Id}}","name":"Amelia Clarke"}""");
         body.RootElement.GetRawText().ShouldNotContain("Alice");
         body.RootElement.GetRawText().ShouldNotContain("WVWZZZ1KZAW");
-        // Shouldly ignores case by default, and every id in the body is lowercase hex (the appointment's starts ab12cde0).
         body.RootElement.GetRawText().ShouldNotContain("AB12", Case.Sensitive);
         body.RootElement.GetRawText().ShouldNotContain("CDE", Case.Sensitive);
     }
@@ -161,8 +160,6 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Orders_by_start_then_id_whatever_the_physical_and_id_order()
     {
-        // Ids are minted in reverse start order and rows are inserted latest first, one SaveChanges each, so neither the heap
-        // order nor the id order matches the start order. The equal-start pair (two bays) is inserted higher id first.
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var earliest = Book(workshop, TestData.LondonTime(8), id: IdAt(5));
         var tieLow = Book(workshop, TestData.LondonTime(10), id: IdAt(3));
@@ -195,7 +192,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("from=2026-10-12&to=2026-12-12")] // exactly 62 inclusive calendar days
+    [InlineData("from=2026-10-12&to=2026-12-12")]
     [InlineData("from=2025-01-01&to=2025-01-01")]
     [InlineData("from=0001-01-01&to=0001-01-01")]
     [InlineData("from=9999-12-31&to=9999-12-31")]
@@ -224,7 +221,7 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("from=2026-02-30&to=2026-10-13", "from")]
     [InlineData("from=2026-10-12&to=2026-10-13T00%3A00", "to")]
     [InlineData("from=2026-10-14&to=2026-10-13", "to")]
-    [InlineData("from=2026-10-12&to=2026-12-13", "to")] // 63 inclusive days
+    [InlineData("from=2026-10-12&to=2026-12-13", "to")]
     [InlineData("from=2026-10-12&to=2026-10-13&status=Unknown", "status")]
     [InlineData("from=2026-10-12&to=2026-10-13&status=Confirmed&status=Bad", "status")]
     [InlineData("from=2026-10-12&to=2026-10-13&status=1", "status")]
@@ -274,7 +271,6 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
 
     private static Appointment Book(TestData.Workshop workshop, DateTime start, bool secondResource = false, string name = "Alice Smith", Guid? id = null)
     {
-        // Historical rows may sit outside today's hours and cross midnight. Supply their original operating window explicitly.
         var slot = TimeSlot.FromStart(start, workshop.Interim.Duration);
         return Appointment.Book(id ?? Guid.CreateVersion7(), workshop.Dealership, workshop.Interim,
             secondResource ? workshop.Bay2 : workshop.Bay1, secondResource ? workshop.Technician2 : workshop.Technician1,
@@ -282,7 +278,6 @@ public sealed class ListAppointmentsTests(PostgresFixture pg) : IAsyncLifetime
             new CustomerDetails(name, "alice@example.com", "+44 7700 900001"), TestData.Vehicle(), null, TestData.Now);
     }
 
-    /// <summary>A version 7 id minted at a fixed millisecond, so that a larger <paramref name="millisecond"/> sorts later.</summary>
     private static Guid IdAt(int millisecond) => Guid.CreateVersion7(TestData.DefaultNow.AddMilliseconds(millisecond));
 
     private static DateTime Utc(string value) => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);

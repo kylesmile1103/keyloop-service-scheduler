@@ -6,10 +6,7 @@ namespace Keyloop.ServiceScheduler.Domain.Scheduling;
 public static class RequirementResolver
 {
     /// <summary>
-    /// The explanation code of the legacy level-3 floor: a service that requires the <c>HighVoltageElectrical</c> certification is HV
-    /// component work for any vehicle, including a declared ICE one, so it needs level 3 before any policy rule applies. Named first in
-    /// <see cref="JobRequirements.FiredRules"/> (and counted on <c>scheduler.requirements.rule_fired</c>) so a level 3 minimum is never
-    /// unexplained. It is not a policy row: the service catalogue, not the dealership policy, carries it.
+    /// Rule code recorded when a service requires <c>HighVoltageElectrical</c>, establishing an HV level-3 floor before policy rules apply.
     /// </summary>
     public const string LegacyHvComponentRule = "legacy-hv-component";
 
@@ -24,8 +21,7 @@ public static class RequirementResolver
             throw new ArgumentException("Resolve exactly one positive policy version.", nameof(rules));
         }
         var bays = service.RequiredBayCapabilities.ToHashSet();
-        // The legacy boolean denotes HV component work. Phase 1 replaces that boolean with the level, including for an ICE vehicle
-        // explicitly booked for an EV component service; the service itself still requires level 3.
+        // HighVoltageElectrical certification denotes HV component work and establishes a level-3 minimum even for ICE vehicles.
         var certifications = service.RequiredCertifications.Where(c => c != Resources.Certification.HighVoltageElectrical).ToHashSet();
         var legacyComponentWork = service.RequiredCertifications.Contains(Resources.Certification.HighVoltageElectrical);
         var minimum = legacyComponentWork ? 3 : 0;

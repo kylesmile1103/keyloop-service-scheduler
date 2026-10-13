@@ -9,15 +9,12 @@ import { adminBayQuery, adminBaysQuery, adminTechnicianQuery, adminTechniciansQu
 import { refusal, toHttpError } from "./http-error"
 import { adminBayRecords, adminTechnicianRecords, bayRecords, serviceRecords, technicianRecords } from "./resources"
 
-/** The resources the admin area lists: technicians and bays are editable by an Admin (Task 30b), services read-only. */
+/** Resources managed in the admin area; technicians and bays are editable by Admins, services are read-only. */
 export const RESOURCE_NAMES = ["technicians", "bays", "services"] as const
 
 export type ResourceName = (typeof RESOURCE_NAMES)[number]
 
-/**
- * Whose view of the lists: `workshop` (any role: the day's schedule, as the board reads it) or `admin` (an Admin, Task
- * 30b: the Admin reads, each record with its version for an edit's `If-Match`, the day's work still from the schedule).
- */
+/** `workshop` reads from the schedule endpoint; `admin` merges versioned Admin records with schedule load. */
 export type ResourceView = "workshop" | "admin"
 
 /** What every list is about: one dealership's resources, measured on one of its days (today on the resources pages). */
@@ -89,21 +86,7 @@ function paged<T>(records: readonly T[], pagination: Pagination | undefined): T[
   return records.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 }
 
-/**
- * The Refine data provider over the generated HeyAPI client, for the resources pages (ARCHITECTURE §15, ADR-031).
- *
- * The API has no generic REST resources. For any role, technicians and bays come from the day's schedule read
- * (`GET /schedule`) and services from the catalogue (`GET /service-types`), through the app's own QueryClient with the
- * generated query options, so they share the dispatch board's cache entries (one cache, one request for the same day). For
- * an Admin (`meta.view: "admin"`, Task 30b) technicians and bays come from the Admin reads, each with the version an edit
- * is sent against, merged with the same day's work from the schedule; one record (`getOne`, the edit form's) is read fresh.
- * Every failure becomes Refine's `HttpError` with the API's status, words, trace id and field errors.
- *
- * Writes (Task 30b): `create` and `update` add or replace a technician or a bay through the Admin API, only with the fetch
- * of a write bound to the Admin who made it (`meta.fetch`, from `useWriteMutation` with `writes: "admin"`; without one
- * nothing is sent) and, for an edit, the version it was made from (`meta.ifMatch`). Nothing is deleted (`405`: a technician
- * is deactivated and a bay taken out of service, so appointments and history keep them) and services stay read-only.
- */
+/** Refine data provider backed by the shared QueryClient, combining schedule/catalogue reads with versioned Admin CRUD. */
 export function createSchedulerDataProvider(queryClient: QueryClient): DataProvider {
   const schedule = ({ dealershipId, date }: ResourceScope) =>
     reading(queryClient.fetchQuery(getWorkshopScheduleOptions({ path: { dealershipId }, query: { date } })))

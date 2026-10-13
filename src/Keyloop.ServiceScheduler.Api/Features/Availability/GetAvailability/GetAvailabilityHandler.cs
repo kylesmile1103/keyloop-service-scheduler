@@ -15,27 +15,19 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 
-/// <summary>
-/// Availability for one service on one local date (ARCHITECTURE §6.1–§6.2): the dealership's operating window for that date, the
-/// active bays and technicians that qualify for the service, the active appointments overlapping the window, and
-/// <see cref="AvailabilityCalculator"/> over them. Throws <see cref="NotFoundException"/> (404 <c>not-found</c>) for an unknown
-/// dealership or service type. Records <c>scheduler.availability.duration</c> and <c>scheduler.availability.slots_returned</c>
-/// for every answer, and wraps the calculation in the <c>scheduler.compute_availability</c> span (§12.1).
-/// </summary>
+/// <summary>Computes bookable availability slots for a service type on a dealership-local date.</summary>
 public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options, RequirementPolicyReader policies)
 {
     public async Task<AvailabilityResponse> HandleAsync(GetAvailabilityQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        // ValidationFilter has already rejected a missing or malformed service type id or date.
         var serviceTypeId = query.ServiceTypeId ?? throw new ArgumentException("The query has no service type id; validate it first.", nameof(query));
         var date = query.LocalDate ?? throw new ArgumentException("The query has no yyyy-MM-dd date; validate it first.", nameof(query));
 
         VehicleAwareInputs.EnsureHonoured(options.Value.VehicleAwareRequirements, ("powertrain", query.Powertrain is not null),
             ("manufacturer", query.Manufacturer is not null), ("vehicleClass", query.VehicleClass is not null), ("needsLiveDiagnosis", query.LiveDiagnosis == true));
 
-        // A latency is real elapsed time (Stopwatch), not the injected business clock, which tests freeze.
         Activity.Current?.SetTag("dealership.id", query.DealershipId.ToString());
         var started = Stopwatch.GetTimestamp();
         var response = await ComputeAsync(query, serviceTypeId, date, ct);
@@ -62,12 +54,9 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
 
         var operatingWindow = AvailabilityMapper.ToResponse(window, zone);
 
-        // The day-schedule read returns every resource, active or not: only active ones that qualify are capacity, exactly the
-        // ones booking would accept (Appointment.Book re-asserts the same rules).
         var day = await reader.ReadAsync(dealership, window, activeOnly: true, ct);
         var profile = VehicleProfile.Unknown with
         {
-            // ValidationFilter has already rejected anything but one member name.
             Powertrain = query.PowertrainValue ?? Powertrain.Unknown,
             Manufacturer = VehicleProfile.NormalizeManufacturer(query.Manufacturer),
             VehicleClass = query.VehicleClassValue ?? VehicleClass.Unknown,
@@ -84,8 +73,6 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
         var busyByBay = day.Appointments.ToLookup(a => a.BayId, a => a.Slot);
         var busyByTechnician = day.Appointments.ToLookup(a => a.TechnicianId, a => a.Slot);
 
-        // A window lost entirely to a daylight-saving gap is zero-length: the calculator yields no slots, and there is no reason
-        // to report (the dealership has hours that day and the resources qualify).
         IReadOnlyList<AvailabilitySlot> slots;
         using (var activity = SchedulerTelemetry.Source.StartActivity("scheduler.compute_availability"))
         {

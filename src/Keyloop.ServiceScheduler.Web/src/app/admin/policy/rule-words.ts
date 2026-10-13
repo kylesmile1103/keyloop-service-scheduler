@@ -2,12 +2,7 @@ import type { PolicyBookabilityChange, Powertrain, RequirementCondition, Require
 import { featureLabel } from "@/lib/features"
 import { POWERTRAINS, VEHICLE_CLASSES } from "@/lib/vehicle-aware"
 
-/**
- * The requirement policy's typed rules (ADR-029 section 3) in the screen's words (Task 30b): when a rule applies, what it
- * adds, how two versions differ, how a draft is carried onto a version someone else published, and what a preview's
- * bookability changes come to. Only the closed vocabulary: a condition, powertrains, service codes, a vehicle class, and
- * the needs (minimum HV level, bay equipment, certifications). No expressions.
- */
+/** Formatting and comparison helpers for requirement policy rules and dry-run previews. */
 
 /** The powertrains that may have a high-voltage system: every one but petrol or diesel, Unknown included. */
 export const HV_POWERTRAINS: readonly Powertrain[] = POWERTRAINS.filter((powertrain) => powertrain !== "Ice")
@@ -154,10 +149,7 @@ export function ruleChangeWords(
   return parts.join("; ")
 }
 
-/**
- * A draft carried onto the version another Admin published meanwhile: the published rules, with every rule this Admin
- * added, changed or removed (against the version the draft was made from) put back as this Admin had it.
- */
+/** Rebases a local rule draft onto a newly published policy version. */
 export function carriedOnto(
   opened: readonly RequirementRuleInput[],
   published: readonly RequirementRuleInput[],
@@ -195,11 +187,7 @@ function vehiclesPhrase(powertrains: readonly Powertrain[]): string {
   return withArticle(`${powertrainList(powertrains)} powertrain`)
 }
 
-/**
- * A preview's changes (every service, powertrain, class and live mode whose roster bookability would change) folded into
- * sentences a person reads: per service and direction, the powertrains that share the same classes and live modes. A
- * service can take two lines (some vehicles newly unbookable, others newly bookable).
- */
+/** Groups dry-run bookability changes into human-readable summary lines by service and direction. */
 export function previewLines(changes: readonly PolicyBookabilityChange[], services: readonly ServiceTypeResponse[] | undefined): PreviewLine[] {
   const byService = new Map<string, PolicyBookabilityChange[]>()
   for (const change of changes) {

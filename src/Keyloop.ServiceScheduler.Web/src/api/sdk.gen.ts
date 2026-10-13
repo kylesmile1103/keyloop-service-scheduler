@@ -21,8 +21,7 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 /**
  * List dealerships
  *
- * Every dealership with its IANA time zone and weekly operating hours as local wall-clock times, ordered by name. Start here:
- * the catalogue, availability, booking and schedule routes are all scoped by a dealership id.
+ * Returns every dealership with its IANA time zone and weekly operating hours, ordered by name.
  */
 export const getDealerships = <ThrowOnError extends boolean = false>(options?: Options<GetDealershipsData, ThrowOnError>): RequestResult<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError> => (options?.client ?? client).get<GetDealershipsResponses, GetDealershipsErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -37,12 +36,8 @@ export const getDealerships = <ThrowOnError extends boolean = false>(options?: O
 /**
  * List the service catalogue for a dealership
  *
- * The whole catalogue (service types are shared by all dealerships), ordered by name, with the bay capabilities and technician
- * certifications each requires. `bookable` is computed for this dealership: at least one active bay and one active
- * technician qualify. With vehicle-aware requirements on, at least one powertrain/class profile the dialog can submit qualifies
- * under the latest dealership policy on today's dealership-local date, using inclusive HV expiry. This keeps a service selectable
- * when an ICE declaration qualifies even though Unknown does not. Availability checks the chosen vehicle and appointment date;
- * catalogue eligibility ignores busy time, opening hours and the booking window.
+ * Returns the global service catalogue ordered by name, with `bookable` indicating whether the dealership's active bays and
+ * technicians can satisfy the service's requirements under the current policy.
  */
 export const getServiceTypes = <ThrowOnError extends boolean = false>(options: Options<GetServiceTypesData, ThrowOnError>): RequestResult<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError> => (options.client ?? client).get<GetServiceTypesResponses, GetServiceTypesErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -57,12 +52,8 @@ export const getServiceTypes = <ThrowOnError extends boolean = false>(options: O
 /**
  * Find bookable start times for a service on a date
  *
- * Start times on the slot grid, counted from opening, at which one active bay with every capability the service requires and one
- * active technician with every certification it requires are both free for the whole duration, with how many of each are free.
- * A closed day has no slots and `unavailableReason` `closed`; a service the dealership can never perform has
- * `no-qualified-resources`. A service longer than that day's opening hours, and opening hours that fall entirely in a
- * daylight-saving gap (a zero-length window), give no slots and no reason. Local times carry the zone's offset
- * (`2026-10-13T10:00+01:00`). The answer is a snapshot; booking checks again.
+ * Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.
+ * Reports `closed` on non-operating days and `no-qualified-resources` when the dealership lacks required capabilities or certifications.
  */
 export const getAvailability = <ThrowOnError extends boolean = false>(options: Options<GetAvailabilityData, ThrowOnError>): RequestResult<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError> => (options.client ?? client).get<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -77,14 +68,8 @@ export const getAvailability = <ThrowOnError extends boolean = false>(options: O
 /**
  * List appointments for a local date range
  *
- * Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most
- * 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
- * union, for example by supplying both `status=Confirmed` and `status=Completed`. Ordered by start UTC, then id for equal starts.
- * Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
- * hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
- * receives them masked: one initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks
- * and the last six characters (`***********123456`), and the full registration mask `*******` whatever the plate.
- * Returns an empty array when there are no matches.
+ * Returns appointments starting between `from` and `to` (inclusive, up to 62 calendar days) in the dealership's time zone, optionally filtered by status.
+ * Callers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (`ALS`, `***********123456`, and `*******`).
  */
 export const listAppointments = <ThrowOnError extends boolean = false>(options: Options<ListAppointmentsData, ThrowOnError>): RequestResult<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAppointmentsResponses, ListAppointmentsErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -99,15 +84,8 @@ export const listAppointments = <ThrowOnError extends boolean = false>(options: 
 /**
  * Book an appointment
  *
- * Reserves one bay with every capability the service requires and one technician with every certification it requires for the
- * whole slot, so neither is ever double-booked: bookings at a dealership are serialised and the database refuses any overlap. A free
- * preferred bay or technician is honoured; otherwise the allocation policy keeps specialised resources free, then balances the day's
- * load. Send an `Idempotency-Key` (for example a UUID) to make retries safe: repeating a booking that succeeded in the last 24 hours
- * with the same key and body returns the stored 201 with `Idempotent-Replayed: true` and books nothing; only successes are stored.
- * With Scheduling:VehicleAwareRequirements enabled, optional vehicle.profile facts refine the hard requirements. Omitted powertrain is Unknown and conservative HV.
- * A concrete powertrain requires a private declarationReason of 1 to 500 trimmed characters; source and actor are assigned by the server.
- * Decoded manufacturer conflicts require profile.conflictChoice UseDecoded explicitly. NeedsLiveDiagnosis requests level 4 for HV jobs.
- * Successful vehicle-aware responses include allocation criterion, policy version, minimum HV level, fired rules and preferred-resource reason codes.
+ * Reserves a qualified bay and technician for the service slot, honouring optional preferences and `Idempotency-Key` replay within 24 hours.
+ * When vehicle-aware requirements are enabled, optional vehicle profile facts and live-diagnosis flags refine qualification and allocation rules.
  */
 export const bookAppointment = <ThrowOnError extends boolean = false>(options: Options<BookAppointmentData, ThrowOnError>): RequestResult<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError> => (options.client ?? client).post<BookAppointmentResponses, BookAppointmentErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -126,9 +104,7 @@ export const bookAppointment = <ThrowOnError extends boolean = false>(options: O
 /**
  * Get an appointment
  *
- * The appointment in whatever status it is now (cancelled ones included), with its service, the bay and technician reserved for
- * it, its times in UTC and as the dealership's local time with offset, the customer and the vehicle. A booking's `Location`
- * header points here.
+ * Returns an appointment in any status (including cancelled), with its service, bay, technician, local times, customer, and vehicle.
  */
 export const getAppointment = <ThrowOnError extends boolean = false>(options: Options<GetAppointmentData, ThrowOnError>): RequestResult<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError> => (options.client ?? client).get<GetAppointmentResponses, GetAppointmentErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -143,10 +119,7 @@ export const getAppointment = <ThrowOnError extends boolean = false>(options: Op
 /**
  * Cancel an appointment
  *
- * Cancels a confirmed or checked-in appointment and records why. Its bay and technician are free again at once, so the slot is
- * re-bookable; the appointment stays readable, with status `Cancelled` and the reason as `cancellationReason`. Cancelling is
- * not repeatable: a second cancel, or one after work has started, is refused with the current status. When another request changed
- * the appointment after this one read it, nothing is overwritten: read it again and decide.
+ * Cancels a confirmed or checked-in appointment, records the cancellation reason, and makes its bay and technician re-bookable immediately.
  */
 export const cancelAppointment = <ThrowOnError extends boolean = false>(options: Options<CancelAppointmentData, ThrowOnError>): RequestResult<CancelAppointmentResponses, CancelAppointmentErrors, ThrowOnError> => (options.client ?? client).post<CancelAppointmentResponses, CancelAppointmentErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -165,15 +138,8 @@ export const cancelAppointment = <ThrowOnError extends boolean = false>(options:
 /**
  * Get the workshop schedule for a date
  *
- * The dispatch board for one dealership and local date: every bay (ordered by name) with the appointments it hosts that day, and
- * every technician (ordered by name). Inactive bays and technicians are listed and flagged, so that appointments they already hold
- * stay visible. An appointment is on the board when it overlaps the opening hours and is not cancelled: confirmed, checked in and
- * in progress ones hold their bay and technician, completed and no-show ones are the day's history. A closed day has no
- * `operatingWindow` and no appointments, and keeps its lanes. Local times carry the zone's offset (`2026-10-13T10:00+01:00`).
- * Admin, ServiceAdvisor and Viewer receive full customer names, VINs and registrations; every other caller receives them masked:
- * one initial per name part (`ALS` for Alice Louise Smith), the domain VIN mask of eleven asterisks and the last six
- * characters (`***********123456`), and the full registration mask `*******` whatever the plate.
- * Any well-formed date can be read, past or future. The answer is a snapshot; booking checks again.
+ * Returns the workshop dispatch board for a dealership and local date, including all bays with non-cancelled appointments and all technicians.
+ * Callers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (`ALS`, `***********123456`, and `*******`).
  */
 export const getWorkshopSchedule = <ThrowOnError extends boolean = false>(options: Options<GetWorkshopScheduleData, ThrowOnError>): RequestResult<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError> => (options.client ?? client).get<GetWorkshopScheduleResponses, GetWorkshopScheduleErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -241,7 +207,7 @@ export const uploadBookingTriageImage = <ThrowOnError extends boolean = false>(o
 /**
  * Get the current caller and sign-in/out URLs
  *
- * Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ * Returns authenticated status, verified identity claims, configured API roles, session expiry, and same-origin Access login and logout URLs.
  */
 export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentUserData, ThrowOnError>): RequestResult<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError> => (options?.client ?? client).get<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
@@ -466,17 +432,8 @@ export const getAdminHistory = <ThrowOnError extends boolean = false>(options: O
 /**
  * Find returning customers in this dealership's booking history
  *
- * Admin or ServiceAdvisor only; no-store. Trim query to 2..100 characters. An @ selects a case-insensitive email prefix.
- * At least six ASCII digits, outnumbering formatting characters, with only +, whitespace, parentheses or hyphens otherwise,
- * selects phone: retain digits-only matching at either end; additionally normalize explicit +44/0044, +49/0049 or a single
- * national trunk 0 on both stored number and query. Normalized matching needs six significant digits; normalized forward
- * prefixes require that explicit format, while suffixes also accept bare digits. Otherwise search registration (uppercase,
- * whitespace removed, prefix) and name (every whitespace-separated query word of at least three characters is a prefix
- * of some name word, in any order; shorter words are ignored, and no eligible words disables name search).
- * Prefixes are literal, including % and _. All appointment statuses count. Group by lower(email) and VIN
- * within this dealership; an older match still returns the pair's latest booking by start UTC, then id. Visits counts all
- * bookings of the pair. Return at most eight pairs by lastVisitUtc descending, then latest booking id descending.
- * Only customer and vehicle intake fields are returned. Query is never stored, logged or traced; one event records kind and count.
+ * Searches the dealership's booking history by email prefix, phone number, registration prefix, or customer name word prefixes,
+ * returning up to eight customer-and-vehicle pairs ordered by most recent visit.
  */
 export const findReturningCustomers = <ThrowOnError extends boolean = false>(options: Options<FindReturningCustomersData, ThrowOnError>): RequestResult<FindReturningCustomersResponses, FindReturningCustomersErrors, ThrowOnError> => (options.client ?? client).post<FindReturningCustomersResponses, FindReturningCustomersErrors, ThrowOnError>({
     security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {

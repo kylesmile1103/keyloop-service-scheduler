@@ -13,13 +13,7 @@ using Microsoft.OpenApi;
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
 /// <summary>
-/// Rate limiting with one-minute sliding windows, partitioned per verified email, otherwise client IP (ARCHITECTURE §11.2): the
-/// <c>global</c> limiter applies to every request except health probes; the stricter <see cref="BookingPolicy"/> write policy is
-/// added to the state-changing endpoints (booking, cancellation, vehicle-profile resolution, the Admin resource and policy writes, and the
-/// Development-only demo reseed) with
-/// <c>.RequireRateLimiting(SchedulerRateLimiting.BookingPolicy)</c>, and <see cref="TriagePolicy"/> to the triage evaluation and
-/// photo upload. A rejection is a 429 <c>rate-limited</c> problem with <c>retryAfterSeconds</c> and <c>Retry-After</c>.
-/// <c>Security:RateLimiting:Enabled=false</c> (SystemTest) turns all policies off.
+/// Configures sliding-window rate limiting partitioned by verified email or client IP, returning 429 <c>rate-limited</c> problems on rejection.
 /// </summary>
 public static class SchedulerRateLimiting
 {
@@ -28,7 +22,6 @@ public static class SchedulerRateLimiting
 
     private const int SegmentsPerWindow = 6;
 
-    // PartitionedRateLimiter caches one limiter per partition key, so unlimited partitions need a key no client address can take.
     private const string UnlimitedPartition = "(unlimited)";
 
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
@@ -51,10 +44,7 @@ public static class SchedulerRateLimiting
         options.OnRejected = WriteRejectionAsync;
     }
 
-    /// <summary>
-    /// Documents the 429 <c>rate-limited</c> problem and its <c>Retry-After</c> header on an endpoint. The global limiter covers every
-    /// route, so every endpoint declares it, with a <c>&lt;response code="429"&gt;</c> comment on its handler (Addendum B §B2).
-    /// </summary>
+    /// <summary>Documents the 429 <c>rate-limited</c> problem and its <c>Retry-After</c> header on an endpoint.</summary>
     public static RouteHandlerBuilder ProducesRateLimitedProblem(this RouteHandlerBuilder builder) =>
         builder.ProducesProblem(StatusCodes.Status429TooManyRequests)
             .WithResponseHeader(
@@ -65,7 +55,6 @@ public static class SchedulerRateLimiting
 
     internal static RateLimitPartition<string> GlobalPartition(HttpContext http, SecurityOptions.RateLimitingOptions settings)
     {
-        // Platform health probes come from a handful of addresses; limiting them would restart healthy instances.
         var path = http.Request.Path;
         return !settings.Enabled || path.StartsWithSegments("/health") || path.StartsWithSegments("/alive")
             ? RateLimitPartition.GetNoLimiter(UnlimitedPartition)
@@ -75,7 +64,7 @@ public static class SchedulerRateLimiting
     internal static RateLimitPartition<string> BookingPartition(HttpContext http, SecurityOptions.RateLimitingOptions settings) =>
         settings.Enabled ? SlidingWindow(ClientKey(http), settings.BookingPermitsPerMinute) : RateLimitPartition.GetNoLimiter(UnlimitedPartition);
 
-    /// <summary>When a rejected client may retry: the limiter's own hint, else one window segment (when the next permits free up).</summary>
+    /// <summary>Returns the retry delay from the lease metadata, or one window segment as fallback.</summary>
     internal static TimeSpan RetryAfter(RateLimitLease lease) =>
         lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) && retryAfter > TimeSpan.Zero ? retryAfter : Window / SegmentsPerWindow;
 
@@ -112,8 +101,6 @@ public static class SchedulerRateLimiting
         };
         problem.Extensions["retryAfterSeconds"] = seconds;
 
-        // TryWriteAsync, not WriteAsync: when the client's Accept header excludes JSON nothing can be written, and WriteAsync would
-        // throw, turning the 429 into a 500. The status and Retry-After above already carry the answer.
         await http.RequestServices.GetRequiredService<IProblemDetailsService>().TryWriteAsync(new ProblemDetailsContext { HttpContext = http, ProblemDetails = problem });
     }
 }

@@ -12,13 +12,7 @@ export { DATE_PARAM }
 export const LANES_PARAM = "lanes"
 
 /**
- * The board's day and lane view, kept in the address next to `?dealership=` so a reload or a shared link opens the same
- * board. Today is the default and leaves the address clean, so a board left open past midnight moves to the new day.
- * Choosing a day adds a history entry (Back returns to the previous day); switching the lane view replaces the entry. A date
- * that is not a real `yyyy-MM-dd` date is dropped from the address in place. As with the dealership, the address is only
- * corrected while no navigation is pending, since writing it is itself a navigation.
- *
- * @param today today's date in the dealership's calendar.
+ * Syncs the dispatch board's selected date and lane mode (`bays` or `technicians`) with URL search parameters.
  */
 export function useBoardParams(today: string) {
   const [searchParams, setSearchParams] = useSearchParams()

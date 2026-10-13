@@ -36,7 +36,6 @@ describe("appointment status presentation", () => {
       expect(classes.block).toContain(`text-status-${tone}-fg`)
       expect(classes.dot).toContain(`bg-status-${tone}-border`)
       expect(classes.bar).toContain(`border-status-${tone}-border`)
-      // The status icon tile (UI_DESIGN 11.10): the tint and the ink, on the 8 px chip radius.
       expect(classes.tile).toContain(`bg-status-${tone}-bg`)
       expect(classes.tile).toContain(`text-status-${tone}-fg`)
       expect(classes.tile).toContain("rounded-chip")

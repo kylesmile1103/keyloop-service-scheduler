@@ -3,7 +3,7 @@ using Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Http;
 
-/// <summary>One bounded UUID request id for response headers, the server Activity and structured logs (ARCHITECTURE §12.2).</summary>
+/// <summary>Assigns a validated or generated UUID request id to the response header, current <see cref="Activity"/>, and log scope.</summary>
 internal sealed class RequestCorrelationMiddleware(ILogger<RequestCorrelationMiddleware> logger) : IMiddleware
 {
     public const string HeaderName = "X-Request-Id";

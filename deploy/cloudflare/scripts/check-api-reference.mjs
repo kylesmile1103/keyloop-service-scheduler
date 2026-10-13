@@ -1,15 +1,5 @@
-// Browser check for the static API reference: serves build/assets (run `npm run assemble` first) through Miniflare's
-// Static Assets pipeline with public/_headers and the real edge router (a fake API Durable Object answers /api/*), then
-// loads /scalar/v1 in headless Chromium in light, dark and phone layouts. It fails on any CSP violation, request to
-// another origin, link to another origin (other than Scalar's credit and MDN's page for a response status, below), console
-// error or contract operation that did not render, and checks that "Test Request" reaches this origin. Local only: no
-// account, no network beyond 127.0.0.1.
-//
-//   PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core node scripts/check-api-reference.mjs [screenshot directory]
-//
-// playwright-core and a Chromium build are not dependencies of this package; point PLAYWRIGHT_CORE at an installed copy.
-// `--scalar-defaults` replaces the page's configuration with Scalar's defaults, to show the check detects the font CDN
-// and eval violations that configuration avoids (it is expected to fail).
+// Headless Chromium check for /scalar/v1 served through Miniflare Static Assets (CSP, off-origin requests/links, and operation rendering).
+// Usage: PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core node scripts/check-api-reference.mjs [--scalar-defaults] [screenshot-dir]
 import { mkdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
@@ -54,20 +44,14 @@ try {
     ["phone", { viewport: { width: 390, height: 844 }, colorScheme: "light", deviceScaleFactor: 2, isMobile: true, hasTouch: true }],
   ]) {
     const context = await browser.newContext(options);
-    // A fixture Access cookie as /auth/login would set it: writes from "Test Request" need it to reach the API.
     await context.addCookies([{ name: "CF_Authorization", value: "local-fixture-cookie", url: origin, httpOnly: true, sameSite: "Lax" }]);
-    // Block anything that is not this origin, after recording it, so the check never reaches the network.
     const foreign = [];
     await context.route(url => !url.href.startsWith(origin) && !/^(data|blob):/.test(url.protocol), route => {
       foreign.push(route.request().url());
       return route.abort();
     });
     const page = await context.newPage();
-    // Links, not requests: Scalar's "Open API Client" button links to its hosted client, which would then send "Test Request"
-    // calls through Scalar's proxy. Collected again once "Test Request" has opened the client modal, where that button also
-    // appears, and after its response. Two kinds are accepted, and nothing else: Scalar's credit to its home page ("Powered by
-    // Scalar" in the sidebar, "Powered By Scalar.com" in the client modal), and the MDN page for the response's status code,
-    // which the client links from every response's status and no option turns off. Neither carries API data.
+    // Only Scalar's home-page credit and MDN HTTP status links are allowed as off-origin links.
     const offSiteLinks = new Set();
     const acceptedLinks = new Set();
     const collectOffSiteLinks = async () => {

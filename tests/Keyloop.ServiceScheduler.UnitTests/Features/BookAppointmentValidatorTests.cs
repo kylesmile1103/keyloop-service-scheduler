@@ -3,10 +3,7 @@ using Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The booking request's shape rules (400 <c>validation-error</c>). They are at least as strict as the domain constructors the handler
-/// calls (<c>CustomerDetails</c>, <c>VehicleDetails</c>, <c>Vin</c>, notes in <c>Appointment.Book</c>), which trim before measuring:
-/// anything the validator lets through must construct, or a malformed request would surface as a 500. Business rules (opening hours,
-/// lead time, grid) are the handler's 422s, not shape.
+/// Verifies shape validation rules for booking requests.
 /// </summary>
 public class BookAppointmentValidatorTests
 {

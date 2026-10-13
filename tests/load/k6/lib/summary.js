@@ -4,10 +4,7 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// run.sh selects the compatibility summary (--new-machine-readable-summary=false),
-// whose metrics map carries each threshold's { ok } verdict. k6 v2's new
-// results.metrics[] format has no verdicts; it is still accepted, with less
-// evidence. Either way the k6 exit code is the authoritative verdict.
+// Supports both legacy k6 threshold verdict maps and k6 v2 results.metrics[].
 const exitCodes = 'The k6 exit code is authoritative: 0 passed, 99 a threshold failed, 108 aborted.';
 
 function thresholdVerdicts(metrics) {

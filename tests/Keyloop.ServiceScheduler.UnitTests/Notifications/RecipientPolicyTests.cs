@@ -36,8 +36,7 @@ public sealed class RecipientPolicyTests
         RecipientPolicy.IsReservedDomain(recipient).ShouldBeFalse();
 
     /// <summary>
-    /// The policy also runs while a booking or cancel is saved (a reserved recipient's row is staged Suppressed), so it must never throw:
-    /// a fault there would fail the change itself (proposal A2). Malformed and hostile input, plus a fixed-seed generated set.
+    /// Verifies that reserved domain evaluation never throws on malformed recipient strings.
     /// </summary>
     [Fact]
     public void Never_throws_on_malformed_input()

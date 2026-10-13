@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` (its list
-// view), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { useId } from "react"
 
 import type { AppointmentListItemResponse } from "@/api/types.gen"
@@ -15,11 +15,7 @@ import { bookableDay, isOpen } from "../lib/calendar"
 import { DayLink, NewOnDay } from "./day-parts"
 import type { DaysProps } from "./week-view"
 
-/**
- * The Calendar on a phone: the range's days in order, each a section with a sticky heading (its name, how many
- * appointments, New appointment on today and later open days) over the day's job cards (UI_DESIGN 11.13, naming both the
- * bay and the technician). The template's list view, grouped by day; a closed day is one hatched line.
- */
+/** Mobile agenda list grouping calendar appointments by day. */
 export function CalendarAgenda({ days, ...rest }: DaysProps) {
   return (
     <ol className="flex flex-col gap-3">
@@ -79,7 +75,6 @@ interface AgendaCardProps {
   onSelect: (appointment: AppointmentListItemResponse, card: HTMLElement) => void
 }
 
-/** One appointment as Service Hub's job card (UI_DESIGN 11.13); the whole card opens the details as a bottom sheet. */
 function AgendaCard({ appointment, timeZone, selected, onSelect }: AgendaCardProps) {
   return (
     <button

@@ -35,7 +35,6 @@ import { type BookingForm, type BookingFormInput, DECLARATION_REASON_LIMIT } fro
 
 type BookingFormApi = UseFormReturn<BookingFormInput, unknown, BookingForm>
 
-/** A field's error under it, with the field-error icon (UI_DESIGN 11.4). */
 function FormError({ id, message }: { id?: string; message?: string }) {
   if (!message) return null
   return (
@@ -49,7 +48,6 @@ function FormError({ id, message }: { id?: string; message?: string }) {
 const powertrainItems = POWERTRAINS.map((value) => ({ value, label: powertrainLabels[value] }))
 const classItems = VEHICLE_CLASSES.map((value) => ({ value, label: vehicleClassLabels[value] }))
 
-/** Each class's consequence, on its option: Unknown is not conservative for the class, so the menu says so. */
 const classHints: Record<VehicleClass, string | null> = {
   Unknown: "Adds no heavy-vehicle needs",
   Car: null,
@@ -61,20 +59,15 @@ interface VehicleProfileFieldsProps {
   form: BookingFormApi
   /** The chosen service: whether live HV diagnosis applies depends on it. */
   service: ServiceTypeResponse | undefined
-  /** The section's place for focus ("Change the vehicle" from a refusal on step 2). */
+  /** Focus target when navigating back from a vehicle refusal on step 2. */
   sectionRef?: Ref<HTMLDivElement>
-  /**
-   * In the wide dialog's job column (UI_DESIGN 11.14): the frame's padding stays 12 px at every width, as the suggestions
-   * section's does there, so the column holds the whole job at 1440 x 900.
-   */
+  /** Uses tighter padding for the wide two-column booking dialog. */
   compact?: boolean
 }
 
 /**
- * The vehicle step's declaration (ADR-029), on step 1 beside the service: what the vehicle is decides who may work on it, so
- * it is chosen before a start, and the free starts below are counted for it. Powertrain and class start Unknown; a concrete
- * powertrain asks for a private reason (kept with the booking for audit, never sent to the customer); live HV diagnosis is
- * offered where it applies, with the two-person warning. Part of the booking being entered, discarded with it.
+ * Step 1 vehicle profile fields: powertrain, vehicle class, declaration reason (when powertrain is declared),
+ * and live HV diagnosis toggle with two-person warning.
  */
 export function VehicleProfileFields({ form, service, sectionRef, compact = false }: VehicleProfileFieldsProps) {
   const ids = {
@@ -98,7 +91,6 @@ export function VehicleProfileFields({ form, service, sectionRef, compact = fals
   const liveApplies = liveDiagnosisApplies(service, powertrain)
 
   return (
-    // A group, not a fieldset: its name sits inside the hairline frame, as the suggestions section's does.
     <div
       ref={sectionRef}
       role="group"
@@ -139,7 +131,6 @@ export function VehicleProfileFields({ form, service, sectionRef, compact = fals
                       <SelectItem key={item.value} value={item.value} className="py-2">
                         <span className="flex min-w-0 flex-col gap-0.5 whitespace-normal">
                           <span className="flex items-center gap-1.5">
-                            {/* A high-voltage system, marked; the rest keep the same indent so the names line up. */}
                             {item.value !== "Unknown" && item.value !== "Ice" ? (
                               <Zap aria-hidden="true" className="size-3.5 text-muted-foreground" />
                             ) : (
@@ -263,7 +254,7 @@ export function VehicleProfileFields({ form, service, sectionRef, compact = fals
   )
 }
 
-/** ADR-029's known limitation, said wherever live HV working is booked or shown. */
+/** Warning shown whenever live HV working is booked or displayed, noting that a second trained person must be arranged. */
 export function TwoPersonWarning({ id, className }: { id?: string; className?: string }) {
   return (
     <p

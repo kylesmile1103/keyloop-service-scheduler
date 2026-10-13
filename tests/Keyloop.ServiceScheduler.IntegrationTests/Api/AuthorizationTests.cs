@@ -207,7 +207,6 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
         me.GetProperty("roles").EnumerateArray().Select(item => item.GetString()).ShouldBe(role is "Anonymous" or "Unknown" ? [] : new[] { role });
         me.GetProperty("loginUrl").GetString().ShouldBe("/auth/login?returnTo=%2F");
         me.GetProperty("logoutUrl").GetString().ShouldBe("/cdn-cgi/access/logout");
-        // Only the Access handler's ticket carries an expiry (AccessAuthenticationTests); the test identity has none.
         me.GetProperty("expiresAtUtc").ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Null);
     }
 
@@ -222,7 +221,6 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         var appointment = TestData.NewAppointment(workshop.Dealership, workshop.Interim, workshop.Bay1, workshop.Technician1,
             TestData.LondonTime(9), customer: 1, vin: "WVWZZZ1KZAW123456", id: TestData.PlateLookalikeId());
-        // Use the same whitespace-sensitive initials fixture as the range-read tests.
         await _factory.WithDbAsync(async db =>
         {
             db.Appointments.Add(appointment);
@@ -260,8 +258,7 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("multipart/form-data; boundary=x")]
     public async Task Cookie_authenticated_writes_reject_the_content_types_a_cross_site_form_can_send(string contentType)
     {
-        // A cross-site form or no-CORS fetch can only send these simple content types; JSON-only binding answers 415 before any
-        // write, so an ambient Access cookie cannot be replayed into a booking or cancellation (ARCHITECTURE section 11.1, CSRF).
+        // Rejects form and plain-text content types with 415 to prevent cross-site form submissions.
         var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
         using var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);

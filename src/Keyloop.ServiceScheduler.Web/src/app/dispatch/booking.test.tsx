@@ -25,7 +25,7 @@ const diagnosticsServiceType = {
   bookable: true,
 }
 
-// The booking dialog (Task 17): two steps, slot chips from the availability read, the problem UX and the idempotency key.
+// Booking dialog: two-step flow, slot chips from availability, problem handling, and idempotency key management.
 
 vi.mock("@/lib/telemetry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/telemetry")>()
@@ -941,9 +941,7 @@ describe("booking an appointment on a phone", () => {
   })
 })
 
-// Task 33: from 1280 px the dialog is about 1100 px wide, step 1 puts the job beside its start times and step 2 the customer
-// beside the vehicle; narrower, and on a phone, it is one column as before. jsdom draws no layout: the columns are seen
-// through their names, what each holds, the reading (and so Tab) order and the dialog's width class.
+// Wide-screen two-column layout (>= 1280 px): step 1 places job selection beside start times and step 2 places customer beside vehicle.
 describe("the booking dialog's two columns", () => {
   /** The order the step's fields come in, which is the order Tab takes through them. */
   const fieldOrder = (scope: HTMLElement) =>
@@ -955,7 +953,7 @@ describe("the booking dialog's two columns", () => {
 
   const before = (first: Element, second: Element) => Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING)
 
-  // The returning-customer search heads the customer column (Task 39b), so Tab meets it before the fields it fills in.
+  // Returning-customer search appears first in the customer column.
   const stepTwoOrder = [
     "Returning customer",
     "Name",

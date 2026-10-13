@@ -3,10 +3,7 @@ using Keyloop.ServiceScheduler.Domain.Scheduling;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// What an outbox row keeps about its appointment, stored as source-generated JSON in <c>notification_outbox.payload</c>. It is built
-/// from the aggregate alone while the booking or cancel is saved: no lookup, no rendering, nothing that can fail the change or add a
-/// round trip to the booking's critical section (ADR-003, ADR-020). The email is rendered from it at dispatch. Only the last four VIN
-/// characters are kept, and no free text: the cancellation reason and the customer's name never reach an email (ADR-010).
+/// Appointment snapshot stored as JSON in <c>notification_outbox.payload</c> for deferred email rendering without free-text PII.
 /// </summary>
 internal sealed record NotificationSnapshot(
     Guid AppointmentId, Guid DealershipId, Guid ServiceTypeId, DateTime StartUtc, DateTime EndUtc, string Registration, string VinLastFour)

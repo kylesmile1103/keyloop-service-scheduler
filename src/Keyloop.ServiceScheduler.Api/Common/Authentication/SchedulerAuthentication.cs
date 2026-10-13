@@ -15,10 +15,7 @@ public static class SchedulerAuthentication
     public const string Admin = "Admin";
 
     /// <summary>
-    /// Deny by default. A mapped route that declares neither a policy nor <c>AllowAnonymous</c> is Admin-only, so a new endpoint
-    /// that forgets its access decision fails closed (EndpointAuthorizationMapTests also fails the build's tests). A request that
-    /// matched no route, or matched a path with the wrong method (the framework's 405 endpoint carries no route pattern), passes,
-    /// so routing still answers it with 404 or 405 instead of a misleading 401.
+    /// Fallback authorization policy requiring Admin for mapped routes without explicit authorization metadata, while allowing unmatched routes to return 404/405.
     /// </summary>
     internal static AuthorizationPolicy DenyByDefault { get; } = new AuthorizationPolicyBuilder()
         .RequireAssertion(context => context.Resource is HttpContext http && http.GetEndpoint() is not RouteEndpoint

@@ -1,6 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendars.tsx` and
-// `src/app/calendar/components/calendar-sidebar.tsx`, Copyright (c) 2025 ShadcnStore, MIT License (the full notice is
-// in the README's licence section).
+// `src/app/calendar/components/calendar-sidebar.tsx`, Copyright (c) 2025 ShadcnStore, MIT License.
 import { ListFilter } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -19,10 +18,7 @@ interface LaneFilterProps {
   onHiddenChange: (hidden: ReadonlySet<string>) => void
 }
 
-/**
- * Which lanes the board shows, one checkbox per bay or technician (the template calendar's "calendars" list, without its
- * demo groups and colours: on this board colour belongs to appointment status).
- */
+/** Checkbox list for toggling visible bays or technicians on the board. */
 export function LaneFilterList({ lanes, mode, hidden, onHiddenChange }: LaneFilterProps) {
   const toggle = (id: string, shown: boolean) => {
     const next = new Set(hidden)

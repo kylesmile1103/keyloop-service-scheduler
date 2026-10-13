@@ -3,8 +3,7 @@ using Keyloop.ServiceScheduler.Api.Features.Schedule.GetWorkshopSchedule;
 namespace Keyloop.ServiceScheduler.UnitTests.Features;
 
 /// <summary>
-/// The schedule query's shape rule: the date is required and strictly <c>yyyy-MM-dd</c>, exactly as availability's. Unlike
-/// availability there is no range: past days are the board's history and later days are simply empty.
+/// Verifies date query parameter validation for workshop schedule requests.
 /// </summary>
 public class GetWorkshopScheduleValidatorTests
 {

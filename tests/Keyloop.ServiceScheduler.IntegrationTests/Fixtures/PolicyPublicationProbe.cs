@@ -8,10 +8,7 @@ using Npgsql;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// A logger provider that, for each <c>1107 RequirementPolicyPublished</c> line, asks the database on its own connection whether the
-/// logged version is visible there, that is committed, at the moment the line is written. Register it in the host under test.
-/// </summary>
+/// <summary>Checks on an independent connection whether each logged <c>1107 RequirementPolicyPublished</c> policy version is already committed.</summary>
 public sealed class PolicyPublicationProbe(string connectionString) : ILoggerProvider
 {
     private readonly string _connectionString = connectionString;
@@ -34,10 +31,7 @@ public sealed class PolicyPublicationProbe(string connectionString) : ILoggerPro
     {
     }
 
-    /// <summary>
-    /// Turns a seeded database back into one seeded before Task 32a: policy v1 without <c>hv-post-collision</c> at both dealerships and
-    /// no damage assessment service, so the next seeding publishes v2 for each.
-    /// </summary>
+    /// <summary>Resets seeded requirement rules to v1 (without <c>hv-post-collision</c>) and removes <c>ACCIDENT-DAMAGE-ASSESSMENT</c> so the next seed publishes v2.</summary>
     public static async Task RevertToBeforeTask32aAsync(SchedulerDbContext db, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(db);

@@ -164,8 +164,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         });
     }
 
-    // Both bodies are the stub's valid answer padded with trailing JSON whitespace, so only the 64 KiB response buffer cap
-    // (Program.cs, MaxResponseContentBufferSize) separates them: without the cap the larger one is an ordinary 200 suggestion.
+    // Only the 64 KiB response buffer cap separates these two padded valid payloads.
     [Fact]
     public async Task Valid_upstream_body_of_exactly_64_KiB_is_accepted()
     {
@@ -346,7 +345,6 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         triageSpans[0].GetTagItem("triage.recommendation").ShouldBe("suggest");
         triageSpans[1].GetTagItem("triage.outcome").ShouldBe("unavailable");
         triageSpans[2].GetTagItem("triage.outcome").ShouldBe("rejected");
-        // Only a successful answer carries the bounded category (NONE here); an error or rejection carries none at all.
         triageSpans[0].GetTagItem("triage.uncovered_category").ShouldBe("NONE");
         triageSpans[1].GetTagItem("triage.uncovered_category").ShouldBeNull();
         triageSpans[2].GetTagItem("triage.uncovered_category").ShouldBeNull();
@@ -492,8 +490,6 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         issue.GetProperty("outsideServiceTypeId").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
-    // Fixture 43 of the 2026-10-13 live run: the accident assessment at confidence 0.409 with ACCIDENT_OR_BODY_DAMAGE at 0.84. The
-    // category is inside the chosen service's scope, so no notice is returned, and telemetry counts it as NONE without any text.
     [Fact]
     public async Task A_category_inside_the_chosen_services_scope_is_null_and_counted_as_NONE()
     {
@@ -628,9 +624,7 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(0);
     }
 
-    // Kestrel rejects a declared Content-Length over the route's limit and closes the connection. Sent without Expect, the body
-    // races that close and the client can fail with a broken pipe before it reads the 413. With Expect: 100-continue the client
-    // waits for the server's answer, which is the 413, and never sends the body.
+    // Uses Expect: 100-continue so Kestrel returns 413 before the client writes the body.
     private static async Task<HttpResponseMessage> PostDeclaringLengthFirstAsync(HttpClient client, string path, string json)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
@@ -717,8 +711,6 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         stub.Calls.ShouldBe(0);
     }
 
-    // The production configuration (Triage:ImageStoreUrl=http://triage-media.internal) through the whole API. The relay accepts any
-    // key, so only the key the API builds keeps one dealership's photos away from another's.
     [Fact]
     public async Task Private_relay_keys_uploads_by_dealership_and_Clef_receives_only_the_embedded_bytes()
     {
@@ -762,7 +754,6 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
         await UnavailableAsync(response);
         var log = _logs.Entries.Where(e => e.EventId.Id == 1400).ShouldHaveSingleItem();
         log.State.ShouldContain(p => p.Key == "Reason" && Equals(p.Value, "image-storage"));
-        // Service discovery may name the relay host at Trace level; no entry may carry an object key (dealership and image id).
         _logs.Entries.Where(e => e.Message.Contains("/triage/", StringComparison.Ordinal) ||
             e.State.Any(p => (p.Value?.ToString() ?? "").Contains("/triage/", StringComparison.Ordinal))).ShouldBeEmpty();
         stub.Calls.ShouldBe(0);
@@ -776,12 +767,11 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
     [InlineData("Admin", HttpStatusCode.OK)]
     public async Task Photo_upload_and_evaluation_require_a_booking_write_role(string role, HttpStatusCode expected)
     {
-        // Both Clef triage endpoints are writes: an upload stores a photo and an evaluation spends Clef credits (ADR-027, ADR-028).
         var ct = TestContext.Current.CancellationToken;
         using var stub = new StubTriageHandler();
         using var relay = new StubTriageMediaRelay();
         await using var host = Enabled(stub, relay: relay);
-        using var admin = host.CreateClient(); // the fixture's default Admin supplies an upload id for the evaluation
+        using var admin = host.CreateClient();
         var id = await UploadPhotoAsync(admin);
         using var client = host.CreateClient();
         client.DefaultRequestHeaders.Remove(TestAuthenticationHandler.Header);
@@ -806,7 +796,6 @@ public sealed class BookingTriageTests(PostgresFixture pg) : IAsyncLifetime
             }
         }
 
-        // A refused caller stores nothing and never reaches Clef; an allowed one stores its photo and gets one evaluation.
         relay.Requests.Count(r => r.Method == HttpMethod.Put).ShouldBe(expected == HttpStatusCode.OK ? 2 : 1);
         stub.Calls.ShouldBe(expected == HttpStatusCode.OK ? 1 : 0);
     }

@@ -4,74 +4,36 @@ import { failureStatus } from "@/lib/problem-details"
 import { cachedIdentity, currentUserQueryKey, signInHref } from "@/lib/session"
 import { hasUnsavedWork } from "@/lib/unsaved-work"
 
-/**
- * Keeping a signed-in user signed in (ADR-027, "Session duration and renewal"). Cloudflare Access issues no refresh token:
- * the API validates the application token (the hostname's HttpOnly `CF_Authorization` cookie, short-lived by design)
- * until its `exp`, which `/me` reports as `expiresAtUtc`. While the Access account session on the team domain lasts, a
- * top-level visit to the API's login path issues a new application token without asking anything and comes back to the
- * page. A script cannot do that (the team domain's cookies are third-party to a frame or a fetch), so renewing is a
- * navigation and the page loads again.
- *
- * For a tab whose `/me` carries an expiry:
- * - two minutes before it, `/me` is read again (another tab may already have renewed the shared cookie); then the tab
- *   renews on its own only when no view holds unsaved work (lib/unsaved-work.ts), the browser is online, it can prove it
- *   did not renew on its own in the last five minutes (a guard it writes and reads back in this tab's `sessionStorage`
- *   before navigating, kept across page loads until it expires) and no other tab is renewing (a 30-second lease in
- *   `localStorage`, checked and claimed under an origin-wide Web Lock where the browser has them, so exactly one tab
- *   renews; the others read `/me` again when it ends and find the new expiry);
- * - otherwise it says when the sign-in ends and offers *Stay signed in* (the same navigation), and that sign-in's renewal
- *   is the person's from then on, whatever happens next (a reconnection, a refocus, the work being put away);
- * - once the sign-in has ended (its expiry passed, `/me` turned anonymous after being signed in, or a write was refused with
- *   `401`) it says so and offers *Sign in again*, and `/me` is read again once the API has stopped accepting the token.
- * Storage that cannot be written or read back (a private window, blocked site data, a full quota) never lets the tab
- * navigate on its own: the person decides. So a renewal that did not help cannot loop. Timers sleep in background tabs and
- * on a sleeping device, so a tab looks again when it becomes visible, regains focus, comes back online or is restored
- * from the back-forward cache. Without Web Locks the lease is claimed and re-checked after 300 ms, which keeps two tabs
- * apart in ordinary timing; a tab paused between its check and its claim, or tabs whose clocks disagree, can still both
- * renew, which is harmless (two new cookies; each tab still renews on its own at most once per guard window). Nothing
- * here reads or stores a token: it reads `/me` and stores timestamps, an expiry and the renewing tab's random id. The
- * identity rules are untouched: a renewal that comes back as the same caller changes nothing (`identityKey` holds no
- * expiry), and an ended session is the anonymous identity that SessionWatch already answers.
- */
-
-/** How long before the sign-in ends a tab renews it. */
+/** How long before expiry a tab attempts to renew the session. */
 export const RENEW_BEFORE_MS = 2 * 60_000
-/** The shortest time between two renewals a tab starts on its own. */
+/** Minimum interval between automatic renewals initiated by the same tab. */
 export const AUTOMATIC_RENEWAL_INTERVAL_MS = 5 * 60_000
-/** The API still accepts a token this long after its `exp` (`Auth:ClockSkew`, at most a minute); `/me` is read again then. */
+/** Server clock skew allowance after `exp` before re-reading `/me`. */
 export const SERVER_CLOCK_SKEW_MS = 60_000
-/** How long a tab's claim to renew for every tab holds: about one renewal's round trip through Access. */
+/** Duration of the cross-tab renewal lease in `localStorage`. */
 export const RENEWAL_LEASE_MS = 30_000
-/** Without Web Locks: how long a tab waits after writing its claim before trusting it, so two claims at once see one winner. */
+/** Settle delay after writing a lease when Web Locks are unavailable. */
 export const LEASE_SETTLE_MS = 300
-/** The Web Lock under which a tab checks and claims the lease: one name for the origin, held only for that decision. */
+/** Web Lock name used to coordinate cross-tab session renewal. */
 export const RENEWAL_LOCK = "keyloop-scheduler-renewal"
-/** A renewal's navigation that has not left the page by then did not happen (stopped, or blocked): the tab looks again. */
 const NAVIGATION_GRACE_MS = 30_000
 
-/** What the session banner says: the sign-in ends at `endsAt` (epoch ms) while work is open, or it has ended. */
+/** Session banner notice state: expiring soon at `endsAt` (epoch ms) or already ended. */
 export type SessionNotice = { kind: "ending"; endsAt: number } | { kind: "ended" }
 
 const ENDED: SessionNotice = { kind: "ended" }
 
-/** The browser's navigation, behind a seam the tests replace (jsdom's `location.assign` cannot be spied on). */
 export const browserNavigation = { assign: (href: string) => window.location.assign(href) }
 
-/** Where a renewal goes: the API's login path on this origin, coming back to this page (its path, search and hash). */
+/** Returns the same-origin login URL that returns to the current path, search, and hash. */
 export function renewalHref(): string {
   const { pathname, search, hash } = window.location
   return signInHref(`${pathname}${search}${hash}`)
 }
 
-/**
- * This tab's last renewal (sessionStorage, so it survives the navigation and later reloads but is never shared): when it
- * left (epoch ms), and whether the next page has yet to see it (`returning`: that page was reached by the renewal).
- */
+/** `sessionStorage` key tracking this tab's last renewal timestamp and return state. */
 export const RENEWAL_GUARD_KEY = "keyloop-scheduler-renewal"
-/**
- * Which tab is renewing for every tab sharing the cookie (localStorage): its random id, when it claimed (epoch ms, on its
- * own clock) and the expiry it is renewing.
- */
+/** `localStorage` key coordinating which tab is actively renewing the shared session cookie. */
 export const RENEWAL_LEASE_KEY = "keyloop-scheduler-renewal-lease"
 
 interface Guard {
@@ -95,13 +57,8 @@ const isLease = (value: unknown): value is Lease =>
   Number.isFinite(value.at) &&
   (value.expiry === undefined || (typeof value.expiry === "number" && Number.isFinite(value.expiry)))
 
-/** A storage area as the browser gives it: reaching it can throw too (blocked site data), so it is asked for each time. */
 export type StorageArea = () => Storage
 
-/**
- * A stored value: `undefined` when there is none (or it is not one of ours), `null` when the storage cannot be read, so a
- * caller can tell "nothing there" from "cannot know".
- */
 function readValue<T>(area: StorageArea, key: string, valid: (value: unknown) => value is T): T | undefined | null {
   try {
     const text = area().getItem(key)
@@ -113,7 +70,6 @@ function readValue<T>(area: StorageArea, key: string, valid: (value: unknown) =>
   }
 }
 
-/** Writes a value and reads it back: `true` only when the storage now holds exactly it. */
 function writeValue(area: StorageArea, key: string, value: Guard | Lease): boolean {
   const text = JSON.stringify(value)
   try {
@@ -128,36 +84,27 @@ function removeValue(area: StorageArea, key: string): void {
   try {
     area().removeItem(key)
   } catch {
-    // Nothing to do: a lease that cannot be removed runs out on its own.
+    // Ignore storage removal errors; expired leases age out automatically.
   }
 }
 
 export interface SessionRenewalOptions {
-  /** This tab's own storage (the guard). By default the page's `sessionStorage`. */
   session?: StorageArea
-  /** The storage every tab of the origin shares (the lease). By default the page's `localStorage`. */
   shared?: StorageArea
-  /** This tab's id in the lease. By default a random UUID. */
   tab?: string
-  /** The origin's Web Locks, when the browser has them. By default `navigator.locks`. */
   locks?: () => LockManager | undefined
-  /** This tab's clock (`now`, epoch ms) and its own elapsed time (`elapsed`, monotonic ms). By default `Date` and `performance`. */
   clock?: { now: () => number; elapsed: () => number }
 }
 
 export interface SessionRenewal {
-  /** Starts watching `/me`, the mutations' refusals, the timers and the window's events; returns the stop. */
   start(): () => void
   subscribe(listener: () => void): () => void
-  /** What to show now (the same object until it changes), or nothing. */
   notice(): SessionNotice | null
-  /** *Stay signed in*, *Sign in again*: renews now, by navigating. */
   renew(): void
-  /** *Not now*: hides what is shown until there is something else to say. */
   dismiss(): void
 }
 
-/** The session renewal of one tab, over the app's query cache (see above). */
+/** Creates a controller that monitors `/me` expiry and coordinates automatic or manual session renewal. */
 export function createSessionRenewal(
   queryClient: QueryClient,
   {
@@ -170,25 +117,18 @@ export function createSessionRenewal(
 ): SessionRenewal {
   const meKey = currentUserQueryKey()
   const meHash = hashKey(meKey)
-  // Whether this page has had its first answer (which consumes a returning guard), and whether the tab was signed in.
   let answered = false
   let wasSignedIn = false
-  // The expiry whose renewal is the person's (they were offered Stay signed in), and the expiry whose read after its end
-  // has run (once, so a server whose clock is behind cannot make it read for ever; until it runs, every look reschedules it).
   let heldFor: number | null = null
   let rereadFor: number | null = null
-  // A renewal's navigation has started; this tab's claim to renew is settling, or has settled (without Web Locks).
   let renewing = false
   let settling: ReturnType<typeof setTimeout> | null = null
   let settled = false
-  // With Web Locks: a request for the lock is out (its ticket; a stop or a newer request makes an older one stale), this
-  // look runs under the lock, or the browser refused the lock (the lease alone then).
   let started = false
   let deciding: number | null = null
   let tickets = 0
   let locked = false
   let lockRefused = false
-  // Another tab's lease as this tab first saw it, by this tab's own elapsed time, for the waits that cannot trust clocks.
   let sighting: { key: string; since: number } | null = null
   let current: SessionNotice | null = null
   let dismissed: SessionNotice | null = null
@@ -213,7 +153,6 @@ export function createSessionRenewal(
     publish()
   }
 
-  /** Offers Stay signed in for this expiry, which from then on is never renewed on the tab's own. */
   function hold(expiresAt: number) {
     heldFor = expiresAt
     show({ kind: "ending", endsAt: expiresAt })
@@ -238,12 +177,7 @@ export function createSessionRenewal(
   const readGuard = () => readValue(session, RENEWAL_GUARD_KEY, isGuard)
   const readLease = () => readValue(shared, RENEWAL_LEASE_KEY, isLease)
 
-  /**
-   * Until when (this tab's clock) another tab's lease keeps this one from renewing `expiresAt`, or `null` once it is over.
-   * A lease fresh on this tab's clock holds until its end. One dated ahead of this clock, or one for this very expiry that
-   * looks old here, means the tabs' clocks disagree: it holds for a lease's length of this tab's own elapsed time from the
-   * moment it first saw it, then counts as abandoned.
-   */
+  /** Returns the timestamp until which another tab's lease blocks automatic renewal for `expiresAt`, or `null`. */
   function heldUntil(lease: Lease, expiresAt: number, now: number): number | null {
     if (lease.tab === tab) return null
     const key = `${lease.tab}|${lease.at}`
@@ -257,11 +191,6 @@ export function createSessionRenewal(
     return null
   }
 
-  /**
-   * Whether this tab may renew `expiresAt` on its own now: `manual` when it cannot prove it did not within five minutes (a
-   * recent guard, or storage it cannot read), `wait` while another tab's lease holds, else `claim` (`ours` when the lease
-   * already names this tab).
-   */
   function automatic(
     now: number,
     expiresAt: number
@@ -275,11 +204,6 @@ export function createSessionRenewal(
     return { kind: "claim", ours: lease?.tab === tab }
   }
 
-  /**
-   * Asks for the origin-wide lock, without waiting for it, and looks again holding it: the check and the claim are then one
-   * step no other tab can split. A tab that does not get it (another is deciding this moment) reads `/me` again once that
-   * tab's lease would end. A browser that refuses the lock leaves the lease alone to keep tabs apart.
-   */
   function decideUnderLock(manager: LockManager) {
     const ticket = ++tickets
     deciding = ticket

@@ -11,9 +11,7 @@ import { pressBeforeTheChangeIsDrawn } from "@/test/identity-change"
 import { pointerClick, renderBoard } from "@/test/render-board"
 import { interimServiceType } from "@/test/schedules"
 
-// The board's Book appointment decides when it is pressed, from the `/me` the cache holds at that moment (Task 28b review
-// round 1, the same rule as the Overview's and the Calendar's): a press that lands after `/me` changed but before React
-// has drawn the change opens nothing the new caller may not use.
+// Book appointment checks the cached `/me` when pressed so identity changes before re-render are respected.
 
 beforeAll(async () => {
   await import("@/app/dispatch/page")

@@ -1,6 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` (its
-// calendar grid, laid out as one week), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's
-// licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import type { AppointmentListItemResponse, DealershipResponse } from "@/api/types.gen"
 import type { BookState } from "@/app/dispatch/hooks/use-book-action"
 import { formatDay } from "@/lib/calendar-date"
@@ -12,7 +11,6 @@ import { DayLink, DayNumber, NewOnDay } from "./day-parts"
 
 export interface DaysProps {
   days: readonly string[]
-  /** The appointments to draw, by local date, each day's in start order. */
   byDay: ReadonlyMap<string, readonly AppointmentListItemResponse[]>
   dealership: DealershipResponse
   today: string
@@ -24,12 +22,7 @@ export interface DaysProps {
 
 const count = (items: readonly unknown[]) => `${items.length}`
 
-/**
- * A week, Monday to Sunday, as seven columns of the day's appointments in start order (the template's calendar grid,
- * one row tall). Not an hour grid: up to six bays work at once, and seven narrow columns cannot hold six overlapping
- * lanes; the dispatch board, a day heading's link away, is the hour grid of one day. A closed day is hatched as the board
- * hatches closed time; today's date sits in the filled circle; today and later open days offer New appointment.
- */
+/** Seven-column Monday-to-Sunday calendar grid of daily appointments. */
 export function WeekView({ days, byDay, dealership, today, selectedId, onSelect, onNew, bookState }: DaysProps) {
   const timeZone = dealership.timeZoneId
   return (
@@ -38,15 +31,8 @@ export function WeekView({ days, byDay, dealership, today, selectedId, onSelect,
         const items = byDay.get(date) ?? []
         const open = isOpen(dealership, date)
         return (
-          // A container: a narrow column (a tablet's week) keeps its heading to the day and its chips to the start time.
           <li key={date} className="@container/day flex min-w-0 flex-col bg-card">
-            {/*
-              On touch the day link and New appointment are 44 px targets each. A narrow column (below 8rem, a tablet's week)
-              stacks the weekday over the number, so both fit side by side; where they still do not, New appointment wraps
-              under the day instead of covering its link.
-            */}
             <div className="flex min-h-11 flex-wrap items-center justify-between gap-1 border-b px-1.5 py-1.5 @[9rem]/day:px-2 @max-[8rem]/day:gap-0.5 @max-[8rem]/day:px-1 @max-[8rem]/day:py-1">
-              {/* Focusable by script only: "+N more" in the month moves focus here once the week is on screen. */}
               <h3 data-day-heading={date} tabIndex={-1} className="min-w-0 rounded-sm text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
                 <DayLink date={date} today={today} dealershipId={dealership.id} className="@max-[8rem]/day:flex-col @max-[8rem]/day:justify-center @max-[8rem]/day:gap-0">
                   <span className={cn("text-muted-foreground @max-[8rem]/day:text-xs @max-[8rem]/day:leading-4", date === today && "font-semibold text-foreground")}>

@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><NoWarn>$(NoWarn);CA1707</NoWarn></PropertyGroup>
   <PropertyGroup>
-    <!-- Feature switches apply per process: mirror the API's (Addendum A §A1) so a type missing from SchedulerJsonContext fails here,
-         not only in production. Test code reads JSON with JsonDocument or the API's context, never reflection-based overloads. -->
+    <!-- Mirror the API's reflection-free JSON setting so types missing from SchedulerJsonContext fail in tests. -->
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
@@ -24,12 +23,9 @@
     <ProjectReference Include="..\..\src\Keyloop.ServiceScheduler.Api\Keyloop.ServiceScheduler.Api.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The Worker's container environment for the core profile, pinned by deploy/cloudflare/test/container.test.ts and booted by
-         CloudflareContainerEnvTests, so the edge and the API are tested against the same contract. -->
+    <!-- Container environment fixtures shared with the Cloudflare edge tests. -->
     <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-core.json" Link="Fixtures\cloudflare-container-env-core.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- The same profile with API telemetry export on, pinned by the same edge test and booted against a loopback OTLP receiver. -->
     <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-otlp.json" Link="Fixtures\cloudflare-container-env-otlp.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- The core profile with the deployment's vehicle-aware switch on, pinned by the same edge test. -->
     <None Include="..\..\deploy\cloudflare\test\fixtures\container-env-vehicle-aware.json" Link="Fixtures\cloudflare-container-env-vehicle-aware.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /><Using Include="Shouldly" /></ItemGroup>

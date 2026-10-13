@@ -37,8 +37,6 @@ public sealed class PolicyChurnTests(PostgresFixture pg) : IAsyncLifetime
     [Fact]
     public async Task Repeated_policy_publications_return_retryable_409_and_same_key_can_book_after_churn_stops()
     {
-        // A separate Admin host publishes real immutable versions, with preview, audit and the normal lock order.
-        // The booking host pauses before each lock, after it has resolved the preceding version.
         using var adminHost = _factory.WithWebHostBuilder(b => b.UseSetting("Scheduling:VehicleAwareRequirements", "true"));
         using var admin = adminHost.CreateClient();
         var churn = new PublishBeforeLock(() => PublishAsync(admin));
@@ -79,7 +77,6 @@ public sealed class PolicyChurnTests(PostgresFixture pg) : IAsyncLifetime
         _logs.Entries.ShouldContain(e => e.EventId.Id == 1002 && e.Message.Contains("concurrency_conflict", StringComparison.Ordinal));
         _logs.Entries.ShouldNotContain(e => e.EventId.Id == 1200);
 
-        // No failure was memoised. The identical booking intention and key now resolve and commit under version 6.
         using var retried = await client.PostJsonAsync(path, request, SchedulerJsonContext.Default.BookAppointmentRequest, headers, Ct);
         retried.StatusCode.ShouldBe(HttpStatusCode.Created, await retried.Content.ReadAsStringAsync(Ct));
         var appointment = await retried.Content.ReadJsonAsync(SchedulerJsonContext.Default.AppointmentResponse, Ct);

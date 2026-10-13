@@ -3,14 +3,14 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 
-/// <summary>The shared service meter and persistence/outbound instruments. Names, units and kinds are stable (ARCHITECTURE §12.1).</summary>
+/// <summary>The shared service meter and persistence/outbound instruments.</summary>
 public static class InfrastructureTelemetry
 {
     public const string Name = "Keyloop.ServiceScheduler";
 
     public static readonly Meter Meter = new(Name);
 
-    // Notification instruments (ARCHITECTURE §12.1) carry no recipient or other PII: tags are the kind and a fixed reason only.
+    // Notification instruments carry no recipient or other PII: tags are the kind and a fixed reason only.
 
     /// <summary>Tags: <c>kind</c>. Accepted by the sender (not proof of inbox delivery).</summary>
     internal static readonly Counter<long> NotificationsSent = Meter.CreateCounter<long>("scheduler.notifications.sent", "{notification}");
@@ -28,14 +28,12 @@ public static class InfrastructureTelemetry
     internal static readonly Histogram<double> NotificationOutboxAge = Meter.CreateHistogram<double>("scheduler.notifications.outbox_age", "s");
 
     /// <summary>
-    /// Tags: <c>kind</c>, <c>reason</c> (<c>ReservedDomain</c>; Task 20 adds the configurable policy's reasons). Never sent. Counted once a
-    /// row staged Suppressed has committed (DomainEventInterceptor), or when the dispatcher suppresses a Pending row at claim.
+    /// Tags: <c>kind</c>, <c>reason</c>. Counted once a suppressed row commits or when the dispatcher suppresses a Pending row at claim.
     /// </summary>
     internal static readonly Counter<long> NotificationsSuppressed = Meter.CreateCounter<long>("scheduler.notifications.suppressed", "{notification}");
 
     /// <summary>
-    /// Tags: <c>kind</c>. Pending rows (leased ones included) whether or not dispatch is enabled, so a disabled or stalled dispatcher is
-    /// visible as a backlog. Read from the database by <see cref="NotificationBacklogMonitor"/>, cached for the export interval.
+    /// Tags: <c>kind</c>. Pending rows (including leased) cached for the export interval by <see cref="NotificationBacklogMonitor"/>.
     /// </summary>
     internal static readonly ObservableGauge<long> NotificationsOutboxPending = Meter.CreateObservableGauge(
         "scheduler.notifications.outbox_pending", NotificationBacklogMonitor.ObservePending, "{notification}");

@@ -23,17 +23,14 @@ interface AppointmentBlockProps {
   style: CSSProperties
   /** Its details are open. */
   selected: boolean
-  /**
-   * Where its details open: a sheet (the block says it opens a dialog, and whether it is open), or the docked inspector
-   * (the block whose details it shows is the current one).
-   */
+  /** Where its details open: a modal sheet or the docked inspector. */
   details?: BlockDetails
-  /** Just booked: the block draws the booked halo for 3 s (UI_DESIGN 10). */
+  /** Just booked: draws the booked halo for 3 s. */
   booked?: boolean
   onSelect: (appointment: BoardAppointment, block: HTMLElement) => void
 }
 
-/** A registration as Service Hub's job cards write it: an outlined plate in mono capitals (UI_DESIGN 11.8). */
+/** Outlined registration plate chip in monospace capitals. */
 export function PlateChip({
   registration,
   labelled = true,
@@ -52,12 +49,7 @@ export function PlateChip({
   )
 }
 
-/**
- * One appointment on the timeline: a button in its status's colours (and icon) spanning its time. A narrow block keeps the
- * start of the service name and the avatar; wider ones add the status icon, the plate, the technician's first name (a
- * two-hour job at 1440 px shows it), and the VIN once it fits whole: a VIN cut short identifies nothing. Hover or focus
- * shows the whole record; a click opens its details (the sheet, or the inspector docked beside the board).
- */
+/** Timeline appointment block with status styling, progressive detail at wider widths, tooltip summary, and click-to-inspect. */
 export function AppointmentBlock({ appointment, mode, timeZone, style, selected, details = "sheet", booked = false, onSelect }: AppointmentBlockProps) {
   const { icon: StatusIcon, classes, label: statusLabel } = statusMeta[appointment.status]
   const counterpart = mode === "bays" ? appointment.technician.name : appointment.bay.name
@@ -76,21 +68,17 @@ export function AppointmentBlock({ appointment, mode, timeZone, style, selected,
         onClick={(event) => onSelect(appointment, event.currentTarget)}
         style={style}
         className={cn(
-          // Scrolled into view clear of the sticky ruler and lane column (the inspector shows its block when it opens).
           "scroll-mt-11 scroll-ml-[calc(var(--lane-width)+0.25rem)]",
           "@container/block relative z-[1] mx-px my-1 flex min-w-0 cursor-pointer flex-col justify-center gap-1 overflow-hidden rounded-md border-l-3 px-2 py-1 text-left text-dense shadow-xs outline-none",
           "transition-shadow duration-150 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card",
           "data-selected:ring-2 data-selected:ring-primary data-selected:ring-offset-1 data-selected:ring-offset-card",
-          // Just booked: three fading halos, and a ring that stays for the same 3 s (the static cue under reduced motion).
           "data-booked:animate-booked data-booked:ring-2 data-booked:ring-ring",
           classes.block
         )}
       >
         <span className="flex min-w-0 items-center gap-1">
-          {/* Under 4.5rem the name needs the room; the tooltip, the sheet and the label still give the status in words. */}
           <StatusIcon aria-hidden="true" className="size-3.5 shrink-0 @max-[4.5rem]/block:hidden" />
           <span className="truncate font-semibold">{appointment.serviceType.name}</span>
-          {/* Flagged for review (Task 30b): the word from 7rem, the shield alone below it; the label says it in words. */}
           {appointment.competenceWarning && (
             <ReviewMark className="ml-auto @max-[7rem]/block:px-1 @max-[7rem]/block:*:last:hidden" />
           )}

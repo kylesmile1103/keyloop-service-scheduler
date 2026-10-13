@@ -1,5 +1,5 @@
-// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx` (its
-// month grid), Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/calendar/components/calendar-main.tsx`,
+// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
 import { cn } from "@/lib/utils"
 
 import { bookableDay, dayInWords, inMonth, isOpen } from "../lib/calendar"
@@ -7,24 +7,16 @@ import { AppointmentChip } from "./appointment-chip"
 import { DayLink, DayNumber, NewOnDay } from "./day-parts"
 import type { DaysProps } from "./week-view"
 
-/** How many appointments a month cell has room for. */
 const SHOWN = 3
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 interface MonthViewProps extends DaysProps {
-  /** A date in the month shown; the grid's leading and trailing days belong to the months either side. */
   anchor: string
-  /** "+N more": the week of that day, where every appointment of the day has its place. */
   onShowWeek: (date: string) => void
 }
 
-/**
- * A month as whole weeks from Monday (the template's month grid, without its event colours: hue is for status, UI_DESIGN
- * 11.19). Each cell: the day's number (a link to that day's dispatch board, filled when it is today), New appointment on
- * today and later open days, up to three appointments by start, and "+N more", which opens the day's week. Days of the
- * months either side are muted; closed days are hatched.
- */
+/** Month calendar grid showing up to three appointments per day and an overflow link to the week view. */
 export function MonthView({ days, byDay, dealership, today, anchor, selectedId, onSelect, onNew, onShowWeek, bookState }: MonthViewProps) {
   const timeZone = dealership.timeZoneId
   return (
@@ -41,13 +33,10 @@ export function MonthView({ days, byDay, dealership, today, anchor, selectedId, 
           const items = byDay.get(date) ?? []
           const own = inMonth(date, anchor)
           const open = isOpen(dealership, date)
-          // Three fit; a fourth or more leaves two and the count of the rest, so nothing is ever left out unsaid.
           const visible = items.length > SHOWN ? items.slice(0, SHOWN - 1) : items
           const hidden = items.length - visible.length
           return (
-            // The hatch is a layer of its own: merged with the cell's fill, tailwind-merge would take it for a colour and drop the fill.
             <li key={date} className={cn("flex min-h-28 min-w-0 flex-col", own ? "bg-card" : "bg-muted")}>
-              {/* On touch the day link and New appointment are 44 px each: the cell's padding narrows so both fit, else the button wraps. */}
               <div className={cn("flex flex-1 flex-col gap-1 p-1.5 pointer-coarse:p-1", !open && "bg-hatch")}>
                 <div className="flex flex-wrap items-center justify-between gap-1 pointer-coarse:gap-0.5">
                   <h3 className="text-sm">

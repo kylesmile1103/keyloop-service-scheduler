@@ -9,7 +9,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Triage.GetBookingTriageStatus;
 public sealed class GetBookingTriageStatusEndpoint : IEndpoint
 {
     public static void Map(IEndpointRouteBuilder app) => app.MapGet("/booking-triage", Handle)
-        .WithName("GetBookingTriageStatus").WithTags(ApiTags.Catalog).AllowAnonymous() // public feature discovery (ADR-027)
+        .WithName("GetBookingTriageStatus").WithTags(ApiTags.Catalog).AllowAnonymous()
         .Produces<BookingTriageStatusResponse>().ProducesRateLimitedProblem();
 
     /// <summary>Discover whether booking intake suggestions are enabled</summary>

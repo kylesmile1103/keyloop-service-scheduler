@@ -4,8 +4,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Triage;
 namespace Keyloop.ServiceScheduler.UnitTests.Triage;
 
 /// <summary>
-/// The server-side type guard runs on real encoder output: 3 x 2 pixel files from ImageIO (JPEG, PNG) and libwebp (WebP), so a
-/// swapped width and height or a parser that accepts any bytes for a type fails here.
+/// Verifies image format signature and dimension validation against real JPEG, PNG, and WebP fixtures.
 /// </summary>
 public sealed class TriageImageValidatorTests
 {

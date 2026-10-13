@@ -127,13 +127,7 @@ interface TechnicianSheetProps {
   onDiscarded: () => void
 }
 
-/**
- * Adding or editing a technician (Task 30b, UI_DESIGN 11.24), in the edit sheet. The record is read through Refine core's
- * `useForm` (its `useOne`, the data provider's fresh Admin read), once, when the sheet opens; the form is react-hook-form
- * with the app's own checks (not zod) and fields. Saving sends the whole state through the data provider's `update` (or `create`), as a
- * write bound to the Admin who opened the form (`useWriteMutation` with `writes: "admin"`), with the version it was read at.
- * Refine's own `onFinish` is not used: its mutation would leave outside that binding.
- */
+/** Sheet for adding or editing a technician with optimistic concurrency and conflict resolution. */
 export function TechnicianSheet({ editing, open, onOpenChange, dealership, today, phone, vehicleAware, returnFocus, onSaved, onDiscarded }: TechnicianSheetProps) {
   const firstField = useRef<HTMLInputElement>(null)
   const title = editing?.mode === "edit" ? `Edit ${editing.name}` : "Add technician"
@@ -175,7 +169,7 @@ interface BodyProps {
   onDiscarded: () => void
 }
 
-/** The record the form edits: read once, with Refine's `useForm`, before the form is drawn from it. */
+/** Reads the technician record once via Refine's `useForm` before rendering the form. */
 function TechnicianSheetBody(props: BodyProps) {
   const { editing, dealership, today } = props
   const { query } = useRefineForm<AdminTechnicianResponse, SchedulerHttpError>({
@@ -184,15 +178,9 @@ function TechnicianSheetBody(props: BodyProps) {
     id: editing.mode === "edit" ? editing.id : undefined,
     meta: { dealershipId: dealership.id, date: today, view: "admin" },
     redirect: false,
-    // The representation the edit is made from: read when the sheet opens, never replaced under the form (a later save
-    // by someone else is a 412 to resolve, not a silent rebase).
     queryOptions: { enabled: editing.mode === "edit", refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false, staleTime: Infinity, gcTime: 0 },
   })
-  // The record as first read, kept: a re-read (the cache cleared for a change of role of the same Admin, or Reload after a
-  // 428) never rebases the form under what the Admin entered; the form decides what a Reload's fresh read means.
   const [kept, setKept] = useState<AdminTechnicianResponse | null>(null)
-  // Try again (a failed first read) goes when the form is drawn: focus moves to the sheet first, so nothing focused is taken
-  // away, and the form's first field takes it once drawn (UI_DESIGN 11.24).
   const [retried, setRetried] = useState(false)
   const retry = () => {
     const sheet = document.activeElement instanceof HTMLElement ? document.activeElement.closest<HTMLElement>('[role="dialog"]') : null
@@ -225,7 +213,6 @@ function TechnicianSheetBody(props: BodyProps) {
       base={record}
       focusFirstField={retried}
       onReload={async () => {
-        // A failed read keeps the last data it had: only a successful one is the record as it is now.
         const read = await query?.refetch()
         return read && !read.isError ? (read.data?.data ?? null) : null
       }}
@@ -282,7 +269,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
     activeHelp: useId(),
   }
   const dataProvider = useDataProvider()
-  // The representation edited: the one read when the sheet opened, then the current one once a conflict is reapplied.
   const [base, setBase] = useState(opened)
   const [conflict, setConflict] = useState<(Conflict<AdminTechnicianResponse> & { mine: TechnicianWriteRequest }) | null>(null)
   const [reappliedNote, setReappliedNote] = useState(false)
@@ -314,8 +300,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       const failure = shownFailure(error)
       const stale = conflictOf<AdminTechnicianResponse>(failure)
       if (stale) {
-        // The Save that was pressed is no longer the next step: the comparison is (drawn at once, then focused; a frame's
-        // wait can come before React commits it).
         flushSync(() => setConflict({ ...stale, mine: variables.body }))
         conflictRef.current?.focus()
         return
@@ -341,7 +325,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
   const showFailure = failure !== null && conflict === null && !fieldRefusal
 
   const submit = () => {
-    // Bound before the checks run, to the Admin the form was drawn for (ARCHITECTURE §15).
     const send = save.begin()
     if (!send) return
     setReappliedNote(false)
@@ -355,8 +338,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
   const reapply = () => {
     if (!conflict || !base) return
     const merged = reapplied(technicianFields, technicianWrite(base), technicianWrite(conflict.current), conflict.mine)
-    // Reapply goes with the comparison: focus moves to Save, the next step, before it does (a focused element removed from
-    // the sheet would send focus to the sheet itself).
     saveRef.current?.focus()
     setBase(conflict.current)
     form.reset(valuesOf(merged))
@@ -365,9 +346,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
     save.reset()
   }
 
-  // Reload after a 428 keeps what the Admin entered (Codex check of Task 30b): read the record again; unchanged since the
-  // form opened, the values stay for another Save with that version; changed, the comparison (opened, now, yours) opens to
-  // reapply them, as after a 412. Nothing entered is dropped without the Admin's Discard.
   const reload = async () => {
     if (!onReload || !base) return
     const mine = bodyOf(form.getValues())
@@ -375,8 +353,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
     const current = await onReload()
     setReloading(false)
     if (!current) return setReloaded("failed")
-    // Focus leaves Reload before the alert holding it goes: a focused element removed from the sheet sends focus to the
-    // sheet itself (Base UI restores it to the popup on the next frame, after anything this form asked for).
     saveRef.current?.focus()
     save.reset()
     if (current.version === base.version) {
@@ -384,7 +360,6 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
       setReloaded("kept")
       return
     }
-    // The comparison is drawn at once and then focused: a frame's wait can come before React commits it.
     flushSync(() => {
       setReloaded(null)
       setConflict({ current, currentETag: resourceTag(current.version), mine })

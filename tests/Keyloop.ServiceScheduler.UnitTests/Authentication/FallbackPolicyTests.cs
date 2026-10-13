@@ -11,8 +11,7 @@ using Microsoft.Extensions.Hosting;
 namespace Keyloop.ServiceScheduler.UnitTests.Authentication;
 
 /// <summary>
-/// The registered fallback policy, evaluated as the authorization middleware does (the HttpContext is the resource). A mapped route
-/// that declares neither a policy nor AllowAnonymous is Admin-only; requests that matched no route keep routing's own 404/405.
+/// Verifies that mapped routes without explicit access require Admin while unmatched routes remain handled by routing.
 /// </summary>
 public sealed class FallbackPolicyTests : IDisposable
 {

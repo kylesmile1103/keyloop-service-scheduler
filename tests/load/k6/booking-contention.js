@@ -53,8 +53,7 @@ export function setup() {
       if (slot.freeBays !== 1 || slot.freeTechnicians < 1 || activeOverlaps(board, context, slot).length !== 0) continue;
       if (context.slots.some((chosen) => Date.parse(chosen.startUtc) < Date.parse(slot.endUtc) &&
         Date.parse(chosen.endUtc) > Date.parse(slot.startUtc))) continue;
-      // Preserve one full alternative per day, so later rounds cannot exhaust
-      // suggestions and turn a correct conflict into a fixture failure.
+      // Reserve one alternative slot per day so conflicts always have suggestedSlots.
       if (reserved && Date.parse(slot.startUtc) < Date.parse(reserved.endUtc) &&
         Date.parse(slot.endUtc) > Date.parse(reserved.startUtc)) continue;
       context.slots.push({ ...slot, date });
@@ -69,8 +68,7 @@ export function contend(context) {
   const tags = { round: String(round) };
   const firstIteration = exec.vu.iterationInScenario === 0;
   uniqueParticipants.add(firstIteration, tags);
-  // shared-iterations does not promise one iteration per VU. Reject any VU
-  // taking a second iteration instead of silently reducing the contender set.
+  // Reject VUs taking a second iteration in shared-iterations mode.
   if (!firstIteration) return;
   const slot = context.slots[round - 1];
   const body = bookingBody(context, slot, `round${round}`);
@@ -87,11 +85,7 @@ export function contend(context) {
 }
 
 export function teardown(context) {
-  // setup data is immutable across VUs. Find winners through the public board,
-  // then dereference them through GetAppointment before cancelling our own rows.
-  // Under the Production preset, wait one full limiter window first: the final
-  // round may have used most of the 30 write permits, and a workload 429 aborts
-  // the run straight into teardown while its Retry-After may still be running.
+  // Under Production, wait one limiter window before verifying and cancelling winning bookings.
   if (config.production) sleep(65);
   for (let index = 0; index < context.slots.length; index++) {
     const slot = context.slots[index];
@@ -113,7 +107,6 @@ export function teardown(context) {
         stored.customer.name.startsWith(`${context.runId}-`) }, tags);
       if (matches) verified.add(1, tags);
     }
-    // Restrict cleanup to appointments identified as this run's winners.
     for (const winner of winners) cancel(winner.id, false, 'teardown');
   }
 }

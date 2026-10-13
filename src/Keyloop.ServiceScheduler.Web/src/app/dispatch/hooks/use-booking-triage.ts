@@ -54,11 +54,6 @@ export function useBookingTriage(dealershipId: string) {
   const maxTotalImageBytes = status.data?.maxTotalImageBytes ?? 8 * 1024 * 1024
 
   const generated = triageBookingRequestMutation()
-  // Uploads and the evaluation are writes (`BookingsWrite`), bound to the account the dialog was drawn for: checked last
-  // inside each request's fetch as it leaves (`write.fetch`, wrapping the span's traced fetch) and after every step awaited
-  // (reading a photo, each upload), so nothing is sent for anyone else and a role lost meanwhile sends nothing more; an
-  // answer that arrives after the identity changed is thrown away (`useWriteMutation`), and no upload of the previous
-  // caller's is kept for reuse.
   const request = useWriteMutation({
     mutationFn: (submission: Submission, write, context) =>
       withSpan("ui.booking_triage", async ({ fetch }) => {
@@ -113,8 +108,6 @@ export function useBookingTriage(dealershipId: string) {
 
   function send(text: string) {
     if (request.isPending || waiting > 0) return
-    // The identity in the cache decides, not the last render: a press can come after `/me` changed and before the view
-    // has drawn it (Try again included), to nobody or to another account.
     const write = request.begin()
     if (!write) return
     setDescriptionError(null)

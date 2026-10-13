@@ -34,19 +34,13 @@ import { WeekView } from "./components/week-view"
 import { useCalendarParams } from "./hooks/use-calendar-params"
 import { bookableDay, calendarDays, calendarRange, type CalendarView, dayInWords, inMonth, onCalendar, rangeTitle, shiftAnchor } from "./lib/calendar"
 
-/**
- * The Calendar (`/calendar`, adopted from the template's calendar app): one dealership's appointments by week or month on
- * its own calendar, from one range read per view. The dealership, the view and the day it is anchored on live in the
- * address (`?dealership=`, `?view=month`, `?date=`). A phone shows the same days as an agenda.
- */
+/** Calendar page displaying a dealership's appointments by week or month. */
 export default function CalendarPage() {
   const dealershipsOptions = getDealershipsOptions()
   const dealerships = useQuery(dealershipsOptions)
-  // Kept while Try again reads the list again, so the failure and its focused button stay until the answer.
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const phone = useIsMobile()
-  // The page waits for `/me` as the board does, so New appointment appears in its final state.
   const identityKnown = useCurrentUser().status !== "loading"
 
   const status: DealershipListStatus = dealerships.data
@@ -71,7 +65,6 @@ export default function CalendarPage() {
     <BaseLayout title="Calendar" description="One dealership's appointments by week or month.">
       <div className={cn("flex min-w-0 flex-col gap-4 px-4 md:gap-5 md:px-6 xl:px-8", phone && "pb-24")}>
         {selected && identityKnown ? (
-          // A new calendar per dealership: its selection and its reads are its own.
           <DealershipCalendar key={selected.id} dealership={selected} dealershipSelect={dealershipSelect} phone={phone} />
         ) : (
           <>
@@ -114,14 +107,12 @@ export default function CalendarPage() {
 interface Selection {
   appointment: AppointmentListItemResponse
   open: boolean
-  /** Who it was selected as (`CurrentUser.identity`): the chip is that caller's view of the booking. */
   identity: string
 }
 
 interface DealershipCalendarProps {
   dealership: DealershipResponse
   dealershipSelect: ReactNode
-  /** The phone presentation: the agenda, bottom sheets, a full-screen booking and the floating New action. */
   phone: boolean
 }
 
@@ -134,8 +125,6 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
   const opener = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const { identity } = useCurrentUser()
-  // A chip selected as another caller (or before `/me` failed) is that caller's view: the sheet closes in the same render,
-  // so the full name, VIN and plate never paint for the next one (ARCHITECTURE §15).
   if (selection && selection.identity !== identity) setSelection(null)
   const selected = selection?.identity === identity ? selection : null
   const book = useBookAction({ dealership, today, fullScreen: phone })
@@ -143,13 +132,9 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
   const range = calendarRange(view, anchor)
   const rangeOptions = rangeReadOptions(dealership.id, range.from, range.to)
   const read = useQuery({ ...rangeOptions, refetchOnWindowFocus: true })
-  // A range that never loaded stays failed while it is read again, so Try again keeps focus until the answer.
   const failure = useQueryFailure(read, rangeOptions.queryKey)
   const byDay = useMemo(() => byLocalDate(read.data ? onCalendar(read.data) : []), [read.data])
 
-  // "+N more" leaves the month for the day's week, and the button that had focus goes with the month: once that week is
-  // on screen, the day's heading takes focus (the range's title if the day is not drawn), so the keyboard carries on from
-  // the day. Stepping or switching the view meanwhile drops it.
   const focusOnWeek = useRef<string | null>(null)
   const section = useRef<HTMLElement>(null)
   const weekSettled = view === "week" && (read.data !== undefined || failure !== null)
@@ -166,10 +151,8 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
   }
 
   const days = calendarDays(range)
-  // A phone's month lists the month's own days; the grid's leading and trailing days belong to the months either side.
   const listed = phone && view === "month" ? days.filter((date) => inMonth(date, anchor)) : days
   const empty = read.data !== undefined && listed.every((date) => (byDay.get(date)?.length ?? 0) === 0)
-  // New appointment from the toolbar starts on the anchor day (today for a past one; the dialog moves a closed day on).
   const firstBookable = listed.map((date) => bookableDay(dealership, date, today)).find((date) => date !== null) ?? null
   const showsToday = range.from <= today && today <= range.to && (view === "week" || inMonth(today, anchor))
 
@@ -217,7 +200,6 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
       {book.reason}
 
       {(["week", "month"] as const).map((panel) => (
-        // Out of the tab order: the panel holds the focusable days and appointments, as the board's lane panels do.
         <TabsContent key={panel} value={panel} tabIndex={-1}>
           {view === panel && (
             <section ref={section} aria-labelledby={titleId} aria-busy={read.isPending || undefined} className={cn((!phone || !read.data || empty) && "overflow-hidden rounded-xl bg-card shadow-xs ring-1 ring-foreground/10")}>
@@ -259,14 +241,12 @@ function DealershipCalendar({ dealership, dealershipSelect, phone }: DealershipC
         timeZone={timeZone}
         returnFocus={() => (opener.current?.isConnected ? opener.current : null)}
         onCancelled={() => {
-          // Its chip leaves the calendar on the refetch.
           opener.current = null
         }}
       />
       {book.dialogs}
 
       {phone && (
-        // The phone's New action: Keyloop's cyan, clear of the home indicator, as the board's Book (UI_DESIGN 14).
         <Button
           type="button"
           variant="accent"
@@ -294,7 +274,7 @@ interface EmptyRangeProps {
   bookState: ReturnType<typeof useBookAction>["bookState"]
 }
 
-/** A week or month with nothing booked (UI_DESIGN 12.1): the empty-calendar picture, and New appointment when a day can take one. */
+/** Empty state shown when a week or month has no appointments. */
 function EmptyRange({ view, anchor, today, range, firstBookable, onNew, bookState }: EmptyRangeProps) {
   const current = range.from <= today && today <= range.to
   const title =
@@ -324,7 +304,7 @@ function EmptyRange({ view, anchor, today, range, firstBookable, onNew, bookStat
   )
 }
 
-/** The calendar's shape while it loads (UI_DESIGN 11.18): a week of day columns. */
+/** Loading skeleton for the calendar page. */
 function CalendarSkeleton({ framed = true }: { framed?: boolean }) {
   const body = (
     <div aria-hidden="true" className="grid grid-cols-7 gap-px bg-border max-md:grid-cols-1">

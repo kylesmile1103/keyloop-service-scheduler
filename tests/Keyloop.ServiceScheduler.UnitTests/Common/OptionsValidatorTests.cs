@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace Keyloop.ServiceScheduler.UnitTests.Common;
 
-// The validators are produced by the [OptionsValidator] source generator from the options' [Range] attributes (Addendum A §A4).
+// The validators are produced by the [OptionsValidator] source generator from the options' [Range] attributes.
 public class OptionsValidatorTests
 {
     [Fact]
@@ -138,7 +138,7 @@ public class OptionsValidatorTests
     [InlineData("")]
     [InlineData("0123456789abcdef")]
     public void Reseed_key_is_optional_but_at_least_16_characters_when_set(string? key) =>
-        // No key means no reseed route (Addendum C §C3); an empty value, as an unset environment variable binds, is no key either.
+        // Empty string (as bound from an unset environment variable) is treated as no key.
         new DemoOptionsValidator().Validate(null, new DemoOptions { ReseedKey = key }).Succeeded.ShouldBeTrue();
 
     [Theory]
@@ -146,7 +146,6 @@ public class OptionsValidatorTests
     [InlineData("0123456789abcde")]
     public void Reseed_key_shorter_than_16_characters_is_rejected(string key)
     {
-        // The key is all that stands between a caller and wiping the demo data, so a guessable one fails the boot.
         var result = new DemoOptionsValidator().Validate(null, new DemoOptions { ReseedKey = key });
 
         result.Failed.ShouldBeTrue();

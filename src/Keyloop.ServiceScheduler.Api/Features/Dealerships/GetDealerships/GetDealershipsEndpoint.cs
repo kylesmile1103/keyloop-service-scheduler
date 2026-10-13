@@ -12,16 +12,13 @@ public sealed class GetDealershipsEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships", HandleAsync)
             .WithName("GetDealerships")
-            .AllowAnonymous() // public read (ADR-027)
+            .AllowAnonymous()
             .WithTags(ApiTags.Dealerships)
             .Produces<IReadOnlyList<DealershipResponse>>(StatusCodes.Status200OK)
             .ProducesRateLimitedProblem();
 
     /// <summary>List dealerships</summary>
-    /// <remarks>
-    /// Every dealership with its IANA time zone and weekly operating hours as local wall-clock times, ordered by name. Start here:
-    /// the catalogue, availability, booking and schedule routes are all scoped by a dealership id.
-    /// </remarks>
+    /// <remarks>Returns every dealership with its IANA time zone and weekly operating hours, ordered by name.</remarks>
     /// <param name="handler">Reads the dealerships.</param>
     /// <param name="cancellationToken">Cancelled when the client disconnects.</param>
     /// <response code="200">The dealerships, ordered by name, each with seven days of operating hours from Monday.</response>

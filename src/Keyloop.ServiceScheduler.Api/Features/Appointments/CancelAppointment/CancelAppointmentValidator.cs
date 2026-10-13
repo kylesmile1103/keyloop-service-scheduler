@@ -4,11 +4,7 @@ using Keyloop.ServiceScheduler.Domain.Scheduling;
 
 namespace Keyloop.ServiceScheduler.Api.Features.Appointments.CancelAppointment;
 
-/// <summary>
-/// The shape rule for <see cref="CancelAppointmentRequest"/>, applied by <c>ValidationFilter</c> (400 <c>validation-error</c> keyed
-/// <c>reason</c>). The reason is measured after trimming, as <see cref="Appointment.Cancel"/> measures it, so a request that passes never
-/// makes the aggregate throw. Whether the appointment can be cancelled at all is state, not shape: the handler's 404 and 409s.
-/// </summary>
+/// <summary>Validates request shape for <see cref="CancelAppointmentRequest"/>.</summary>
 public sealed class CancelAppointmentValidator : AbstractValidator<CancelAppointmentRequest>
 {
     public CancelAppointmentValidator() =>

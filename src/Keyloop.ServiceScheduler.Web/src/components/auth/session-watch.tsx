@@ -10,27 +10,18 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { describeFailure, failureStatus } from "@/lib/problem-details"
 import { currentUserQueryKey, identityKey } from "@/lib/session"
 
-/** The identity while `/me` cannot be read: nobody known, the same to the cache as a change of caller. */
 const UNKNOWN = "unknown"
 import { clearCallerData, refetchCallerData } from "@/lib/session-cache"
 
 interface SessionProblem {
   status: 401 | 403
   traceId?: string
-  /** Whether the API knew a signed-in user before this refusal (the session ended) or not (it never began). */
   wasSignedIn: boolean
 }
 
 /**
- * The one place the app answers the server's word on identity (ARCHITECTURE §15, UI_DESIGN 11.20):
- * - a `401` from any query or mutation opens "Your session has ended" with Sign in (the API's login path on this origin,
- *   back to this page; the problem's own `loginUrl` is never followed); a `403` opens "Your role doesn't allow that".
- *   Either reads `/me` again;
- * - when `/me` names another caller than before (signed in or out, another email, other roles), or cannot be read (nobody
- *   is known until it answers again), whatever the previous caller read is cleared (lib/session-cache.ts) and the views
- *   read it again as the new one.
- * Mounted once, after the routes in the root layout. The re-read can still come before a view has rendered for the new
- * caller, so a read only a role may make decides at fetch time from the cached identity (the details sheet's record).
+ * Watches query and mutation cache events for 401/403 responses and `/me` identity changes,
+ * clearing caller-dependent cache data and presenting a sign-in or role-refusal dialog when needed.
  */
 export function SessionWatch() {
   const queryClient = useQueryClient()
@@ -49,7 +40,6 @@ export function SessionWatch() {
       if (status !== 401 && status !== 403) return
       const { traceId } = describeFailure(error)
       const next: SessionProblem = { status, traceId, wasSignedIn: signedIn }
-      // The first refusal of a burst is the one to answer; the rest say the same.
       setProblem((current) => current ?? next)
       void queryClient.invalidateQueries({ queryKey: meKey })
     }
@@ -68,9 +58,6 @@ export function SessionWatch() {
         if (event.action.type === "error") refused(event.action.error)
         return
       }
-      // A failed read, already at its first attempt (before TanStack's own retry): whoever was signed in may not be any
-      // more, so what they read goes now, as on any change; the next answer is a change again (and clears what was read
-      // meanwhile), even when it names the same caller.
       if (event.action.type === "failed" || event.action.type === "error") {
         becomes(UNKNOWN)
         signedIn = false
@@ -90,9 +77,6 @@ export function SessionWatch() {
     }
   }, [queryClient])
 
-  // After the views have rendered for the new caller: the cache's notifications reach them on TanStack's next tick (its
-  // notify manager batches on a zero timeout), which may come after this state update has rendered. A view that closed
-  // with the change (a booking's details) then no longer holds its read, so it is not read again for the new caller.
   useEffect(() => {
     if (changes === 0) return
     const timer = setTimeout(() => void refetchCallerData(queryClient), 0)
@@ -102,7 +86,6 @@ export function SessionWatch() {
   return <SessionProblemDialog problem={problem} onClose={() => setProblem(null)} />
 }
 
-/** The answer to a refusal: sign in again (401), or what the role does not allow (403). */
 function SessionProblemDialog({ problem, onClose }: { problem: SessionProblem | null; onClose: () => void }) {
   // Kept while the dialog animates closed.
   const [shown, setShown] = useState(problem)

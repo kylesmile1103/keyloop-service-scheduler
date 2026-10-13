@@ -5,16 +5,14 @@ import { mockBoardApi } from "@/test/board-api"
 import { reading } from "@/test/dealerships"
 import { renderBoard } from "@/test/render-board"
 
-// Refine core belongs to the resources subtree (ADR-030, ADR-031): this file never imports it, so the flag below says
-// whether anything the app loaded did.
+// Track whether Refine core is loaded when navigating across routes.
 const refine = vi.hoisted(() => ({ loaded: false }))
 vi.mock("@refinedev/core", async (importOriginal) => {
   refine.loaded = true
   return importOriginal()
 })
 
-// The workshop pages' code loads once up front (it never loads Refine); the resources pages' code is left cold, so the
-// flag can tell when it loads, and its waits allow for a first compile on a busy machine.
+// Preload workshop routes while leaving resource routes lazy-loaded.
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/appointments/page")])
 })

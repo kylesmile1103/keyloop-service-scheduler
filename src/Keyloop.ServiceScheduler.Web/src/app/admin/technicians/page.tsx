@@ -52,11 +52,7 @@ const SORTS: readonly SortChoice[] = [
 const COMPETENCE_SORT: SortChoice = { value: "hv", label: "Highest HV level", sorting: [{ id: "hv", desc: true }] }
 
 /**
- * Which columns show. Without HV competence all six fit from 1024 px. With it (vehicle-aware requirements on) the brands
- * are left out below 1680 px, the employee number below 1536 px (the search still finds a technician by it) and today's
- * appointment count below 1440 px (the booked time stays, and the Today filter still counts), so the table fits its card
- * without scrolling sideways from 1024 px up. View brings them back, and once the user has chosen, the choice stands
- * whatever the width (the appointments list's rule, UI_DESIGN 11.17).
+ * Responsive default column visibility when HV competence is enabled, preserving explicit user overrides.
  */
 function useColumnVisibility(withCompetence: boolean) {
   const widest = useMediaQuery("(min-width: 1680px)")
@@ -74,10 +70,7 @@ function useColumnVisibility(withCompetence: boolean) {
 /** Stable empty rows: TanStack Table re-derives every row model when its `data` changes identity. */
 const NO_ROWS: TechnicianRecord[] = []
 
-/**
- * The Technicians page (`/resources/technicians`): the dealership's roster. An Admin adds and edits technicians, confirms HV
- * levels and deactivates or reactivates them (Task 30b); a Service advisor or a Viewer sees the same list read-only.
- */
+/** Technicians page (`/resources/technicians`) for viewing and managing the dealership roster. */
 export default function TechniciansPage() {
   return (
     <ResourcePage title="Technicians" description="Who works at the dealership, what they are certified for and how booked they are today.">
@@ -91,15 +84,11 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
   const reasonId = useId()
   const read = useResourceList<TechnicianRecord>("technicians", { dealership, today, view: access.admin ? "admin" : "workshop" })
   const rows = read.rows ?? NO_ROWS
-  // HV competence (ADR-029): the schedule carries it to a role, the Admin read to an Admin, with vehicle-aware requirements on.
   const vehicleAware = useVehicleAware()
   const refresh = useRefreshAfterEdit()
-  // An open edit belongs to the Admin it was opened by (`adminWriter`): another Admin, or a role that cannot edit, closes it.
   const { adminWriter } = useCurrentUser()
   const writer = adminWriter ?? ""
 
-  // What is open, and for whom: an edit (or a deactivation) closes without saving in the same render as a change to another
-  // Admin or to a role that cannot edit (`useOpenFor`), saying so when the new caller is an Admin too.
   const editor = useOpenFor<TechnicianEditing>(writer)
   const activity = useOpenFor<TechnicianRecord>(writer)
   const opener = useRef<HTMLElement | null>(null)

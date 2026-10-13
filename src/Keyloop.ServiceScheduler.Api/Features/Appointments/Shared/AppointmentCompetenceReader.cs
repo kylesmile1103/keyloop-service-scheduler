@@ -12,10 +12,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.Shared;
 /// <param name="ReasonCodes">Bounded qualification-lapse codes, in stable order; never resource names or visitor text.</param>
 public sealed record CompetenceWarningResponse(bool RequiresReview, IReadOnlyList<string> ReasonCodes);
 
-/// <summary>
-/// The closed competence-warning reasons, in the fixed order a warning lists them (ADR-029 Task 30a amendment). The contract enumerates
-/// exactly <see cref="All"/> (SchedulerOpenApi), so a new reason is a contract change.
-/// </summary>
+/// <summary>Bounded reason codes for appointment competence warnings, in canonical display order.</summary>
 public static class CompetenceReasonCodes
 {
     public const string TechnicianInactive = "technician-inactive";
@@ -31,10 +28,7 @@ public static class CompetenceReasonCodes
 
 public static class AppointmentCompetenceReader
 {
-    /// <summary>
-    /// Only an appointment that still holds its bay and technician (<see cref="Appointment.ActiveStatuses"/>: confirmed, checked in or
-    /// in progress) can be reviewed or reassigned. Cancelled, completed and no-show appointments are history and are never flagged.
-    /// </summary>
+    /// <summary>Returns true for active appointment statuses that still hold their bay and technician.</summary>
     public static bool AppliesTo(AppointmentStatus status) => Appointment.ActiveStatuses.Contains(status);
 
     public static CompetenceWarningResponse Evaluate(RecordedRequirements requirements, ServiceBay bay, Technician technician, DateOnly localDate)
@@ -52,11 +46,7 @@ public static class AppointmentCompetenceReader
         return new(reasons.Count > 0, reasons);
     }
 
-    /// <summary>
-    /// The hard requirements recorded for an appointment, reconstructed for one booked before the full snapshot existed. A board read passes
-    /// one dealership's <c>rulesByVersion</c> memo so each older policy version is read once per request, not once per appointment;
-    /// a single appointment passes null.
-    /// </summary>
+    /// <summary>Returns the recorded hard requirements for an appointment, or reconstructs them for legacy bookings.</summary>
     public static async Task<RecordedRequirements> RequirementsAsync(SchedulerDbContext db, Guid dealershipId, ServiceType service,
         RecordedRequirements? recorded, AllocationDecision? allocation, VehicleProfile profile, bool needsLiveDiagnosis,
         Dictionary<int, IReadOnlyList<RequirementRule>>? rulesByVersion, CancellationToken ct)
@@ -72,7 +62,6 @@ public static class AppointmentCompetenceReader
             rulesByVersion?.Add(allocation.PolicyVersion, rules);
         }
         var requirements = RequirementResolver.Resolve(service, profile, rules, needsLiveDiagnosis, allocation.PolicyVersion);
-        // Minimum was recorded in every vehicle-aware allocation, including older default policies.
         return new(requirements.BayCapabilities.Order().ToArray(), requirements.Certifications.Order().ToArray(), allocation.MinimumHvLevel);
     }
 
@@ -86,7 +75,6 @@ public static class AppointmentCompetenceReader
         return warning.RequiresReview ? warning : null;
     }
 
-    // Compatibility for bookings made before the full snapshot existed. The service catalogue is read-only in Task 30.
     private static async Task<IReadOnlyList<RequirementRule>> RulesAsync(SchedulerDbContext db, Guid dealershipId, int policyVersion, CancellationToken ct)
     {
         var rules = await db.RequirementRules.AsNoTracking()

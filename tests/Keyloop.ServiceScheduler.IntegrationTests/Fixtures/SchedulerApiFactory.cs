@@ -14,12 +14,7 @@ using Respawn;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// The real API host on the shared Testcontainers database, in the <c>SystemTest</c> environment, with migrations applied at
-/// startup, no seeding, and the clock replaced by <paramref name="clock"/>. When <paramref name="logs"/> is given it receives every
-/// log entry the host writes, from startup on (the logging configuration's level filters still apply).
-/// <paramref name="hostStartDelay"/> widens the build-to-start window for startup-race regression tests.
-/// </summary>
+/// <summary>Runs the API host in the <c>SystemTest</c> environment against the shared Testcontainers database with a fake clock.</summary>
 public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvider clock, CapturingLoggerProvider? logs = null,
     TimeSpan? hostStartDelay = null)
     : WebApplicationFactory<Program>
@@ -34,15 +29,13 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
         var gate = host.Services.GetRequiredService<StartupGate>();
         if (hostStartDelay is { } delay)
         {
-            // Test-only scheduling hook: simulate a slow factory after HostBuilt, before its startup callback is registered.
             Thread.Sleep(delay);
         }
 
         Task started;
         try
         {
-            // DeferredHost.StartAsync resolves IHostApplicationLifetime and registers ApplicationStarted before its first await.
-            // Only then may Program.cs validate, fail and dispose the provider. Awaiting the task propagates the entry point error.
+            // StartAsync registers ApplicationStarted before its first await so startup validation errors propagate cleanly.
             started = host.StartAsync();
         }
         finally
@@ -63,9 +56,7 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
         builder.UseSetting("Database:SeedDemoData", "false");
         builder.ConfigureTestServices(services =>
         {
-            // The app validates immediately after Build and disposes on failure. WebApplicationFactory's deferred host has
-            // already escaped via HostBuilt at that point, but may still need the provider to register its startup callback.
-            // A gate per provider also covers WithWebHostBuilder children without sharing startup state between hosts.
+            // Gate startup validation per service provider until DeferredHost registers its startup callback.
             services.AddSingleton(_ => new StartupGate());
             var validator = services.Single(service => service.ServiceType == typeof(IStartupValidator));
             services.Replace(ServiceDescriptor.Describe(typeof(IStartupValidator), sp => new GatedStartupValidator(
@@ -89,7 +80,6 @@ public sealed class SchedulerApiFactory(string connectionString, FakeTimeProvide
     protected override void ConfigureClient(HttpClient client)
     {
         base.ConfigureClient(client);
-        // Existing engine tests exercise authorized booking and detail reads. Authentication tests explicitly select each caller.
         client.DefaultRequestHeaders.Add(TestAuthenticationHandler.Header, "Admin");
     }
 

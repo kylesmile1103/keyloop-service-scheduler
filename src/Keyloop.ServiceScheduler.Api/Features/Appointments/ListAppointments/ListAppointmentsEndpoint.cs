@@ -16,7 +16,7 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
     public static void Map(IEndpointRouteBuilder app) =>
         app.MapGet("/dealerships/{dealershipId:guid}/appointments", HandleAsync)
             .WithName("ListAppointments")
-            .AllowAnonymous() // public read; personal data is masked without a role (ADR-027)
+            .AllowAnonymous()
             .WithTags(ApiTags.Appointments)
             .AddEndpointFilter<ValidationFilter<ListAppointmentsQuery>>()
             .Produces<IReadOnlyList<AppointmentListItemResponse>>(StatusCodes.Status200OK)
@@ -25,7 +25,6 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
             .ProducesRateLimitedProblem()
             .AddOpenApiOperationTransformer((operation, _, _) =>
             {
-                // Bind text for field-keyed validation, but give generated clients the precise allowed status names and repeat syntax.
                 var status = operation.Parameters!.OfType<OpenApiParameter>().Single(p => p.Name == "status");
                 status.Required = false;
                 status.Style = ParameterStyle.Form;
@@ -43,18 +42,11 @@ public sealed class ListAppointmentsEndpoint : IEndpoint
                 return Task.CompletedTask;
             });
 
-    // As on GetWorkshopSchedule, XML param tags name the flattened [AsParameters] properties for the OpenAPI generator.
 #pragma warning disable CS1572
     /// <summary>List appointments for a local date range</summary>
     /// <remarks>
-    /// Selects appointments whose start date in the dealership's time zone falls between from and to, both inclusive, at most
-    /// 62 calendar days. Reads any status, including cancelled appointments, unless status is supplied; repeat it to select a
-    /// union, for example by supplying both <c>status=Confirmed</c> and <c>status=Completed</c>. Ordered by start UTC, then id for equal starts.
-    /// Opening hours do not restrict the read. Local times carry the zone's offset, including both occurrences of a fall-back
-    /// hour. Callers with Admin, ServiceAdvisor or Viewer receive full customer names, VINs and registrations; every other caller
-    /// receives them masked: one initial per name part (<c>ALS</c> for Alice Louise Smith), the domain VIN mask of eleven asterisks
-    /// and the last six characters (<c>***********123456</c>), and the full registration mask <c>*******</c> whatever the plate.
-    /// Returns an empty array when there are no matches.
+    /// Returns appointments starting between <c>from</c> and <c>to</c> (inclusive, up to 62 calendar days) in the dealership's time zone, optionally filtered by status.
+    /// Callers with Admin, ServiceAdvisor, or Viewer receive full customer names, VINs, and registrations; other callers receive masked values (<c>ALS</c>, <c>***********123456</c>, and <c>*******</c>).
     /// </remarks>
     /// <param name="query">The route and query parameters below, validated before the handler runs.</param>
     /// <param name="dealershipId" example="45fa64a1-baa9-8c61-b11a-ee9d7572ae3e">The dealership whose appointments are read (the seeded Reading dealership in the example).</param>

@@ -9,8 +9,6 @@ import { createQueryClient } from "@/lib/query-client"
 import { mockBoardApi } from "@/test/board-api"
 import { anonymous, noRole } from "@/test/identities"
 
-// The error pages (Task 29), adopted from the template's errors app: routed, so the app can navigate to them.
-
 beforeAll(async () => {
   await Promise.all(
     ["unauthorized", "forbidden", "internal-server-error", "under-maintenance", "not-found"].map((name) => import(`@/app/errors/${name}/page.tsx`))
@@ -58,7 +56,6 @@ describe("error pages", () => {
     expect(await heading("Sign in to continue")).toBeInTheDocument()
     expect(screen.getByText("This page needs you to be signed in with a workshop account.")).toBeInTheDocument()
     expect(screen.getByText(/booking, cancelling and the Resources area need an account/)).toBeInTheDocument()
-    // A plain navigation to the API's Access login (no form, no request), back to the board.
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/auth/login?returnTo=%2Fdispatch")
     expect(screen.queryByRole("link", { name: "Go to the dispatch board" })).not.toBeInTheDocument()
     expect(screen.queryByText(/does not offer sign-in/)).not.toBeInTheDocument()
@@ -131,8 +128,6 @@ describe("error pages", () => {
     expect(await heading("Page not found")).toBeInTheDocument()
     const line = screen.getByText(/^Nothing lives at/)
     expect(line).toHaveTextContent("Nothing lives at /workshop/requirement-policy/a1b2-c3d4.")
-    // One code element for the whole path, made of one unbreakable box per segment (its `/` first), with a break allowed
-    // only between boxes: never mid-segment, so never after a hyphen. The full stop is in the last box.
     const code = line.querySelector("code")!
     expect(code).toHaveTextContent("/workshop/requirement-policy/a1b2-c3d4.")
     expect(code).not.toHaveClass("break-all")
@@ -142,8 +137,6 @@ describe("error pages", () => {
     expect(code.querySelectorAll(":scope > wbr")).toHaveLength(2)
   })
 
-  // Each status has its own picture (wave 2), described by the images README's alt text: the key and open padlock, the
-  // barrier, the open bonnet, the lift and the closed road are what the page shows beside its headline.
   it.each([
     [401, ERROR_PAGES.unauthorized, "Sign in to continue", "unauthorized.webp", "Car key fob beside an open padlock inviting sign-in."],
     [403, ERROR_PAGES.forbidden, "No access to this page", "forbidden.webp", "Workshop bay behind a safety barrier with a wrench role badge."],
@@ -158,7 +151,6 @@ describe("error pages", () => {
     expect(picture.getAttribute("src")).toMatch(new RegExp(`/${file.replace(".", "\\.")}$`))
     expect(picture).toHaveAttribute("width", "1200")
     expect(picture).toHaveAttribute("height", "900")
-    // One picture and no icon tile over it: the tiles only told apart pages that shared one picture.
     expect(container.querySelectorAll("main img")).toHaveLength(1)
     expect(container.querySelector("main svg.lucide-key-round, main svg.lucide-lock-keyhole, main svg.lucide-construction")).toBeNull()
   })

@@ -9,10 +9,7 @@ import type {
 import { formatDay } from "@/lib/calendar-date"
 import { bayCapabilities, certifications } from "@/lib/features"
 
-/**
- * A technician's or a bay's state, field by field, in the screen's words: what a conflict (`412`) and the change history
- * compare. Each field has its label and its value in words, so "HV level: HV 3 → HV 2" reads the same everywhere.
- */
+/** Field descriptors and diff helpers for comparing technician and bay records in 412 conflicts and audit history. */
 
 export interface FieldWords<T> {
   key: keyof T & string
@@ -98,10 +95,7 @@ export interface ConflictRow {
   yours: string | null
 }
 
-/**
- * A `412`'s comparison: every field that someone else changed since the form was opened, or that this Admin changed, with
- * the three values (opened, now, yours).
- */
+/** Builds diff rows for a 412 conflict comparing the initial, current server, and local form values. */
 export function conflictRows<T extends object>(fields: ReadonlyArray<FieldWords<T>>, opened: T, now: T, mine: T): ConflictRow[] {
   return fields
     .filter((field) => !same(opened[field.key], now[field.key]) || !same(opened[field.key], mine[field.key]))
@@ -114,10 +108,7 @@ export function conflictRows<T extends object>(fields: ReadonlyArray<FieldWords<
     }))
 }
 
-/**
- * "Reapply my changes": the record as it is now, with every field this Admin changed (against what the form was opened
- * with) put back as this Admin had it. A field both changed takes this Admin's value: the Admin has just seen theirs.
- */
+/** Merges local form changes onto the latest server record after a 412 conflict. */
 export function reapplied<T extends object>(fields: ReadonlyArray<FieldWords<T>>, opened: T, now: T, mine: T): T {
   const merged = { ...now }
   for (const field of fields) if (!same(opened[field.key], mine[field.key])) merged[field.key] = mine[field.key]

@@ -3,11 +3,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
 
-/// <summary>
-/// Runs a test's own write between a request's read of an appointment and its <c>UPDATE</c>: once armed, the next command that updates
-/// the <c>appointments</c> table waits for <paramref name="interleave"/> (e.g. another context saving a transition) before it is sent.
-/// The request then writes a row version that is no longer current, which is exactly the race the <c>xmin</c> token decides.
-/// </summary>
+/// <summary>Runs <paramref name="interleave"/> immediately before the next <c>UPDATE appointments</c> command is sent.</summary>
 public sealed class BeforeAppointmentUpdate(Func<CancellationToken, Task> interleave) : DbCommandInterceptor
 {
     private int _armed;
@@ -16,7 +12,7 @@ public sealed class BeforeAppointmentUpdate(Func<CancellationToken, Task> interl
 
     public void Arm() => Interlocked.Exchange(ref _armed, 1);
 
-    // EF Core sends the UPDATE with RETURNING xmin (the new token), so it executes as a reader; a non-query is covered for completeness.
+    // EF Core sends UPDATE ... RETURNING xmin as a reader.
     public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
         DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
     {

@@ -43,7 +43,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 
-// Build-time OpenAPI generation runs this composition root in a fixed environment (Addendum B §B1); otherwise the usual sources decide.
+// Build-time OpenAPI generation runs in a fixed environment; otherwise standard configuration sources apply.
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
@@ -51,10 +51,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 });
 builder.AddServiceDefaults();
 
-// Options are bound by the configuration-binding generator and validated at startup by [OptionsValidator] validators (Addendum A §A4).
 builder.Services.AddOptions<SchedulingOptions>().BindConfiguration(SchedulingOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<SchedulingOptions>, SchedulingOptionsValidator>();
-builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateOnStart(); // nothing to validate beyond binding
+builder.Services.AddOptions<DatabaseOptions>().BindConfiguration(DatabaseOptions.SectionName).ValidateOnStart();
 builder.Services.AddOptions<SecurityOptions>().BindConfiguration(SecurityOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
 builder.Services.AddOptions<DemoOptions>().BindConfiguration(DemoOptions.SectionName).ValidateOnStart();
@@ -64,13 +63,12 @@ builder.Services.AddOptions<TriageConnectionOptions>().BindConfiguration(TriageC
 builder.Services.AddSingleton<IValidateOptions<TriageConnectionOptions>, TriageConnectionOptionsValidator>();
 builder.Services.AddOptions<TriageOptions>().BindConfiguration(TriageConnectionOptions.SectionName).ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<TriageOptions>, TriageOptionsValidator>();
-// Pinned Extensions 10 exposes removal as experimental; isolate this opt-out to the interactive client.
 #pragma warning disable EXTEXP0001
 builder.Services.AddHttpClient<CloudflareTriageClient>(client =>
 {
-    client.Timeout = Timeout.InfiniteTimeSpan; // the adapter owns one short deadline, including retry and response parsing
+    client.Timeout = Timeout.InfiniteTimeSpan; // the adapter enforces its own deadline across retry and response parsing
     client.MaxResponseContentBufferSize = 64 * 1024;
-}).RemoveAllResilienceHandlers().RemoveAllLoggers(); // framework transport logs can retain an exception containing upstream text
+}).RemoveAllResilienceHandlers().RemoveAllLoggers(); // avoid retaining upstream response text in transport logs
 builder.Services.AddSingleton<TransientTriageImages>();
 builder.Services.AddHttpClient<TriageImageStore>(client =>
 {
@@ -106,23 +104,19 @@ builder.Services.AddScoped<IDomainEventObserver, NotificationNudgeObserver>();
 builder.Services.AddScoped<DayScheduleReader>();
 builder.Services.AddScoped<ServiceCatalogueReader>();
 
-// The connection string is read when a context is first configured, not here, so WebApplicationFactory overrides apply. During
-// build-time OpenAPI generation there is no database: a placeholder that is never opened stands in (Addendum B §B1).
+// Resolve the connection string lazily so test overrides apply, using a placeholder during build-time OpenAPI generation.
 builder.Services.AddDbContext<SchedulerDbContext>((sp, options) => options
     .UseNpgsql(BuildTimeOpenApi.IsActive
         ? BuildTimeOpenApi.PlaceholderConnectionString
         : sp.GetRequiredService<IConfiguration>().GetConnectionString("schedulerdb")
             ?? throw new InvalidOperationException("Connection string 'schedulerdb' is missing."))
     .UseSnakeCaseNamingConvention()
-    // A failed save or command is often an answered outcome (23P01 → 409 slot-conflict, 23505 on a key → replay or 422), so EF Core's
-    // own reports of them are Information, not Error; an unexpected one still reaches GlobalExceptionHandler and is logged there (1200).
+    // Expected constraint violations (23P01, 23505) are handled in domain/application flow; log EF Core command failures at Information.
     .ConfigureWarnings(w => w.Log((CoreEventId.SaveChangesFailed, LogLevel.Information), (RelationalEventId.CommandError, LogLevel.Information)))
     .AddInterceptors(sp.GetRequiredService<DomainEventInterceptor>()));
 builder.EnrichNpgsqlDbContext<SchedulerDbContext>();
-// Readiness only: not tagged live, and resolved in its own scope when probed (never during build-time OpenAPI generation).
 builder.Services.AddHealthChecks().AddCheck<SchedulerReadinessCheck>("scheduler_schema", tags: ["ready"]);
 
-// Handlers and validators are registered explicitly, one line each (ADR-016, Addendum A §A3); the slices add theirs (Tasks 8–12).
 builder.Services.AddScoped<AdminResourcesHandler>();
 builder.Services.AddScoped<AdminPolicyHandler>();
 builder.Services.AddScoped<AdminHistoryHandler>();
@@ -155,13 +149,9 @@ builder.Services.AddScoped<IValidator<TriageBookingRequest>, TriageBookingValida
 builder.Services.AddScoped<UploadBookingTriageImageHandler>();
 builder.Services.AddScoped<IValidator<UploadBookingTriageImageRequest>, UploadBookingTriageImageValidator>();
 
-// The framework adds traceId to every problem; instance is the request path unless the writer set one.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx => ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path);
 
-// Ours first in the resolver chain (Addendum A §A2). AddProblemDetails and AddOpenApi each insert their own context at index 0
-// when the options are configured, so this runs as a post-configuration, after all of them; their contexts stay in the chain.
-// Enums are strings via the context's UseStringEnumConverter, not the reflection-based JsonStringEnumConverter. Numbers are strict:
-// the web defaults also read them from strings, which the OpenAPI document then types as "integer or string".
+// Prepend SchedulerJsonContext after AddProblemDetails/AddOpenApi and enforce strict number parsing.
 builder.Services.PostConfigure<JsonOptions>(o =>
 {
     o.SerializerOptions.TypeInfoResolverChain.Insert(0, SchedulerJsonContext.Default);
@@ -169,15 +159,12 @@ builder.Services.PostConfigure<JsonOptions>(o =>
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
-// Binding failures the framework rejects throw in every environment (not only Development), so GlobalExceptionHandler answers them
-// the same way. (A nullable parameter that fails to parse on a filtered endpoint binds as null and reaches the validator instead.)
 builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
 
 builder.Services.AddSchedulerOpenApi();
 builder.Services.AddCors();
 builder.Services.AddOptions<CorsOptions>().Configure<IOptions<SecurityOptions>>((cors, security) => cors.AddDefaultPolicy(policy =>
 {
-    // Default-deny: no origins configured means no CORS headers at all.
     if (security.Value.AllowedOrigins is { Length: > 0 } origins)
     {
         policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Location", "Idempotent-Replayed", RequestCorrelationMiddleware.HeaderName);
@@ -194,20 +181,17 @@ builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024);
 
 var app = builder.Build();
 
-// Validate every ValidateOnStart options type now: the host would do it only in StartAsync, after the database initialiser below
-// has already migrated or seeded on a misconfigured instance. Whatever fails here (validation, or a value the binder cannot
-// convert) is logged at Critical (events 1103/1104) and the app is disposed before rethrowing, which flushes the console and OTLP
-// log exporters: the crash leaves a structured record.
+// Validate startup options before running database migrations or seeding, and flush telemetry before terminating on failure.
 try
 {
     app.Services.GetRequiredService<IStartupValidator>().Validate();
     if (!BuildTimeOpenApi.IsActive)
     {
-        // Parsed here, so a malformed value fails with a message that never repeats it (Npgsql's own exception quotes the password).
+        // Validate the connection string up front without echoing secrets in exception messages.
         SchedulerConnectionString.Validate(app.Configuration.GetConnectionString(SchedulerConnectionString.Name));
     }
 
-    // IOptions binds lazily: pin the scheduling snapshot now so discovery and enforcement require a restart even before their first request.
+    // Pin the scheduling snapshot at startup so configuration changes require a restart.
     _ = app.Services.GetRequiredService<IOptions<SchedulingOptions>>().Value;
     var triage = app.Services.GetRequiredService<IOptions<TriageConnectionOptions>>().Value;
     if (app.Environment.IsProduction() && triage.Enabled && triage.ImagesEnabled && triage.ImageStoreUrl.Length == 0)
@@ -232,7 +216,6 @@ var database = app.Services.GetRequiredService<IOptions<DatabaseOptions>>().Valu
 var security = app.Services.GetRequiredService<IOptions<SecurityOptions>>().Value;
 app.Logger.ApiStarting(app.Environment.EnvironmentName, database.MigrateOnStartup, database.SeedDemoData, apiReference ? "on" : "off", app.Services.GetRequiredService<IOptions<AuthOptions>>().Value.Mode.ToString());
 
-// First, so that everything after it sees the client's address and scheme rather than the ingress's.
 if (security.ForwardedHeaders.Enabled)
 {
     app.UseForwardedHeaders();
@@ -243,13 +226,11 @@ app.UseMiddleware<AdminPreconditionHeadersMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-// Demo (the Aspire-published compose bundle) serves plain HTTP, so it has no HSTS either (ARCHITECTURE §10).
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("SystemTest") && !app.Environment.IsEnvironment("Demo"))
 {
     app.UseHsts();
 }
 
-// Ingress owns HTTPS in UAT/Production. An explicitly enabled API redirect always has a validated destination port.
 if (security.HttpsRedirection.Enabled)
 {
     app.UseHttpsRedirection();
@@ -260,7 +241,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
-// After authorization, so only a caller allowed to upload ever gets the larger body limit; everyone else keeps Kestrel's 64 KiB.
+// Grant the larger upload body limit only after authorization succeeds on endpoints marked with TriageImageBodyLimit.
 app.Use(async (context, next) =>
 {
     if (context.GetEndpoint()?.Metadata.GetMetadata<TriageImageBodyLimit>() is not null &&
@@ -273,7 +254,6 @@ app.Use(async (context, next) =>
 });
 app.UseMiddleware<CurrentActorMiddleware>();
 
-// Every endpoint declares its access: AllowAnonymous, a named policy, or the deny-by-default fallback (Admin only, ADR-027).
 app.MapDefaultEndpoints();
 if (apiReference)
 {

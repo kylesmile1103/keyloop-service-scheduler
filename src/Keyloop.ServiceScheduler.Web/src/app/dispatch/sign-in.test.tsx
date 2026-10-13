@@ -13,8 +13,7 @@ import { phoneViewport, pointerClick, renderBoard } from "@/test/render-board"
 import { interimServiceType, readingTuesday } from "@/test/schedules"
 import { triageEnabled } from "@/test/triage"
 
-// What the dispatch board offers each role before a request is made (Task 27b, UI_DESIGN 11.20): a visitor who is not
-// signed in is asked to sign in, a role that cannot book sees why, and Admin and Service advisor book as before.
+// Role-based booking and details access on the dispatch board.
 
 beforeAll(async () => {
   await Promise.all([import("@/app/dispatch/page"), import("@/app/settings/account/page")])

@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/users/components/stat-cards.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 
 import type { LucideIcon } from "lucide-react"
 import { type ReactNode, useId } from "react"
@@ -8,7 +8,7 @@ import { Card, CardAction, CardDescription, CardFooter, CardHeader } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
-/** What a card shows when it has no figure (its data failed to load, or the day is closed); read out in words. */
+/** Placeholder shown when a card has no figure. */
 export const NO_FIGURE = "–"
 
 interface StatCardProps {
@@ -24,11 +24,7 @@ interface StatCardProps {
   meter?: ReactNode
 }
 
-/**
- * One figure in a page's row of cards (UI_DESIGN 11.11), in place of the template's icon-above-title layout: the label,
- * the figure in the display face, a context line and an icon tile. No trend badges or "from previous" lines: the API keeps
- * no history to compare with (UI_DESIGN 11.19).
- */
+/** Summary metric card with label, display figure, icon tile, optional meter, and context lines. */
 export function StatCard({ label, icon: Icon, tile = "rounded-chip bg-secondary text-secondary-foreground", value, footer, detail, meter }: StatCardProps) {
   const labelId = useId()
   const loading = value === undefined
@@ -64,10 +60,7 @@ export function StatCard({ label, icon: Icon, tile = "rounded-chip bg-secondary 
   )
 }
 
-/**
- * A share from 0 to 1 as a thin meter (UI_DESIGN 13: an `h-1.5` muted track with a `chart-1` fill). Decorative: the figure
- * or the text beside it says the same in words.
- */
+/** Decorative horizontal meter bar representing a 0–1 ratio. */
 export function ShareMeter({ share, className }: { share: number; className?: string }) {
   return (
     <span aria-hidden="true" className={cn("mb-1 block h-1.5 w-full overflow-hidden rounded-full bg-muted", className)}>

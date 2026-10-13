@@ -38,12 +38,7 @@ const PAGE = 25
 
 const isKind = (value: string | null): value is Kind => value === "technician" || value === "bay" || value === "policy"
 
-/**
- * The Change history page (`/resources/history`, Task 30b, offered to an Admin only): Task 30a's audit of every Admin
- * change at the dealership, newest first: who changed what, when (the dealership's clock), and what changed, field by
- * field (a technician's or bay's state before and after) or rule by rule (a policy's publication). Filtered by kind, or to
- * one technician or bay (the row menu's *Change history*), with older changes on request. History survives deactivation.
- */
+/** Change history page (`/resources/history`) showing an audit feed of Admin edits to technicians, bays, and policy. */
 export default function HistoryPage() {
   return (
     <ResourcePage title="Change history" description="Who changed technicians, bays and the requirement policy, when, and what changed.">
@@ -86,12 +81,9 @@ function HistoryFeed({ dealership }: ResourceScope) {
     enabled: () => cachedCapabilities(queryClient).isAdmin,
   })
   const feedRef = useRef<HTMLDivElement>(null)
-  // Show older changes, when the last page takes it away, hands focus to the first change it loaded; a successful Try again
-  // to the first change, else the kinds' chosen option, else Show every change (UI_DESIGN 11.24).
   const loadOlder = useLastPageFocus(feedRef)
   const filterRef = useRef<HTMLDivElement>(null)
   const armRetryFocus = useFocusAfterRetry(() => {
-    // Nothing until the changes have loaded (the first commit after Try again is the skeleton).
     if (!history.data) return null
     return (
       feedRef.current?.querySelector<HTMLElement>("article") ??
@@ -130,8 +122,6 @@ function HistoryFeed({ dealership }: ResourceScope) {
             value={kind ?? "all"}
             onValueChange={(next) => typeof next === "string" && choose(next)}
             aria-labelledby={filterId}
-            // No fixed heights: the options size the group. On a phone they sit two by two (a wrapped row of a fixed-height
-            // segmented control overlapped the feed at 375 px, Codex check of Task 30b); from sm up, one row.
             className="grid w-full grid-cols-2 gap-0.5 rounded-lg bg-muted p-[3px] sm:inline-flex sm:w-fit sm:max-w-full sm:flex-wrap"
           >
             {KINDS.map((option) => (
@@ -238,11 +228,7 @@ interface EntryProps {
   total: number
 }
 
-/**
- * One change (UI_DESIGN 11.24): an article named by what happened, its action's icon in a tile, when (the dealership's
- * clock) and by whom, then the fields that changed as a small table (*Field*, *Before*, *After*; a new record's state as
- * *Field*, *Value*) or, for a publication, the rules that changed in words.
- */
+/** Renders a single audit entry with a field diff table or policy rule change summary. */
 function Entry({ item, dealership, services, position, total }: EntryProps) {
   const headingId = useId()
   const { icon: Icon } = ACTIONS[item.action]

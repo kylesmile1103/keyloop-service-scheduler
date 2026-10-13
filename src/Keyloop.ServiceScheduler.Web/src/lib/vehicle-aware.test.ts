@@ -37,11 +37,7 @@ function domainCodes(file: string, pattern: RegExp): string[] {
   return [...new Set([...domainSource(file).matchAll(pattern)].map((match) => match[1]))]
 }
 
-/**
- * The rule codes the default policy names, as `RequirementRule.DefaultPolicy` writes them: a string literal
- * (`Rule("hv-routine", ...)`) or a constant of the same file (`Rule(PostCollisionRuleCode, ...)`, Task 32a). A constant the
- * file does not define is kept as `unresolved:<name>`, so the comparison below fails rather than skipping it.
- */
+/** Extracts rule codes referenced by `RequirementRule.DefaultPolicy`. */
 function policyRuleCodes(): string[] {
   const source = domainSource("RequirementRule.cs")
   const constants = new Map([...source.matchAll(/const string (\w+) = "([a-z-]+)"/g)].map((match) => [match[1], match[2]]))

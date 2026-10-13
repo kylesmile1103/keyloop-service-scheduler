@@ -1,11 +1,6 @@
 import { QueryClient } from "@tanstack/react-query"
 
-/**
- * TanStack Query defaults for the dispatch board.
- * - Reads stay fresh for 2 s, so components that mount together share one request, and a failed read is retried once.
- * - Mutations are never retried by the client: a booking must not be submitted twice behind the user's back. Retrying a
- *   booking is the user's decision (the API's Idempotency-Key makes a deliberate retry safe).
- */
+/** Creates a `QueryClient` with a 2s stale time, single read retry, and no automatic mutation retries. */
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {

@@ -14,11 +14,6 @@ import { bodyRows } from "@/test/resource-list"
 import { appointments, bays, technicians } from "@/test/schedules"
 import { readingTuesdayWithCompetence, vehicleAwareOff, vehicleAwareOn } from "@/test/vehicle"
 
-// Task 30b: an Admin edits the roster in the Resources area (Refine core's useForm over the Admin reads, the app's own
-// fields), confirms a migrated HV level in one action, and deactivates a technician after seeing which upcoming
-// appointments would then be flagged. Every write carries the version it was made from; a stale one is answered with what
-// changed and a choice to reapply or discard. A Service advisor and a Viewer see the list read-only, with the reason.
-
 beforeAll(async () => {
   await Promise.all([import("@/app/admin/layout"), import("@/app/admin/technicians/page")])
 })
@@ -302,8 +297,7 @@ describe("editing technicians, as an Admin", () => {
     expect(within(alert).getByRole("button", { name: "Reload" })).toBeInTheDocument()
   })
 
-  // Reload after a 428 keeps what the Admin entered (Codex check of Task 30b): it reads the record again, and only a
-  // change by someone else turns it into the comparison; nothing entered is dropped without Discard.
+  // Reload after a 428 keeps the user's draft and only opens the comparison if someone else changed the record.
   const missingVersionOnce = () => {
     let refused = 0
     return (request: Request) =>

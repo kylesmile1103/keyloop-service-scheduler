@@ -51,10 +51,7 @@ export function firstOpenDate(dealership: DealershipResponse, date: string): str
   return openingHoursOn(dealership, weekdayOf(date)) ? date : (nextOpenDate(dealership, date) ?? date)
 }
 
-/**
- * "Open today 08:00–18:00 (Europe/London).": a workshop day's hours in the dealership's own zone, which also names the zone
- * every time on the page is in. From the schedule's window once it arrives, the weekly hours until then.
- */
+/** Formats a workshop day's opening hours in the dealership's time zone (e.g. `"Open today 08:00–18:00 (Europe/London)."`). */
 export function daySentence(
   dealership: DealershipResponse,
   date: string,

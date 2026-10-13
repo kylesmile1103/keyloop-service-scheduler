@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 
-/// <summary>Source-generated persistence and notification logs with stable event ids and names (ADR-016).</summary>
+/// <summary>Source-generated persistence and notification logs with stable event ids and names.</summary>
 internal static partial class InfrastructureLog
 {
     [LoggerMessage(EventId = 1400, EventName = "TriageUnavailable", Level = LogLevel.Warning,

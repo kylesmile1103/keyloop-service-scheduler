@@ -11,15 +11,11 @@ interface FailedStateProps {
   error: unknown
   onRetry: () => void
   retrying: boolean
-  /** The headline's level in the page outline (UI_DESIGN 12.1): 2 for a page's main view, 3 inside a card under its own heading. */
+  /** Heading level in the page outline (2 for a main view, 3 inside a card). */
   level?: 2 | 3
 }
 
-/**
- * A whole view that failed to load (UI_DESIGN 12.1): the error-connection state with the API's words and trace id. It
- * stays while Try again reads again; the button disables itself meanwhile but keeps focus, ready for another try if that
- * one fails too.
- */
+/** Full-view failure state showing the API error summary, trace ID, and a retry button. */
 export function FailedState({ title, error, onRetry, retrying, level = 2 }: FailedStateProps) {
   const { summary, traceId } = describeFailure(error)
   return (

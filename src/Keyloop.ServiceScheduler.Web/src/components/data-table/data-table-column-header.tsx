@@ -1,5 +1,5 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/app/tasks/components/data-table-column-header.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import type { Column, RowData } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react"
 
@@ -13,10 +13,7 @@ interface DataTableColumnHeaderProps<TData extends RowData, TValue> {
   className?: string
 }
 
-/**
- * A column's header: its name, and for a sortable column a button that sorts by it (ascending first, then the other way).
- * Adopted from the template's tasks table; the header cell carries `aria-sort`, so the arrows are only the visual cue.
- */
+/** Renders a column header label or a sort-toggle button when the column is sortable. */
 export function DataTableColumnHeader<TData extends RowData, TValue>({ column, title, className }: DataTableColumnHeaderProps<TData, TValue>) {
   if (!column.getCanSort()) {
     return <div className={className}>{title}</div>

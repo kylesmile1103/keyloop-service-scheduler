@@ -22,17 +22,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
-/// <summary>
-/// The environment the Cloudflare Worker passes at container start (ARCHITECTURE §10.1, §11.4), read from the edge's committed
-/// fixture <c>deploy/cloudflare/test/fixtures/container-env-core.json</c>, which <c>deploy/cloudflare/test/container.test.ts</c>
-/// pins to the Worker's own output for the core profile (notifications, email, triage and the OTLP relay off). Each side's tests
-/// passed while the pair did not start (the Worker selected the reserved Cloudflare email provider), so this boots the API with
-/// exactly that fixture. The database is migrated first, as the operator's migration bundle does; the API itself must not migrate.
-/// The OTLP-enabled profile (<c>container-env-otlp.json</c>) is the core one plus API telemetry export to Grafana Cloud; it is booted
-/// against a loopback receiver in place of the gateway. The vehicle-aware profile (<c>container-env-vehicle-aware.json</c>) is the core
-/// one plus the deployment's override <c>Scheduling__VehicleAwareRequirements=true</c>. Only locally signed tokens, stubbed JWKS and a
-/// fake telemetry token are used.
-/// </summary>
+/// <summary>Verifies API startup, forwarding, OTLP export, and feature flags using the committed Cloudflare Worker container environment fixtures.</summary>
 public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposable
 {
     private const string FixtureFile = "cloudflare-container-env-core.json";
@@ -69,15 +59,12 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         (auth.Mode, auth.TeamDomain).ShouldBe((AuthMode.CloudflareAccess, _workerEnv["Auth__TeamDomain"]));
         auth.Audience.ShouldBe([_workerEnv["Auth__Audience__0"]]);
 
-        // API telemetry is off in the core profile: no OTEL variable, so ServiceDefaults registers no OTLP exporter.
         _workerEnv.Keys.ShouldNotContain(key => key.StartsWith("OTEL_", StringComparison.Ordinal));
         services.GetRequiredService<IConfiguration>()["OTEL_EXPORTER_OTLP_ENDPOINT"].ShouldBeNullOrWhiteSpace();
 
-        // Vehicle-aware requirements are off in the core profile: no Scheduling variable, so appsettings.Production.json's false applies.
         _workerEnv.Keys.ShouldNotContain(key => key.StartsWith("Scheduling__", StringComparison.Ordinal));
         services.GetRequiredService<IOptions<SchedulingOptions>>().Value.VehicleAwareRequirements.ShouldBeFalse();
 
-        // Startup seeding ran as the runtime would on a fresh deployment: the catalogue and the demo week, in Production.
         using (var dealerships = await SendAsync(client, HttpMethod.Get, "/api/v1/dealerships"))
         {
             dealerships.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -90,13 +77,11 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
             (await scope.ServiceProvider.GetRequiredService<SchedulerDbContext>().Appointments.CountAsync(Ct)).ShouldBePositive();
         }
 
-        // The indexed role lists bind: each fixture member gets its role, an unlisted verified email none.
         (await RolesAsync(client, "admin@fixture.test")).ShouldBe(["Admin"]);
         (await RolesAsync(client, "advisor@fixture.test")).ShouldBe(["ServiceAdvisor"]);
         (await RolesAsync(client, "someone@viewers.fixture.test")).ShouldBe(["Viewer"]);
         (await RolesAsync(client, "unassigned@fixture.test")).ShouldBeEmpty();
 
-        // No reseed route, even for an Admin, and neither Scalar nor the runtime OpenAPI document in Production.
         using (var reseed = await SendAsync(client, HttpMethod.Post, "/api/v1/admin/demo/reseed", Token("admin@fixture.test")))
         {
             reseed.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -114,8 +99,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         client.DefaultRequestHeaders.Clear();
         var bookings = $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/appointments";
 
-        // Anonymous writes pass the booking limiter before authorization answers them. Every one is partitioned by the address
-        // the Worker wrote, and HSTS on each answer shows that the forwarded https scheme was applied first as well.
         for (var attempt = 1; attempt <= 120; attempt++)
         {
             using var allowed = await SendAsync(client, HttpMethod.Post, bookings, forwardedFor: "203.0.113.7");
@@ -136,7 +119,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
     public async Task Worker_otlp_env_exports_every_signal_as_the_dashboards_job_without_printing_the_credential()
     {
         var otlpEnv = ReadWorkerEnv(OtlpFixtureFile);
-        // Telemetry adds only the OTEL variables to the core profile.
         otlpEnv.Where(entry => !entry.Key.StartsWith("OTEL_", StringComparison.Ordinal)).OrderBy(entry => entry.Key, StringComparer.Ordinal)
             .ShouldBe(_workerEnv.OrderBy(entry => entry.Key, StringComparer.Ordinal));
         const string HeaderPrefix = "Authorization=Basic%20";
@@ -146,7 +128,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         var instanceAndToken = Encoding.ASCII.GetString(Convert.FromBase64String(credential)).Split(':', 2);
         instanceAndToken[0].ShouldBe("123456");
         var token = instanceAndToken[1];
-        // The fixture's fake credential holds every base64 character the OTEL header format could mangle.
         credential.ShouldContain('+');
         credential.ShouldContain('/');
         credential.ShouldEndWith("==");
@@ -155,8 +136,7 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         var logs = new CapturingLoggerProvider();
         await using (var host = await WorkerHostAsync("cloudflare_env_otlp", otlpEnv, logs, new Dictionary<string, string>
         {
-            // The only test change to the Worker's environment: a loopback receiver stands in for the gateway, so nothing leaves the
-            // machine. The intervals are shortened (SDK defaults: metrics 60 s, traces 5 s, logs 1 s) so every signal arrives in time.
+            // Redirect OTLP export to the local receiver with shortened flush intervals.
             ["OTEL_EXPORTER_OTLP_ENDPOINT"] = receiver.Endpoint,
             ["OTEL_METRIC_EXPORT_INTERVAL"] = "500",
             ["OTEL_BSP_SCHEDULE_DELAY"] = "200",
@@ -182,15 +162,12 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
             export.ContentType.ShouldBe("application/x-protobuf", "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf");
             export.Authorization.ShouldBe($"Basic {credential}", "the percent-encoded header decodes to the Basic credential intact");
             var resource = export.ResourceAttributes();
-            // Grafana's OTLP translation builds job from service.namespace/service.name: the dashboards select job="keyloop-scheduler/api"
-            // and default the environment variable to deployment_environment_name="Production".
             $"{resource["service.namespace"]}/{resource["service.name"]}".ShouldBe("keyloop-scheduler/api", export.Path);
             resource["deployment.environment.name"].ShouldBe("Production", export.Path);
             ContainsAscii(export.Body, token).ShouldBeFalse($"{export.Path} exported the token");
             ContainsAscii(export.Body, credential).ShouldBeFalse($"{export.Path} exported the credential");
         }
 
-        // Nothing the API logs (to the JSON console and to Loki alike) carries the token, the credential or the header.
         var entries = logs.Entries;
         entries.ShouldContain(entry => entry.EventId.Id == 1102, "the capture sees the API's own Information events");
         foreach (var entry in entries)
@@ -204,9 +181,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
             }
         }
 
-        // Production log volume (appsettings.Production.json): no record per SQL command, and none per outgoing HTTP request (the
-        // client handlers' four lines and Polly's execution attempt), including the exporter's own requests. Their warnings and
-        // errors still pass.
         entries.ShouldNotContain(entry => entry.Level < LogLevel.Warning && ChattyCategories.Any(prefix => entry.Category.StartsWith(prefix, StringComparison.Ordinal)),
             string.Join(", ", entries.Where(entry => entry.Level < LogLevel.Warning).Select(entry => entry.Category).Distinct()));
     }
@@ -215,7 +189,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
     public async Task Worker_vehicle_aware_env_turns_on_ADR_029_in_Production_and_the_public_features_report_it()
     {
         var vehicleAwareEnv = ReadWorkerEnv(VehicleAwareFixtureFile);
-        // The deployment's switch adds exactly one variable to the core profile.
         vehicleAwareEnv[VehicleAwareSwitch].ShouldBe("true");
         vehicleAwareEnv.Where(entry => entry.Key != VehicleAwareSwitch).OrderBy(entry => entry.Key, StringComparer.Ordinal)
             .ShouldBe(_workerEnv.OrderBy(entry => entry.Key, StringComparer.Ordinal));
@@ -224,11 +197,9 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         using var client = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri(PublicHost), AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Clear();
 
-        // The override binds over appsettings.Production.json's false; Production's other scheduling rules stay (one hour's lead time).
         var scheduling = host.Services.GetRequiredService<IOptions<SchedulingOptions>>().Value;
         (scheduling.VehicleAwareRequirements, scheduling.MinimumLeadTime).ShouldBe((true, TimeSpan.FromHours(1)));
 
-        // The board reads the switch from the public features endpoint, signed out included.
         using (var features = await SendAsync(client, HttpMethod.Get, "/api/v1/features"))
         {
             features.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -236,7 +207,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
             body.RootElement.GetProperty("vehicleAwareRequirements").GetBoolean().ShouldBeTrue();
         }
 
-        // Availability answers vehicle-aware inputs instead of refusing them with 422 vehicle-aware-requirements-disabled.
         var availability = $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/availability" +
             $"?serviceTypeId={ReferenceDataSeed.ServiceTypeId("INTERIM-SERVICE")}&date=2026-10-13&powertrain=Ice&vehicleClass=Car";
         using var answered = await SendAsync(client, HttpMethod.Get, availability);
@@ -274,7 +244,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
             builder.UseSetting("ConnectionStrings:schedulerdb", connectionString);
             builder.ConfigureTestServices(services =>
             {
-                // The deployed handler, not the test identity; the Worker's container has no other ingress than the Worker.
                 services.PostConfigure<AuthenticationOptions>(options =>
                 {
                     options.DefaultAuthenticateScheme = SchedulerAuthentication.Scheme;
@@ -297,7 +266,6 @@ public sealed class CloudflareContainerEnvTests(PostgresFixture pg) : IDisposabl
         string forwardedFor = "192.0.2.10")
     {
         using var request = new HttpRequestMessage(method, path);
-        // What the Worker sends: its own single client address and scheme, replacing anything the client supplied.
         request.Headers.Add("X-Forwarded-For", forwardedFor);
         request.Headers.Add("X-Forwarded-Proto", "https");
         if (token is not null)

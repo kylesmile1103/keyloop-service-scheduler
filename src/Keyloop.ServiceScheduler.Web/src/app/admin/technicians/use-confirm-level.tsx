@@ -24,19 +24,13 @@ interface ConfirmLevel {
 }
 
 /**
- * "Confirm HV level" in one action (UI_DESIGN 11.24): a bodyless POST with the version the list showed. If the record
- * changed first (another Admin lowered the level, say), nothing is confirmed: a dialog shows what changed and offers to
- * confirm the level as it is now, which is then a decision taken on what is on screen.
+ * Confirms a technician's HV level with an `If-Match` precondition, opening a comparison dialog if the record changed concurrently.
  */
 export function useConfirmLevel({ dealership, onDone }: { dealership: DealershipResponse; onDone: (saved: AdminTechnicianResponse) => void }): ConfirmLevel {
   const [stale, setStale] = useState<{ row: TechnicianRecord; conflict: Conflict<AdminTechnicianResponse> } | null>(null)
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set())
   const [failure, setFailure] = useState<{ name: string; error: unknown } | null>(null)
-  // The row each confirmation was sent for, to compare with the record a 412 returns.
   const rowsById = useRef(new Map<string, TechnicianRecord>())
-  // Who the dialog was about (by id: another Admin may rename them, even between two conflicts), and whose confirmation it
-  // saved: on closing, focus goes back to their Confirm button if it is still there, else (confirmed, so the button and
-  // maybe the review note go) past it (UI_DESIGN 11.24).
   const dialogId = useRef<string | null>(null)
   const confirmedId = useRef<string | null>(null)
   const confirm = useWriteMutation({

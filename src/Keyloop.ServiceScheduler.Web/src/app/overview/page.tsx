@@ -35,20 +35,13 @@ import { ServiceMix } from "./components/service-mix"
 import { UpcomingAppointments } from "./components/upcoming-appointments"
 import { bookingsPerDay, bookingsSummary, overviewWindow, upcomingAppointments } from "./lib/overview"
 
-/**
- * The Overview (`/overview`, the app's landing page): one dealership today and the fortnight either side, adopted from the
- * template's two dashboards (section cards, the interactive area chart, the breakdown, the recent list and the quick
- * actions). The dealership lives in the address (`?dealership=`) as on every workshop page; the day is always today on the
- * dealership's own calendar.
- */
+/** Overview page showing today's summary and a 14-day window around today for the selected dealership. */
 export default function OverviewPage() {
   const dealershipsOptions = getDealershipsOptions()
   const dealerships = useQuery(dealershipsOptions)
-  // Kept while Try again reads the list again, so the failure and its focused button stay until the answer.
   const dealershipsFailure = useQueryFailure(dealerships, dealershipsOptions.queryKey)
   const { selected, select } = useSelectedDealership(dealerships.data)
   const phone = useIsMobile()
-  // The page waits for `/me` as the board does, so Book appointment appears in its final state.
   const identityKnown = useCurrentUser().status !== "loading"
 
   const status: DealershipListStatus = dealerships.data
@@ -73,7 +66,6 @@ export default function OverviewPage() {
     <BaseLayout title="Overview" description="One dealership today, and the fortnight either side.">
       <div className="flex min-w-0 flex-col gap-4 px-4 md:gap-6 md:px-6 xl:px-8">
         {selected && identityKnown ? (
-          // A new overview per dealership: its selection and its reads are its own.
           <DealershipOverview key={selected.id} dealership={selected} dealershipSelect={dealershipSelect} phone={phone} />
         ) : (
           <>
@@ -113,7 +105,6 @@ export default function OverviewPage() {
   )
 }
 
-/** The page's controls: the dealership and its hours today on the left, the quick actions on the right (stacked on a phone). */
 function Toolbar({ phone, start, end }: { phone: boolean; start: ReactNode; end?: ReactNode }) {
   return (
     <div className={cn("flex gap-3", phone ? "flex-col" : "flex-wrap items-center justify-between")}>
@@ -126,7 +117,6 @@ function Toolbar({ phone, start, end }: { phone: boolean; start: ReactNode; end?
 interface Selection {
   appointment: AppointmentListItemResponse
   open: boolean
-  /** Who it was selected as (`CurrentUser.identity`): the row is that caller's view of the booking. */
   identity: string
 }
 
@@ -136,11 +126,7 @@ interface DealershipOverviewProps {
   phone: boolean
 }
 
-/**
- * One dealership's Overview from three reads: the range read for the fortnight either side of today (the chart, the service
- * mix, the upcoming list and two of the figures), today's schedule (bay utilisation; the board's own read, so the two share
- * the cache) and the availability behind the next free start.
- */
+/** Dealership overview content backed by range, daily schedule, and availability queries. */
 function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipOverviewProps) {
   const now = useNow()
   const timeZone = dealership.timeZoneId
@@ -150,15 +136,12 @@ function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipO
   const opener = useRef<HTMLElement | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const { identity } = useCurrentUser()
-  // A row selected as another caller (or before `/me` failed) is that caller's view: the sheet closes in the same render,
-  // so the full name, VIN and plate never paint for the next one (ARCHITECTURE §15).
   if (selection && selection.identity !== identity) setSelection(null)
   const selected = selection?.identity === identity ? selection : null
   const book = useBookAction({ dealership, today, fullScreen: phone })
 
   const rangeOptions = rangeReadOptions(dealership.id, from, to)
   const range = useQuery({ ...rangeOptions, refetchOnWindowFocus: true })
-  // A range that never loaded stays failed while it is read again, so Try again keeps focus until the answer.
   const rangeFailure = useQueryFailure(range, rangeOptions.queryKey)
   const scheduleOptions = getWorkshopScheduleOptions({ path: { dealershipId: dealership.id }, query: { date: today } })
   const schedule = useQuery({ ...scheduleOptions, refetchOnWindowFocus: true })
@@ -243,7 +226,6 @@ function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipO
         timeZone={timeZone}
         returnFocus={() => (opener.current?.isConnected ? opener.current : null)}
         onCancelled={() => {
-          // Its row leaves the list on the refetch.
           opener.current = null
         }}
       />
@@ -252,7 +234,7 @@ function DealershipOverview({ dealership, dealershipSelect, phone }: DealershipO
   )
 }
 
-/** The page's shape while the dealership and the identity load (UI_DESIGN 11.18). */
+/** Loading skeleton for the overview page. */
 function OverviewSkeleton() {
   return (
     <div aria-hidden="true" className="flex flex-col gap-4 md:gap-6">

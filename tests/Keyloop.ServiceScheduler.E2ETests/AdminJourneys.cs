@@ -10,7 +10,6 @@ public sealed partial class SchedulerJourneys
     {
         var page = journey.Page;
         var second = await journey.NewPageAsync();
-        // Rename a seeded technician without changing competence, then restore it so other tests keep the seed's names.
         const string original = "Amelia Clarke";
         var firstName = $"Amelia E2E {Guid.NewGuid():N}";
         var staleName = $"Amelia comparison {Guid.NewGuid():N}";
@@ -46,7 +45,6 @@ public sealed partial class SchedulerJourneys
             var before = await stack.GetAsync($"{stack.DealershipPath}/requirement-policy");
             originalPolicy = before.AsObject();
             var version = before["version"]!.GetValue<int>();
-            // Raising routine HV requirements to 4 stops these jobs; adding an HV4 technician changes that preview.
             const string code = "hv-routine";
             await page.GetByRole(AriaRole.Button, new() { Name = $"Edit {code}", Exact = true }).ClickAsync();
             var rule = page.GetByRole(AriaRole.Dialog, new() { Name = $"Edit rule {code}", Exact = true });
@@ -64,7 +62,7 @@ public sealed partial class SchedulerJourneys
             await Expect(page.GetByRole(AriaRole.Heading, new() { Name = $"What version {version + 1} would change", Exact = true })).ToBeVisibleAsync();
             await Expect(publish).ToBeEnabledAsync();
 
-            // A real roster edit invalidates the token the first Admin saw.
+            // A concurrent roster edit invalidates the preview token.
             var renamed = $"Amelia roster {Guid.NewGuid():N}";
             var rosterEdit = await ChangeNameAsync(second, staleName, renamed);
             await rosterEdit.GetByRole(AriaRole.Radio, new() { NameRegex = new Regex("^Level 4,") }).ClickAsync();
@@ -92,7 +90,6 @@ public sealed partial class SchedulerJourneys
         }
         finally
         {
-            // Restore via the public Admin API with its fresh ETag, preserving all other fields. No SQL or reseed.
             using var get = await stack.Api.GetAsync(resourcePath);
             get.EnsureSuccessStatusCode();
             var current = (JsonObject)originalRecord.DeepClone();

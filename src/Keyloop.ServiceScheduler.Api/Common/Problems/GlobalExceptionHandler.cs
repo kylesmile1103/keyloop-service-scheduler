@@ -10,12 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Problems;
 
-/// <summary>
-/// The only place exceptions become HTTP responses (ARCHITECTURE §8.7): RFC 9457 problems with the catalogue's type and title,
-/// <c>instance</c> = request path and <c>traceId</c> (added by the problem details writer). Anything unexpected is a 500
-/// <c>internal-error</c> whose body never carries exception details; it is logged here (event 1200) because the exception
-/// handler middleware does not log exceptions an <see cref="IExceptionHandler"/> handled.
-/// </summary>
+/// <summary>Maps domain and application exceptions to RFC 9457 ProblemDetails responses.</summary>
 public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     private const string UnexpectedDetail = "An unexpected error occurred.";
@@ -25,8 +20,6 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         ArgumentNullException.ThrowIfNull(httpContext);
         ArgumentNullException.ThrowIfNull(exception);
 
-        // The client went away: nobody reads a body. (The middleware already answers 499 itself before calling handlers; this
-        // keeps the mapping total.) A cancellation the client did not ask for is a server fault and falls through to 500.
         if (exception is OperationCanceledException && httpContext.RequestAborted.IsCancellationRequested)
         {
             httpContext.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
@@ -52,8 +45,6 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
             httpContext.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
         }
 
-        // Not written when the client's Accept header excludes JSON. The mapped status still stands: reporting "not handled" would
-        // make the middleware rethrow and turn, say, a 422 into a 500.
         await problems.TryWriteAsync(new ProblemDetailsContext { HttpContext = httpContext, ProblemDetails = problem });
         return true;
     }
@@ -76,7 +67,6 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         NotFoundException notFound => Problem(
             StatusCodes.Status404NotFound, ProblemTypes.NotFound, notFound.Message, [new("resource", notFound.Resource), new("id", notFound.Id)]),
 
-        // Extensions are serialised by runtime type, so suggestions are copied into the array type SchedulerJsonContext lists.
         SlotUnavailableException unavailable => Problem(
             StatusCodes.Status409Conflict, ProblemTypes.SlotUnavailable, unavailable.Message, [new("suggestedSlots", unavailable.Suggestions.ToArray())]),
         SlotConflictException conflict => Problem(
@@ -88,23 +78,17 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         DbUpdateConcurrencyException => Problem(
             StatusCodes.Status409Conflict, ProblemTypes.ConcurrencyConflict, "The resource was changed by another request after it was read. Reload it and retry."),
 
-        // Binding failures (a missing or malformed parameter, unreadable JSON) that the framework rejects itself:
-        // RouteHandlerOptions.ThrowOnBadRequest is on in every environment, so those arrive here rather than as a bare 400. Not every
-        // malformed value does: on an endpoint with a filter, a nullable parameter that fails to parse binds as null and the request
-        // continues to the filters, so ValidationFilter answers it with a field-keyed validation-error instead (e.g. availability's
-        // serviceTypeId=not-a-guid). The framework's message names C# types, so the detail here is generic. validation-error always
-        // carries `errors` (§8.7). Existing binding problems keep empty errors; new Admin bodies retain a bounded JSON field path when available.
         BadHttpRequestException { StatusCode: StatusCodes.Status400BadRequest } binding => Problem(
             new HttpValidationProblemDetails(adminFieldErrors ? BindingErrors(binding) : []), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError,
             "The request could not be read: a parameter is missing or malformed, or the body is not valid JSON."),
-        BadHttpRequestException other => new ProblemDetails { Status = other.StatusCode }, // e.g. 413: the framework's default type and title for the status
+        BadHttpRequestException other => new ProblemDetails { Status = other.StatusCode },
 
         _ => Problem(StatusCodes.Status500InternalServerError, ProblemTypes.InternalError, UnexpectedDetail),
     };
 
     private static Dictionary<string, string[]> BindingErrors(Exception exception)
     {
-        // JsonException paths name fields, never values. Retain a bounded JSON path, with generic text, for malformed typed bodies.
+        // Retain a bounded JSON field path with generic text for malformed typed request bodies.
         for (var current = exception.InnerException; current is not null; current = current.InnerException)
         {
             if (current is JsonException { Path: { } path } && path.Length <= 256 && path.StartsWith("$.", StringComparison.Ordinal))

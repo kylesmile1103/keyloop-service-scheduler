@@ -15,33 +15,24 @@ import { DataTableRowActions } from "./data-table-row-actions"
 
 type Features = DataTableFeatures
 
-/** A faceted filter: the row's value is one of those chosen. An empty choice removes the filter. */
 const facet: FilterFn<Features, AppointmentRow> = (row, columnId, selected: readonly string[] | undefined) =>
   matchesFacet(String(row.getValue(columnId)), selected)
 facet.autoRemove = (value) => !Array.isArray(value) || value.length === 0
 
-/** The list's search (customer, registration, VIN), for the table's global filter. */
 export const searchFilter: FilterFn<Features, AppointmentRow> = (row, _columnId, query: unknown) =>
   matchesSearch(row.original, typeof query === "string" ? query : "")
 
-/** Columns the search reads; the filter runs once per eligible column, and any match keeps the row. */
 const searchable = new Set(["customer", "registration", "vin"])
 export const canSearchColumn = (column: { id: string }) => searchable.has(column.id)
 
-/** Sorts a column whose value is an id by the name the row shows ("Bay 2" before "Bay 10"). */
 const byName =
   (name: (row: AppointmentRow) => string): SortFn<Features, AppointmentRow> =>
   (a: Row<Features, AppointmentRow>, b: Row<Features, AppointmentRow>) =>
     name(a.original).localeCompare(name(b.original), "en-GB", { numeric: true, sensitivity: "base" })
 
-/** Statuses sort in their lifecycle order (confirmed, checked in, in progress, completed, no-show), not alphabetically. */
 const byLifecycle: SortFn<Features, AppointmentRow> = (a, b) => boardStatuses.indexOf(a.original.status) - boardStatuses.indexOf(b.original.status)
 
-/**
- * The appointments table's columns (adopted from the template's tasks `columns.tsx`): the board's data with the board's
- * presentation (status badge, initials avatar, plate chip, monospace VIN). Times are the dealership's own: the schedule
- * writes them with its offset. Bay, technician and service filter by id and sort by name.
- */
+/** Column definitions for the appointments data table. */
 export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
   {
     id: "time",
@@ -119,7 +110,6 @@ export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
     id: "registration",
     accessorFn: (row) => row.registration,
     header: ({ column }) => <DataTableColumnHeader column={column} title="Registration" />,
-    // The column header already says "Registration", so the plate needs no hidden label of its own.
     cell: ({ row }) => <PlateChip registration={row.original.registration} labelled={false} />,
     sortFn: "alphanumeric",
     meta: { label: "Registration" },
@@ -128,7 +118,6 @@ export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
     id: "vin",
     accessorFn: (row) => row.vin,
     header: ({ column }) => <DataTableColumnHeader column={column} title="VIN" />,
-    // Shown whole: a VIN cut short identifies nothing (UI_DESIGN 11.8).
     cell: ({ row }) => <span className="font-mono text-xs tracking-wide">{row.original.vin}</span>,
     sortFn: "alphanumeric",
     meta: { label: "VIN" },
@@ -147,8 +136,6 @@ export const appointmentColumns: ColumnDef<Features, AppointmentRow>[] = [
     cell: ({ row }) => <DataTableRowActions row={row.original} />,
     enableSorting: false,
     enableHiding: false,
-    // A 36 px button in a 44 px row (UI_DESIGN 11.17), its edge in line with the toolbar's View button. On a touch screen
-    // the button is 44 px itself, so the cell drops its padding and the row keeps its height.
     meta: { className: "w-px py-1 pr-4 pl-1.5 text-right pointer-coarse:py-0" },
   },
 ]

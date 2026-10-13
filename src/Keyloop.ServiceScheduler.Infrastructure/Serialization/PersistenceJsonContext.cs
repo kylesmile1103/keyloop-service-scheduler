@@ -4,7 +4,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 namespace Keyloop.ServiceScheduler.Infrastructure.Serialization;
 
-/// <summary>Source-generated metadata for persisted audit events and notification snapshots (ADR-016).</summary>
+/// <summary>Source-generated metadata for persisted audit events and notification snapshots.</summary>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.Never,

@@ -1,15 +1,12 @@
 // Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/logo.tsx`,
-// Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
+// Copyright (c) 2025 ShadcnStore, MIT License.
 import * as React from "react"
 
 interface LogoProps extends React.SVGProps<SVGSVGElement> {
   size?: number
 }
 
-/**
- * The product glyph: bookings on three workshop lanes and the board's "now" line. Keyloop's own logo is never reproduced; the brand appears as the
- * "Keyloop" text wordmark next to this glyph.
- */
+/** Product glyph showing bookings across three workshop lanes and the current-time line. */
 export function Logo({ size = 24, className, ...props }: LogoProps) {
   return (
     <svg

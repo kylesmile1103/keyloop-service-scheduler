@@ -1,7 +1,4 @@
-// The development platform (ARCHITECTURE §8.6, ADR-019, Addendum C): `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (or
-// `aspire run`) generates and keeps the secrets, starts PostgreSQL with a persistent volume and pgweb, the API (which migrates and seeds
-// in Development) behind its health check, and the dispatch board; `aspire publish` turns the same model into Docker
-// Compose.
+// Aspire application host for local development and Docker Compose publishing.
 using Aspire.Hosting.Docker.Resources;
 using Aspire.Hosting.Docker.Resources.ServiceNodes;
 using Microsoft.Extensions.Configuration;
@@ -10,29 +7,22 @@ const string PostgresUserName = "scheduler";
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// The publish target (Addendum C §C6, Task 18). In run mode it is not part of the model.
 builder.AddDockerComposeEnvironment("compose")
     .ConfigureComposeFile(compose =>
     {
-        // This dedicated subnet is the only network appsettings.Demo.json trusts; AppHostModelTests fails when the two differ. It contains
-        // the bridge gateway, from which Docker delivers traffic for published host ports, so the API stays unpublished (expose only).
+        // Dedicated subnet trusted by appsettings.Demo.json; keeps the API unpublished (expose only).
         compose.Networks["aspire"].Ipam = new Ipam { Config = [new Dictionary<string, string> { ["subnet"] = "172.30.14.0/24" }] };
 
-        // `aspire publish` writes every deployment input to .env with an empty value and ignores parameter defaults there, so the user
-        // name's default travels in the Compose interpolation instead: an unset or empty POSTGRES_USER resolves to the run-mode user.
+        // Interpolate default user name in Compose since aspire publish writes empty deployment inputs to .env.
         ComposeInputs.DefaultTo(compose, "POSTGRES_USER", PostgresUserName);
     })
     .ConfigureEnvFile(inputs => inputs["POSTGRES_USER"].Description = $"Parameter postgres-user (empty means {PostgresUserName})");
 
-// Secrets (§C1): the password is generated on the first run and kept in this project's user secrets (Parameters:postgres-password),
-// so the persistent container's credentials stay valid across runs and nobody types a secret. In publish mode both parameters become
-// deployment inputs; the user name keeps its default through the Compose file above, the password has none.
+// Generate and persist the database password in user secrets on first run.
 var pgUser = builder.AddParameter("postgres-user", PostgresUserName, publishValueAsDefault: true);
 var pgPassword = builder.AddParameter("postgres-password", new GenerateParameterDefault { MinLength = 24, Special = false }, secret: true, persist: true);
 
-// PostgreSQL 17, the version the integration tests run against (Testcontainers postgres:17). The tag is set before the data volume
-// because WithDataVolume picks the data directory from it (/var/lib/postgresql/data up to 17). The container and its volume outlive
-// the AppHost, so a restart keeps the data. Isolated verification can opt out without changing the developer's volume or secrets.
+// Pin PostgreSQL 17 before attaching the data volume so WithDataVolume selects the pre-18 data directory path.
 var persistentResources = builder.Configuration.GetValue("AppHost:UsePersistentResources", true);
 var postgres = builder.AddPostgres("postgres", pgUser, pgPassword)
     .WithImageTag("17");
@@ -48,12 +38,10 @@ if (builder.ExecutionContext.IsRunMode)
 var db = postgres.AddDatabase("schedulerdb");
 if (builder.ExecutionContext.IsPublishMode)
 {
-    // Compose does not execute AddDatabase's run-mode creation callback. PostgreSQL's entrypoint handles an empty data directory.
+    // Compose does not execute AddDatabase's run-mode callback; PostgreSQL's entrypoint initializes the database.
     postgres.WithEnvironment("POSTGRES_DB", "schedulerdb");
 }
 
-// The API receives its connection string only as ConnectionStrings__schedulerdb (WithReference), starts once the database is
-// healthy, and is healthy itself when /health (which includes the database check) answers 200.
 var api = builder.AddProject<Projects.Keyloop_ServiceScheduler_Api>("api")
     .DisableForwardedHeaders() // the API owns the fail-closed trust policy, including when forwarding is disabled
     .WithReference(db)
@@ -79,7 +67,7 @@ else
         .WithEnvironment("Auth__Audience__0", builder.AddParameter("access-audience"));
 }
 
-// Optional developer-owned secrets. No generated default, no prompt and no credential persistence for triage.
+// Optional developer-owned secrets for Cloudflare AI Gateway triage.
 if (builder.ExecutionContext.IsRunMode &&
     !string.IsNullOrWhiteSpace(builder.Configuration["Parameters:cloudflare-account-id"]) &&
     !string.IsNullOrWhiteSpace(builder.Configuration["Parameters:cloudflare-ai-token"]))
@@ -92,9 +80,7 @@ if (builder.ExecutionContext.IsRunMode &&
         .WithEnvironment("Triage__ApiToken", token);
 }
 
-// The dashboard labels the API's endpoints and links to Scalar. The AppHost's launch profile picks the API's (DOTNET_LAUNCH_PROFILE):
-// `https` gives it an https and an http endpoint, `http` only the latter. A URL callback on an endpoint the API lacks is dropped (with a
-// warning), so only the endpoints it has are labelled, and the Scalar link goes on https when there is one, else on http.
+// Label available API endpoints and attach the Scalar API reference link.
 string[] apiEndpoints = [.. new[] { "https", "http" }.Where(name => api.GetEndpoint(name).Exists)];
 foreach (var name in apiEndpoints)
 {
@@ -103,8 +89,7 @@ foreach (var name in apiEndpoints)
 
 if (apiEndpoints is [var scalarEndpoint, ..])
 {
-    // Built from the endpoint's own URL, so it carries the endpoint's dev.localhost name (launchSettings.json); a relative link would
-    // be resolved against the bound localhost address instead.
+    // Build from the endpoint URL so it preserves the configured dev.localhost host.
     api.WithUrls(context =>
     {
         if (context.Urls.FirstOrDefault(url => url.Endpoint?.EndpointName == scalarEndpoint) is { } endpointUrl)
@@ -119,8 +104,7 @@ if (apiEndpoints is [var scalarEndpoint, ..])
     });
 }
 
-// Mailpit is a local capture inbox only. Publish mode retains Provider=None until the production adapter is available.
-// CommunityToolkit 13.6.0 targets Aspire 13.6 and is compatible with the pinned hosting packages 13.6.1.
+// Local Mailpit capture inbox for run mode.
 if (builder.ExecutionContext.IsRunMode)
 {
     var mailpit = builder.AddMailPit("mailpit")
@@ -136,10 +120,7 @@ if (builder.ExecutionContext.IsRunMode)
         .WaitFor(mailpit);
 }
 
-// The dashboard's "Reseed demo data" command (§C3), in run mode only. Its key is a fresh secret for every run (the API is restarted
-// with the AppHost, so nothing needs to remember it), given to the API as Demo__ReseedKey and sent by the command as X-Reseed-Key;
-// without it the API answers the route like an unknown one. The command uses the plain-HTTP endpoint, like the Vite proxy (§C5), so
-// it works whether or not the development certificate is trusted.
+// Dashboard command to reseed demo data in run mode, authenticated via a per-run secret header.
 if (builder.ExecutionContext.IsRunMode)
 {
     var reseedKey = builder.AddParameter("demo-reseed-key", new GenerateParameterDefault { MinLength = 32, Special = false }, secret: true);
@@ -168,7 +149,6 @@ else
         .PublishAsDockerFile(container => container.WithDockerfile("../../", "src/Keyloop.ServiceScheduler.Api/Dockerfile"));
 }
 
-// The dispatch board (ARCHITECTURE §8.6, ADR-019). Readiness applies in both modes; Vite discovery is run-only.
 var web = builder.AddViteApp("web", "../Keyloop.ServiceScheduler.Web")
     .WithPnpm(installArgs: ["--frozen-lockfile"])
     .WaitFor(api)
@@ -182,8 +162,7 @@ if (builder.ExecutionContext.IsRunMode)
 }
 else
 {
-    // Aspire emits WEB_IMAGE for this Dockerfile. nginx needs the container endpoint URL, and listens on 8080, not Vite's port.
-    // Web publishes the browser port: nginx supplies the last forwarding hop trusted by the internal API (ARCHITECTURE §10).
+    // Configure nginx upstream and target port for published container builds.
     web.WithEnvironment("API_UPSTREAM", api.GetEndpoint("http"))
         .PublishAsDockerFile(container => container
             .WithEndpoint("http", endpoint => endpoint.TargetPort = 8080));
@@ -195,9 +174,7 @@ builder.Build().Run();
 internal static class ComposeInputs
 {
     /// <summary>
-    /// Rewrites every <c>${name}</c> in the services' environments to <c>${name:-value}</c>, so Compose substitutes
-    /// <paramref name="value"/> when the input is unset or empty. Fails the publish if the generated file references the input
-    /// nowhere, or anywhere else, rather than writing a bundle that would start with an empty value.
+    /// Rewrites <c>${name}</c> references in service environments to <c>${name:-value}</c> so unset inputs fall back to <paramref name="value"/>.
     /// </summary>
     public static void DefaultTo(ComposeFile compose, string name, string value)
     {

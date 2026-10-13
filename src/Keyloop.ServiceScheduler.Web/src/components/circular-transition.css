@@ -1,6 +1,5 @@
 /* Adopted from shadcn-dashboard-landing-template (vite-version) `src/components/theme-customizer/circular-transition.css`,
- * Copyright (c) 2025 ShadcnStore, MIT License (the full notice is in the README's licence section).
- * Theme switch: a circular reveal from the toggle (View Transitions API), as the template's mode toggle draws it. */
+ * Copyright (c) 2025 ShadcnStore, MIT License. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;

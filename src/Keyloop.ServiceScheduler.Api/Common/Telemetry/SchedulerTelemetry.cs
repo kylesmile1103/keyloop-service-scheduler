@@ -5,7 +5,7 @@ using Keyloop.ServiceScheduler.Infrastructure.Telemetry;
 
 namespace Keyloop.ServiceScheduler.Api.Common.Telemetry;
 
-/// <summary>Request traces and instruments, using the shared service meter (ARCHITECTURE §12.1).</summary>
+/// <summary>Request traces and metric instruments using the shared service meter.</summary>
 public static class SchedulerTelemetry
 {
     public const string Name = InfrastructureTelemetry.Name;
