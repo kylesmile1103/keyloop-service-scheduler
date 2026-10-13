@@ -114,7 +114,10 @@ function TechnicianList({ dealership, today, phone }: ResourceScope) {
     dealership,
     onDone: (record) => {
       // The confirmed level's button leaves the review note once the list is read again: focus moves on first.
-      if (byLabel("HV levels to review")?.contains(document.activeElement)) pastConfirmed(record.name)?.focus()
+      if (byLabel("HV levels to review")?.contains(document.activeElement)) {
+        const listed = rows.find((row) => row.id === record.id)?.name
+        pastConfirmed(listed && listed !== record.name ? [listed, record.name] : [record.name])?.focus()
+      }
       return saved(record, "HV level confirmed", `${record.name}: ${record.hvLevel === 0 ? "no HV training" : `HV ${record.hvLevel}`}, confirmed.`)
     },
   })

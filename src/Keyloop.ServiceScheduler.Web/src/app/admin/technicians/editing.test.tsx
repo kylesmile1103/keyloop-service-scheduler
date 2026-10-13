@@ -422,6 +422,37 @@ describe("HV levels and deactivation, as an Admin", () => {
     expect(posts.map((request) => request.headers.get("If-Match"))).toEqual([etagOf(722), etagOf(now.version)])
   })
 
+  it("keeps focus on the technician after confirming through the dialog when another Admin renamed them", async () => {
+    const { server } = setup(benUnconfirmed)
+
+    const note = await screen.findByRole("region", { name: "HV levels to review" })
+    server.editedElsewhere.technician(ben.id, { hvLevel: 2, name: "Benjamin Okafor" })
+    within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
+    fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
+    const dialog = await screen.findByRole("dialog", { name: "Ben Okafor's record changed" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm HV 2" }))
+
+    expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("region", { name: "HV levels to review" })).not.toBeInTheDocument())
+    // The row is the same element under its new name: focus is on its actions, never the page.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actions for Benjamin Okafor" })).toHaveFocus())
+  })
+
+  it("moves focus to the search field when a search hides the technician whose level was just confirmed", async () => {
+    setup(benUnconfirmed)
+
+    const note = await screen.findByRole("region", { name: "HV levels to review" })
+    const search = screen.getByRole("searchbox", { name: "Search technicians" })
+    fireEvent.change(search, { target: { value: "Eva" } })
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Actions for Ben Okafor" })).not.toBeInTheDocument())
+    within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }).focus()
+    fireEvent.click(within(note).getByRole("button", { name: "Confirm Ben Okafor's level" }))
+
+    expect(await screen.findByText("HV level confirmed")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("region", { name: "HV levels to review" })).not.toBeInTheDocument())
+    expect(search).toHaveFocus()
+  })
+
   it("previews the upcoming appointments that would be flagged before deactivating, then deactivates", async () => {
     const upcoming = (id: string, date: string, status: AppointmentListItemResponse["status"], technician = ben) => ({
       ...appointments.evBattery,

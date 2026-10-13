@@ -54,10 +54,19 @@ export function byLabel(label: string, scope: ParentNode = document): HTMLElemen
 
 /**
  * Where focus goes once a technician's level is confirmed, so the button (and the review note, with the last level) can go:
- * the next level to review, else that technician's row actions.
+ * the next level to review, else that technician's row actions, else (a search or filter hides the row) the list's search
+ * field, else Add technician. `names` are every name the technician is shown under (the list's, and the saved record's
+ * after a rename by another Admin): the row keeps its element when the list is read again, so either label finds it.
  */
-export function pastConfirmed(name: string): HTMLElement | null {
+export function pastConfirmed(names: readonly string[]): HTMLElement | null {
+  const own = new Set(names.map((name) => `Confirm ${name}'s level`))
   const note = byLabel("HV levels to review")
-  const next = note ? [...note.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent !== `Confirm ${name}'s level`) : undefined
-  return next ?? byLabel(`Actions for ${name}`)
+  const next = note ? [...note.querySelectorAll<HTMLButtonElement>("button")].find((button) => !own.has(button.textContent ?? "")) : undefined
+  return (
+    next ??
+    names.map((name) => byLabel(`Actions for ${name}`)).find((element) => element !== null) ??
+    document.querySelector<HTMLElement>('input[type="search"]') ??
+    [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Add technician") ??
+    null
+  )
 }
