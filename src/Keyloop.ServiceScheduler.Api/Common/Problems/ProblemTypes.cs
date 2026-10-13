@@ -26,6 +26,8 @@ public static class ProblemTypes
     public const string SlotConflict = Base + "slot-conflict";
     public const string InvalidStateTransition = Base + "invalid-state-transition";
     public const string NoShowBeforeSlotEnd = Base + "no-show-before-slot-end";
+    public const string PreconditionRequired = Base + "precondition-required";
+    public const string PreconditionFailed = Base + "precondition-failed";
     public const string ConcurrencyConflict = Base + "concurrency-conflict";
     public const string RateLimited = Base + "rate-limited";
     public const string TriageUnavailable = Base + "triage-unavailable";
@@ -52,6 +54,8 @@ public static class ProblemTypes
         [SlotConflict] = "Slot conflict",
         [InvalidStateTransition] = "Invalid state transition",
         [NoShowBeforeSlotEnd] = "No-show before slot end",
+        [PreconditionRequired] = "Precondition required",
+        [PreconditionFailed] = "Precondition failed",
         [ConcurrencyConflict] = "Concurrency conflict",
         [RateLimited] = "Too many requests",
         [TriageUnavailable] = "Service suggestions unavailable",

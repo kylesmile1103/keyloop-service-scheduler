@@ -28,8 +28,9 @@ namespace Keyloop.ServiceScheduler.Api.Features.Appointments.BookAppointment;
 /// a committed booking is replayed before any rule could reject it); the lock-free rules are checked (404s and the 422s); the
 /// appointment id is minted, once per request; then one transaction at <c>READ COMMITTED</c> takes the dealership's advisory lock, looks
 /// for the minted id (an earlier run of this request may have committed although its commit reported a failure), looks the key up again
-/// (a concurrent request with it may have committed while this one waited; an expired row is deleted), re-checks availability,
-/// allocates, and inserts the appointment, its history row and the memoised response.
+/// (a concurrent request with it may have committed while this one waited; an expired row is deleted), with vehicle-aware requirements
+/// confirms that the policy version it resolved is still the latest (otherwise it resolves again, ADR-029 Task 30a amendment), re-checks
+/// availability, allocates, and inserts the appointment, its history row and the memoised response.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -63,6 +64,12 @@ public sealed class BookAppointmentHandler(
 {
     /// <summary>How long a successful booking's response is replayed for its <c>Idempotency-Key</c>.</summary>
     public static readonly TimeSpan IdempotencyKeyLifetime = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// How many times one request re-resolves after finding a newer policy under its lock. Each needs a separate Admin publication to
+    /// commit between this request's policy read and its lock, so a request that keeps losing that race fails loudly instead of looping.
+    /// </summary>
+    private const int MaxPolicyReResolutions = 3;
 
     // The 422 detail reaches clients verbatim, so it never names individual bays or technicians (ARCHITECTURE §8.7).
     private const string NoQualifiedResourcesDetail =
@@ -116,7 +123,7 @@ public sealed class BookAppointmentHandler(
             BookingWindowPolicy.EnsureAligned(slot.StartUtc, window, options.Value.SlotGranularityMinutes);
             var localDate = LocalTimeConverter.ToLocalDate(slot.StartUtc, dealership.TimeZone);
             var profile = options.Value.VehicleAwareRequirements ? VehicleProfileResolution.Resolve(Vin.Create(request.Vehicle.Vin), request.Vehicle.Profile, actor.Name) : null;
-            var requirements = profile is null ? null : RequirementResolver.Resolve(serviceType, profile, await policies.ReadAsync(dealership.Id, ct), request.NeedsLiveDiagnosis);
+            var requirements = profile is null ? null : await policies.ResolveAsync(dealership.Id, serviceType, profile, request.NeedsLiveDiagnosis, ct);
             if (requirements is not null)
             {
                 foreach (var rule in requirements.FiredRules)
@@ -136,9 +143,12 @@ public sealed class BookAppointmentHandler(
                 command, fingerprint, Guid.CreateVersion7(clock.GetUtcNow()), dealership, serviceType, slot, window, compatibleBays, certifiedTechnicians,
                 ToCustomer(request.Customer), ToVehicle(request.Vehicle), requirements, profile, localDate, allBays, allTechnicians);
 
-            // 3. The transaction (see the remarks). A second pass happens only when a duplicate key's stored row turns out expired.
+            // 3. The transaction (see the remarks). Another pass happens only when a duplicate key's stored row turns out expired, or when
+            //    an Admin published a newer requirement policy while this booking waited for its lock.
             using var appointmentScope = logger.AppointmentScope(booking.AppointmentId);
-            for (var pass = 1; ; pass++)
+            var duplicateKeyPasses = 0;
+            var policyReResolutions = 0;
+            while (true)
             {
                 var attempt = await RunAsync(booking, ct);
                 switch (attempt)
@@ -176,11 +186,24 @@ public sealed class BookAppointmentHandler(
                             return replay;
                         }
 
-                        if (pass == 2)
+                        if (++duplicateKeyPasses == 2)
                         {
                             throw new InvalidOperationException("The Idempotency-Key insert failed as a duplicate twice, yet no live row has that key.");
                         }
 
+                        continue;
+                    }
+
+                    case BookingAttempt.PolicyChanged:
+                    {
+                        // Same minted id: the rolled-back run committed nothing. A stricter version can now refuse with the 422 above.
+                        if (++policyReResolutions > MaxPolicyReResolutions)
+                        {
+                            throw new InvalidOperationException(
+                                $"The requirement policy changed under the dealership lock {policyReResolutions} times while this booking was in flight.");
+                        }
+
+                        booking = await ReResolveAsync(booking, ct);
                         continue;
                     }
 
@@ -328,6 +351,15 @@ public sealed class BookAppointmentHandler(
             }
         }
 
+        // A policy publication commits only under this lock, so the version read here is settled until this transaction ends. A booking
+        // that resolved an older version before the lock must not commit under it (ADR-029 Task 30a amendment): one plain read, no lock.
+        if (booking.Requirements is { } resolvedBeforeLock
+            && await policies.LatestVersionAsync(dealershipId, ct) != resolvedBeforeLock.PolicyVersion)
+        {
+            await transaction.RollbackAsync(ct);
+            return new BookingAttempt.PolicyChanged();
+        }
+
         // The pre-check: active appointments of this dealership overlapping the slot (half-open), as of the previous holder's commit.
         var (start, end) = (booking.Slot.StartUtc, booking.Slot.EndUtc);
         var busy = await db.Appointments.AsNoTracking()
@@ -403,6 +435,20 @@ public sealed class BookAppointmentHandler(
         run.Committing = true;
         await transaction.CommitAsync(ct);
         return new BookingAttempt.Confirmed(appointment, bay, technician);
+    }
+
+    /// <summary>
+    /// The booking again with the dealership's current policy and roster, after a run found a newer policy under its lock. Lock-free reads,
+    /// as before the first run; it throws the same <c>no-qualified-resources</c> 422 when the new version leaves nobody qualified.
+    /// </summary>
+    private async Task<Booking> ReResolveAsync(Booking booking, CancellationToken ct)
+    {
+        var requirements = await policies.ResolveAsync(booking.Dealership.Id, booking.ServiceType, booking.Profile!, booking.Command.Request.NeedsLiveDiagnosis, ct);
+        var (allBays, allTechnicians, bays, technicians) = await QualifiedResourcesAsync(booking.Dealership.Id, booking.ServiceType, requirements, booking.LocalDate, ct);
+        return booking with
+        {
+            Requirements = requirements, CompatibleBays = bays, CertifiedTechnicians = technicians, AllBays = allBays, AllTechnicians = allTechnicians,
+        };
     }
 
     private async Task AcquireLockAsync(Guid dealershipId, CancellationToken ct)

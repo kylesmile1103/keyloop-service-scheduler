@@ -1,7 +1,9 @@
 using Keyloop.ServiceScheduler.Api.Common.Telemetry;
+using Keyloop.ServiceScheduler.Api.Features.Admin.Shared;
 using Keyloop.ServiceScheduler.Domain.Common;
 using Keyloop.ServiceScheduler.Infrastructure.Triage;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -31,12 +33,18 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
             return true;
         }
 
-        var problem = Map(exception);
+        var endpoint = httpContext.GetEndpoint() ?? httpContext.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+        var problem = Map(exception, endpoint?.Metadata.GetMetadata<AdminEditingMetadata>() is not null);
         if (problem.Status == StatusCodes.Status500InternalServerError)
         {
             logger.UnhandledException(exception, httpContext.Request.Method, httpContext.Request.Path);
         }
 
+        if (exception is AdminPreconditionException { CurrentETag: { } tag })
+        {
+            httpContext.Response.Headers.ETag = tag;
+            httpContext.Items[typeof(AdminPreconditionException)] = tag;
+        }
         problem.Instance = httpContext.Request.Path;
         httpContext.Response.StatusCode = problem.Status!.Value;
         if (exception is TriageUnavailableException { RetryAfterSeconds: { } seconds })
@@ -50,8 +58,13 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         return true;
     }
 
-    private static ProblemDetails Map(Exception exception) => exception switch
+    private static ProblemDetails Map(Exception exception, bool adminFieldErrors) => exception switch
     {
+        AdminFieldException input => Problem(new HttpValidationProblemDetails(new Dictionary<string, string[]>
+            { [input.Field] = [input.Message] }), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError, "One or more fields are invalid."),
+        AdminPreconditionException precondition => Problem(precondition.Status,
+            precondition.Status == 428 ? ProblemTypes.PreconditionRequired : ProblemTypes.PreconditionFailed, precondition.Message,
+            precondition.Status == 412 ? [new("currentETag", precondition.CurrentETag), new("current", precondition.Current)] : []),
         TriageInputException input => Problem(new HttpValidationProblemDetails(new Dictionary<string, string[]>
             { [input.Field] = [input.Message] }), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError, "One or more fields are invalid."),
         TriageUnavailableException unavailable => Problem(StatusCodes.Status503ServiceUnavailable, ProblemTypes.TriageUnavailable, unavailable.Message),
@@ -78,14 +91,31 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         // malformed value does: on an endpoint with a filter, a nullable parameter that fails to parse binds as null and the request
         // continues to the filters, so ValidationFilter answers it with a field-keyed validation-error instead (e.g. availability's
         // serviceTypeId=not-a-guid). The framework's message names C# types, so the detail here is generic. validation-error always
-        // carries `errors` (§8.7); a binding failure names no field, so it is empty.
-        BadHttpRequestException { StatusCode: StatusCodes.Status400BadRequest } => Problem(
-            new HttpValidationProblemDetails(), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError,
+        // carries `errors` (§8.7). Existing binding problems keep empty errors; new Admin bodies retain a bounded JSON field path when available.
+        BadHttpRequestException { StatusCode: StatusCodes.Status400BadRequest } binding => Problem(
+            new HttpValidationProblemDetails(adminFieldErrors ? BindingErrors(binding) : []), StatusCodes.Status400BadRequest, ProblemTypes.ValidationError,
             "The request could not be read: a parameter is missing or malformed, or the body is not valid JSON."),
         BadHttpRequestException other => new ProblemDetails { Status = other.StatusCode }, // e.g. 413: the framework's default type and title for the status
 
         _ => Problem(StatusCodes.Status500InternalServerError, ProblemTypes.InternalError, UnexpectedDetail),
     };
+
+    private static Dictionary<string, string[]> BindingErrors(Exception exception)
+    {
+        // JsonException paths name fields, never values. Retain a bounded JSON path, with generic text, for malformed typed bodies.
+        for (var current = exception.InnerException; current is not null; current = current.InnerException)
+        {
+            if (current is JsonException { Path: { } path } && path.Length <= 256 && path.StartsWith("$.", StringComparison.Ordinal))
+            {
+                var field = path[2..];
+                if (field.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '[' or ']' or '_'))
+                {
+                    return new(StringComparer.Ordinal) { [field] = ["This field is missing or could not be read in the documented format."] };
+                }
+            }
+        }
+        return [];
+    }
 
     private static ProblemDetails Problem(int status, string type, string detail, KeyValuePair<string, object?>[]? extensions = null) =>
         Problem(new ProblemDetails(), status, type, detail, extensions);

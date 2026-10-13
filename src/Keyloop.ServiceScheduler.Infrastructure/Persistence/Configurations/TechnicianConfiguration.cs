@@ -11,6 +11,7 @@ internal sealed class TechnicianConfiguration : IEntityTypeConfiguration<Technic
     public void Configure(EntityTypeBuilder<Technician> builder)
     {
         builder.ToTable("technicians", t => t.HasCheckConstraint("ck_technicians_hv_level", "hv_level BETWEEN 0 AND 4"));
+        builder.Property(r => r.RowVersion).IsRowVersion();
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
         builder.Property(t => t.Name).HasMaxLength(120);

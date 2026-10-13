@@ -31,6 +31,12 @@ public abstract record BookingAttempt
 
     /// <summary>Under the lock, the key turned out to be in use already (a concurrent request with it committed while this one waited).</summary>
     public sealed record KeyInUse(IdempotencyKey Stored) : BookingAttempt;
+
+    /// <summary>
+    /// Under the lock, the dealership's latest requirement policy is newer than the version resolved before it (an Admin published while
+    /// this booking waited). Rolled back; the request resolves the new version and its qualified roster again (ADR-029 Task 30a amendment).
+    /// </summary>
+    public sealed record PolicyChanged() : BookingAttempt;
 }
 
 /// <summary>The <c>outcome</c> tag of <c>scheduler.booking.requests</c> and <c>scheduler.booking.duration</c>, and of the <c>booking.outcome</c> span tag (ARCHITECTURE §12.1).</summary>

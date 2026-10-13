@@ -13,6 +13,8 @@ public static class SchedulerTelemetry
 
     public static readonly Meter Meter = InfrastructureTelemetry.Meter;
 
+    public static readonly Counter<long> AdminEdits = Meter.CreateCounter<long>("scheduler.admin.edits", "{edit}");
+
     public static readonly Counter<long> AllocationDecidedBy = Meter.CreateCounter<long>("scheduler.allocation.decided_by", "{allocation}");
     public static readonly Counter<long> RequirementRuleFired = Meter.CreateCounter<long>("scheduler.requirements.rule_fired", "{rule}");
     public static readonly Counter<long> ProfileSource = Meter.CreateCounter<long>("scheduler.intake.profile_source", "{profile}");

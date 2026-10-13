@@ -206,7 +206,7 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
         var served = JsonNode.Parse(await _client.GetStringAsync("/openapi/v1.json", Ct))!;
         var reference = JsonNode.Parse(await withoutRoute.GetStringAsync("/openapi/v1.json", Ct))!;
 
-        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.Contains("admin", StringComparison.Ordinal));
+        served["paths"]!.AsObject().Select(p => p.Key).ShouldNotContain(path => path.StartsWith("/api/v1/admin/", StringComparison.Ordinal));
         JsonNode.DeepEquals(served, reference).ShouldBeTrue("the reseed route changed the OpenAPI document");
     }
 
@@ -311,6 +311,54 @@ public sealed class ReseedDemoDataTests(PostgresFixture pg) : IAsyncLifetime
                 Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment], ignoreOrder: true);
         });
         (await CompetenceAsync(eva)).ShouldBe((1, new DateOnly(2027, 1, 31), true));
+    }
+
+    /// <summary>
+    /// Since Task 30a an unconfirmed level or a missing certification can be an Admin's decision, recorded in the audit history. The reseed
+    /// restores only seeded technicians nobody edited through Admin: it never raises a qualification an Admin lowered, so the latest audit
+    /// <c>after</c> still matches the stored technician.
+    /// </summary>
+    [Fact]
+    public async Task Reseed_keeps_competence_and_certifications_an_Admin_edited()
+    {
+        var amelia = ReferenceDataSeed.TechnicianId("T-1001");
+        var ben = ReferenceDataSeed.TechnicianId("T-1002");
+        var eva = ReferenceDataSeed.TechnicianId("T-1005");
+        // Ben looks migrated and nobody edited him, so the reseed still restores his seeded competence.
+        await _factory.WithDbAsync(db => db.Database.ExecuteSqlAsync(
+            $"UPDATE technicians SET hv_level = 3, hv_level_valid_until = NULL, hv_level_confirmed = false WHERE id = {ben}", Ct));
+        await EditTechnicianAsync(amelia, body =>
+        {
+            body["hvLevel"] = 1;
+            body["hvLevelValidUntil"] = null;
+            body["hvLevelConfirmed"] = false;
+        });
+        await EditTechnicianAsync(eva, body => body["certifications"] = new JsonArray([.. body["certifications"]!.AsArray()
+            .Select(c => c!.GetValue<string>()).Where(c => c != "DamageAssessment").Select(c => (JsonNode)JsonValue.Create(c))]));
+
+        using var response = await ReseedAsync(_client, Key);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+
+        (await CompetenceAsync(amelia)).ShouldBe((1, null, false), "an Admin's unconfirmed level is a person's decision");
+        (await CompetenceAsync(ben)).ShouldBe((3, new DateOnly(2028, 12, 31), true));
+        (await _factory.WithDbAsync(db => db.Technicians.AsNoTracking().SingleAsync(t => t.Id == eva, Ct)))
+            .Certifications.ShouldNotContain(Keyloop.ServiceScheduler.Domain.Resources.Certification.DamageAssessment);
+    }
+
+    private async Task EditTechnicianAsync(Guid technicianId, Action<JsonNode> edit)
+    {
+        var path = $"/api/v1/dealerships/{ReferenceDataSeed.ReadingDealershipId}/technicians/{technicianId}";
+        using var read = await _client.GetAsync(path, Ct);
+        read.StatusCode.ShouldBe(HttpStatusCode.OK, await read.Content.ReadAsStringAsync(Ct));
+        var body = JsonNode.Parse(await read.Content.ReadAsStringAsync(Ct))!;
+        edit(body);
+        using var request = new HttpRequestMessage(HttpMethod.Put, path)
+        {
+            Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", read.Headers.ETag!.ToString());
+        using var saved = await _client.SendAsync(request, Ct);
+        saved.StatusCode.ShouldBe(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync(Ct));
     }
 
     /// <summary>

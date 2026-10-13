@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetFeaturesData, GetFeaturesErrors, GetFeaturesResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
+import type { BookAppointmentData, BookAppointmentErrors, BookAppointmentResponses, CancelAppointmentData, CancelAppointmentErrors, CancelAppointmentResponses, ConfirmTechnicianHvLevelData, ConfirmTechnicianHvLevelErrors, ConfirmTechnicianHvLevelResponses, CreateBayData, CreateBayErrors, CreateBayResponses, CreateTechnicianData, CreateTechnicianErrors, CreateTechnicianResponses, EditBayData, EditBayErrors, EditBayResponses, EditRequirementPolicyData, EditRequirementPolicyErrors, EditRequirementPolicyResponses, EditTechnicianData, EditTechnicianErrors, EditTechnicianResponses, GetAdminBayData, GetAdminBayErrors, GetAdminBayResponses, GetAdminHistoryData, GetAdminHistoryErrors, GetAdminHistoryResponses, GetAdminTechnicianData, GetAdminTechnicianErrors, GetAdminTechnicianResponses, GetAppointmentData, GetAppointmentErrors, GetAppointmentResponses, GetAvailabilityData, GetAvailabilityErrors, GetAvailabilityResponses, GetBookingTriageStatusData, GetBookingTriageStatusErrors, GetBookingTriageStatusResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDealershipsData, GetDealershipsErrors, GetDealershipsResponses, GetFeaturesData, GetFeaturesErrors, GetFeaturesResponses, GetRequirementPolicyData, GetRequirementPolicyErrors, GetRequirementPolicyResponses, GetServiceTypesData, GetServiceTypesErrors, GetServiceTypesResponses, GetWorkshopScheduleData, GetWorkshopScheduleErrors, GetWorkshopScheduleResponses, ListAdminBaysData, ListAdminBaysErrors, ListAdminBaysResponses, ListAdminTechniciansData, ListAdminTechniciansErrors, ListAdminTechniciansResponses, ListAppointmentsData, ListAppointmentsErrors, ListAppointmentsResponses, ResolveVehicleProfileData, ResolveVehicleProfileErrors, ResolveVehicleProfileResponses, TriageBookingRequestData, TriageBookingRequestErrors, TriageBookingRequestResponses, UploadBookingTriageImageData, UploadBookingTriageImageErrors, UploadBookingTriageImageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -281,5 +281,181 @@ export const getFeatures = <ThrowOnError extends boolean = false>(options?: Opti
             type: 'apiKey'
         }],
     url: '/api/v1/features',
+    ...options
+});
+
+/**
+ * List dealership technicians for administration
+ */
+export const listAdminTechnicians = <ThrowOnError extends boolean = false>(options: Options<ListAdminTechniciansData, ThrowOnError>): RequestResult<ListAdminTechniciansResponses, ListAdminTechniciansErrors, ThrowOnError> => (options.client ?? client).get<ListAdminTechniciansResponses, ListAdminTechniciansErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/technicians',
+    ...options
+});
+
+/**
+ * Create a technician
+ */
+export const createTechnician = <ThrowOnError extends boolean = false>(options: Options<CreateTechnicianData, ThrowOnError>): RequestResult<CreateTechnicianResponses, CreateTechnicianErrors, ThrowOnError> => (options.client ?? client).post<CreateTechnicianResponses, CreateTechnicianErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/technicians',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get a technician for editing
+ */
+export const getAdminTechnician = <ThrowOnError extends boolean = false>(options: Options<GetAdminTechnicianData, ThrowOnError>): RequestResult<GetAdminTechnicianResponses, GetAdminTechnicianErrors, ThrowOnError> => (options.client ?? client).get<GetAdminTechnicianResponses, GetAdminTechnicianErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}',
+    ...options
+});
+
+/**
+ * Edit a technician
+ */
+export const editTechnician = <ThrowOnError extends boolean = false>(options: Options<EditTechnicianData, ThrowOnError>): RequestResult<EditTechnicianResponses, EditTechnicianErrors, ThrowOnError> => (options.client ?? client).put<EditTechnicianResponses, EditTechnicianErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Confirm the recorded HV level
+ */
+export const confirmTechnicianHvLevel = <ThrowOnError extends boolean = false>(options: Options<ConfirmTechnicianHvLevelData, ThrowOnError>): RequestResult<ConfirmTechnicianHvLevelResponses, ConfirmTechnicianHvLevelErrors, ThrowOnError> => (options.client ?? client).post<ConfirmTechnicianHvLevelResponses, ConfirmTechnicianHvLevelErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/technicians/{technicianId}/confirm-hv-level',
+    ...options
+});
+
+/**
+ * List dealership bays for administration
+ */
+export const listAdminBays = <ThrowOnError extends boolean = false>(options: Options<ListAdminBaysData, ThrowOnError>): RequestResult<ListAdminBaysResponses, ListAdminBaysErrors, ThrowOnError> => (options.client ?? client).get<ListAdminBaysResponses, ListAdminBaysErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/bays',
+    ...options
+});
+
+/**
+ * Create a service bay
+ */
+export const createBay = <ThrowOnError extends boolean = false>(options: Options<CreateBayData, ThrowOnError>): RequestResult<CreateBayResponses, CreateBayErrors, ThrowOnError> => (options.client ?? client).post<CreateBayResponses, CreateBayErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/bays',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get a bay for editing
+ */
+export const getAdminBay = <ThrowOnError extends boolean = false>(options: Options<GetAdminBayData, ThrowOnError>): RequestResult<GetAdminBayResponses, GetAdminBayErrors, ThrowOnError> => (options.client ?? client).get<GetAdminBayResponses, GetAdminBayErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/bays/{bayId}',
+    ...options
+});
+
+/**
+ * Edit a service bay
+ */
+export const editBay = <ThrowOnError extends boolean = false>(options: Options<EditBayData, ThrowOnError>): RequestResult<EditBayResponses, EditBayErrors, ThrowOnError> => (options.client ?? client).put<EditBayResponses, EditBayErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/bays/{bayId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get the dealership requirement policy
+ */
+export const getRequirementPolicy = <ThrowOnError extends boolean = false>(options: Options<GetRequirementPolicyData, ThrowOnError>): RequestResult<GetRequirementPolicyResponses, GetRequirementPolicyErrors, ThrowOnError> => (options.client ?? client).get<GetRequirementPolicyResponses, GetRequirementPolicyErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/requirement-policy',
+    ...options
+});
+
+/**
+ * Preview or publish the next requirement policy
+ */
+export const editRequirementPolicy = <ThrowOnError extends boolean = false>(options: Options<EditRequirementPolicyData, ThrowOnError>): RequestResult<EditRequirementPolicyResponses, EditRequirementPolicyErrors, ThrowOnError> => (options.client ?? client).put<EditRequirementPolicyResponses, EditRequirementPolicyErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/requirement-policy',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Admin change history
+ */
+export const getAdminHistory = <ThrowOnError extends boolean = false>(options: Options<GetAdminHistoryData, ThrowOnError>): RequestResult<GetAdminHistoryResponses, GetAdminHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetAdminHistoryResponses, GetAdminHistoryErrors, ThrowOnError>({
+    security: [{ name: 'Cf-Access-Jwt-Assertion', type: 'apiKey' }, {
+            in: 'cookie',
+            name: 'CF_Authorization',
+            type: 'apiKey'
+        }],
+    url: '/api/v1/dealerships/{dealershipId}/admin-history',
     ...options
 });

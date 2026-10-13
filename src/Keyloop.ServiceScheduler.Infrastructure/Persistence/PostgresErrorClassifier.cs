@@ -9,6 +9,7 @@ public enum PostgresFailure
     BayOverlap,
     TechnicianOverlap,
     IdempotencyKeyDuplicate,
+    EmployeeNumberDuplicate,
     Deadlock,
     CheckViolation,
 
@@ -39,6 +40,7 @@ public static class PostgresErrorClassifier
                     PostgresErrorCodes.ExclusionViolation when postgres.ConstraintName == BayConstraint => PostgresFailure.BayOverlap,
                     PostgresErrorCodes.ExclusionViolation when postgres.ConstraintName == TechnicianConstraint => PostgresFailure.TechnicianOverlap,
                     PostgresErrorCodes.UniqueViolation when postgres.ConstraintName == IdempotencyKeyConstraint => PostgresFailure.IdempotencyKeyDuplicate,
+                    PostgresErrorCodes.UniqueViolation when postgres.ConstraintName == "ix_technicians_dealership_id_employee_number" => PostgresFailure.EmployeeNumberDuplicate,
                     PostgresErrorCodes.DeadlockDetected => PostgresFailure.Deadlock,
                     PostgresErrorCodes.CheckViolation => PostgresFailure.CheckViolation,
                     _ => PostgresFailure.Other,
