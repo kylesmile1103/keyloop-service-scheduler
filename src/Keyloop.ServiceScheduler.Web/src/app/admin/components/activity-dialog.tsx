@@ -5,7 +5,7 @@ import { useState } from "react"
 import type { DealershipResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { authRefusalTitle, failureStatus } from "@/lib/problem-details"
 
@@ -125,10 +125,10 @@ function ActivityBody<TRecord extends Switchable, TWrite extends { isActive: boo
 
   return (
     <>
-      <DialogHeader>
+      <div className="flex flex-col gap-2">
         <DialogTitle className="font-heading text-lg font-semibold">{title}</DialogTitle>
         <DialogDescription className="text-pretty">{consequence}</DialogDescription>
-      </DialogHeader>
+      </div>
       {turningOff && (
         <UpcomingWork dealership={dealership} today={today} resource={{ kind: resource === "technicians" ? "technician" : "bay", id: record.id, name: record.name }} />
       )}

@@ -2,7 +2,6 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { History, RotateCw } from "lucide-react"
 import { useId } from "react"
 
-import { getAdminHistoryInfiniteOptions } from "@/api/@tanstack/react-query.gen"
 import type { AdminHistoryItem, AdminPolicyResponse, DealershipResponse, ServiceTypeResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +12,7 @@ import { formatLocalTime } from "@/lib/local-time"
 import { cachedCapabilities } from "@/lib/session"
 import { declarerName } from "@/lib/vehicle-aware"
 
+import { adminHistoryPages } from "../lib/admin-reads"
 import { ruleChanges, ruleChangeWords } from "./rule-words"
 
 const PAGE = 20
@@ -29,11 +29,8 @@ const isPolicy = (value: AdminHistoryItem["after"] | null): value is AdminPolicy
 export function PolicyVersions({ dealership, current, services }: { dealership: DealershipResponse; current: number | undefined; services: readonly ServiceTypeResponse[] | undefined }) {
   const headingId = useId()
   const queryClient = useQueryClient()
-  const options = getAdminHistoryInfiniteOptions({ path: { dealershipId: dealership.id }, query: { resourceKind: "policy", resourceId: dealership.id, limit: PAGE } })
   const history = useInfiniteQuery({
-    ...options,
-    initialPageParam: 0,
-    getNextPageParam: (last) => last.nextOffset ?? undefined,
+    ...adminHistoryPages(dealership.id, { resourceKind: "policy", resourceId: dealership.id, limit: PAGE }),
     enabled: () => cachedCapabilities(queryClient).isAdmin,
   })
   const items = history.data?.pages.flatMap((page) => page.items) ?? []

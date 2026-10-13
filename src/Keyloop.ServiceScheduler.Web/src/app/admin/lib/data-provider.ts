@@ -1,17 +1,11 @@
 import type { BaseKey, BaseRecord, CrudFilter, CrudSort, DataProvider, GetListResponse, MetaQuery, Pagination } from "@refinedev/core"
 import type { QueryClient } from "@tanstack/react-query"
 
-import {
-  getAdminBayOptions,
-  getAdminTechnicianOptions,
-  getServiceTypesOptions,
-  getWorkshopScheduleOptions,
-  listAdminBaysOptions,
-  listAdminTechniciansOptions,
-} from "@/api/@tanstack/react-query.gen"
+import { getServiceTypesOptions, getWorkshopScheduleOptions } from "@/api/@tanstack/react-query.gen"
 import type { BayWriteRequest, OperatingWindowResponse, TechnicianWriteRequest, WorkshopScheduleResponse } from "@/api/types.gen"
 
 import { saveBay, saveTechnician } from "./admin-api"
+import { adminBayQuery, adminBaysQuery, adminTechnicianQuery, adminTechniciansQuery } from "./admin-reads"
 import { refusal, toHttpError } from "./http-error"
 import { adminBayRecords, adminTechnicianRecords, bayRecords, serviceRecords, technicianRecords } from "./resources"
 
@@ -116,8 +110,8 @@ export function createSchedulerDataProvider(queryClient: QueryClient): DataProvi
   const catalogue = ({ dealershipId }: ResourceScope) => reading(queryClient.fetchQuery(getServiceTypesOptions({ path: { dealershipId } })))
   // Fresh every time: what an Admin edits must be what the API holds now.
   const adminTechnicians = ({ dealershipId }: ResourceScope) =>
-    reading(queryClient.fetchQuery({ ...listAdminTechniciansOptions({ path: { dealershipId } }), staleTime: 0 }))
-  const adminBays = ({ dealershipId }: ResourceScope) => reading(queryClient.fetchQuery({ ...listAdminBaysOptions({ path: { dealershipId } }), staleTime: 0 }))
+    reading(queryClient.fetchQuery({ ...adminTechniciansQuery(dealershipId), staleTime: 0 }))
+  const adminBays = ({ dealershipId }: ResourceScope) => reading(queryClient.fetchQuery({ ...adminBaysQuery(dealershipId), staleTime: 0 }))
 
   async function records(resource: string, scope: ResourceScope): Promise<{ rows: BaseRecord[]; day: WorkshopScheduleResponse }> {
     switch (resource) {
@@ -150,10 +144,10 @@ export function createSchedulerDataProvider(queryClient: QueryClient): DataProvi
     const scope = scopeOf(meta)
     // An Admin's form reads the one record, fresh, with its version (the representation an edit is made from).
     if (scope.view === "admin" && resource === "technicians") {
-      return reading(queryClient.fetchQuery({ ...getAdminTechnicianOptions({ path: { dealershipId: scope.dealershipId, technicianId: String(id) } }), staleTime: 0 }))
+      return reading(queryClient.fetchQuery({ ...adminTechnicianQuery(scope.dealershipId, String(id)), staleTime: 0 }))
     }
     if (scope.view === "admin" && resource === "bays") {
-      return reading(queryClient.fetchQuery({ ...getAdminBayOptions({ path: { dealershipId: scope.dealershipId, bayId: String(id) } }), staleTime: 0 }))
+      return reading(queryClient.fetchQuery({ ...adminBayQuery(scope.dealershipId, String(id)), staleTime: 0 }))
     }
     const { rows } = await records(resource, scope)
     const record = rows.find((row) => String(row.id) === String(id))

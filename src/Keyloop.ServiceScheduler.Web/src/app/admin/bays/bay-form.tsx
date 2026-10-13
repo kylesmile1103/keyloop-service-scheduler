@@ -1,15 +1,13 @@
-import { zodResolver } from "@hookform/resolvers/zod"
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
 import { LoaderCircle } from "lucide-react"
 import { type RefObject, useId, useRef, useState } from "react"
-import { Controller, useForm, useWatch } from "react-hook-form"
-import { z } from "zod"
+import { Controller, type FieldErrors, type Resolver, useForm, useWatch } from "react-hook-form"
 
 import type { AdminBayResponse, BayCapability, BayWriteRequest, DealershipResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
+import { Field, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -32,13 +30,20 @@ export type BayEditing = { mode: "create" } | { mode: "edit"; id: string; name: 
 /** The capabilities in the order the API lists them. */
 const CAPABILITIES = Object.keys(bayCapabilities) as BayCapability[]
 
-const schema = z.object({
-  name: z.string().trim().min(1, "Enter the bay's name.").max(100, "Keep the name to 100 characters."),
-  capabilities: z.array(z.enum(CAPABILITIES as [BayCapability, ...BayCapability[]])),
-  isActive: z.boolean(),
-})
+interface BayFormValues {
+  name: string
+  capabilities: BayCapability[]
+  isActive: boolean
+}
 
-type BayFormValues = z.input<typeof schema>
+/** The API's check of a bay's name, before anything is sent (written out, not zod: see the technician form). */
+const resolver: Resolver<BayFormValues> = async (values) => {
+  const name = values.name.trim()
+  const message = !name ? "Enter the bay's name." : name.length > 100 ? "Keep the name to 100 characters." : null
+  if (!message) return { values, errors: {} }
+  const errors: FieldErrors<BayFormValues> = { name: { type: "validate", message } }
+  return { values: {}, errors }
+}
 
 const valuesOf = (state: BayWriteRequest | null): BayFormValues => ({
   name: state?.name ?? "",
@@ -180,7 +185,7 @@ function BayFormBody({
   const conflictRef = useRef<HTMLElement>(null)
   const saveRef = useRef<HTMLButtonElement>(null)
 
-  const form = useForm<BayFormValues>({ defaultValues: valuesOf(opened ? bayWrite(opened) : null), resolver: zodResolver(schema) })
+  const form = useForm<BayFormValues>({ defaultValues: valuesOf(opened ? bayWrite(opened) : null), resolver })
   const values = useWatch({ control: form.control })
   const { errors } = form.formState
   const nameField = form.register("name")
@@ -308,7 +313,7 @@ function BayFormBody({
           render={({ field }) => (
             <FieldSet className="gap-2">
               <FieldLegend className="font-heading text-base font-semibold">Equipment</FieldLegend>
-              <FieldDescription className="text-xs">What the bay can take. A service needs a bay with all of its equipment.</FieldDescription>
+              <p className="text-xs text-muted-foreground">What the bay can take. A service needs a bay with all of its equipment.</p>
               <ul className="grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
                 {CAPABILITIES.map((capability) => {
                   const { label, icon: Icon } = bayCapabilities[capability]

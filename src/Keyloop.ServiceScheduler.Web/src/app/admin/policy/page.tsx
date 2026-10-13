@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { LoaderCircle, Pencil, Plus, Scale, Trash2, Undo2 } from "lucide-react"
 import { useId, useRef, useState } from "react"
 
-import { getRequirementPolicyOptions, getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
+import { getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
 import type { AdminPolicyResponse, PolicyEditResponse, RequirementRuleInput, ServiceTypeResponse } from "@/api/types.gen"
 import { CapabilityBadges } from "@/components/capability-badges"
 import { HvLevelBadge } from "@/components/hv-level"
@@ -26,6 +26,7 @@ import { ConflictPanel } from "../components/conflict-panel"
 import { DiscardedNote } from "../components/discarded-note"
 import { ResourcePage, type ResourceScope } from "../components/resource-page"
 import { conflictOf, policyTag, writePolicy } from "../lib/admin-api"
+import { requirementPolicyQuery } from "../lib/admin-reads"
 import type { ConflictRow } from "../lib/changes"
 import { useRefreshAfterEdit } from "../lib/refresh"
 import { useAdminAccess } from "../lib/use-admin-access"
@@ -87,7 +88,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const refresh = useRefreshAfterEdit()
   const pendingReasonId = useId()
   const conflictRef = useRef<HTMLElement>(null)
-  const policyOptions = getRequirementPolicyOptions({ path: { dealershipId: dealership.id } })
+  const policyOptions = requirementPolicyQuery(dealership.id)
   const policy = useQuery({ ...policyOptions, enabled: () => cachedCapabilities(queryClient).isAdmin })
   const policyFailure = useQueryFailure(policy, policyOptions.queryKey)
   const catalogue = useQuery(getServiceTypesOptions({ path: { dealershipId: dealership.id } }))

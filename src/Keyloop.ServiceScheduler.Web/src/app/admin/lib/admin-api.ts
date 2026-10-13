@@ -5,7 +5,7 @@ import {
   editBay,
   editRequirementPolicy,
   editTechnician,
-} from "@/api/sdk.gen"
+} from "./admin-request"
 import type {
   AdminBayResponse,
   AdminPolicyResponse,

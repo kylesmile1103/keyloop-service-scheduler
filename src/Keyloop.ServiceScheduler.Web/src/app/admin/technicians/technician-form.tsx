@@ -1,15 +1,13 @@
-import { zodResolver } from "@hookform/resolvers/zod"
 import { useDataProvider, useForm as useRefineForm } from "@refinedev/core"
 import { LoaderCircle, Plus, X } from "lucide-react"
 import { type KeyboardEvent, type RefObject, useId, useRef, useState } from "react"
-import { Controller, useForm, useWatch } from "react-hook-form"
-import { z } from "zod"
+import { Controller, type FieldErrors, type Resolver, useForm, useWatch } from "react-hook-form"
 
 import type { AdminTechnicianResponse, Certification, DealershipResponse, TechnicianWriteRequest } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
+import { Field, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -39,25 +37,40 @@ const BRAND = /^[A-Za-z0-9][A-Za-z0-9-]{0,31}$/
 const BRAND_RULE = "Use letters, digits and hyphens, starting with a letter or digit, up to 32 characters."
 const MAX_BRANDS = 16
 
-const schema = z
-  .object({
-    name: z.string().trim().min(1, "Enter the technician's name.").max(120, "Keep the name to 120 characters."),
-    employeeNumber: z.string().trim().min(1, "Enter the employee number.").max(32, "Keep the employee number to 32 characters."),
-    certifications: z.array(z.enum(CERTIFICATIONS as [Certification, ...Certification[]])),
-    isActive: z.boolean(),
-    hvLevel: z.number().int().min(0).max(4),
-    doesNotExpire: z.boolean(),
-    hvLevelValidUntil: z.string(),
-    hvLevelConfirmed: z.boolean(),
-    brandSpecialisms: z.array(z.string().regex(BRAND, BRAND_RULE)).max(MAX_BRANDS, `Keep to ${MAX_BRANDS} brands.`),
-  })
-  .superRefine((values, context) => {
-    if (!values.doesNotExpire && !isCalendarDate(values.hvLevelValidUntil)) {
-      context.addIssue({ code: "custom", path: ["hvLevelValidUntil"], message: "Enter the last day the level counts, or choose Does not expire." })
-    }
-  })
+/** The form's values: the write state, with the expiry as a date field and a "Does not expire" box. */
+interface TechnicianFormValues {
+  name: string
+  employeeNumber: string
+  certifications: Certification[]
+  isActive: boolean
+  hvLevel: number
+  doesNotExpire: boolean
+  hvLevelValidUntil: string
+  hvLevelConfirmed: boolean
+  brandSpecialisms: string[]
+}
 
-type TechnicianFormValues = z.input<typeof schema>
+/**
+ * The form's checks, the API's own (`TechnicianWriteValidator`) in the screen's words, before anything is sent. Written out
+ * rather than a zod schema: zod's checks live in a chunk the dispatch board shares, and every one used here would join the
+ * board's first load.
+ */
+const resolver: Resolver<TechnicianFormValues> = async (values) => {
+  const errors: FieldErrors<TechnicianFormValues> = {}
+  const fail = (field: keyof TechnicianFormValues, message: string) => (errors[field] = { type: "validate", message })
+  const name = values.name.trim()
+  if (!name) fail("name", "Enter the technician's name.")
+  else if (name.length > 120) fail("name", "Keep the name to 120 characters.")
+  const number = values.employeeNumber.trim()
+  if (!number) fail("employeeNumber", "Enter the employee number.")
+  else if (number.length > 32) fail("employeeNumber", "Keep the employee number to 32 characters.")
+  if (!values.doesNotExpire && !isCalendarDate(values.hvLevelValidUntil)) {
+    fail("hvLevelValidUntil", "Enter the last day the level counts, or choose Does not expire.")
+  }
+  if (values.brandSpecialisms.length > MAX_BRANDS) fail("brandSpecialisms", `Keep to ${MAX_BRANDS} brands.`)
+  else if (values.brandSpecialisms.some((brand) => !BRAND.test(brand))) fail("brandSpecialisms", BRAND_RULE)
+  return Object.keys(errors).length > 0 ? { values: {}, errors } : { values, errors: {} }
+}
 
 /** The form's values for a state (a new technician starts active, with no HV training, confirmed, no brands). */
 function valuesOf(state: TechnicianWriteRequest | null): TechnicianFormValues {
@@ -263,7 +276,7 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
   const conflictRef = useRef<HTMLElement>(null)
   const saveRef = useRef<HTMLButtonElement>(null)
 
-  const form = useForm<TechnicianFormValues>({ defaultValues: valuesOf(opened ? technicianWrite(opened) : null), resolver: zodResolver(schema) })
+  const form = useForm<TechnicianFormValues>({ defaultValues: valuesOf(opened ? technicianWrite(opened) : null), resolver })
   const values = useWatch({ control: form.control })
   const { errors } = form.formState
   const nameField = form.register("name")
@@ -436,7 +449,7 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
           render={({ field }) => (
             <FieldSet className="gap-2">
               <FieldLegend className="font-heading text-base font-semibold">Certified for</FieldLegend>
-              <FieldDescription className="text-xs">What the technician may work on. Services need all of theirs.</FieldDescription>
+              <p className="text-xs text-muted-foreground">What the technician may work on. Services need all of theirs.</p>
               <ul className="grid gap-x-3 gap-y-0.5 sm:grid-cols-2">
                 {CERTIFICATIONS.map((certification) => {
                   const { label, icon: Icon } = certifications[certification]
@@ -614,7 +627,7 @@ function TechnicianFormBody({ editing, dealership, today, vehicleAware, firstFie
                   Add brand
                 </Button>
               </div>
-              <FieldMessage id={ids.brandError} message={brandError ?? errors.brandSpecialisms?.message ?? errors.brandSpecialisms?.[0]?.message} />
+              <FieldMessage id={ids.brandError} message={brandError ?? errors.brandSpecialisms?.message} />
             </div>
           </FieldSet>
         )}

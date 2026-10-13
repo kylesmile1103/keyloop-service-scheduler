@@ -6,7 +6,7 @@ import { useId, useState } from "react"
 import type { BayCapability, Certification, Powertrain, RequirementCondition, RequirementRuleInput, ServiceTypeResponse, VehicleClass } from "@/api/types.gen"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { Field, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -146,12 +146,12 @@ function RuleForm({
       }}
       className="flex max-h-[calc(100dvh-2rem)] min-h-0 flex-col"
     >
-      <DialogHeader className="gap-1 border-b p-4 pr-12">
+      <div className="flex flex-col gap-1 border-b p-4 pr-12">
         <DialogTitle className="font-heading text-lg font-semibold">{isNew ? "Add rule" : `Edit rule ${initial.code}`}</DialogTitle>
         <DialogDescription className="text-pretty">
           A rule adds needs to the jobs it applies to. It changes the draft only: preview the draft, then publish it as a new version.
         </DialogDescription>
-      </DialogHeader>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8rem]">

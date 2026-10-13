@@ -3,7 +3,7 @@ import { type ReactNode, useRef, useState } from "react"
 import type { AdminTechnicianResponse, DealershipResponse } from "@/api/types.gen"
 import { ProblemAlert } from "@/components/problem-alert"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { useWriteMutation } from "@/hooks/use-write-mutation"
 import { authRefusalTitle, failureStatus } from "@/lib/problem-details"
 
@@ -68,13 +68,13 @@ export function useConfirmLevel({ dealership, onDone }: { dealership: Dealership
         <DialogContent className="gap-4 sm:max-w-lg">
           {stale && (
             <>
-              <DialogHeader>
+              <div className="flex flex-col gap-2">
                 <DialogTitle className="font-heading text-lg font-semibold">{`${stale.row.name}'s record changed`}</DialogTitle>
                 <DialogDescription className="text-pretty">
                   Another Admin saved this technician after the list was read, so the level was not confirmed. Confirm it as it is now
                   only if that is the level you checked.
                 </DialogDescription>
-              </DialogHeader>
+              </div>
               <ConflictPanel
                 title="What changed"
                 rows={(() => {

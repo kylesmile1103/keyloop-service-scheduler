@@ -5,7 +5,7 @@ import { BadgeCheck, History, type LucideIcon, Pencil, Plus, Power, PowerOff, Ro
 import { useId } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 
-import { getAdminHistoryInfiniteOptions, getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
+import { getServiceTypesOptions } from "@/api/@tanstack/react-query.gen"
 import type { AdminHistoryItem, AdminPolicyResponse, BayWriteRequest, DealershipResponse, ServiceTypeResponse, TechnicianWriteRequest } from "@/api/types.gen"
 import { IllustratedState } from "@/components/illustrated-state"
 import { ProblemAlert } from "@/components/problem-alert"
@@ -21,6 +21,7 @@ import { declarerName } from "@/lib/vehicle-aware"
 import { ReadOnlyNote } from "../components/admin-access"
 import { ResourcePage, type ResourceScope } from "../components/resource-page"
 import { bayFields, changesBetween, type FieldChange, technicianFields } from "../lib/changes"
+import { adminHistoryPages } from "../lib/admin-reads"
 import { historyHref } from "../lib/history-link"
 import { useAdminAccess } from "../lib/use-admin-access"
 import { ruleChanges, ruleChangeWords } from "../policy/rule-words"
@@ -79,14 +80,8 @@ function HistoryFeed({ dealership }: ResourceScope) {
   const filterId = useId()
   const services = useQuery(getServiceTypesOptions({ path: { dealershipId: dealership.id } })).data
 
-  const options = getAdminHistoryInfiniteOptions({
-    path: { dealershipId: dealership.id },
-    query: { ...(kind ? { resourceKind: kind } : {}), ...(resourceId ? { resourceId } : {}), limit: PAGE },
-  })
   const history = useInfiniteQuery({
-    ...options,
-    initialPageParam: 0,
-    getNextPageParam: (last) => last.nextOffset ?? undefined,
+    ...adminHistoryPages(dealership.id, { ...(kind ? { resourceKind: kind } : {}), ...(resourceId ? { resourceId } : {}), limit: PAGE }),
     enabled: () => cachedCapabilities(queryClient).isAdmin,
   })
   const items = history.data?.pages.flatMap((page) => page.items) ?? []
