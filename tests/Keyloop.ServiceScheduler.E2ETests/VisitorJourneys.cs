@@ -15,11 +15,16 @@ public sealed class VisitorJourneys(VisitorStack stack) : IClassFixture<VisitorS
         appointment.String("customerName").ShouldMatch("^[A-Z]+$");
         await journey.GotoBoardAsync();
         await BrowserJourney.Block(journey.Page, appointment).ClickAsync();
-        var sheet = journey.Page.GetByRole(AriaRole.Dialog, new() { Name = appointment["serviceType"]!.String("name"), Exact = true });
-        await Expect(sheet.GetByText(appointment.String("vin"), new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(sheet.GetByText(appointment.String("customerName"), new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(sheet.GetByRole(AriaRole.Textbox, new() { Name = "Reason", Exact = true })).ToHaveCountAsync(0);
-        await sheet.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
+        // Docked beside the board at 1440 px: the board's masked snapshot, a sign-in panel in place of the record, no actions.
+        var details = journey.Page.GetByRole(AriaRole.Complementary, new() { Name = "Appointment details", Exact = true });
+        await Expect(details.GetByRole(AriaRole.Heading, new() { Name = appointment["serviceType"]!.String("name"), Exact = true })).ToBeVisibleAsync();
+        await Expect(details.GetByText(appointment.String("vin"), new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(details.GetByText(appointment.String("customerName"), new() { Exact = true })).ToBeVisibleAsync();
+        await Expect(details.GetByRole(AriaRole.Region, new() { Name = "Sign in to see the whole booking", Exact = true })).ToBeVisibleAsync();
+        await Expect(details.GetByRole(AriaRole.Button, new() { Name = "Cancel booking…", Exact = true })).ToHaveCountAsync(0);
+        await Expect(details.GetByRole(AriaRole.Textbox, new() { Name = "Reason", Exact = true })).ToHaveCountAsync(0);
+        await details.GetByRole(AriaRole.Button, new() { Name = "Close", Exact = true }).ClickAsync();
+        await Expect(details).ToHaveCountAsync(0);
         await Expect(journey.Page.GetByRole(AriaRole.Link, new() { Name = "Requirement policy", Exact = true })).ToHaveCountAsync(0);
         await Expect(journey.Page.GetByRole(AriaRole.Link, new() { Name = "Change history", Exact = true })).ToHaveCountAsync(0);
         var bookingPosts = 0;
