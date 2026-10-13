@@ -68,7 +68,7 @@ jobs:
           ' TestResults/nuget-vulnerabilities.json
       - name: Upload test results and dependency audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-results
           path: TestResults/**
@@ -82,7 +82,7 @@ jobs:
           scripts/aot-readiness.sh 2>&1 | tee artifacts/aot-readiness/report.txt
       - name: Upload AOT readiness
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AOT readiness
           path: artifacts/aot-readiness/**
@@ -162,7 +162,7 @@ jobs:
             2>&1 | tee TestResults/aspire/smoke.log
       - name: Upload smoke test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aspire-test-results
           path: TestResults/**
@@ -212,7 +212,7 @@ jobs:
             2>&1 | tee TestResults/e2e/suite.log
       - name: Upload browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-test-results
           path: TestResults/e2e/**
