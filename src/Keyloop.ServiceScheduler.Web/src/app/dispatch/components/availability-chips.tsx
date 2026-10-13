@@ -64,6 +64,11 @@ interface AvailabilityChipsProps {
   vehicle?: AvailabilityVehicle
   /** The API refused the vehicle parameters (`422 vehicle-aware-requirements-disabled`): the switch the app read is stale. */
   onVehicleRefused?: () => void
+  /**
+   * The area has a column of its own (the booking dialog's two columns): a hint fills its height, centred, so the column
+   * reads as the place the start times will be rather than as space left over.
+   */
+  fill?: boolean
 }
 
 /** A vehicle's parameters as one comparable value, to tell when they changed. */
@@ -184,19 +189,20 @@ function AvailabilityView({
   nextDate,
   onDateChange,
   vehicle,
+  fill = false,
   data,
   failure,
   retrying,
   onRetry,
 }: AvailabilityViewProps) {
-  if (!serviceType) return <Hint>Choose a service to see its free start times.</Hint>
+  if (!serviceType) return <Hint fill={fill}>Choose a service to see its free start times.</Hint>
 
   if (failure !== null) {
     const problem = parseProblem(failure)
     const dateError = problem && fieldErrors(problem, { date: "Date" }).date
     // A date the API will not plan (before yesterday or past the booking horizon) is the user's to change, not a failure.
     return dateError ? (
-      <Hint>{dateError}</Hint>
+      <Hint fill={fill}>{dateError}</Hint>
     ) : (
       <ProblemAlert title="Couldn’t look up free times" error={failure} onRetry={onRetry} retrying={retrying} />
     )
@@ -347,6 +353,15 @@ export function SuggestedSlotChips({
   )
 }
 
-function Hint({ children }: { children: ReactNode }) {
-  return <p className="rounded-chip border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">{children}</p>
+function Hint({ children, fill = false }: { children: ReactNode; fill?: boolean }) {
+  return (
+    <p
+      className={cn(
+        "rounded-chip border border-dashed border-border px-3 py-3 text-sm text-muted-foreground",
+        fill && "flex flex-1 items-center justify-center text-center text-pretty"
+      )}
+    >
+      {children}
+    </p>
+  )
 }
