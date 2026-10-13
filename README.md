@@ -14,6 +14,23 @@ A dealership appointment needs a compatible service bay and a certified technici
 - **Keyloop reviewers:** choose **Sign in** and enter your `@keyloop.com` work email. Cloudflare Access emails a one-time code: there is no password and no account to create. These addresses have the Admin role, so you can book and cancel, search returning customers, and use the admin area (technicians, bays, requirement policy, change history). Other addresses can be added on request.
 - The data is fictitious (seeded `@example.com` customers) and email notifications are off. A sign-in lasts an hour and the app renews it on its own while the Cloudflare session (24 hours) holds ([ADR-027](docs/ADR-027.md)).
 
+## Screens
+
+Captured on 2026-10-13 from a production build of the web app against the Development API with its seeded week (headless Chromium, 1440 × 900 and 390 × 844). The GIF books a returning customer from the dispatch board.
+
+![Booking a returning customer from the dispatch board](docs/media/booking-flow.gif)
+
+| | |
+|---|---|
+| ![Dispatch board, light](docs/media/board-light.png) | ![Dispatch board, dark](docs/media/board-dark.png) |
+| Dispatch board: bays across the workshop day, KPI cards and the status legend | The same board in the dark theme |
+| ![Booking dialog, step 1](docs/media/booking-dialog.png) | ![A real 409 with suggestions](docs/media/conflict.png) |
+| Booking dialog: free start times with their bay and technician counts | A slot taken a moment earlier: `409 slot-unavailable`, its trace id and nearby free times |
+| ![Returning-customer search](docs/media/returning-customer.png) | ![Docked appointment details](docs/media/inspector-dark.png) |
+| Step 2: a returning customer found by registration | Appointment details docked beside the board |
+
+Phone (390 px): [board, light](docs/media/board-mobile-light.png), [board, dark](docs/media/board-mobile-dark.png), [returning-customer search](docs/media/returning-customer-mobile.png). API reference: [Scalar](docs/media/scalar.png).
+
 ## Submission deliverables
 
 | Deliverable | Where |
@@ -83,7 +100,7 @@ Running the API on its own in Development, set `Auth__Development__Roles__0` to 
 
 Where a deployed build offers **Sign in** (the Access login, coming back to the same page, dealership and day) and **Sign out** (the hostname's Access logout), the development server shows **How to sign in**, which leads to those settings, and no Sign out. A refusal the UI did not foresee (a session that ended, a role removed) is answered once, with "Your session has ended" and Sign in for a `401` or "Your role doesn't allow that" for a `403`, and the app reads `/me` again; when the identity changes (or `/me` cannot be read, which counts as signed out at once), whatever the previous caller read is cleared and read again, an open details sheet closes, a booking being entered is discarded with a note saying so (unless the same email keeps a role that may book), and a write's answer that arrives afterwards is thrown away.
 
-**`TODO(final-gate)`:** add Task 17b's approved board/dashboard screenshots under `docs/media/`, in both themes and at the mobile and desktop QA viewports, and record the final clean-clone startup. No screenshot is embedded until that evidence exists.
+Screenshots of the main screens, taken as the Development Admin, are under [Screens](#screens). **`TODO(final-gate)`:** record the final clean-clone startup.
 
 ## Admin editing (Task 30)
 
