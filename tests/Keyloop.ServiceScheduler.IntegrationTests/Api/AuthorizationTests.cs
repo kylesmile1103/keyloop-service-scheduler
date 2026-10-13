@@ -207,6 +207,8 @@ public sealed class AuthorizationTests(PostgresFixture pg) : IAsyncLifetime
         me.GetProperty("roles").EnumerateArray().Select(item => item.GetString()).ShouldBe(role is "Anonymous" or "Unknown" ? [] : new[] { role });
         me.GetProperty("loginUrl").GetString().ShouldBe("/auth/login?returnTo=%2F");
         me.GetProperty("logoutUrl").GetString().ShouldBe("/cdn-cgi/access/logout");
+        // Only the Access handler's ticket carries an expiry (AccessAuthenticationTests); the test identity has none.
+        me.GetProperty("expiresAtUtc").ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Null);
     }
 
     [Theory]

@@ -107,9 +107,11 @@ public sealed class SchedulerAuthenticationHandler(
 
         try
         {
-            var identity = await validator.ValidateAsync(token, Context.RequestAborted);
-            return identity is null ? AuthenticateResult.Fail("Invalid Access identity.")
-                : AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
+            var accepted = await validator.ValidateAsync(token, Context.RequestAborted);
+            // The token's expiry travels with the ticket, where GET /me reads it for the web app's session renewal.
+            return accepted is null ? AuthenticateResult.Fail("Invalid Access identity.")
+                : AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(accepted.Identity),
+                    new AuthenticationProperties { ExpiresUtc = accepted.ExpiresUtc }, Scheme.Name));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ArgumentException or FormatException
             or InvalidOperationException or System.Security.Cryptography.CryptographicException)

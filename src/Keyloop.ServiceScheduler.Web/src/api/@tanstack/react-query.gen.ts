@@ -296,7 +296,7 @@ export const getCurrentUserQueryKey = (options?: Options<GetCurrentUserData>) =>
 /**
  * Get the current caller and sign-in/out URLs
  *
- * Anonymous and invalid/expired sessions return authenticated false, null email/displayName and no roles. Verified users without a configured role are authenticated with an empty roles array. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
+ * Anonymous and invalid/expired sessions return authenticated false, null email/displayName/expiresAtUtc and no roles. Verified users without a configured role are authenticated with an empty roles array. An Access-verified caller gets the token's expiry in expiresAtUtc; while the Access account session lasts, a top-level navigation to loginUrl issues a new token without a sign-in prompt. Navigate to loginUrl for Access login and logoutUrl for hostname cookie removal. The response is never cached.
  */
 export const getCurrentUserOptions = (options?: Options<GetCurrentUserData>) => queryOptions<GetCurrentUserResponse, GetCurrentUserError, GetCurrentUserResponse, ReturnType<typeof getCurrentUserQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

@@ -457,12 +457,34 @@ export type CompetenceWarningResponse = {
  * The caller's verified identity and API roles. URLs are same-origin Access navigation targets.
  */
 export type CurrentUserResponse = {
+    /**
+     * Whether the API verified the caller's identity.
+     */
     authenticated: boolean;
+    /**
+     * The verified email; null when not authenticated.
+     */
     email: null | string;
+    /**
+     * The verified name, else null.
+     */
     displayName: null | string;
+    /**
+     * API roles in the order Admin, ServiceAdvisor, Viewer; empty without one.
+     */
     roles: Array<string>;
+    /**
+     * The same-origin Access login path, returning to `/`.
+     */
     loginUrl: string;
+    /**
+     * The hostname's Access logout path.
+     */
     logoutUrl: string;
+    /**
+     * When the verified Access token expires (its `exp`, UTC); null for an anonymous caller and for the Development identity, which has no expiry. Access issues no refresh token: renew before then by navigating to loginUrl.
+     */
+    expiresAtUtc: null | string;
 };
 
 /**
@@ -1889,7 +1911,7 @@ export type GetCurrentUserError = GetCurrentUserErrors[keyof GetCurrentUserError
 
 export type GetCurrentUserResponses = {
     /**
-     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), and same-origin loginUrl/logoutUrl.
+     * The current identity, ordered API roles (Admin, ServiceAdvisor, Viewer), the session's expiry, and same-origin loginUrl/logoutUrl.
      */
     200: CurrentUserResponse;
 };
