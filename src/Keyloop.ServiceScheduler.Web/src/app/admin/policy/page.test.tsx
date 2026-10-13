@@ -121,8 +121,44 @@ describe("the requirement policy, as an Admin", () => {
     expect(await screen.findByText("Policy version 3 published")).toBeInTheDocument()
     const [, published] = policyWrites(api.requests)
     expect(published.headers.get("If-Match")).toBe(policyETagOf(2))
-    expect(await bodyOf(published)).toEqual({ ...sentPreview, dryRun: false })
+    // The publication carries the token of the preview the Admin saw (Task 30c), and nothing else differs.
+    expect(await bodyOf(published)).toEqual({ ...sentPreview, dryRun: false, previewToken: expect.stringMatching(/^preview-/) })
+    expect(sentPreview.previewToken).toBeUndefined()
     expect(await screen.findByRole("heading", { level: 2, name: "Version 3" })).toBeInTheDocument()
+  })
+
+  it("asks for a new preview when the roster changed after it, and publishes only the new one", async () => {
+    const { server, api } = setup()
+
+    await setLevel("hv-routine", "Level 4, Live working")
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }))
+    await screen.findByRole("region", { name: "What version 3 would change" })
+    server.editedElsewhere.rosterConsequences()
+    fireEvent.click(publish())
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("The preview is out of date")
+    expect(alert).toHaveTextContent("Nothing was published: the roster changed after your preview, so it no longer says what version 3 would change.")
+    expect(screen.queryByRole("region", { name: "What version 3 would change" })).not.toBeInTheDocument()
+    expect(publish()).toHaveAttribute("aria-disabled", "true")
+    expect(document.getElementById(publish().getAttribute("aria-describedby")!)).toHaveTextContent("The preview is out of date: preview again.")
+    const again = within(alert).getByRole("button", { name: "Preview again" })
+    await waitFor(() => expect(again).toHaveFocus())
+    expect(screen.queryByText("Policy version 3 published")).not.toBeInTheDocument()
+
+    fireEvent.click(again)
+    await screen.findByRole("region", { name: "What version 3 would change" })
+    expect(screen.queryByText("The preview is out of date")).not.toBeInTheDocument()
+    fireEvent.click(publish())
+    expect(await screen.findByText("Policy version 3 published")).toBeInTheDocument()
+
+    const [, refused, , published] = policyWrites(api.requests)
+    const [refusedBody, publishedBody] = await Promise.all([bodyOf(refused), bodyOf(published)])
+    expect(refusedBody.dryRun).toBe(false)
+    expect(publishedBody.dryRun).toBe(false)
+    expect(publishedBody.previewToken).toMatch(/^preview-/)
+    expect(publishedBody.previewToken).not.toBe(refusedBody.previewToken)
+    expect(policyWrites(api.requests)).toHaveLength(4)
   })
 
   it("asks for a new preview once the draft changes after one", async () => {

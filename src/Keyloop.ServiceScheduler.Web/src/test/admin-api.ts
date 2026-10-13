@@ -135,6 +135,14 @@ export interface AdminServerOptions {
   refuseRead?: (request: Request) => Response | undefined
 }
 
+/** A stand-in for the API's preview token: deterministic over the same inputs, different when any of them changes. */
+function tokenOf(version: number, rules: readonly RequirementRuleInput[], previewDate: string, changes: readonly unknown[], roster: number) {
+  const text = JSON.stringify([version, rules, previewDate, changes, roster])
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619) >>> 0
+  return `preview-${hash.toString(36)}`
+}
+
 /** A request's JSON body, read from a copy so the recorded request stays readable for assertions. */
 const bodyOf = async <T>(request: Request) => (await request.clone().json()) as T
 
@@ -146,6 +154,8 @@ export function adminServer(options: AdminServerOptions = {}) {
     bays: (options.bays ?? ((records) => records))(adminBays()),
     policy: { dealershipId: reading.id, version: POLICY_VERSION, rules: defaultRules } as AdminPolicyResponse,
     history: [...(options.history ?? [])],
+    /** Advanced by `editedElsewhere.rosterConsequences`: a roster edit that changes what a policy would make bookable. */
+    rosterRevision: 0,
   }
   let nextVersion = 900
   let nextId = 1
@@ -225,10 +235,31 @@ export function adminServer(options: AdminServerOptions = {}) {
       const rules = [...body.rules].sort((a, b) => a.order - b.order || a.code.localeCompare(b.code))
       const proposed: AdminPolicyResponse = { dealershipId: state.policy.dealershipId, version: state.policy.version + 1, rules }
       const changes = options.changes?.(rules) ?? []
-      if (body.dryRun) return withTag({ saved: false, policy: proposed, previewDate: body.previewDate, changes }, tag)
+      // The API's previewToken (Task 30c): a fingerprint of the version, rules, date and consequences (here with the roster's
+      // revision standing in for consequences that changed), required to publish and compared then.
+      const previewToken = tokenOf(state.policy.version, rules, body.previewDate, changes, state.rosterRevision)
+      if (body.dryRun) return withTag({ saved: false, policy: proposed, previewDate: body.previewDate, changes, previewToken }, tag)
+      if (!body.previewToken) {
+        return problemResponse(400, {
+          type: `${problems}validation-error`,
+          title: "One or more validation errors occurred",
+          status: 400,
+          traceId: ADMIN_TRACE_ID,
+          errors: { previewToken: ["Publish needs the previewToken of the preview you confirmed."] },
+        })
+      }
+      if (body.previewToken !== previewToken) {
+        return problemResponse(409, {
+          type: `${problems}policy-preview-outdated`,
+          title: "The preview is out of date",
+          status: 409,
+          detail: "The roster or date consequences changed since the preview. Run the preview again before publishing.",
+          traceId: ADMIN_TRACE_ID,
+        })
+      }
       record({ resourceKind: "policy", resourceId: state.policy.dealershipId, action: "publish", before: state.policy, after: proposed })
       state.policy = proposed
-      return withTag({ saved: true, policy: proposed, previewDate: body.previewDate, changes }, policyETagOf(proposed.version))
+      return withTag({ saved: true, policy: proposed, previewDate: body.previewDate, changes, previewToken }, policyETagOf(proposed.version))
     }
 
     if (kind === "technicians") {
@@ -307,6 +338,10 @@ export function adminServer(options: AdminServerOptions = {}) {
       state.bays[index] = after
       record({ resourceKind: "bay", resourceId: id, action: activity(before, after), before: bayWrite(before), after: bayWrite(after) }, "user:another.admin@keyloop.test")
       return after
+    },
+    /** A roster edit elsewhere that changes what the draft policy would make bookable: an earlier preview is out of date. */
+    rosterConsequences() {
+      state.rosterRevision += 1
     },
     policy(rules: RequirementRuleInput[]) {
       const before = state.policy

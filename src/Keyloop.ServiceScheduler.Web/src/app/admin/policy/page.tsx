@@ -76,7 +76,16 @@ interface Draft {
   rules: RequirementRuleInput[]
 }
 
-type WriteVariables = { identity: string; rules: RequirementRuleInput[]; dryRun: boolean; ifMatch: string; previewDate: string; key: string }
+type WriteVariables = {
+  identity: string
+  rules: RequirementRuleInput[]
+  dryRun: boolean
+  ifMatch: string
+  previewDate: string
+  /** Publishing only: the token of the preview the Admin confirmed (Task 30c); the API refuses a publication that no longer matches it. */
+  previewToken?: string
+  key: string
+}
 
 const changeLabel: Record<RuleChange, string> = { added: "New", changed: "Changed", removed: "Removed" }
 
@@ -99,6 +108,10 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   const [preview, setPreview] = useState<{ key: string; result: PolicyEditResponse } | null>(null)
   const [conflict, setConflict] = useState<{ opened: AdminPolicyResponse; current: AdminPolicyResponse; mine: RequirementRuleInput[] } | null>(null)
   const [editing, setEditing] = useState<{ rule: RequirementRuleInput; isNew: boolean } | null>(null)
+  // The draft whose publication the API refused as out of date (409 policy-preview-outdated): its preview is gone, and the
+  // bar asks for a new one, for that draft only.
+  const [outdated, setOutdated] = useState<string | null>(null)
+  const previewAgainRef = useRef<HTMLButtonElement>(null)
   // Everything the editor holds is the Admin's it was made for: the draft, an open rule, a preview and a 412's comparison
   // (whose "Keep my changes" would carry the rules into a new draft). Another Admin, or a role that cannot edit, drops all
   // of it in the render the change arrives in (React's pattern for state that follows a prop), never painting for the next
@@ -111,6 +124,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
     setPreview(null)
     setConflict(null)
     setEditing(null)
+    setOutdated(null)
   }
 
   const base = draft?.base ?? policy.data
@@ -123,11 +137,12 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
 
   const write = useWriteMutation<PolicyEditResponse, unknown, WriteVariables>({
     writes: "admin",
-    mutationFn: ({ rules: sent, dryRun, ifMatch, previewDate }, bound) =>
-      writePolicy({ dealershipId: dealership.id, body: { rules: sent, dryRun, previewDate }, ifMatch, fetch: bound.fetch() }),
+    mutationFn: ({ rules: sent, dryRun, ifMatch, previewDate, previewToken }, bound) =>
+      writePolicy({ dealershipId: dealership.id, body: { rules: sent, dryRun, previewDate, previewToken }, ifMatch, fetch: bound.fetch() }),
     onSuccess: (result, variables) => {
       if (variables.dryRun) {
         setPreview({ key: variables.key, result })
+        setOutdated(null)
         return
       }
       setDraft(null)
@@ -141,6 +156,15 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
       })
     },
     onError: (error, variables) => {
+      // The roster (or what the date makes valid) changed after the preview: nothing was published, and the preview the
+      // Admin confirmed no longer says what publishing would do. It goes, so Publish waits for a new one.
+      const problem = parseProblem(error)
+      if (!variables.dryRun && problem !== null && problemSlug(problem) === "policy-preview-outdated") {
+        setPreview(null)
+        setOutdated(variables.key)
+        requestAnimationFrame(() => previewAgainRef.current?.focus())
+        return
+      }
       const stale = conflictOf<AdminPolicyResponse>(error)
       if (stale && base) {
         setConflict({ opened: base, current: stale.current, mine: variables.rules })
@@ -158,10 +182,20 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   }
   const send = (dryRun: boolean) => {
     if (!base) return
+    // Publishing sends exactly the draft previewed, with the preview's date and token.
+    if (!dryRun && !previewed) return
     const sendWrite = write.begin()
     if (!sendWrite) return
     setConflict(null)
-    sendWrite({ identity, rules, dryRun, ifMatch: policyTag(base.version), previewDate: previewed?.previewDate ?? today, key: draftKey })
+    sendWrite({
+      identity,
+      rules,
+      dryRun,
+      ifMatch: policyTag(base.version),
+      previewDate: dryRun ? today : (previewed?.previewDate ?? today),
+      previewToken: dryRun ? undefined : previewed?.previewToken,
+      key: draftKey,
+    })
   }
   const keepMine = () => {
     if (!conflict) return
@@ -202,7 +236,8 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
   // The last write's outcome is its Admin's: a failure (or a send under way) from before a change of caller is not shown.
   const ownWrite = write.variables?.identity === identity
   const pending = write.isPending && ownWrite
-  const failure = write.error && !conflict && ownWrite ? write.error : null
+  const isOutdated = outdated !== null && outdated === draftKey
+  const failure = write.error && !conflict && !isOutdated && ownWrite ? write.error : null
   const failureTitle = (() => {
     const status = failureStatus(failure)
     if (status === 401 || status === 403) return authRefusalTitle(status, "change the policy")
@@ -260,7 +295,7 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
             <p className="text-sm text-pretty">
               <span className="font-semibold tabular-nums">{`${count === 1 ? "1 change" : `${count} changes`} to version ${base.version}`}</span>
               <span id={pendingReasonId} className="ml-2 text-muted-foreground">
-                {previewed ? "Previewed: ready to publish." : "Preview the changes before publishing them."}
+                {previewed ? "Previewed: ready to publish." : isOutdated ? "The preview is out of date: preview again." : "Preview the changes before publishing them."}
               </span>
             </p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -324,6 +359,21 @@ function PolicyEditor({ dealership, today, phone }: ResourceScope) {
           <p>Another Admin published a version after you started, so nothing of yours was published.</p>
           <p className="text-muted-foreground">Keeping your changes puts them on top of the new version; preview again before publishing.</p>
         </ConflictPanel>
+      )}
+      {isOutdated && (
+        <ProblemAlert
+          title="The preview is out of date"
+          error={write.error}
+          tone="warning"
+          actions={
+            <Button ref={previewAgainRef} type="button" variant="outline" size="sm" onClick={() => send(true)} disabled={pending} focusableWhenDisabled className="cursor-pointer text-foreground">
+              {pending && <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
+              Preview again
+            </Button>
+          }
+        >
+          <p>{`Nothing was published: the roster changed after your preview, so it no longer says what version ${nextVersion} would change. Preview again, check it, then publish.`}</p>
+        </ProblemAlert>
       )}
       {failure !== null && (
         <ProblemAlert title={failureTitle} error={failure} tone={(failureStatus(failure) ?? 500) < 500 ? "warning" : "error"}>
