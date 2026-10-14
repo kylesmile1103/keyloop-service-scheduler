@@ -35,10 +35,14 @@ public sealed class NotificationTemplateTests
         message.HtmlBody.ShouldNotContain("WVWZZZ1KZAW123456");
         message.HtmlBody.ShouldContain("lang=\"en-GB\"");
         message.HtmlBody.ShouldContain("<h1");
-        message.HtmlBody.ShouldContain("<dl>");
+        message.HtmlBody.ShouldContain("<dl");
         message.HtmlBody.ShouldNotContain("<img");
-        message.HtmlBody.ShouldNotContain("<style");
+        message.HtmlBody.ShouldNotContain("<link");
+        message.HtmlBody.ShouldNotContain("<script");
+        message.HtmlBody.ShouldNotContain("@import");
+        message.HtmlBody.ShouldNotContain("url(");
         message.HtmlBody.ShouldNotContain("https://");
+        message.HtmlBody.ShouldNotContain("{{");
         message.TextBody.ShouldNotContain("Time zone:", Case.Sensitive);
     }
 

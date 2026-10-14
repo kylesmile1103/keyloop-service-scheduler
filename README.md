@@ -47,6 +47,40 @@ Captured on 2026-10-13 from a production build of the web app against the Develo
 
 Phone (390 px): [board, light](docs/media/board-mobile-light.png), [board, dark](docs/media/board-mobile-dark.png), [returning-customer search](docs/media/returning-customer-mobile.png). API reference: [Scalar](docs/media/scalar.png).
 
+### Phone
+
+390 × 844 at 2x, light theme, captured on 2026-10-14 from the Vite app under the AppHost (headless Chromium through Playwright).
+
+| | | | |
+|---|---|---|---|
+| ![Overview on a phone](docs/media/mobile-overview.png) | ![Calendar on a phone](docs/media/mobile-calendar.png) | ![Appointments list on a phone](docs/media/mobile-appointments.png) | ![Appointment details sheet](docs/media/mobile-details.png) |
+| Overview: today's figures and the next free start | Calendar, week view | Appointments list with filters | Appointment details as a sheet |
+| ![Booking sheet, step 1](docs/media/mobile-booking-step1.png) | ![Booking sheet, step 2](docs/media/mobile-booking-step2.png) | ![409 on a phone](docs/media/mobile-conflict.png) | ![Booked on a suggested time](docs/media/mobile-booked.png) |
+| Booking sheet: service, powertrain and the free start times | Customer and vehicle, with the VIN look-up | The slot taken a moment earlier: `409` with its trace id and nearby free times | Booked on a suggested time, with the allocation explained |
+
+### Aspire dashboard
+
+Captured on 2026-10-14 from `dotnet run --project src/Keyloop.ServiceScheduler.AppHost` (1440 × 900) after a burst of availability reads, three bookings and three refused duplicates.
+
+| | |
+|---|---|
+| ![Aspire resources](docs/media/aspire-resources.png) | ![Aspire resource graph](docs/media/aspire-graph.png) |
+| Resources: PostgreSQL with its database, pgweb, Mailpit, the Vite app and the API, each with its endpoints and commands | The same model as a graph |
+| ![Aspire parameters](docs/media/aspire-parameters.png) | ![Aspire structured logs](docs/media/aspire-structured-logs.png) |
+| Parameters: the generated database password and the optional keys stay masked | Structured logs, filtered to the API |
+| ![Aspire traces](docs/media/aspire-traces.png) | ![One refused booking as a trace](docs/media/aspire-trace-booking.png) |
+| Traces: each request with its API and PostgreSQL spans | One `409` end to end: the request, the advisory lock, the re-check and the suggestions query |
+| ![Aspire metrics](docs/media/aspire-metrics.png) | |
+| Metrics: the scheduler's own `Keyloop.ServiceScheduler` meter beside ASP.NET Core, Npgsql and the runtime | |
+
+### Email
+
+The booking confirmation's HTML part as a mail client renders it (a plain-text part travels with it). The source is [Notification.mjml](src/Keyloop.ServiceScheduler.Infrastructure/Notifications/Templates/Notification.mjml), compiled by `scripts/build-email-template.sh` into the embedded HTML the dispatcher fills in.
+
+| | |
+|---|---|
+| ![Booking confirmation email](docs/media/email-confirmation.png) | ![The same email on a phone](docs/media/email-confirmation-mobile.png) |
+
 ## Submission deliverables
 
 | Deliverable | Where |
@@ -90,7 +124,7 @@ The web app's pages, each keeping the dealership in the address (`?dealership=`)
 
 The API resource's **Reseed demo data** command replaces the demo dealerships' appointments and rebuilds the sample week. It is key-protected and excluded from OpenAPI. Its dashboard confirmation describes the data it deletes. Preserve the AppHost's stored database password alongside the persistent volume across restarts.
 
-Open **Mailpit inbox** on the `mailpit` resource for local email capture. Aspire injects its SMTP endpoint into the API; seeded `@example.com` customers are suppressed. The Aspire smoke test books with a non-reserved recipient and verifies the captured message. UAT, Production and Demo leave email dispatch off by default.
+Open **Mailpit inbox** on the `mailpit` resource for local email capture (the confirmation and cancellation emails are shown under [Screens](#email); their MJML source compiles with `scripts/build-email-template.sh`). Aspire injects its SMTP endpoint into the API; seeded `@example.com` customers are suppressed. The Aspire smoke test books with a non-reserved recipient and verifies the captured message. UAT, Production and Demo leave email dispatch off by default.
 
 For an isolated manual check, supply a temporary PostgreSQL password and `--AppHost:UsePersistentResources=false` after `--`; stop the AppHost afterwards. This avoids the developer's database volume and generated password default.
 
