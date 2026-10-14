@@ -579,23 +579,27 @@ C4Container
     title Container diagram - Unified Service Scheduler (local run under Aspire)
 
     Person(advisor, "Service Advisor / Controller")
+    Container_Ext(gen, "HeyAPI contract sync", "@hey-api/openapi-ts", "Generates the typed SDK and TanStack Query options from the committed OpenAPI document")
 
     Container_Boundary(apphost, "Aspire AppHost (orchestrator)") {
         Container(web, "Dispatch Board", "React 19, Vite 8, TypeScript, Tailwind v4, shadcn/ui, TanStack Query", "Workshop timeline (bays x time), booking dialog, conflict surfacing, booking intake triage")
         Container(api, "Scheduler API", ".NET 10 Minimal API, Vertical Slices + DDD, EF Core 10", "Availability engine, booking transaction, schedule read model, OpenAPI v1")
-        ContainerDb(db, "PostgreSQL 17", "btree_gist, exclusion constraints, advisory locks", "Appointments, history, idempotency keys, reference data")
         Container(dash, "Aspire Dashboard", "OTLP receiver + UI", "Traces, metrics, structured logs, resource console")
+        ContainerDb(db, "PostgreSQL 17", "btree_gist, exclusion constraints, advisory locks", "Appointments, history, idempotency keys, reference data")
     }
 
-    Container_Ext(gen, "HeyAPI contract sync", "@hey-api/openapi-ts", "Generates typed SDK + TanStack Query options from the committed OpenAPI document")
-
     Rel(advisor, web, "Uses", "HTTPS")
-    Rel(web, api, "Calls /api/v1 (dev: Vite proxy, Demo: nginx, prod: ingress)", "JSON / HTTPS")
+    Rel(web, api, "Calls /api/v1", "JSON/HTTPS")
     Rel(api, db, "Reads/writes", "Npgsql, TLS")
     Rel(api, dash, "Exports telemetry", "OTLP/gRPC")
-    Rel(web, dash, "Browser traces (fetch, document load) + dev-server logs", "OTLP/HTTP protobuf, stdout")
+    Rel(web, dash, "Browser traces", "OTLP/HTTP")
     Rel(api, gen, "Emits contracts/openapi/v1.json at build", "MSBuild")
     Rel(gen, web, "Writes src/api/*.gen.ts", "pnpm generate:api")
+
+    UpdateRelStyle(advisor, web, $offsetY="-50")
+    UpdateRelStyle(web, api, $offsetX="-28", $offsetY="-30")
+    UpdateRelStyle(api, db, $offsetX="30")
+    UpdateRelStyle(web, dash, $offsetX="30")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
@@ -611,50 +615,52 @@ The Container's outbound `http://email.internal/v1/send` handler owns the sender
 The API process hosts three assemblies (ADR-025): the Api host and complete slices, pure Domain, and Infrastructure persistence/outbound adapters. The following paths are relative to `src/`; Api feature and Common paths are relative to `Keyloop.ServiceScheduler.Api/`.
 
 ```mermaid
-C4Component
-    title Component diagram - Scheduler API
+flowchart TB
+    web["Dispatch Board<br/>[Container: React 19]<br/>UI harness"]
+    db[("PostgreSQL 17<br/>[Container: btree_gist]<br/>Appointments and reference data")]
 
-    Container(web, "Dispatch Board", "React 19", "UI harness")
-    ContainerDb(db, "PostgreSQL 17", "btree_gist", "Appointments and reference data")
+    subgraph api["Scheduler API (.NET 10) - container"]
+        pipe["Request pipeline<br/>[Component: ASP.NET Core middleware]<br/>HTTPS, security headers, rate limiting,<br/>ProblemDetails, OpenAPI/Scalar, health"]
 
-    Container_Boundary(api, "Scheduler API (.NET 10)") {
-        Component(pipe, "Request pipeline", "ASP.NET Core middleware", "HTTPS, security headers, rate limiting, ProblemDetails, OpenAPI/Scalar, health")
+        fBook["Features/Appointments/<br/>BookAppointment<br/>[Vertical slice]<br/>Endpoint + Validator + Handler:<br/>lock, availability check, allocation,<br/>persist, idempotency"]
+        fCancel["Features/Appointments/<br/>CancelAppointment<br/>[Vertical slice]<br/>State transition with<br/>xmin concurrency"]
+        fGetAppt["Features/Appointments/<br/>GetAppointment<br/>[Vertical slice]<br/>Read by id"]
+        fAvail["Features/Availability/<br/>GetAvailability<br/>[Vertical slice]<br/>Feasible start times<br/>+ per-slot capacity"]
+        fSched["Features/Schedule/<br/>GetWorkshopSchedule<br/>[Vertical slice]<br/>Bays x appointments<br/>read model"]
+        fRef["Features/Dealerships,<br/>Features/Catalog<br/>[Vertical slices]<br/>Dealerships; service types<br/>with bookable flag"]
 
-        Component(fBook, "Features/Appointments/BookAppointment", "Vertical slice", "Endpoint + Validator + Handler: lock, availability check, allocation, persist, idempotency")
-        Component(fCancel, "Features/Appointments/CancelAppointment", "Vertical slice", "State transition with xmin concurrency")
-        Component(fGetAppt, "Features/Appointments/GetAppointment", "Vertical slice", "Read by id")
-        Component(fAvail, "Features/Availability/GetAvailability", "Vertical slice", "Feasible start times + per-slot capacity")
-        Component(fSched, "Features/Schedule/GetWorkshopSchedule", "Vertical slice", "Bays x appointments read model")
-        Component(fRef, "Features/Dealerships, Features/Catalog", "Vertical slices", "Dealerships; service types with bookable flag")
+        domain["Keyloop.ServiceScheduler.Domain<br/>[DDD aggregates, value objects, domain services]<br/>Appointment, Dealership, ServiceBay, Technician,<br/>ServiceType, TimeSlot, Vin, AvailabilityCalculator,<br/>AllocationPolicy, BookingWindowPolicy"]
+        persist["Infrastructure/Persistence<br/>[EF Core 10 + Npgsql]<br/>SchedulerDbContext, configurations, migrations,<br/>seeding, DomainEventInterceptor,<br/>PostgresErrorClassifier, DealershipLock, SeedingLock"]
+        telemetry["Common/Telemetry<br/>[OpenTelemetry]<br/>Request ActivitySource and instruments;<br/>shared Meter in Infrastructure/Telemetry"]
+        problems["Common/Problems<br/>[RFC 9457]<br/>Problem type catalogue, exception-to-problem<br/>mapping, suggested slots enrichment"]
+        notifications["Infrastructure/Notifications<br/>[Outbox + MailKit]<br/>Transactional staging, dispatcher,<br/>SMTP sender and recipient policy"]
+    end
 
-        Component(domain, "Keyloop.ServiceScheduler.Domain", "DDD aggregates, value objects, domain services", "Appointment, Dealership, ServiceBay, Technician, ServiceType, TimeSlot, Vin, AvailabilityCalculator, AllocationPolicy, BookingWindowPolicy")
-        Component(persist, "Keyloop.ServiceScheduler.Infrastructure/Persistence", "EF Core 10 + Npgsql", "SchedulerDbContext, configurations, migrations, seeding, DomainEventInterceptor, PostgresErrorClassifier, DealershipLock, SeedingLock")
-        Component(notifications, "Keyloop.ServiceScheduler.Infrastructure/Notifications", "Outbox + MailKit", "Transactional staging, dispatcher, SMTP sender and recipient policy")
-        Component(telemetry, "Common/Telemetry", "OpenTelemetry", "Request ActivitySource and instruments; shared Meter in Infrastructure/Telemetry")
-        Component(problems, "Common/Problems", "RFC 9457", "Problem type catalogue, exception-to-problem mapping, suggested slots enrichment")
-    }
+    web -->|JSON/HTTPS| pipe
+    pipe -->|routes| fBook
+    pipe -->|routes| fCancel
+    pipe -->|routes| fGetAppt
+    pipe -->|routes| fAvail
+    pipe -->|routes| fSched
+    pipe -->|routes| fRef
+    fBook -->|uses| domain
+    fCancel -->|uses state machine| domain
+    fAvail -->|uses AvailabilityCalculator| domain
+    fBook -->|transaction + lock| persist
+    fAvail -->|reads| persist
+    fSched -->|reads| persist
+    fRef -->|reads| persist
+    fBook -->|records| telemetry
+    fBook -->|maps outcomes| problems
+    persist -->|stages outbox atomically| notifications
+    persist -->|Npgsql| db
+    notifications -->|claims and acknowledges| db
 
-    Rel(web, pipe, "JSON/HTTPS")
-    Rel(pipe, fBook, "routes")
-    Rel(pipe, fCancel, "routes")
-    Rel(pipe, fGetAppt, "routes")
-    Rel(pipe, fAvail, "routes")
-    Rel(pipe, fSched, "routes")
-    Rel(pipe, fRef, "routes")
-    Rel(fBook, domain, "uses")
-    Rel(fAvail, domain, "uses AvailabilityCalculator")
-    Rel(fCancel, domain, "uses state machine")
-    Rel(fBook, persist, "transaction + lock")
-    Rel(fAvail, persist, "reads")
-    Rel(fSched, persist, "reads")
-    Rel(fRef, persist, "reads")
-    Rel(fBook, telemetry, "records")
-    Rel(fBook, problems, "maps outcomes")
-    Rel(persist, notifications, "stages outbox atomically")
-    Rel(notifications, db, "claims and acknowledges")
-    Rel(persist, db, "Npgsql")
-
-    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+    classDef container fill:#438dd5,stroke:#3c7fc0,color:#ffffff
+    classDef component fill:#85bbf0,stroke:#78a8d8,color:#000000
+    class web,db container
+    class pipe,fBook,fCancel,fGetAppt,fAvail,fSched,fRef,domain,persist,telemetry,problems,notifications component
+    style api fill:#ffffff,stroke:#444444,stroke-dasharray: 5 5
 ```
 
 ### 8.4 Vertical-slice layout and conventions
