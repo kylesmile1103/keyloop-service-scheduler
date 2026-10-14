@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | Proposed, deferred (stakeholder decision 2026-10-13: design recorded, not built) |
-| **Deciders** | Khai Pham (stakeholder); design drafted with Claude Opus 5.5 |
+| **Status** | Proposed, deferred (product decision 2026-10-13: design recorded, not built) |
+| **Deciders** | Khai Pham (product owner); design drafted with Claude Opus 5.5 |
 | **Builds on** | ADR-002 (Appointment aggregate), ADR-003 (lock + exclusion constraints), ADR-027 (Access identity and roles), ADR-029 (vehicle-aware allocation), ADR-033 (portability seams) |
 | **Would touch** | Domain lifecycle, availability and booking slices, the exclusion constraints' predicate, notifications, the board, Calendar and Overview, a new public request surface |
 
@@ -11,7 +11,7 @@
 
 Today only staff book, and a booking is confirmed at once (ARCHITECTURE section 5.5). The customer channel is listed as "Online booking portal (future; same API)" in section 2.1. In a brainstorm on 2026-10-13 the stakeholder asked for a customer self-booking workflow: a customer requests a slot, the dealership confirms, declines or proposes another time, the customer can withdraw, the assigned technician acknowledges, and everyone can see where the request stands. The same brainstorm asked whether the workflow engine could be swapped between Cloudflare Workflows, Azure Durable Task and AWS Step Functions.
 
-The stakeholder's answers: the purpose is customer self-booking; a request holds the chosen slot and expires if nobody answers; customers have no account and follow the request through a private link with abuse limits; all four steps (confirm or decline, propose another time, withdraw, technician acknowledgement) belong in a first version; the workflow is our own state machine with a pluggable clock (option 1 below); infrastructure gets ports and per-vendor projects (ADR-033).
+The product owner's answers: the purpose is customer self-booking; a request holds the chosen slot and expires if nobody answers; customers have no account and follow the request through a private link with abuse limits; all four steps (confirm or decline, propose another time, withdraw, technician acknowledgement) belong in a first version; the workflow is our own state machine with a pluggable clock (option 1 below); infrastructure gets ports and per-vendor projects (ADR-033).
 
 ## Proposed design
 
@@ -56,7 +56,7 @@ A narrow port, for example `IDeadlineScheduler.Schedule(appointmentId, kind, due
 
 ### Visibility
 
-A request inbox for staff with a countdown, held slots drawn as pending on the board and Calendar, a "my jobs" list with Acknowledge for technicians (needs the technician-to-email link from Task 30), and a status timeline drawn from the state machine definition plus `appointment_history`, masked for the customer view.
+A request inbox for staff with a countdown, held slots drawn as pending on the board and Calendar, a "my jobs" list with Acknowledge for technicians (needs a technician-to-email link, which the Admin resources area does not yet hold), and a status timeline drawn from the state machine definition plus `appointment_history`, masked for the customer view.
 
 ## Alternatives considered
 
@@ -78,4 +78,4 @@ A request inbox for staff with a countdown, held slots drawn as pending on the b
 
 ## Revisit when
 
-A real online customer channel is planned; Task 30's technician-to-email link exists; or another feature needs durable timers (reminders, automatic no-show marking), which would justify the deadline port on its own.
+A real online customer channel is planned; a technician-to-email link exists in the Admin resources area; or another feature needs durable timers (reminders, automatic no-show marking), which would justify the deadline port on its own.
