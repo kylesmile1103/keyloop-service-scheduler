@@ -3,8 +3,7 @@
 Target length: **10 minutes**. Rehearse the live sequence before recording and keep
 the browser, Aspire dashboard, editor and terminal ready to switch between.
 Commands below run from the repository root unless a subshell changes directory.
-The UI and AppHost steps require the completed Tasks 14b–17; verify the labels and
-resource links against the integrated branch before recording.
+Verify the UI labels and dashboard resource links before recording.
 
 ## Pre-flight checklist
 
@@ -40,7 +39,7 @@ resource links against the integrated branch before recording.
 - [ ] Reserve three distinct future, free **EV Battery Health Check** slots for
   the conflict and suggested-slot recovery demonstrations
   (two are needed; the 30-way proof uses the k6 contention scenario). Reading has
-  one EV bay and one high-voltage technician, so each chosen slot has capacity
+  a single EV-equipped bay (`Bay 4 - EV`), so each chosen slot has capacity
   one. Avoid the seeded EV booking and overlapping 60-minute appointments.
 - [ ] Open two board tabs (**A** and **B**), one dashboard tab on **Traces**, one
   on **Metrics**, and the sidebar **API reference** link at `/scalar/v1`.
