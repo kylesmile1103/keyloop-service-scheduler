@@ -12,6 +12,7 @@ using Keyloop.ServiceScheduler.Domain.Resources;
 using Keyloop.ServiceScheduler.Domain.Scheduling;
 using Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 using Keyloop.ServiceScheduler.IntegrationTests.Fixtures;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Keyloop.ServiceScheduler.IntegrationTests.Api;
 
@@ -204,6 +205,38 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         starts.ShouldContain(TestData.LondonTime(9));
         starts.ShouldContain(TestData.LondonTime(11));
         starts.Where(s => s > TestData.LondonTime(9) && s < TestData.LondonTime(11)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Availability_omits_starts_that_have_passed_at_the_current_clock()
+    {
+        // 13:05 BST on the booking day: the morning has gone, so the first start offered is the next grid line (SystemTest's lead time is zero),
+        // and a chip the advisor picks from this answer cannot fail the booking's lead-time rule a moment later.
+        var now = new DateTimeOffset(2026, 10, 13, 12, 5, 0, TimeSpan.Zero);
+        await using var factory = new SchedulerApiFactory(pg.ConnectionString, new FakeTimeProvider(now));
+        using var client = factory.CreateClient();
+        var workshop = await factory.WithDbAsync(TestData.WorkshopAsync);
+
+        var (availability, _) = await GetAvailabilityAsync(client, workshop.Dealership.Id, workshop.Interim.Id, TestData.BookingDay);
+
+        availability.Slots.ShouldNotBeEmpty();
+        availability.Slots[0].StartUtc.ShouldBe(new DateTime(2026, 10, 13, 12, 15, 0, DateTimeKind.Utc));
+        availability.Slots.ShouldAllBe(s => s.StartUtc >= now.UtcDateTime);
+        availability.Slots[^1].StartUtc.ShouldBe(availability.OperatingWindow.ShouldNotBeNull().EndUtc.AddMinutes(-availability.DurationMinutes));
+        availability.UnavailableReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Availability_omits_starts_beyond_the_booking_horizon()
+    {
+        // The last date the query accepts lies a day past the 90-day horizon, so every start on it is beyond it and none is offered.
+        var workshop = await _factory.WithDbAsync(TestData.WorkshopAsync);
+
+        var (availability, _) = await GetAvailabilityAsync(workshop.Dealership.Id, workshop.Interim.Id, new DateOnly(2027, 1, 11));
+
+        availability.OperatingWindow.ShouldNotBeNull();
+        availability.Slots.ShouldBeEmpty();
+        availability.UnavailableReason.ShouldBeNull();
     }
 
     [Fact]
@@ -416,10 +449,13 @@ public sealed class AvailabilityEndpointTests(PostgresFixture pg) : IAsyncLifeti
         return problem;
     }
 
-    private async Task<(AvailabilityResponse Availability, string Json)> GetAvailabilityAsync(Guid dealershipId, Guid serviceTypeId, DateOnly date)
+    private Task<(AvailabilityResponse Availability, string Json)> GetAvailabilityAsync(Guid dealershipId, Guid serviceTypeId, DateOnly date) =>
+        GetAvailabilityAsync(_client, dealershipId, serviceTypeId, date);
+
+    private static async Task<(AvailabilityResponse Availability, string Json)> GetAvailabilityAsync(HttpClient client, Guid dealershipId, Guid serviceTypeId, DateOnly date)
     {
         var url = string.Create(CultureInfo.InvariantCulture, $"/api/v1/dealerships/{dealershipId}/availability?serviceTypeId={serviceTypeId}&date={date:yyyy-MM-dd}");
-        using var response = await _client.GetAsync(url, Ct);
+        using var response = await client.GetAsync(url, Ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
         var json = await response.Content.ReadAsStringAsync(Ct);
         return (await response.Content.ReadJsonAsync(SchedulerJsonContext.Default.AvailabilityResponse, Ct), json);

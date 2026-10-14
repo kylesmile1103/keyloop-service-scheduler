@@ -203,7 +203,7 @@
           "Availability"
         ],
         "summary": "Find bookable start times for a service on a date",
-        "description": "Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.\nReports `closed` on non-operating days and `no-qualified-resources` when the dealership lacks required capabilities or certifications.",
+        "description": "Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.\nStarts that a booking would be refused at now (inside the minimum lead time, which includes any start already passed, or beyond the booking horizon) are left out.\nReports `closed` on non-operating days and `no-qualified-resources` when the dealership lacks required capabilities or certifications.",
         "operationId": "GetAvailability",
         "parameters": [
           {
@@ -5234,7 +5234,7 @@
             "items": {
               "$ref": "#/components/schemas/AvailabilitySlotResponse"
             },
-            "description": "Bookable start times on the slot grid in ascending order, or empty when closed or fully booked."
+            "description": "Bookable start times on the slot grid in ascending order, or empty when closed, fully booked, or no remaining start is still bookable now (inside the minimum lead time or beyond the booking horizon)."
           },
           "unavailableReason": {
             "type": [

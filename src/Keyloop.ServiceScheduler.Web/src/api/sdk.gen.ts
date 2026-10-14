@@ -53,6 +53,7 @@ export const getServiceTypes = <ThrowOnError extends boolean = false>(options: O
  * Find bookable start times for a service on a date
  *
  * Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.
+ * Starts that a booking would be refused at now (inside the minimum lead time, which includes any start already passed, or beyond the booking horizon) are left out.
  * Reports `closed` on non-operating days and `no-qualified-resources` when the dealership lacks required capabilities or certifications.
  */
 export const getAvailability = <ThrowOnError extends boolean = false>(options: Options<GetAvailabilityData, ThrowOnError>): RequestResult<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError> => (options.client ?? client).get<GetAvailabilityResponses, GetAvailabilityErrors, ThrowOnError>({

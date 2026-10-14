@@ -16,7 +16,8 @@ using Microsoft.Extensions.Options;
 namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 
 /// <summary>Computes bookable availability slots for a service type on a dealership-local date.</summary>
-public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options, RequirementPolicyReader policies)
+public sealed class GetAvailabilityHandler(
+    SchedulerDbContext db, DayScheduleReader reader, IOptions<SchedulingOptions> options, RequirementPolicyReader policies, BookingWindowPolicy windowPolicy)
 {
     public async Task<AvailabilityResponse> HandleAsync(GetAvailabilityQuery query, CancellationToken ct)
     {
@@ -84,6 +85,10 @@ public sealed class GetAvailabilityHandler(SchedulerDbContext db, DayScheduleRea
                 granularity,
                 [.. bays.Select(b => new ResourceBusy(b.Id, [.. busyByBay[b.Id]]))],
                 [.. technicians.Select(t => new ResourceBusy(t.Id, [.. busyByTechnician[t.Id]]))]);
+            // Only starts a booking would be accepted at now: a start already passed or inside the minimum lead time, or one beyond
+            // the booking horizon, is never offered (the same filter the 409 suggestions apply), so a chip the advisor picks cannot
+            // fail the window rules a moment later.
+            slots = [.. slots.Where(s => windowPolicy.IsBookable(s.StartUtc))];
             activity?.SetTag("availability.slots_returned", slots.Count);
         }
 

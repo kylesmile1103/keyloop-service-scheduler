@@ -26,6 +26,7 @@ public sealed class GetAvailabilityEndpoint : IEndpoint
     /// <summary>Find bookable start times for a service on a date</summary>
     /// <remarks>
     /// Returns slot-grid start times where at least one qualified bay and one qualified technician are free for the full service duration, along with free resource counts.
+    /// Starts that a booking would be refused at now (inside the minimum lead time, which includes any start already passed, or beyond the booking horizon) are left out.
     /// Reports <c>closed</c> on non-operating days and <c>no-qualified-resources</c> when the dealership lacks required capabilities or certifications.
     /// </remarks>
     /// <param name="query">The route and query parameters below, bound together and validated before the handler runs.</param>

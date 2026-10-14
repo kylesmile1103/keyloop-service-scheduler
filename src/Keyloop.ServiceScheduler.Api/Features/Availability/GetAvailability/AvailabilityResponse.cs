@@ -8,7 +8,7 @@ namespace Keyloop.ServiceScheduler.Api.Features.Availability.GetAvailability;
 /// <param name="OperatingWindow">Opening to closing time that day; null when the dealership is closed on that weekday.</param>
 /// <param name="DurationMinutes">How long the service occupies one bay and one technician, in minutes.</param>
 /// <param name="SlotGranularityMinutes">Start times fall on this grid, counted from the opening time.</param>
-/// <param name="Slots">Bookable start times on the slot grid in ascending order, or empty when closed or fully booked.</param>
+/// <param name="Slots">Bookable start times on the slot grid in ascending order, or empty when closed, fully booked, or no remaining start is still bookable now (inside the minimum lead time or beyond the booking horizon).</param>
 /// <param name="UnavailableReason">Reason when no slots can exist on the requested date (<c>closed</c> or <c>no-qualified-resources</c>); otherwise null.</param>
 public sealed record AvailabilityResponse(
     DateOnly Date,
