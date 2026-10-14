@@ -156,6 +156,44 @@ public sealed class TriageResponseMapperTests
         response.UncoveredIssue.ShouldNotBeNull().OutsideServiceTypeId.ShouldBe(services.Single(s => s.Code == chosen).Id);
     }
 
+    [Fact]
+    public void A_no_match_because_every_service_is_under_the_floor_judges_the_uncovered_issue_against_no_service()
+    {
+        // Twelve near-equal options are a valid answer: Clef's choice is the highest, yet every service sits under the 0.10 floor.
+        var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes();
+        var probabilities = services.ToDictionary(s => s.Code, s => s.Code == "ACCIDENT-DAMAGE-ASSESSMENT" ? 0.09 : 0.083, StringComparer.Ordinal);
+        probabilities[ClefQuestionBuilder.NoneOfThese] = 1 - probabilities.Values.Sum();
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "ACCIDENT-DAMAGE-ASSESSMENT", 0.09, probabilities),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }),
+            new("choice", "ACCIDENT_OR_BODY_DAMAGE", 0.9, new() { ["ACCIDENT_OR_BODY_DAMAGE"] = 1 }), null), services, new());
+
+        response.Recommendation.ShouldBe("no-match");
+        response.Services.ShouldBeEmpty();
+        // The damage is not covered by a service that was never offered, and the answer names no service it is outside.
+        var issue = response.UncoveredIssue.ShouldNotBeNull();
+        issue.Category.ShouldBe(TriageUncoveredCategory.ACCIDENT_OR_BODY_DAMAGE);
+        issue.OutsideServiceTypeId.ShouldBeNull();
+    }
+
+    // The validator lets Clef's choice sit up to 0.000001 under another probability; the first card is the one the UI calls Likely.
+    [Theory]
+    [InlineData(0.45, 0.45)]
+    [InlineData(0.4499995, 0.45)]
+    public void Clefs_choice_is_the_first_candidate_on_a_tie_and_the_uncovered_issue_names_it(double chosen, double other)
+    {
+        var services = Keyloop.ServiceScheduler.Infrastructure.Persistence.Seeding.ReferenceDataSeed.CreateServiceTypes()
+            .Where(s => s.Code is "FULL-SERVICE" or "BRAKES-PADS-DISCS").ToArray();
+        var response = TriageResponseMapper.Map("clef-flash", new(
+            new("choice", "FULL-SERVICE", 0.6, new() { ["FULL-SERVICE"] = chosen, ["BRAKES-PADS-DISCS"] = other, [ClefQuestionBuilder.NoneOfThese] = 1 - chosen - other }),
+            new("choice", "NO_SPECIFIC_DATE", 1, new() { ["NO_SPECIFIC_DATE"] = 1 }),
+            new("choice", "AIR_CONDITIONING", 0.9, new() { ["AIR_CONDITIONING"] = 1 }), null), services, new());
+
+        response.Recommendation.ShouldBe("suggest");
+        response.Services.Select(s => s.ServiceType.Code).ShouldBe(["FULL-SERVICE", "BRAKES-PADS-DISCS"]);
+        response.UncoveredIssue.ShouldNotBeNull().OutsideServiceTypeId.ShouldBe(services.Single(s => s.Code == "FULL-SERVICE").Id);
+    }
+
     [Theory]
     [InlineData(0.6, true)]
     [InlineData(0.8, true)]

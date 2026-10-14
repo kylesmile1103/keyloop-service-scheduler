@@ -13,4 +13,4 @@ Phase 1 uses six explicit manufacturer-submitted WMI mappings from the US NHTSA 
 
 The reviewed mappings are compiled as an exhaustive switch in `Infrastructure/Vehicles/WmiDecoder.cs`; no runtime CSV parsing, reflection, identifier cache or database lookup is involved. WMI identifies the manufacturer only. A Tesla WMI does not authorize a BatteryElectric assertion: powertrain and class both remain Unknown. Manufacturer provenance is VinDecoded for a known WMI and Unknown otherwise. This is a deliberately limited manufacturer decode, not a VIN powertrain decoder or a registry service.
 
-Task 31a verification is offline under the controller's no-external-service constraint. These references are attribution and review pointers, not a claim of a fresh upstream download during this task.
+Verification is offline, with no external service calls. These references are attribution and review pointers, not a claim of a fresh upstream download.

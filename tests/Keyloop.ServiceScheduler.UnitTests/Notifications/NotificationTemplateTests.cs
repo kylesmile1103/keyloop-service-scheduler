@@ -119,6 +119,52 @@ public sealed class NotificationTemplateTests
     }
 
     [Fact]
+    public void Fills_the_placeholders_in_one_pass_so_a_value_can_never_be_expanded_by_a_later_one()
+    {
+        // HTML encoding leaves braces alone, so a value spelt like a placeholder must come out literally, never as another field's value.
+        var details = Details(dealership: "{{Support}}", service: "{{Registration}}", registration: "{{Vin}}");
+
+        var message = NotificationTemplate.Render(Guid.NewGuid(), NotificationKind.BookingConfirmation, details);
+
+        Occurrences(message.HtmlBody, "contact the dealership and quote your booking reference").ShouldBe(1);
+        message.HtmlBody.ShouldContain("{{Support}}");
+        message.HtmlBody.ShouldContain("{{Registration}}");
+        message.HtmlBody.ShouldContain("{{Vin}}");
+        Occurrences(message.HtmlBody, "*************3456").ShouldBe(1);
+    }
+
+    [Fact]
+    public void The_footer_is_true_for_a_cancellation_as_well_as_a_confirmation()
+    {
+        foreach (var kind in new[] { NotificationKind.BookingConfirmation, NotificationKind.Cancellation })
+        {
+            var message = NotificationTemplate.Render(Guid.NewGuid(), kind, Details());
+
+            message.HtmlBody.ShouldNotContain("booking was made");
+            message.HtmlBody.ShouldContain("This is an automatic message about a workshop booking for this vehicle");
+        }
+    }
+
+    [Fact]
+    public void The_booking_reference_and_appointment_id_carry_the_monospace_face_inline()
+    {
+        // Mail clients apply the innermost inline font-family; a class on an outer cell loses to the body font set on the inner div.
+        var message = NotificationTemplate.Render(Guid.NewGuid(), NotificationKind.BookingConfirmation, Details());
+
+        var reference = message.HtmlBody.IndexOf(">456789AB</div>", StringComparison.Ordinal);
+        reference.ShouldBeGreaterThan(0);
+        var openingTag = message.HtmlBody.LastIndexOf("<div ", reference, StringComparison.Ordinal);
+        message.HtmlBody[openingTag..reference].ShouldContain("IBM Plex Mono");
+
+        var appointmentId = message.HtmlBody.IndexOf($">{AppointmentId:D}</span>", StringComparison.Ordinal);
+        appointmentId.ShouldBeGreaterThan(0);
+        var openingSpan = message.HtmlBody.LastIndexOf("<span ", appointmentId, StringComparison.Ordinal);
+        message.HtmlBody[openingSpan..appointmentId].ShouldContain("IBM Plex Mono");
+    }
+
+    private static int Occurrences(string text, string value) => (text.Length - text.Replace(value, "", StringComparison.Ordinal).Length) / value.Length;
+
+    [Fact]
     public void Rejects_an_unknown_time_zone_so_the_dispatcher_can_fail_only_that_row() =>
         Should.Throw<TimeZoneNotFoundException>(() => NotificationTemplate.Render(Guid.NewGuid(), NotificationKind.BookingConfirmation, Details("Mars/Olympus_Mons")));
 }

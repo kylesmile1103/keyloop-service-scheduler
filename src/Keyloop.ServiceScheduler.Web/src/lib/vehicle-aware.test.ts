@@ -162,7 +162,7 @@ describe("an allocation, explained in one sentence", () => {
     )
     expect(explained.bay).toBe("Bay 1 - Standard: the free bays that fit the job were equally suited and equally busy, so the first by name.")
   })
-  it("explains an accident damage assessment of a vehicle that may be high-voltage: level 3, the damage skill and the collision rule (Task 32a)", () => {
+  it("explains an accident damage assessment of a vehicle that may be high-voltage: level 3, the damage skill and the collision rule", () => {
     const explained = explainAllocation({
       allocation: { decidedBy: "OnlyQualifiedResource", bayDecidedBy: "SurplusCompetences", minimumHvLevel: 3, firedRules: ["hv-post-collision"] },
       technician: "Eva Lindqvist",

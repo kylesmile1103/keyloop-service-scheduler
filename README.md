@@ -16,19 +16,21 @@
 
 **[Live demo](https://keyloop.kylesmile.me)** · **[API reference](https://keyloop.kylesmile.me/scalar/v1)** · **[System design](docs/SYSTEM_DESIGN.md)** · **[Architecture](docs/ARCHITECTURE.md)** · **[AI collaboration](#ai-collaboration-narrative)**
 
-A dealership appointment needs a compatible service bay and a certified technician for its entire duration. This Keyloop Principal Engineer take-home implements that booking engine with .NET 10, vertical slices and a DDD domain, EF Core and PostgreSQL, plus a React dispatch board for demonstrating bookings, conflicts and cancellations. PostgreSQL owns the overlap invariant; Aspire provides the local application model and correlated telemetry. The backend is the evaluated deliverable, and the board is its demo harness.
+A dealership appointment needs a compatible service bay and a certified technician for its entire duration. This Keyloop Principal Engineer take-home implements that booking engine with .NET 10, vertical slices, a DDD domain, EF Core and PostgreSQL. A React dispatch board demonstrates bookings, conflicts and cancellations against the real API.
 
-**Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Clef-flash through Cloudflare AI Gateway. Suggestions require human confirmation; manual availability and booking work independently. Triage defaults off. When it is on, the dispatch board's booking dialog offers it in its first step: describe the issue, get suggested services, and use one to fill in the service and day.
+PostgreSQL owns the overlap invariant; Aspire provides the local application model and correlated telemetry. The backend is the evaluated deliverable, and the board is its demo harness.
 
-**Implementation status:** the backend, dispatch board, notifications, optional triage, Aspire web resource and offline edge/observability/load tooling are integrated. Chrome visual QA, an independent whole-branch review and a clean-clone verification with coverage ran on 2026-10-13 (see [Run the tests](#run-the-tests) and [Defects the process found](#defects-the-process-found)). The public demo is live (see [Live demo](#live-demo)) and GitHub Actions runs CI on every push and pull request.
+**Optional booking intake triage:** the backend can suggest bookable services and a preferred local date using Clef-flash through Cloudflare AI Gateway. Suggestions require human confirmation and manual booking works without them. Triage defaults off.
+
+**Status:** backend, dispatch board, notifications, optional triage, the Aspire model and the edge, observability and load tooling are integrated. Chrome visual QA, an independent whole-branch review and a clean-clone verification with coverage ran on 2026-10-13 ([Run the tests](#run-the-tests), [Defects the process found](#defects-the-process-found)).
 
 ## Live demo
 
 **https://keyloop.kylesmile.me** runs the `main` branch: a Cloudflare Worker with the web app's static assets in front of the .NET API in a Cloudflare Container, and Neon PostgreSQL 17 in Frankfurt. Every merge to `main` deploys through [Deploy public demo](.github/workflows/deploy.yml) once CI has passed (see [Deployment](#deployment)).
 
 - **Without signing in** you can browse the dispatch board, calendar, overview and appointments, with customer names, VINs and registrations masked, and read the API reference.
-- **Keyloop reviewers:** choose **Sign in** and enter your `@keyloop.com` work email. Cloudflare Access emails a one-time code: there is no password and no account to create. These addresses have the Admin role, so you can book and cancel, search returning customers, and use the admin area (technicians, bays, requirement policy, change history). Other addresses can be added on request.
-- The data is fictitious (seeded `@example.com` customers) and email notifications are off. A sign-in lasts an hour and the app renews it on its own while the Cloudflare session (24 hours) holds ([ADR-027](docs/ADR-027.md)).
+- **Keyloop reviewers:** choose **Sign in** and enter your `@keyloop.com` work email. Cloudflare Access emails a one-time code: no password, no account to create. These addresses have the Admin role, so you can book and cancel, search returning customers and use the admin area. Other addresses can be added on request.
+- The data is fictitious (seeded `@example.com` customers) and email notifications are off. A sign-in lasts an hour and the app renews it while the 24-hour Cloudflare session holds ([ADR-027](docs/ADR-027.md)).
 
 ## Screens
 
@@ -95,9 +97,9 @@ The booking confirmation's HTML part as a mail client renders it (a plain-text p
 
 - .NET SDK **10.0.100**, the version in [global.json](global.json), which allows `latestFeature` roll-forward.
 - A Docker runtime for PostgreSQL, Testcontainers and Aspire. On macOS the project uses **Colima**: `colima start --cpu 4 --memory 6 --disk 40`, then `docker info`.
-- **Node 22 and pnpm 12.9.1**. The web project's `packageManager` pins the version used by Aspire and CI. Check `node --version` and `pnpm --version` before starting.
-- No Aspire workload is required. The 13.6.1 AppHost uses the CLI bundle, resolved through an installed Aspire CLI or the SDK's DNX download. `dotnet run` remains supported. For matching publish tooling, use `dotnet dnx --yes aspire.cli@13.6.1 -- publish` with the arguments below; the local 13.6.0 CLI also works with this AppHost.
-- `curl`, `jq` and `uuidgen` for the examples below. Trust the development HTTPS certificate with `dotnet dev-certs https --trust` when using the HTTPS profile.
+- **Node 22 and pnpm 12.9.1**; the web project's `packageManager` pins the version used by Aspire and CI.
+- No Aspire workload. The 13.6.1 AppHost uses the CLI bundle, resolved through an installed Aspire CLI or the SDK's DNX download; `dotnet run` works. For matching publish tooling use `dotnet dnx --yes aspire.cli@13.6.1 -- publish` with the arguments below (the local 13.6.0 CLI also works).
+- `curl`, `jq` and `uuidgen` for the examples. Trust the development HTTPS certificate with `dotnet dev-certs https --trust` when using the HTTPS profile.
 
 ## Run everything
 
@@ -108,29 +110,39 @@ dotnet tool restore
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost
 ```
 
-The AppHost generates and persists the PostgreSQL password in its user secrets, starts PostgreSQL with a named data volume and pgweb, then starts the API after database readiness. Web is always in the model: `AddViteApp` installs dependencies with `pnpm install --frozen-lockfile`, waits for the API, and uses `API_HTTP` discovery for its Vite proxy. The API migrates and seeds in Development. See [environments and configuration](#environments-and-configuration) for the deployment differences.
+The AppHost generates and persists the PostgreSQL password in its user secrets, starts PostgreSQL with a named data volume and pgweb, then starts the API after database readiness. The API migrates and seeds in Development.
 
-Open the dashboard URL printed by the AppHost, including its login token: it runs on `https://scheduler.dev.localhost:17180`, and the browser-facing resources link as `<resource>-scheduler.dev.localhost:<port>` (for example `https://api-scheduler.dev.localhost:7180`). Browsers resolve every `*.localhost` name to loopback and the .NET 10 developer certificate covers `*.dev.localhost`; the same ports answer on plain `localhost`, which is the form to use from curl or other tools that do not resolve `*.localhost` names, and PostgreSQL's `tcp` and Mailpit's `smtp` links stay on `localhost`. Safari has been reported not to open `*.dev.localhost` addresses ([aspire#20228](https://github.com/microsoft/aspire/issues/20228)); use another browser or the `localhost` form there. In **Resources**, use the `web` HTTP link for the app (it opens on the Overview), the `api` **Scalar API reference** link for `/scalar/v1`, and `pgweb` to inspect the database. Ports come from the running application model; use those links when setting `API_BASE` in the curl examples. Scalar supplies documented examples and an interactive request client. Avoid sharing dashboard tokens or displaying secrets in recordings.
+The web app is always in the model: `AddViteApp` runs `pnpm install --frozen-lockfile`, waits for the API, and proxies to it through `API_HTTP` discovery. [Environments](#environments-and-configuration) lists the deployment differences.
 
-The reference seed defines two dealerships, Reading (`Europe/London`) and München (`Europe/Berlin`), nine bays, nine technicians and eleven services. Accident Damage Assessment takes 60 minutes on a standard lift with a DamageAssessment-certified technician (fresh seeds: Eva at Reading, Hans at Munich); vehicle-aware HV/Unknown work requires level 3 under default policy v2. Existing databases receive the service and, once per dealership, a versioned policy upgrade at startup (a later version without the rule is kept), while resources remain unchanged until editing or the Admin demo reseed grants that seeded qualification. Reading's EV Battery Health Check has one qualified bay; with vehicle-aware requirements on (the Development default) any technician at HV level 3 can take it, Ben Okafor or Eva Lindqvist, and with them off only Ben, who holds the old high-voltage certificate. The demo seeder creates the upcoming workshop week and skips elapsed starts; today's board can therefore be empty outside opening hours. Select Reading and a future open day when demonstrating bookings.
+**Dashboard and resources.** Open the dashboard URL the AppHost prints, with its login token: `https://scheduler.dev.localhost:17180`.
 
-The web app's pages, each keeping the dealership in the address (`?dealership=`):
+- Browser-facing resources link as `<resource>-scheduler.dev.localhost:<port>`. The same ports answer on plain `localhost`, the form for curl and for Safari ([aspire#20228](https://github.com/microsoft/aspire/issues/20228)).
+- In **Resources**, the `web` link opens the app on the Overview, the `api` **Scalar API reference** link opens `/scalar/v1`, and `pgweb` inspects the database. Use those links for `API_BASE` below.
+- Do not share dashboard tokens or show secrets in recordings.
 
-- **Overview** (`/overview`, where `/` lands): today's bookings by status, bay utilisation, cancellations in the last seven days and the next free start; bookings per day for the 14 days either side of today (with a table view), the service mix and the next appointments, each opening its details; *Book appointment* and *Open dispatch board*.
+**Seeded data.** Two dealerships, Reading (`Europe/London`) and München (`Europe/Berlin`), with nine bays, nine technicians and eleven services. The upcoming workshop week is booked and elapsed starts are skipped, so today's board can be empty outside opening hours. Demonstrate bookings on Reading and a future open day.
+
+- Reading's EV Battery Health Check has one qualified bay. With vehicle-aware requirements on (the Development default) any technician at HV level 3 can take it; with them off, only Ben Okafor.
+- Accident Damage Assessment takes 60 minutes on a standard lift with a DamageAssessment-certified technician (Eva at Reading, Hans at München).
+- Existing databases receive new services and a versioned policy upgrade at startup; resources stay as they are until edited or reseeded.
+
+**Pages**, each keeping the dealership in the address (`?dealership=`):
+
+- **Overview** (`/overview`, where `/` lands): today's figures, bookings per day, the service mix and the next appointments.
 - **Dispatch board** (`/dispatch`): one day's bays or technicians on a timeline (an agenda on phones), with booking, details and cancellation.
-- **Calendar** (`/calendar`): a week (from Monday) or a month of appointments with closed days hatched, each opening its details, and *New appointment* on a chosen day; an agenda by day on phones.
-- **Appointments** (`/appointments`): the same day as a searchable, filterable list.
-- **Resources** (`/resources/...`, any role) and **Settings** (`/settings/...`).
+- **Calendar** (`/calendar`): a week or a month, with *New appointment* on a day.
+- **Appointments** (`/appointments`): the day as a filterable list.
+- **Resources** (`/resources/...`) and **Settings** (`/settings/...`).
 
-The API resource's **Reseed demo data** command replaces the demo dealerships' appointments and rebuilds the sample week. It is key-protected and excluded from OpenAPI. Its dashboard confirmation describes the data it deletes. Preserve the AppHost's stored database password alongside the persistent volume across restarts.
+**Commands and email.** The API resource's **Reseed demo data** command replaces the demo dealerships' appointments and rebuilds the sample week; it is key-protected and excluded from OpenAPI. Keep the AppHost's stored database password with the persistent volume across restarts.
 
-Open **Mailpit inbox** on the `mailpit` resource for local email capture (the confirmation and cancellation emails are shown under [Screens](#email); their MJML source compiles with `scripts/build-email-template.sh`). Aspire injects its SMTP endpoint into the API; seeded `@example.com` customers are suppressed. The Aspire smoke test books with a non-reserved recipient and verifies the captured message. UAT, Production and Demo leave email dispatch off by default.
+Open **Mailpit inbox** on the `mailpit` resource to see the confirmation and cancellation emails. Seeded `@example.com` customers are suppressed, so book with another address. UAT, Production and Demo leave email dispatch off by default.
 
-For an isolated manual check, supply a temporary PostgreSQL password and `--AppHost:UsePersistentResources=false` after `--`; stop the AppHost afterwards. This avoids the developer's database volume and generated password default.
+For an isolated check, add `-- --AppHost:UsePersistentResources=false --Parameters:postgres-password=<temporary-password>` and stop the AppHost afterwards. This never touches the developer's database volume or persisted password.
 
 ### Try each role locally
 
-Locally, who you are is configuration, not a sign-in: the AppHost runs the API with the Development identity `admin@keyloop.test` / Admin unless told otherwise, so there is no login page and nothing to sign out of. To see the board as another role, stop the AppHost and start it again with the role (the app's Settings > Account lists the same settings):
+Locally, who you are is configuration: the AppHost runs the API as `admin@keyloop.test` / Admin unless told otherwise, so there is no login page. To see another role, restart the AppHost with it (Settings > Account lists the same settings):
 
 ```bash
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-development-roles=ServiceAdvisor --Parameters:auth-development-email=advisor@keyloop.test
@@ -138,7 +150,7 @@ dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-d
 dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --Parameters:auth-development-roles=""   # signed out
 ```
 
-Running the API on its own in Development, set `Auth__Development__Roles__0` to `Admin`, `ServiceAdvisor`, `Viewer` or an empty value (signed out), and optionally `Auth__Development__Email`; the Vite dev server (`pnpm dev`, with `API_HTTP` naming the API) needs nothing else.
+Running the API on its own, set `Auth__Development__Roles__0` to `Admin`, `ServiceAdvisor`, `Viewer` or empty (signed out), and optionally `Auth__Development__Email`; the Vite dev server (`pnpm dev`, with `API_HTTP` naming the API) needs nothing else.
 
 | Role | Board and appointments list | Details sheet | Book, cancel, service suggestions | Resources |
 |---|---|---|---|---|
@@ -148,28 +160,30 @@ Running the API on its own in Development, set `Auth__Development__Roles__0` to 
 | Service advisor | full | full record | available | read-only lists, with the reason |
 | Admin | full | full record | available | lists, editing, the requirement policy and the change history (see [Admin editing](#admin-editing)) |
 
-Where a deployed build offers **Sign in** (the Access login, coming back to the same page, dealership and day) and **Sign out** (the hostname's Access logout), the development server shows **How to sign in**, which leads to those settings, and no Sign out. A refusal the UI did not foresee (a session that ended, a role removed) is answered once, with "Your session has ended" and Sign in for a `401` or "Your role doesn't allow that" for a `403`, and the app reads `/me` again; when the identity changes (or `/me` cannot be read, which counts as signed out at once), whatever the previous caller read is cleared and read again, an open details sheet closes, a booking being entered is discarded with a note saying so (unless the same email keeps a role that may book), and a write's answer that arrives afterwards is thrown away.
+A deployed build offers **Sign in** (the Access login, returning to the same page) and **Sign out**; the development server shows **How to sign in** instead. An unforeseen `401` or `403` is answered once ("Your session has ended", "Your role doesn't allow that") and the app reads `/me` again.
 
-Screenshots of the main screens, taken as the Development Admin, are under [Screens](#screens). A clean clone of `64a91f0` from GitHub (2026-10-13) built with no warnings, reported no pending model changes and started the whole stack in the Aspire smoke test (20/20, 27 s) and the browser journeys. Its two test failures, the runtime-role tests exhausting the test server's connections and one journey's booking sorting onto a second page of the Appointments list, were fixed in `5049620` and `f5c6fb1` and rerun green (integration 893/893, E2E 15/15).
+When the identity changes, the previous caller's data is cleared, an open details sheet closes, a booking being entered is discarded with a note, and a late answer to a write is thrown away ([ARCHITECTURE §15](docs/ARCHITECTURE.md#15-dispatch-board-ui-harness)).
 
 ## Admin editing
 
-An Admin edits the Resources area; a Service advisor or a Viewer sees the same lists read-only, with the reason on screen. Locally the API's Development identity is `admin@keyloop.test` / Admin, so the app opens as an Admin (see [Try each role locally](#try-each-role-locally) for the others).
+An Admin edits the Resources area; a Service advisor or a Viewer sees the same lists read-only, with the reason on screen.
 
-- **Technicians** (`/resources/technicians`): **Add technician**, and each row's menu: *Edit* (name, employee number, certifications; with vehicle-aware requirements on, the HV level 0 to 4 with its IMI-style name, valid until in the dealership's calendar, confirmed, and brand specialisms, which allocation does not use yet), *Confirm HV level* for a level nobody confirmed (also a button per technician in the "HV levels to review" note), *Deactivate* (after a preview of the upcoming appointments the board would then flag) or *Reactivate*, and *Change history*.
-- **Bays** (`/resources/bays`): **Add bay**, and each row's menu: *Edit* (name and equipment), *Take out of service* (with the same preview) or *Return to service*, and *Change history*.
-- **Requirement policy** (`/resources/policy`, Admin only): the dealership's typed rules in words. Edit a rule (raise *hv-routine* to HV 4, say), **Preview changes** to see which services Reading could no longer book with today's roster (nobody there holds level 4), then **Publish version 3**; publishing is offered only for the draft just previewed. New bookings use the new version; appointments keep the one they were booked under. *Versions* lists every publication and what it changed.
-- **Change history** (`/resources/history`, Admin only): every Admin change, newest first, with who, when and what changed field by field (or rule by rule for a policy), filtered by kind or opened for one technician or bay from its row menu.
-- **Two Admins at once**: every edit is sent with the version it was made from (`If-Match`). Open the same technician in two tabs, save in one, then save in the other: the second says what the first changed and offers **Reapply my changes** (on top of theirs, saved only when you save again) or **Discard my changes**.
-- **The board** marks an appointment whose technician or bay no longer meets what it was booked with ("Review", and "needs review" in its label), and the details sheet names why; nothing is moved. Deactivate a technician with work this week, then open the dispatch board.
+- **Technicians** (`/resources/technicians`): add and edit name, employee number and certifications, plus the HV level 0 to 4, its validity, confirmation and brand specialisms when vehicle-aware requirements are on. *Confirm HV level*, *Deactivate* (after a preview of the appointments the board would then flag), *Reactivate* and *Change history* are in each row's menu.
+- **Bays** (`/resources/bays`): add and edit (name and equipment), *Take out of service* (with the same preview) or *Return to service*, and *Change history*.
+- **Requirement policy** (`/resources/policy`, Admin only): the dealership's typed rules in words. Edit a rule (raise *hv-routine* to HV 4, say), **Preview changes** to see which services Reading could no longer book, then **Publish**; only the draft just previewed can be published. New bookings use the new version; appointments keep theirs.
+- **Change history** (`/resources/history`, Admin only): every Admin change, newest first, field by field or rule by rule, filtered by kind or opened for one technician or bay.
+- **Two Admins at once**: every edit carries the version it was made from (`If-Match`). Save the same technician in two tabs: the second says what the first changed and offers **Reapply my changes** or **Discard my changes**.
+- **The board** marks an appointment whose technician or bay no longer meets what it was booked with ("Review", "needs review" in its label) and the details sheet names why; nothing is moved.
 
 ## Vehicle-aware allocation (ADR-029)
 
-ADR-029 Phases 0 and 1 run behind `Scheduling:VehicleAwareRequirements`: **on in Development and Demo**, and off in SystemTest, UAT and Production unless deliberately configured (the Cloudflare demo's edge setting `KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=true` passes `Scheduling__VehicleAwareRequirements=true`, [edge README](deploy/cloudflare/README.md#vehicle-aware-booking)). The web app reads public `GET /api/v1/features` and shows the vehicle step, the vehicle-aware availability and the allocation explanations only while it says on; with it off the booking flow is the earlier one and no vehicle-aware input is sent. To see that flow locally, start the API with `Scheduling__VehicleAwareRequirements=false` (the switch is fixed for the API process: restart it to change).
+ADR-029 Phases 0 and 1 run behind `Scheduling:VehicleAwareRequirements`: **on in Development and Demo**, off in SystemTest, UAT and Production unless configured. The Cloudflare demo turns it on with `KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=true` ([edge README](deploy/cloudflare/README.md#vehicle-aware-booking)).
+
+The web app reads public `GET /api/v1/features` and shows the vehicle step, vehicle-aware availability and allocation explanations only while it says on. To see the plain flow locally, start the API with `Scheduling__VehicleAwareRequirements=false`; the switch is fixed per process.
 
 ### Try it in the app
 
-Sign in as Admin (the Development default) or Service advisor, open the dispatch board on Reading and a future open day, and use **Book appointment**:
+Sign in as Admin or Service advisor, open the dispatch board on Reading and a future open day, and use **Book appointment**:
 
 | Case | In the booking dialog | What to look for |
 |---|---|---|
@@ -179,42 +193,65 @@ Sign in as Admin (the Development default) or Service advisor, open the dispatch
 | Heavy | Vehicle class *Heavy vehicle* (Interim or Heavy Van Service) | only the heavy-duty lift's starts, and the heavy-vehicle technician |
 | Training gap | EV Charging Fault Diagnosis, *Needs live HV diagnosis* | no start: no Reading technician holds level 4, said as the workshop's gap, with the two-person warning |
 | Conflict | step 2: *Manufacturer code* `BMW`, then VIN `WVWZZZ1KZAW123456` and **Look up** | "The VIN says VOLKSWAGEN, but BMW is declared", with **Use decoded data** (also on the API's 422) |
-| Why not | Unknown Interim Service, *Preferred technician* Farid Haddad | "Farid Haddad holds HV level 1, below the level 2 this job needs." in the booked toast and the details sheet, from the board, the Overview and the Calendar alike |
-| Accident assessment | Accident Damage Assessment, the vehicle left Unknown (or a hybrid or electric one declared) | no live diagnosis offered; Eva Lindqvist (Reading) or Hans Richter (München) "at HV level 3 or above with Damage assessment", because a collision may have damaged high-voltage cabling or parts |
+| Why not | Unknown Interim Service, *Preferred technician* Farid Haddad | "Farid Haddad holds HV level 1, below the level 2 this job needs." in the booked toast and the details sheet |
+| Accident assessment | Accident Damage Assessment, the vehicle left Unknown (or a hybrid or electric one declared) | no live diagnosis offered; Eva Lindqvist (Reading) or Hans Richter (München) "at HV level 3 or above with Damage assessment", because a collision may have damaged high-voltage parts |
 
-Resources > Technicians shows each technician's HV level, how long it is valid, whether it was confirmed and the brand specialisms (not used for allocation yet). **Look up** sends the VIN in the request body only to `POST /api/v1/vehicle-profiles/resolve` (Admin or ServiceAdvisor, booking rate limit, offline: no registry is called and nothing is stored); availability is asked with `powertrain`, `vehicleClass`, a manufacturer code and `needsLiveDiagnosis`, never a VIN, registration or reason.
+**Look up** sends the VIN in the request body only, to `POST /api/v1/vehicle-profiles/resolve` (Admin or ServiceAdvisor, booking rate limit, offline, nothing stored). Availability is asked with `powertrain`, `vehicleClass`, a manufacturer code and `needsLiveDiagnosis`, never a VIN, registration or reason.
 
 ### Existing local databases
 
-Fresh seed data gives Reading confirmed levels 1 to 3 through 2028-12-31, so every seeded service is bookable for an ICE declaration and for Unknown; no technician has level 4, which keeps the live-diagnosis gap honest. An existing developer database is different: the migration carried the old high-voltage certificate over as level 3 **unconfirmed** and every other technician as level 0, and startup seeding never rewrites a technician, so with the switch on an Unknown brake or MOT job at Reading finds no qualified technician. The Technicians page names those unconfirmed levels, and the booking dialog says which level is missing. Nothing rewrites them on its own; to try the feature, either:
+Fresh seed data gives Reading confirmed levels 1 to 3 through 2028-12-31 and no level 4, which keeps the live-diagnosis gap honest.
 
-1. **Reseed demo data** (the API resource's command in the Aspire dashboard; Admin and key-protected): besides rebuilding the sample week, it restores the seeded, confirmed levels of the seeded technicians whose level was never confirmed. A confirmed level and any technician outside the seed are left alone; or
-2. a **fresh database**: `dotnet run --project src/Keyloop.ServiceScheduler.AppHost -- --AppHost:UsePersistentResources=false --Parameters:postgres-password=<temporary-password>`, stopped afterwards (one AppHost per machine at a time). It never touches the developer volume or the persisted password.
+An existing developer database carried the old high-voltage certificate over as level 3 **unconfirmed** and every other technician as level 0. Startup seeding never rewrites a technician, so with the switch on an Unknown brake or MOT job at Reading finds no qualified technician.
+
+To fix that, run **Reseed demo data**, which restores the seeded confirmed levels of seeded technicians whose level was never confirmed. Or start a fresh database with `--AppHost:UsePersistentResources=false` and a temporary password.
 
 ### The API underneath
 
-Booking keeps its vehicle fields and accepts `vehicle.profile: { "powertrain": "Ice", "declarationReason": "Engine checked at intake" }` and top-level `needsLiveDiagnosis`; a concrete powertrain needs a private 1 to 500 character reason, stored with the authenticated actor in the booking's history and never sent in email or telemetry. For a declared manufacturer the VIN contradicts (`BMW` against a WVW VIN), booking answers `422 vehicle-profile-conflict` until `conflictChoice: "UseDecoded"`. Booking and the role-protected details return `allocation` (deciding criterion, policy version, minimum HV level, fired rules, preferred hints and reason codes) and `vehicle.profile` with server provenance; the schedule's technicians carry level, validity, confirmation and brands to a role only. With the switch off, a booking with `needsLiveDiagnosis: true` or a `vehicle.profile`, and availability with any vehicle parameter, is refused with `422 vehicle-aware-requirements-disabled` (naming `rejectedFields`) rather than answered as if the input were absent, and existing requests, responses and idempotency fingerprints are unchanged. `GET /api/v1/features` answers `{ "vehicleAwareRequirements": true }` or `false`, the same for every caller, with `Cache-Control: public, max-age=60, must-revalidate`; after that 422 the app reads it again past the cache. Brand specialist preference, continuity, warranty/OEM rules, Clef questions, registries and multi-technician bookings are later tasks.
+- Booking accepts `vehicle.profile: { "powertrain": "Ice", "declarationReason": "Engine checked at intake" }` and top-level `needsLiveDiagnosis`. A concrete powertrain needs a private 1 to 500 character reason, stored with the actor in the booking's history and never sent in email or telemetry.
+- A declared manufacturer the VIN contradicts (`BMW` against a WVW VIN) is `422 vehicle-profile-conflict` until `conflictChoice: "UseDecoded"`.
+- Booking and the role-protected details return `allocation` (deciding criterion, policy version, minimum HV level, fired rules, preferred hints and reason codes) and `vehicle.profile` with server provenance.
+- With the switch off, any vehicle-aware input is refused with `422 vehicle-aware-requirements-disabled` (naming `rejectedFields`), never ignored. `GET /api/v1/features` answers the switch with `Cache-Control: public, max-age=60, must-revalidate`.
+- Brand preference, continuity, warranty/OEM rules, Clef questions, registries and multi-technician bookings are not implemented. The full contract is [ARCHITECTURE §8.7](docs/ARCHITECTURE.md#87-api-contract).
 
 ## Optional booking intake triage
 
-Clef-flash also evaluates optional photos of vehicles, warning lights or paperwork. Upload up to four PNG/JPEG/WebP photos (4 MiB each, 8 MiB total, 16 megapixels each) through `POST /api/v1/dealerships/{id}/booking-triage/images`, body `{ "contentType": "image/png", "base64": "..." }`, then include the returned `imageIds` with the description. Upload IDs are private, dealership-scoped and expire after one hour; storage deletes the photo within about another hour. Photos are stored and sent to Clef as uploaded, including embedded metadata such as GPS location. Uploads share the triage rate limit with evaluations (four new photos and one suggestion use five of the ten permits a minute) and, like evaluations, require Admin or ServiceAdvisor (ADR-027); the triage status read stays public. Production uses private R2 through the Container relay; local runs use a bounded transient store. PDF conversion is not included. The design is ADR-028, which supersedes the Jev decision (ADR-026).
+The design is [ARCHITECTURE §8.10](docs/ARCHITECTURE.md#810-booking-intake-triage) (ADR-028, which supersedes the Jev decision, ADR-026).
 
-The backend exposes `GetBookingTriageStatus` (`GET /api/v1/booking-triage`) and `TriageBookingRequest` (`POST /api/v1/dealerships/{id}/booking-triage`, body `{ "description": "Brakes squeal, it's an EV, need it Thursday." }`). The response includes `suggest`, `confirm` or `no-match`, up to three bookable service candidates with probabilities and an optional local date. Confirm a service before requesting availability; the operation never books or stores the description. Disabled or unavailable suggestions return `503 triage-unavailable` and leave manual selection available. See [ARCHITECTURE §8.10](docs/ARCHITECTURE.md#810-booking-intake-triage).
+- `GetBookingTriageStatus` (`GET /api/v1/booking-triage`, public) says whether triage is on.
+- `TriageBookingRequest` (`POST /api/v1/dealerships/{id}/booking-triage`, body `{ "description": "Brakes squeal, it's an EV, need it Thursday." }`) answers `suggest`, `confirm` or `no-match`. The answer carries up to three bookable service candidates, their probabilities and an optional local date.
+- Triage never books or stores the description. Disabled or unavailable, it returns `503 triage-unavailable` and manual selection carries on.
+- Up to four PNG, JPEG or WebP photos (4 MiB each, 8 MiB total, 16 megapixels) go through `POST /api/v1/dealerships/{id}/booking-triage/images` first. Their ids are private, dealership-scoped and expire after an hour. Photos are stored in private R2 (a bounded transient store locally) and sent as uploaded, embedded metadata such as GPS location included. PDF conversion is not included.
+- Evaluation and upload require Admin or ServiceAdvisor and share a rate limit of ten permits a minute.
 
-On the dispatch board, the booking dialog's first step shows the intake only when the status says it is enabled: *Describe the issue*, *Suggest a service*, and the line "Suggestions by Clef-flash via Cloudflare AI Gateway. Check before booking." Suggested services appear as cards marked *Likely* or *Possible* with their percentage and the equipment and certifications they need; *Use this* sets the service (and the day asked for, when that day is still to come and the workshop is open then), clears any start time already picked, and moves on to the free start times. Nothing is applied without that click. A failure shows the usual problem alert and leaves the service select as it was. *Copy the description into Notes* is ticked by default and never overwrites notes typed by hand; untick it to keep the description out of the booking. See [ARCHITECTURE §15](docs/ARCHITECTURE.md#15-dispatch-board-ui-harness).
+In the booking dialog's first step, when the status says on: *Describe the issue*, optional photos, *Suggest a service*, and the line "Suggestions by Clef-flash via Cloudflare AI Gateway. Check before booking."
 
-The answer also says what it leaves out, always in fixed client phrases and never in the model's words. A no-match says "The workshop’s bookable services do not cover what you described.", names the uncovered category when the API reports one (for example *Mentioned: lights or electrical accessories*), and offers *Book Diagnostic Fault Finding for an inspection* only when the selected dealership can book that service, then "choose a service below or contact the workshop". When a suggestion also reports an uncovered issue, a notice under the cards reads "Also mentioned: accident or body damage, which Diagnostic Fault Finding does not cover. One appointment books one service: add it to Notes or book it separately.", with *Add to Notes* to write that line into the booking's notes (when it would take them past their 1000 characters it writes nothing and says by how much to shorten them); it goes while another candidate than that service is chosen. The cards are what the API returns (its floors decide how many), and the copy reads naturally for one. Photos are added with *Add photos* or dropped on the field; the browser's own file button is hidden but its keyboard behaviour, accept list and limits stay. In the booking dialog, the Accident Damage Assessment says "Inspection and estimate of collision damage, not the repair itself." in the Service list, under the chosen service and on its suggested card; the admin services page does not show the help line.
+- Candidates are cards marked *Likely* or *Possible* with their percentage. *Use this* sets the service (and the day asked for, when it is open and still to come) and moves to the free start times. Nothing is applied without that click.
+- *Copy the description into Notes* is ticked by default and never overwrites notes typed by hand.
+- What the answer leaves out is said in fixed client phrases, never the model's words. A no-match names the uncovered category and offers *Book Diagnostic Fault Finding for an inspection* where that service is bookable; an uncovered issue beside a suggestion gets an *Also mentioned* note with *Add to Notes*.
 
-An operator must first load Unified Billing credits, provision an account-scoped **Workers AI Read** token, and configure the `keyloop-scheduler` AI Gateway with authentication on (required for Unified Billing), log collection off, zero data retention on and a rate limit. Only after that approval, the developer can run these two commands themselves (the placeholders are intentionally not credentials):
+**Enabling it.** An operator first loads Unified Billing credits, provisions an account-scoped **Workers AI Read** token, and configures the `keyloop-scheduler` AI Gateway: authentication on, log collection off, zero data retention on, and a rate limit. Then:
 
 ```bash
 dotnet user-secrets set 'Parameters:cloudflare-account-id' '<32-hex-account-id>' --project src/Keyloop.ServiceScheduler.AppHost
 dotnet user-secrets set 'Parameters:cloudflare-ai-token' '<workers-ai-read-token>' --project src/Keyloop.ServiceScheduler.AppHost
 ```
 
-The AppHost passes `Triage__*` only when both optional parameters are present, and starts without them. Never put the token in appsettings. The eight-second total timeout (raised from Jev's four seconds for Clef; latency with photos is still unmeasured), 0.5 suggestion confidence (calibrated on Clef-flash's live golden set; Jev used 0.95), 0.10 candidate floor, 0.50 relative candidate floor, 0.60 date confidence, 0.50 uncovered-issue confidence (calibrated on the 2026-10-13 live golden set: 5 correct notices, 0 false, 5 missed given an accepted service; ten positive fixtures are a small sample) and 500-character limit are configurable in `Triage`; `Security:RateLimiting:TriagePermitsPerMinute` defaults to 10. Cloudflare container deployment uses `KEYLOOP_TRIAGE_ENABLED=false` by default, with optional account/gateway settings and the `keyloop_prod_ai_token` Secrets Store binding when enabled. Public enablement requires stakeholder approval.
+The AppHost passes `Triage__*` only when both parameters are present and starts without them; the token never goes in appsettings. The Cloudflare deployment keeps `KEYLOOP_TRIAGE_ENABLED=false` by default, and public enablement is a deliberate operator decision.
 
-All regular tests use a stub HttpMessageHandler. The 49-fixture `LiveAi` category (three questions in one request per fixture; the first 25 fixtures are the original two-question set) runs only with the stakeholder's approval, `KEYLOOP_LIVE_AI=1` and both Triage environment settings, and writes [`docs/media/triage-clef-flash-golden-set.md`](docs/media/triage-clef-flash-golden-set.md); ordinary integration verification excludes it with `--filter 'Category!=LiveAi'`. The approved run of 2026-10-13 (text only, no photos) chose an accepted service in 42/49 (natural descriptions 33/36) and kept the accepted service and date, with no notice, in every one of the original 25; it suggests Accident Damage Assessment for the stakeholder's crash and air-con sentence but does not flag the air-con part, flagged 3 of 10 uncovered issues given an accepted service at the 0.60 threshold it ran with and no false notice (5 of 10 is its sweep row for 0.50, the threshold since calibrated), and took p50 590 ms, p95 959 ms and about 2,150 input tokens per request. The previous Jev report, [`docs/media/triage-live-golden-set.md`](docs/media/triage-live-golden-set.md), is historical, and so is the first Clef-flash run (2026-10-12, 25 fixtures, two questions, text cases, no photos; its report was replaced by the 49-fixture one), which chose the right service in 25/25, both relative dates, the German and injection cases and both out-of-scope `no-match`es; at the calibrated 0.5 threshold 21 clear requests come back as `suggest` and the vague one (confidence 0.19) as `confirm`; p50 736 ms, p95 1,787 ms, about 1,590 input tokens per triage. Photo cases are not yet measured. The first Jev run (2026-10-12) scored 24/25 at the original 0.70 threshold, with p50 430 ms, p95 860 ms and about 1,940 input tokens per triage; its one miss, a vague description, led to the 0.95 threshold, and the rerun at 0.95 scores 25/25 (ARCHITECTURE §14).
+| `Triage` option | Default |
+|---|---|
+| Total timeout | 8 s |
+| Suggestion confidence | 0.5 |
+| Candidate floor / relative floor | 0.10 / 0.50 |
+| Date confidence | 0.60 |
+| Uncovered-issue confidence | 0.50 |
+| Description limit | 500 characters |
+| `Security:RateLimiting:TriagePermitsPerMinute` | 10 |
+
+**Evidence.** Regular tests use a stub `HttpMessageHandler`. The 49-fixture `LiveAi` category runs only with `KEYLOOP_LIVE_AI=1` and both Triage settings, and writes [the golden-set report](docs/media/triage-clef-flash-golden-set.md); ordinary verification excludes it with `--filter 'Category!=LiveAi'`.
+
+The run of 2026-10-13 (text only) chose an accepted service in 42/49 (natural descriptions 33/36) and raised no false uncovered-issue notice. It took p50 590 ms and p95 959 ms at about 2,150 input tokens per request, and the thresholds above were calibrated on it. Photo cases are not yet measured; the earlier [Jev report](docs/media/triage-live-golden-set.md) is historical.
 
 ## Run the tests
 
@@ -258,9 +295,7 @@ dotnet test --project tests/Keyloop.ServiceScheduler.UnitTests -c Release --no-b
   --coverage --coverage-output-format cobertura --results-directory TestResults/unit
 ```
 
-Use a short `TMPDIR` because Microsoft.Testing.Platform's pipe path must stay under 104 bytes on macOS. The clean-clone coverage run (2026-10-13, `64a91f0`) measured 86.7% line and 76.0% branch coverage of the API, Domain and Infrastructure assemblies from the integration suite (Api 82.9%, Domain 84.8%, Infrastructure 93.4% lines), and 91.8% line coverage of Domain from the unit suite alone.
-
-Frontend checks run in the web project:
+Use a short `TMPDIR`: Microsoft.Testing.Platform's pipe path must stay under 104 bytes on macOS. Frontend checks run in `src/Keyloop.ServiceScheduler.Web`:
 
 ```bash
 cd src/Keyloop.ServiceScheduler.Web
@@ -273,21 +308,43 @@ pnpm test
 pnpm build
 ```
 
-The concurrency test's acceptance criterion is **five rounds of thirty simultaneous requests** for a dealership with one qualified resource pair: exactly **one 201 and twenty-nine 409**, no 5xx, no Error logs, no deadlock or constraint-backstop events, one active appointment and its history row, and no orphan history or idempotency rows. Further cases check distinct slots, measured queueing and independence between dealerships. These are required assertions, not final observed results. The lock-disabled comparison was performed as a scratch mutation probe; there is no product switch for disabling the lock.
+**The concurrency proof.** Five rounds of thirty simultaneous requests for a dealership with one qualified resource pair must give:
 
-Aspire smoke tests live in a separate project because the Aspire testing host needs reflection-based JSON while the API integration process deliberately disables it. CI runs `AspireTests` after installing the web dependencies. The fixture waits for both API and web health under one five-minute startup deadline, then checks `/api/v1/dealerships` through web for JSON and the exact seeded names. Cleanup stops within 30 seconds and always disposes; tests use a supplied password, session containers and no persistent mounts, with triage disabled.
+- exactly **one 201 and twenty-nine 409**, with no 5xx and no Error logs;
+- no deadlock or constraint-backstop events;
+- one active appointment with its history row, and no orphan history or idempotency rows.
 
-Browser E2E tests (`Category=E2E`) use .NET Playwright with Chromium and Aspire.Hosting.Testing. Install Node 22 and pnpm first (on this macOS setup: `source ~/.nvm/nvm.sh && nvm use 22`); the AppHost installs the frozen web dependencies. On a fresh Linux machine set `KEYLOOP_E2E_INSTALL_DEPS=1` to install Chromium's system dependencies too. Two class fixtures serialize an Admin stack and an anonymous stack, using temporary passwords, session containers, no named database volume and disabled triage. Dates come from Reading's operating hours on the real clock. Each test has fresh browser storage and unique booking data. Failed journeys retain trace ZIPs (screenshots, snapshots, sources), screenshots, accessible snapshots, browser logs and video under `TestResults/e2e/`; passing journeys retain result JSON, axe results and the dark-mode page screenshots. Open a failed trace with `pnpm dlx playwright@1.63.0 show-trace <trace.zip>` (no PowerShell). CI caches `~/.cache/ms-playwright` and always uploads the evidence. Do not run this suite concurrently with Aspire smoke tests or a developer AppHost; the fixture waits up to five minutes for a running host and never stops it.
+Further cases check distinct slots, measured queueing and independence between dealerships. The lock-disabled comparison was a scratch mutation probe; there is no product switch for disabling the lock.
 
-The journeys cover browser booking and conflict recovery, real API 400/422 form feedback, cancellation/history, day/list filters and URL persistence, overview/calendar consistency, vehicle competence, Admin stale edits and policy preview tokens, visitor masking, Mailpit, phone booking, dark-mode persistence and serious/critical axe checks. Appointments currently has a single-day selector, so a date-range list filter has no UI to exercise. The visitor Book action opens a sign-in prompt. Triage needs a model and remains covered by the fake-endpoint integration/component tests.
+**Aspire smoke tests** live in their own project because the Aspire testing host needs reflection-based JSON, which the API integration process disables. The fixture waits for API and web health under one five-minute deadline, then reads `/api/v1/dealerships` through the web proxy and checks the exact seeded names.
 
-The [CI workflow](.github/workflows/ci.yml) defines backend build/test/contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, the E2E job after backend/frontend, API/web image builds, edge typechecks/tests/local builds, Grafana validator checks and offline k6 inspections/self-tests. [Dependabot](.github/dependabot.yml) groups weekly dependency updates. Final totals from the clean integrated checkout (2026-10-13): unit 1,058; integration 893 in about 3.5 minutes, including the 19 contract tests and the unchanged ten-case 30-way concurrency proof; Aspire smoke 20 in 27 s; browser journeys 15 in about 1 minute 50 s; web 1,588; edge 347; coverage as above. GitHub Actions run 38428132843 passed all eight required checks on `c0e2a52`, and every pull request to `main` runs the same checks.
+**Browser E2E tests** (`Category=E2E`) use .NET Playwright with Chromium and Aspire.Hosting.Testing.
+
+- Install Node 22 and pnpm first. On a fresh Linux machine set `KEYLOOP_E2E_INSTALL_DEPS=1` for Chromium's system dependencies.
+- Two fixtures serialise an Admin stack and an anonymous stack with temporary passwords and no named volume. Dates come from Reading's operating hours on the real clock. Do not run the suite beside an Aspire smoke test or a developer AppHost.
+- Failed journeys keep traces, screenshots, accessible snapshots, logs and video under `TestResults/e2e/`; open a trace with `pnpm dlx playwright@1.63.0 show-trace <trace.zip>`. Passing ones keep result JSON, axe results and dark-mode screenshots.
+- The journeys cover booking and conflict recovery, API 400/422 form feedback, cancellation and history, filters with URL persistence, overview and calendar consistency, vehicle competence, Admin stale edits and policy preview tokens, visitor masking, Mailpit, phone booking, dark mode and serious or critical axe findings.
+
+**Continuous integration.** The [CI workflow](.github/workflows/ci.yml) runs backend build, test and contract checks, NuGet vulnerability auditing, frontend client drift checks, Aspire smoke tests, the E2E job, API and web image builds, edge checks, Grafana validator checks and offline k6 self-tests. [Dependabot](.github/dependabot.yml) groups weekly updates.
+
+Totals from the clean integrated checkout of 2026-10-13. Its coverage run measured 86.7% line and 76.0% branch coverage of the API, Domain and Infrastructure assemblies from the integration suite, and 91.8% line coverage of Domain from the unit suite alone.
+
+| Suite | Count | Note |
+|---|---|---|
+| Unit | 1,058 | |
+| Integration | 893 | about 3.5 minutes, including 19 contract tests and the ten-case 30-way concurrency proof |
+| Aspire smoke | 20 | 27 s |
+| Browser journeys | 15 | about 1 minute 50 s |
+| Web | 1,588 | |
+| Edge | 347 | |
+
+GitHub Actions run 38428132843 passed all eight required checks on `c0e2a52`, and every pull request to `main` runs the same checks.
 
 ## Try it with curl
 
-Routes and body fields follow the integrated [OpenAPI contract](contracts/openapi/v1.json), including cancellation and triage. This sequence was rehearsed on 2026-10-13 against an isolated Development stack (a throwaway PostgreSQL 17, the API with its seeded week) for Friday 16 October: the booking answered `201` with `Location: /api/v1/appointments/{id}` on Bay 4 - EV with Ben Okafor; the same body under a new key answered `409` `application/problem+json` of type `slot-unavailable` with three `suggestedSlots` (from 10:00 local) and a `traceId`; the original key replayed `201` with `Idempotent-Replayed: true`; the same key with a different customer name answered `422 idempotency-key-reuse`; the cancel answered `200` with status `Cancelled` and its reason; a second cancel answered `409 invalid-state-transition` with `currentStatus: "Cancelled"` and `attempted: "cancel"`; and the released start was offered again.
+Routes and body fields follow the [OpenAPI contract](contracts/openapi/v1.json). The sequence was rehearsed on 2026-10-13 against an isolated Development stack, with the outcomes the comments state.
 
-Set `API_BASE` to the API's plain-HTTP endpoint from the dashboard, without a trailing slash. Set `DATE` to a future open local date in Reading, in `yyyy-MM-dd` form and within the booking horizon. Using discovered ids and an offered UTC start avoids stale, hard-coded appointment dates.
+Set `API_BASE` to the API's plain-HTTP endpoint from the dashboard, without a trailing slash, and `DATE` to a future open local date in Reading (`yyyy-MM-dd`, within the booking horizon).
 
 ```bash
 export API_BASE='http://localhost:<api-http-port>'
@@ -337,13 +394,15 @@ curl -fsS --get "$API_BASE/api/v1/dealerships/$DEALERSHIP_ID/availability" \
   --data-urlencode "serviceTypeId=$SERVICE_ID" --data-urlencode "date=$DATE" | jq .
 ```
 
-If `.slots[0]` is absent, inspect `unavailableReason` and choose another open date. On a day with later free capacity, the conflict carries `suggestedSlots`; a completely full day can have no suggestions. Normal contention is `https://api.keyloop.example/problems/slot-unavailable`; the database backstop is `https://api.keyloop.example/problems/slot-conflict`. Both use `application/problem+json` and carry `traceId`. These URIs are contract identifiers.
+If `.slots[0]` is absent, inspect `unavailableReason` and choose another open date.
 
-A second cancel returns `409 invalid-state-transition` with `currentStatus` and `attempted: "cancel"`; a stale concurrent update returns `409 concurrency-conflict`. Reusing a live key with a different body returns `422 idempotency-key-reuse`. Keep the same key across transport retries of one booking intention. A new unkeyed client request can allocate a second appointment when spare resources exist; the server's recovery id only protects retries inside the same request. To create a new booking after cancellation, use a new key rather than replaying the original success.
+- Normal contention is `https://api.keyloop.example/problems/slot-unavailable`, with `suggestedSlots` when the day has later capacity; the database backstop is `https://api.keyloop.example/problems/slot-conflict`. Both are `application/problem+json` with a `traceId`, and the URIs are contract identifiers.
+- A second cancel is `409 invalid-state-transition`; a stale concurrent update is `409 concurrency-conflict`; a live key with a different body is `422 idempotency-key-reuse`.
+- Keep one key across transport retries of one booking intention. A new unkeyed request can allocate a second appointment when spare resources exist, and a new booking after cancellation needs a new key.
 
 ## Project layout
 
-The integrated layout follows ADR-025:
+The layout follows ADR-025:
 
 ```text
 src/
@@ -372,34 +431,34 @@ scripts/                     Contract export and AOT measurement
 .github/                     CI and dependency updates
 ```
 
-Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers remain beside their endpoints and query `SchedulerDbContext` directly. There is no Service/Application project or repository layer. Unit architecture tests guard both the project files and the compiled assembly references.
-
-AppHost, Web and AspireTests are integrated, as described above. Generated client files are regenerated from OpenAPI; hand-written runtime configuration stays separate from them.
+Api references Infrastructure and Domain; Infrastructure references Domain only; Domain has no project or package references. Handlers sit beside their endpoints and query `SchedulerDbContext` directly; there is no Service/Application project or repository layer. Unit architecture tests guard both the project files and the compiled assembly references.
 
 ## Design summary
 
-[ARCHITECTURE.md](docs/ARCHITECTURE.md) contains the domain, availability algorithm, C4 diagrams, trade-offs and ADRs. Availability shrinks each individual resource's free gaps by the full service duration before combining feasible starts; it does not pool short gaps across different technicians or bays. Allocation honours qualified free preferences, then chooses by surplus qualifications, daily load, ordinal name and id.
+[ARCHITECTURE.md](docs/ARCHITECTURE.md) contains the domain, availability algorithm, C4 diagrams, trade-offs and ADRs.
 
-The concurrency model in [§7](docs/ARCHITECTURE.md#7-concurrency-and-data-integrity), ADR-003 and ADR-004 is:
+Availability shrinks each resource's free gaps by the full service duration before combining feasible starts; it never pools short gaps across technicians or bays. Allocation honours qualified free preferences, then chooses by surplus qualifications, daily load, ordinal name and id.
+
+The concurrency model in [§7](docs/ARCHITECTURE.md#7-concurrency-and-data-integrity), ADR-003 and ADR-004:
 
 1. PostgreSQL stores a generated `tstzrange(start_utc, end_utc, '[)')`; adjacent appointments do not overlap.
 2. Partial GiST exclusion constraints independently forbid overlapping bays and technicians in `Confirmed`, `CheckedIn` and `InProgress`.
 3. A live matching idempotency key replays before rule or availability checks; mismatched fingerprints are refused.
 4. Booking opens an explicit `READ COMMITTED` transaction and takes its dealership's transaction-scoped advisory lock before any write.
-5. After the lock, it checks the request's minted id, rechecks the key, deletes an expired key row if needed, and reads the schedule using fresh statement snapshots.
-6. It revalidates whole-duration resource availability and allocates a qualified bay and technician while holding that lock.
-7. Appointment, history and any successful-response key are committed atomically; refusal paths roll back, and the lock ends with the transaction.
+5. After the lock, it checks the request's minted id, rechecks the key, deletes an expired key row if needed, and reads the schedule with fresh statement snapshots.
+6. It revalidates whole-duration availability and allocates a qualified bay and technician while holding the lock.
+7. Appointment, history and any successful-response key commit atomically; refusals roll back, and the lock ends with the transaction.
 8. ADR-003 forbids a second lock or contended insert except the request's own key row; cross-dealership same-key waits cannot close a lock cycle.
-9. Transient retries rerun the whole transaction using one request id; `verifySucceeded` and the in-lock id check recognise a lost commit acknowledgement.
+9. Transient retries rerun the whole transaction under one request id; `verifySucceeded` and the in-lock id check recognise a lost commit acknowledgement.
 10. State changes use `xmin` for first-writer-wins and `409 concurrency-conflict`; cancellation recovery takes a first-and-only row lock when settling an in-doubt commit.
 
-`23P01` maps to `409 slot-conflict` and increments `scheduler.booking.constraint_backstop`. A `40P01` from booking `SaveChanges` is answered without retry and records warning event `1004` plus `scheduler.booking.deadlocks`; other transient strategy failures have the scope described in §7.4. The constraints remain the backstop for out-of-band writers. Per-dealership serialization trades maximum site throughput for a small, reviewable protocol; this README makes no measured throughput claim.
+`23P01` maps to `409 slot-conflict` and increments `scheduler.booking.constraint_backstop`. A `40P01` from booking `SaveChanges` is answered without retry and records event `1004` plus `scheduler.booking.deadlocks` (§7.4).
 
-Post-commit audit notifications stay in doubt until a read settles the result. If retries are exhausted before that happens, the request can return `500 internal-error` even though a transaction committed, and its telemetry notification can be missing. The history row remains atomic with the appointment.
+Per-dealership serialisation trades maximum site throughput for a small, reviewable protocol; this README makes no measured throughput claim. If retries run out while a post-commit notification is still in doubt, the request can return `500 internal-error` although a transaction committed. The history row remains atomic with the appointment.
 
 ## Environments and configuration
 
-The environment model comes from [ARCHITECTURE §10](docs/ARCHITECTURE.md#10-environments-and-configuration). Deployment rows describe the specified target posture, not a completed deployment.
+The environment model is [ARCHITECTURE §10](docs/ARCHITECTURE.md#10-environments-and-configuration). Deployment rows describe the specified posture, not a completed deployment.
 
 | Concern | Development | SystemTest | UAT | Production | Demo, local Compose only |
 |---|---|---|---|---|---|
@@ -413,17 +472,22 @@ The environment model comes from [ARCHITECTURE §10](docs/ARCHITECTURE.md#10-env
 | Telemetry | Aspire OTLP | In-memory test collectors | Platform collector | Platform collector | Compose dashboard for API; browser export off |
 | Secrets | Aspire parameters and user secrets | Testcontainers credentials | Platform secret store | Platform secret store | Deployment inputs |
 
-The shared production/UAT global rate limit is 300/min/IP. Every environment uses problems with `traceId`, without a developer exception page or exposed exception details. Production's runtime OpenAPI/Scalar mapping is disabled by `Program.cs`; the committed contract is the build artifact, and the Cloudflare edge publishes it at `/openapi/v1.json` with a static Scalar reference at `/scalar/v1` ([edge README](deploy/cloudflare/README.md#static-api-reference)).
+The shared production/UAT global rate limit is 300/min/IP. Every environment answers problems with a `traceId` and no exception details. Production disables the runtime OpenAPI and Scalar mapping; the Cloudflare edge publishes the committed contract at `/openapi/v1.json` with a static Scalar reference at `/scalar/v1` ([edge README](deploy/cloudflare/README.md#static-api-reference)).
 
-Options come from `appsettings.json`, environment-specific files, Development user secrets and environment variables. Aspire injects `ConnectionStrings__schedulerdb` and telemetry settings. `[OptionsValidator]` and generated binding validate at startup before database work. Key settings include `Auth:Mode`, `Auth:TeamDomain`, indexed `Auth:Audience`, external `Auth:Roles:{Admin,ServiceAdvisor,Viewer}`, and `Scheduling`, `Database:MigrateOnStartup`, `Database:SeedDemoData`, `Security:AllowedOrigins` and `Security:ForwardedHeaders`. UAT/Production deliberately enable forwarded headers with empty trusted-peer lists and refuse startup until the platform supplies `KnownProxies` or `KnownNetworks`; do not inherit broad private-network trust by accident.
+- **Options** come from `appsettings.json`, environment files, Development user secrets and environment variables. Aspire injects `ConnectionStrings__schedulerdb` and telemetry settings, and `[OptionsValidator]` plus generated binding validate them at startup.
+- **Key settings:** `Auth:Mode`, `Auth:TeamDomain`, `Auth:Audience`, `Auth:Roles:{Admin,ServiceAdvisor,Viewer}`, `Scheduling`, `Database:MigrateOnStartup`, `Database:SeedDemoData`, `Security:AllowedOrigins` and `Security:ForwardedHeaders`.
+- **Forwarded headers.** UAT and Production enable them with empty trusted-peer lists and refuse startup until the platform supplies `KnownProxies` or `KnownNetworks`. Startup diagnostics name members and paths, never raw values.
+- **Database role.** UAT and Production run as `scheduler_app`, with migrations as owner. The [runtime-role script](deploy/neon/runtime-role.sql) makes audit and policy tables append-only, forbids appointment DELETE and grants only the per-table writes the API needs.
 
-The specified UAT/Production role is `scheduler_app`, with migrations performed as owner. The [runtime-role script](deploy/neon/runtime-role.sql) enforces append-only audit/policy tables and no appointment DELETE, revokes old blanket/default grants, and grants only the per-table writes needed by the API and live demo startup seeding. Future objects receive no automatic runtime grants; the Development reseed uses the developer role. Authentication/authorization now uses Cloudflare Access and API roles ([ADR-027](docs/ADR-027.md)). Public reads mask customer names, VINs and registrations; booking, cancellation, triage evaluation and triage photo upload require Admin or ServiceAdvisor, appointment details require any API role, and reseed requires Admin plus its key. Development defaults to `admin@keyloop.test` / Admin; the app's sign-in controls follow `GET /me` (see [Try each role locally](#try-each-role-locally)). Startup diagnostics report members/indexes and safe path/type descriptions, with no raw configuration values.
+**Identity** ([ADR-027](docs/ADR-027.md)). Cloudflare Access signs people in, and API roles come from external lists, never token claims. See the [operator checklist](deploy/cloudflare/README.md#access-login-and-api-roles) before deployment.
 
-Development identity is switchable through optional AppHost arguments `--Parameters:auth-development-email=advisor@keyloop.test` and `--Parameters:auth-development-roles=ServiceAdvisor` (comma-separated for multiple roles; an empty string selects anonymous). No auth parameters or Access account are needed for the default run. `Auth:Mode=Development` fails outside Development; `None` is SystemTest-only and grants no write access. `GET /api/v1/me` discovers the current identity, roles and `/auth/login?returnTo=%2F` / `/cdn-cgi/access/logout` URLs. Navigate to the hosted Access flow; do not build a password form or store JWTs in browser storage. See the [operator checklist](deploy/cloudflare/README.md#access-login-and-api-roles) before deployment.
+- Public reads mask personal data. Booking, cancellation and triage writes need Admin or ServiceAdvisor; details need any role; reseed needs Admin plus its key.
+- `GET /api/v1/me` discovers the identity, roles and the `/auth/login?returnTo=%2F` and `/cdn-cgi/access/logout` URLs. There is no password form and no JWT in browser storage.
+- `Auth:Mode=Development` fails outside Development; `None` is SystemTest-only and grants no write access.
 
 ### Publish a local Demo bundle
 
-`aspire publish` generates Compose YAML and `.env`; it does not build images, populate secrets or create EF migration bundles. `aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` provides the managed build/deploy pipeline. The manual sequence below uses the committed Dockerfiles and an isolated project. Run it from the repository root with a fresh `keyloop-demo` project name:
+`aspire publish` generates Compose YAML and `.env`; it does not build images, fill secrets or create EF migration bundles (`aspire deploy --apphost src/Keyloop.ServiceScheduler.AppHost -o artifacts/compose` is the managed pipeline). The manual sequence uses the committed Dockerfiles and an isolated project:
 
 ```bash
 # Disable persistent mounts for this disposable rehearsal; artifacts/ is git-ignored.
@@ -455,57 +519,51 @@ docker image rm keyloop-scheduler-api:demo keyloop-scheduler-web:demo
 unset API_IMAGE WEB_IMAGE POSTGRES_PASSWORD WEB_BASE ACCESS_TEAM_DOMAIN ACCESS_AUDIENCE
 ```
 
-The required manual inputs are `API_IMAGE`, `WEB_IMAGE`, `POSTGRES_PASSWORD`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUDIENCE`. Demo validates Access configuration and has no Development bypass. Anonymous local Compose viewing works; authenticated use additionally needs an Access-compatible ingress and externally supplied role membership. Aspire emits `WEB_IMAGE` from the web Dockerfile and injects nginx's `API_UPSTREAM` from the API HTTP endpoint, rendered as `http://api:8080`. Web publishes a dynamic host port targeting 8080 and proxies `/api`, `/auth`, `/openapi` and `/scalar` with their URI unchanged. It serves the static app with CSP, frame protection, `nosniff`, referrer and permissions policies, and COOP. Browser dashboard credentials are excluded from production builds.
+The manual inputs are `API_IMAGE`, `WEB_IMAGE`, `POSTGRES_PASSWORD`, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUDIENCE`; Demo validates Access configuration and has no Development bypass.
 
-Demo creates `schedulerdb` on an empty data directory, migrates and seeds, and serves Scalar over plain HTTP. Its API trusts only `172.30.14.0/24`, matching the generated Compose network. The API stays unpublished because that trusted subnet includes the host-port bridge gateway; nginx supplies the trusted last forwarding hop. Never use or remove `keyloop-scheduler-pgdata` for verification. UAT/Production still require configured ingress trust and a separately generated EF migration bundle. The public demo is deployed separately, as [Deployment](#deployment) describes.
+- nginx serves the static app with CSP, frame, `nosniff`, referrer, permissions and COOP headers on a dynamic host port, and proxies `/api`, `/auth`, `/openapi` and `/scalar` to `http://api:8080` with the URI unchanged.
+- The API trusts only the generated `172.30.14.0/24` network and stays unpublished, because that subnet includes the host-port bridge gateway.
+- Never use or remove `keyloop-scheduler-pgdata` for verification. UAT and Production still need configured ingress trust and a separately generated EF migration bundle.
 
 ## Observability
 
 Use the Aspire dashboard to follow an action from browser to SQL:
 
-1. **Resources:** check PostgreSQL, API and web readiness; open pgweb and Scalar, inspect masked parameters, and use the demo reseed command.
-2. **Traces:** book once, then inspect `scheduler.book_appointment`, `scheduler.acquire_dealership_lock`, `scheduler.compute_availability`, `scheduler.persist_appointment` and Npgsql spans. Look at `booking.outcome` and `lock.wait_ms`.
-3. **Metrics:** compare `scheduler.booking.requests` by outcome, `scheduler.booking.duration` and `scheduler.booking.lock_wait`. The concurrency proof requires `scheduler.booking.deadlocks` and `scheduler.booking.constraint_backstop` to stay zero on its normal path.
-4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected API failures remain Error. EF's failed-commit `TransactionError` also stays Error.
-5. **Browser correlation:** inspect `ui.book_appointment` and `ui.booking_triage`, then follow same-origin `/api` propagation into backend spans. Browser OTLP credentials are exposed only by the Development dev server, never baked into a production build.
+1. **Resources:** PostgreSQL, API and web readiness; pgweb and Scalar; masked parameters; the demo reseed command.
+2. **Traces:** book once, then inspect `scheduler.book_appointment`, `scheduler.acquire_dealership_lock`, `scheduler.compute_availability`, `scheduler.persist_appointment` and the Npgsql spans, with `booking.outcome` and `lock.wait_ms`.
+3. **Metrics:** `scheduler.booking.requests` by outcome, `scheduler.booking.duration` and `scheduler.booking.lock_wait`. The concurrency proof requires `scheduler.booking.deadlocks` and `scheduler.booking.constraint_backstop` to stay zero on its normal path.
+4. **Structured logs:** filter by `AppointmentId`, `DealershipId` or request correlation. Expected conflicts have explicit events; unexpected failures stay Error.
+5. **Browser correlation:** `ui.book_appointment` and `ui.booking_triage` propagate into the backend spans. Browser OTLP credentials exist only in the Development dev server.
 
-`/alive` is the process probe. `/health` requires connectivity and applied migrations in an isolated scope; deployment must retain that readiness check. The Cloudflare verifier requires edge-only `GET /api/ready` 200, a bodyless status from the same `/health` check with no diagnostic details and no caching; public catalogue reads and `/alive` alone are insufficient. Business time uses `TimeProvider`, while durations and queue waits use `Stopwatch`. See [§12](docs/ARCHITECTURE.md#12-observability) for instrument names, correlation and proposed alert thresholds. Stress evidence: the k6 [full controller gate](tests/load/k6/README.md#full-controller-gate) passed on 2026-10-13 against a dedicated local Release API (availability p95 20 ms, booking p95 28 ms, a 30-minute soak with no 5xx, exactly one winner per 30-way round). These are local figures, not the deployed demo's. Trace and metric screenshots are not attached: the dashboards are code under `observability/grafana` and run in the demo's Grafana Cloud stack.
+`/alive` is the process probe; `/health` requires connectivity and applied migrations, and the Cloudflare verifier requires the edge-only `GET /api/ready` that wraps it. Business time uses `TimeProvider`; durations use `Stopwatch`. [§12](docs/ARCHITECTURE.md#12-observability) lists instrument names, correlation and proposed alert thresholds.
+
+The k6 [full local gate](tests/load/k6/README.md#full-local-gate) passed on 2026-10-13 against a local Release API: availability p95 20 ms, booking p95 28 ms, a 30-minute soak with no 5xx, and exactly one winner per 30-way round. These are local figures, not the deployed demo's.
 
 ### Grafana Cloud
 
-The .NET container's OTLP export to Grafana Cloud is an optional Worker setting, `KEYLOOP_API_OTLP_ENABLED`, with a Secrets Store token read only at container start; its series carry `job="keyloop-scheduler/api"` and `deployment_environment_name="Production"`, which the committed dashboards select ([edge README](deploy/cloudflare/README.md#optional-api-telemetry)). Enabling it on the live deployment, together with pushing the [dashboards as code](observability/grafana/README.md), is ordered in [Enable API telemetry](deploy/cloudflare/DEPLOY-RUNBOOK.md#enable-api-telemetry). Metric translation verification against deployed data, runbook publication and alert contact-point configuration follow once live export is enabled. The optional secret-free browser Worker relay is implemented and validated locally and stays off.
+The container's OTLP export to Grafana Cloud is an optional Worker setting, `KEYLOOP_API_OTLP_ENABLED`, with a Secrets Store token read at container start ([edge README](deploy/cloudflare/README.md#optional-api-telemetry)).
+
+Its series carry `job="keyloop-scheduler/api"` and `deployment_environment_name="Production"`, which the committed [dashboards as code](observability/grafana/README.md) select. The [runbook](deploy/cloudflare/DEPLOY-RUNBOOK.md#enable-api-telemetry) orders enabling it; verification against deployed data and alert contact points follow.
 
 ## Runtime reflection budget
 
-The source-generation policy is [ADR-016 / §9.1](docs/ARCHITECTURE.md#91-runtime-reflection-budget-and-nativeaot-readiness). Run:
-
-```bash
-scripts/aot-readiness.sh
-```
-
-The script forces a Release analyzer rebuild, preserves its build exit status and logs under `artifacts/aot-readiness/`, and deduplicates repeated diagnostics. CI uploads the informational **AOT readiness** artifact. This is analyzer evidence; `PublishAot` is not enabled.
+The source-generation policy is [ADR-016 / §9.1](docs/ARCHITECTURE.md#91-runtime-reflection-budget-and-nativeaot-readiness). `scripts/aot-readiness.sh` forces a Release analyzer rebuild, keeps its logs under `artifacts/aot-readiness/` and deduplicates diagnostics; CI uploads the result as the **AOT readiness** artifact. This is analyzer evidence; `PublishAot` is not enabled.
 
 | Concern | Implementation | Residual work |
 |---|---|---|
 | Request dispatch, JSON | Request Delegate Generator and Api `SchedulerJsonContext`; Infrastructure `PersistenceJsonContext` for audit/outbox JSON; reflection-based JSON disabled | Register every new wire/extension type; a missing registration fails instead of falling back |
-| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths; typed TimeSpan checks have replaced converter-based annotation (`533b1e0`) |
+| Mapping, binding, validation, logging, regex | Mapperly, configuration binder generator, `[OptionsValidator]`, `[LoggerMessage]`, `[GeneratedRegex]` | Maintain generated paths |
 | Endpoint/handler/validator discovery | Explicit registry and DI registrations | No assembly scanning |
 | Microsoft DI | Explicit registrations, framework container | Constructor discovery at startup, accepted in the budget |
-| FluentValidation | Explicit validators | Expression compilation remains; reconsider only if the brief's requirement is lifted |
-| EF Core | Runtime model and query translation, migrations in local/test environments | Evaluate compiled models and supported precompiled-query tooling; externalize migrations for an eventual AOT runtime |
-| OpenAPI | Build-time document and XML-comment generation | Attribute reflection while generating a document outside Production; no production runtime document mapping |
+| FluentValidation | Explicit validators | Expression compilation remains |
+| EF Core | Runtime model and query translation, migrations in local/test environments | Evaluate compiled models and precompiled queries; externalise migrations for an eventual AOT runtime |
+| OpenAPI | Build-time document and XML-comment generation | Attribute reflection only while generating a document outside Production |
 
-The script was rerun on the clean clone of `64a91f0` (2026-10-13): the Release analyzer build succeeded with six unique diagnostics, all from EF Core, and none application-owned.
+On the clean clone of `64a91f0` (2026-10-13) the Release analyzer build reported six unique diagnostics, none application-owned. All six come from EF Core: 1 IL2026 and 5 IL3050 at the `SchedulerDbContext` constructor and the `DatabaseInitializer` and `SchedulerReadinessCheck` migration calls.
 
-| Origin | Diagnostics | Call sites and removal path |
-|---|---|---|
-| Application-owned | 0 | The earlier TimeSpan `RangeAttribute` warning is gone (typed checks through the generated validator) |
-| EF Core | 6: 1 IL2026 and 5 IL3050 | `SchedulerDbContext` constructor (IL2026 and IL3050); `DatabaseInitializer` `GetPendingMigrationsAsync`, `GetMigrations` and `MigrateAsync`; `SchedulerReadinessCheck` `GetPendingMigrationsAsync`. Compiled-model/query evaluation and deployment-time migrations are the removal path, without a promise that compiled models alone remove the warnings |
-| FluentValidation / other | 0 emitted | Absence from this analyzer output does not establish reflection-free dependencies or whole-program trim safety |
+Compiled models and deployment-time migrations are the removal path. The compiled-model step (`dotnet ef dbcontext optimize ... --output-dir Persistence/CompiledModels`) is deferred: a stale generated model is a correctness risk, and it does not by itself establish NativeAOT support.
 
-The readiness check's migration query is the one EF call site added since the groundwork baseline (`9f5a168`: 1 IL2026 and 4 IL3050 from EF Core, plus the owned TimeSpan warning). The script keeps its full log under `artifacts/aot-readiness/` and CI uploads it as the **AOT readiness** artifact.
-
-The DbContext, design-time factory and all existing migrations live in Infrastructure. Migration commands use Api as the startup project:
+The DbContext, design-time factory and migrations live in Infrastructure; migration commands use Api as the startup project:
 
 ```bash
 dotnet tool restore
@@ -517,110 +575,104 @@ dotnet ef migrations bundle --project src/Keyloop.ServiceScheduler.Infrastructur
   --startup-project src/Keyloop.ServiceScheduler.Api
 ```
 
-The documented compiled-model experiment is:
-
-```bash
-dotnet tool restore
-dotnet ef dbcontext optimize --project src/Keyloop.ServiceScheduler.Infrastructure \
-  --startup-project src/Keyloop.ServiceScheduler.Api \
-  --output-dir Persistence/CompiledModels
-```
-
-It is intentionally deferred. A compiled model must be regenerated whenever the EF model changes; silently stale generated metadata is a correctness risk. Compiled models alone do not establish NativeAOT support, and query-generation tooling needs its own compatibility evaluation.
-
 ## Deployment
 
-The public demo is deployed at `keyloop.kylesmile.me` ([Live demo](#live-demo)): Neon PostgreSQL 17 (Frankfurt, a DML-only runtime role and an owner role for migrations), a Cloudflare Worker with static assets in front of the API in a Cloudflare Container, Cloudflare Secrets Store for credentials and Cloudflare Access for sign-in. The [edge implementation and deployment runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define Worker/static assets, the .NET Container, PostgreSQL and the credential boundary. Email delivery stays off in the demo; controlled delivery is still to rehearse with the stakeholder.
+The public demo at `keyloop.kylesmile.me` runs on Neon PostgreSQL 17 (Frankfurt, a DML-only runtime role and an owner role for migrations), a Cloudflare Worker with static assets in front of the API in a Cloudflare Container, Cloudflare Secrets Store for credentials and Cloudflare Access for sign-in. Email delivery stays off in the demo.
+
+The [edge implementation and runbook](deploy/cloudflare/README.md) are committed; [ADR-022..024](docs/ARCHITECTURE.md#18-architecture-decision-records) define the Worker, the Container, PostgreSQL and the credential boundary.
 
 ### CI/CD
 
-[CI](.github/workflows/ci.yml) remains the validation gate. [Deploy public demo](.github/workflows/deploy.yml) plans an exact successful main SHA, builds its API image natively on Ubuntu with a 12-character SHA tag, pushes the build image and dry-runs the SPA/edge deployment. The stakeholder approves the `production` environment before deployment. Manual `migrate=true` first applies pending EF migrations and idempotent Neon runtime grants behind the same environment protection. Verification polls the real container image and checks API readiness, the SPA, feature flag, exact OpenAPI and anonymous masking within six minutes. Main advancing while approval is pending makes the old release fail before migration/deployment.
+[CI](.github/workflows/ci.yml) is the validation gate. [Deploy public demo](.github/workflows/deploy.yml) then runs four jobs on an exact successful main SHA:
 
-The [Actions runbook](deploy/cloudflare/DEPLOY-RUNBOOK.md#deploy-from-github-actions) documents required reviewers, the complete GitHub input list, the controller-only setup script and minimal token permissions. Both triggers become available only after the workflow is on default `main`, and CI evidence must come from a successful `push` run. `plan` and `verify` use a main-only `plan` environment without reviewers and a separate registry/inspection token. `migrate` and `deploy` use main-only `production` with stakeholder approval; migration-owner credentials stay there, and application credentials stay in Cloudflare Secrets Store. Shared build inputs live in both environments, with no repository-wide secret or variable copies. No private build output is uploaded. The laptop deployment path remains the break-glass fallback; the first live Actions run is a controller operation.
+1. **plan** builds the API image natively with a 12-character SHA tag and dry-runs the edge deployment.
+2. **migrate** (manual `migrate=true` only) applies pending EF migrations and idempotent Neon runtime grants, behind the `production` environment's reviewer approval.
+3. **deploy** also waits for that approval. Main advancing while approval is pending fails the old release.
+4. **verify** polls the real container image and checks readiness, the SPA, the feature flag, the exact OpenAPI document and anonymous masking within six minutes.
+
+`plan` and `verify` use a reviewer-less `plan` environment with a separate inspection token. Migration-owner credentials stay in `production` and application credentials in Secrets Store. The [Actions runbook](deploy/cloudflare/DEPLOY-RUNBOOK.md#deploy-from-github-actions) lists the inputs and the one-time setup; the laptop path remains the break-glass fallback.
 
 ## AI Collaboration Narrative
 
 ### Strategy and evidence
 
-Claude **Fable 5.1** designed the architecture and written plan, following the stakeholder's design-first instruction. Claude **Opus 5.5** implemented and reviewed through subagent-driven development: task briefs, implementer reports, independent reviews, fix rounds and scoped re-reviews. The early runner/primitive work also used Sonnet-labelled agents in the ledger; git trailers attribute those earlier commits to Fable, so a trailer is not proof of the precise model behind every subagent. When the stakeholder requested parallel work, the controller created separate backend, concurrency and frontend lanes, with one implementer per worktree.
-
-The prompts' durable specification was a task plan with reflection/AOT, OpenAPI/UI and Aspire addenda, plus a hand-off document carrying stakeholder intent and the raw narrative material; these are the author's local working notes and are not part of the repository, so the committed record of their decisions is the ADR table in [ARCHITECTURE.md §18](docs/ARCHITECTURE.md#18-architecture-decision-records). The private SDD ledger records dispatches, rulings, incidents and review outcomes. Git commit bodies and `Co-Authored-By` trailers provide a second record; branch-local implementation and final submission evidence are kept distinct.
-
-At the stakeholder's request, **OpenAI Codex (gpt-6.1-sol)** took isolated delegations for CI/Dependabot, AOT measurement and the walkthrough (`5cdebea`, `dfc9493`, `a098a67`), an adversarial review of the backend at `0ca96b1`, and the resulting backend hardening fixes (`cdc2e96` through `533b1e0`). Claude Opus then independently reviewed Codex's implementation, reversing the review direction. That review approved the fixes, with a minor observation about a scope-disposal test's claim still routed to integration. The fixes are integrated; the scope-disposal assertion is now covered in `RequestCorrelationTests`.
-
-Codex also produced original UI illustrations with OpenAI's image-generation tool and audited Aspire against `dotnet/aspire-samples`. The Aspire audit recommendations are integrated in `a85d501` and `bc462ec` (Demo initialization, CLI bundle and validated proxy/network trust) and in `a574af9` and `ec455c3` (web publication with discovered upstream and port 8080, exact seeded JSON through Vite and CI web installation). The image tool did not expose its model identifier, so the coding model's name is not an image-model attribution.
-
-Claude in Chrome researched Keyloop's public design language and product UI, including the Ownership/aftersales palette. A separate design workflow authored theme tokens and component recipes, then used contrast, build/render and brand/completeness checks to revise them. The approved theme selects Plus Jakarta Sans, IBM Plex Sans and IBM Plex Mono, changes inaccessible colour combinations, and uses a plain-text brand reference. The design adoption is integrated into the board and appointments list. This is a take-home demo inspired by Keyloop, with no claim of being an official product.
+- **Design.** Claude **Fable 5.1** designed the architecture and the written plan, following the author's design-first instruction. The plan, with reflection/AOT, OpenAPI/UI and Aspire addenda, stays outside the repository; the committed record of its decisions is the ADR table in [ARCHITECTURE.md §18](docs/ARCHITECTURE.md#18-architecture-decision-records).
+- **Implementation.** Claude **Opus 5.5** implemented and reviewed task by task: a brief, an implementation report, an independent review, fix rounds and scoped re-reviews. Backend, concurrency and frontend ran as separate lanes, one implementer per worktree. Some early work used Sonnet-labelled agents whose commits carry Fable trailers, so a trailer is not proof of the model behind every change.
+- **Cross-model work.** **OpenAI Codex (gpt-6.1-sol)** took isolated delegations: CI and Dependabot, AOT measurement and the walkthrough (`5cdebea`, `dfc9493`, `a098a67`), and an adversarial backend review at `0ca96b1` with its hardening fixes (`cdc2e96` through `533b1e0`). Claude Opus then reviewed those fixes in the other direction and approved them.
+- **Aspire and illustrations.** Codex audited the Aspire model against `dotnet/aspire-samples` (`a85d501`, `bc462ec`, `a574af9`, `ec455c3`) and produced the UI illustrations with OpenAI's image-generation tool, which exposed no model identifier.
+- **Visual design.** Claude in Chrome researched Keyloop's public design language. A separate design workflow produced the theme tokens and component recipes and revised them against contrast, build and brand checks ([UI_DESIGN.md](docs/UI_DESIGN.md)). This is a take-home demo inspired by Keyloop, not an official product.
 
 ### Verification practices
 
-Review cycles enforced **RED before GREEN**, including behavioural failures for existing defects. Mutation probes remove guards, registrations, constraints or middleware to ask whether a test can actually fail. Characterization tests that were already green are identified as such rather than given an invented RED phase. Examples include exclusion-constraint removal, idempotency-order mutations, a lost-commit fault injector, independent availability-oracle checks and the HSTS removal probe.
-
-Builds use warnings as errors; reflection-based JSON is disabled in both API and integration tests; mapping and contract drift checks catch generated-code omissions. Reviewers independently retraced the availability example and DST values, used scratch probes for faults, and requested fixes instead of weakening assertions. Mermaid diagrams were validated as part of the architecture work. The automated suites exercise booking, reseeding, cancellation, themes, focus and responsive component states; Aspire smoke checks the API and Vite proxy. They do not establish Chrome layout, console or network cleanliness. Chrome visual QA (screens, console and network), the clean-clone final gate and an independent whole-branch review (run by Codex rather than the planned Fable reviewer) ran on 2026-10-13; their findings are the last rows of the table below.
+- **RED before GREEN**, including behavioural failures for existing defects. Characterisation tests that were already green were named as such.
+- **Mutation probes** removed guards, registrations, constraints or middleware to confirm a test could fail: exclusion-constraint removal, idempotency-order mutations, a lost-commit fault injector, an independent availability oracle, the HSTS removal probe.
+- **Strict builds.** Warnings are errors, reflection-based JSON is disabled in the API and its integration tests, and mapping and contract drift checks catch generated-code omissions.
+- **Independent checks.** Reviewers retraced the availability example and DST values by hand and asked for fixes rather than weaker assertions.
+- **Final gates.** The suites do not establish Chrome layout, console or network cleanliness, so Chrome visual QA, a clean-clone gate and an independent whole-branch review by Codex ran on 2026-10-13. Their findings are the last rows below.
 
 ### Defects the process found
 
-The table below summarises defects caught during implementation, cross-model review, mutation probes and live verification, along with the commits that resolved them.
-
-| Area | Defect and discovery | Recorded outcome |
+| Area | Defect | Outcome |
 |---|---|---|
-| Test runner setup | Implementer/reviewer found VSTest incompatible with the selected xunit.v3 setup and obsolete coverage packages | Microsoft.Testing.Platform and native coverage flags; docs corrected (`c76fe9b`) |
-| Domain value objects | Reviewer found record `ToString` leaking the full VIN | Masked output and regression test (`e308e54`) |
-| DST & time windows | Implementer found contradictory DST ambiguity rules in the design | Earlier-instant rule documented; values independently checked (`3d000bd`) |
-| Booking observers | Reviewer found observer failures could turn committed bookings into errors and trigger retries | Isolate and log post-commit observer failures (`73e62d9`) |
-| Rate limiting | Reviewer reproduced 429 becoming 500 when `Accept` excluded JSON | `TryWriteAsync` plus tests (`227f7a6`) |
-| Forwarded headers | Reviewer found missing forwarded-header handling; re-review found partial array overrides could retain broad trust | Explicit trusted peers and fail-closed deployment defaults (`227f7a6`, `72d57ce`) |
-| Availability query | Reviewer found the active-technician filter had no effective regression test | Test fails when the filter is removed (`86e5d24`) |
-| Local time formatting | Local times lacked offsets; `zzz` on `DateTime` used the machine offset | Offset-bearing local strings through `DateTimeOffset` (`3c4b876`) |
-| Idempotency replay order | Controller found replay checked after availability, rejecting a client's own success | Key lookup before availability and again under the lock (`2a25835`) |
-| Lost COMMIT recovery | Reviewer reproduced a second unkeyed appointment after a lost COMMIT acknowledgement | Stable request id, commit verification and in-lock guard (`c51ba9e`) |
-| Transaction isolation | Implementer demonstrated REPEATABLE READ retaining the snapshot taken before waiting | Explicit READ COMMITTED retained and tested (`2a25835`, ADR-004) |
-| OpenAPI contract | Contract inspection found overwritten body descriptions, untyped string enums, missing traceId schema and incomplete 429/Retry-After documentation | Transformers, response metadata and parity tests (`da69f02`, `9f5a168`) |
-| In-doubt commit events | Inconclusive booking-commit verification dropped events before the lock could settle them | Preserve the doubt until a conclusive read (`55ca317`) |
-| Cancellation recovery | Independent review found cancellation forgot an in-doubt commit after another transient fault | Request-lifetime written-version marker and fault-injection regression (`2c055e1`) |
-| Startup diagnostics | Real validators and fallback startup logs leaked raw configuration values | Safe member/index and path/type diagnostics (`cdc2e96`) |
-| Operating-hour granularity | Accepted sub-minute hours produced availability starts rejected by booking | Whole-minute domain guards and additive database CHECK (`d8b0417`) |
-| Readiness probe | Readiness reported healthy with an unmigrated database | Connectivity plus pending-migration check, with independent liveness (`bff9fc4`, `64f159f`) |
-| Horizon bounds | Extreme UTC start overflowed to 500 before horizon validation | Bound the start before slot arithmetic, preserving replay order (`f34f5c8`) |
-| Optional idempotency keys | Design falsely promised unkeyed client retries could never create another appointment | Corrected optional-key semantics and spare-capacity tests; stable UI key required (`8dac682`) |
-| Request correlation | Promised X-Request-Id echo and business log scopes were absent | Bounded UUID echo, CORS exposure, Activity tags and scopes (`beb971c`) |
-| HSTS enforcement | Existing tests stayed green with HSTS removed | Non-loopback HTTPS deployment cases proven RED by middleware removal (`2622631`) |
-| AOT validation bounds | Analyzer found application-owned trim-sensitive TimeSpan validation | Typed inclusive bounds through the generated validator (`533b1e0`) |
-| Frontend theme & client | Theme did not follow system changes, a lazy-import test was vacuous, and client generation could delete hand-written runtime config | Theme behavior tests, import-side-effect probe and `output.clean=false` (`19fdf75`, `773103a`) |
-| Frontend interceptors | A shared request-id setting reused one UUID for the session, and automatic dealership selection could cancel a pending sidebar navigation | Per-request interceptor and navigation-aware selection, with behavioural regressions (`773103a`) |
-| Qualification lock ordering | A booking could commit with a resource that lost its qualification while it waited; dealership ids on metric labels; repeated policy changes answered 500 | Admin resource writes under the dealership lock and the roster read under it (`5b70e67`), bounded labels (`de3c6f4`), retryable `409` (`0593c46`) |
-| Live rollout | A request reaching the container during a version hand-over got a raw 500 from the edge | RFC 9457 `503` with `Retry-After`, one retry for safe methods only (`c3e9e02`) |
-| Whole-branch review | A booking could commit after its start passed while it waited for the dealership lock | Window revalidated under the lock after replay checks, with lock-wait regressions (`894bf89`) |
-| Whole-branch review | Catalogue and triage eligibility used the legacy HV certificate while availability and booking used HV levels | One qualification model and cross-endpoint parity tests (`91417fb`) |
-| Whole-branch review | Runtime grants allowed audit updates/deletes and appointment deletion; deploy verification passed with a migration missing; the runbook's migration inventory was stale | Explicit per-table grants proven by 15 runtime-role tests, an anonymous `/api/ready` gate in verification, an inventory from the pinned bundle (`71b5f7d`) |
-| Clean-clone gate | Runtime-role tests exhausted the test server's connections; a journey's booking sorted onto page 2 | Pools and databases released per test (`5049620`), search before asserting (`f5c6fb1`) |
+| Test runner | VSTest incompatible with xunit.v3 and obsolete coverage packages | Microsoft.Testing.Platform and native coverage (`c76fe9b`) |
+| Domain values | Record `ToString` leaked the full VIN | Masked output with a regression test (`e308e54`) |
+| DST windows | Contradictory DST ambiguity rules in the design | Earlier-instant rule, independently checked (`3d000bd`) |
+| Booking observers | Observer failures could turn committed bookings into errors and retries | Post-commit failures isolated and logged (`73e62d9`) |
+| Rate limiting | 429 became 500 when `Accept` excluded JSON | `TryWriteAsync` plus tests (`227f7a6`) |
+| Forwarded headers | No handling; partial array overrides could keep broad trust | Explicit trusted peers, fail-closed defaults (`227f7a6`, `72d57ce`) |
+| Availability query | The active-technician filter had no effective regression test | A test that fails without the filter (`86e5d24`) |
+| Local times | No offsets; `zzz` on `DateTime` used the machine offset | `DateTimeOffset` local strings (`3c4b876`) |
+| Idempotency order | Replay checked after availability, refusing a client's own success | Key lookup before availability and under the lock (`2a25835`) |
+| Lost COMMIT | A second unkeyed appointment after a lost acknowledgement | Stable request id, commit verification, in-lock guard (`c51ba9e`) |
+| Isolation level | REPEATABLE READ kept the snapshot taken before waiting | Explicit READ COMMITTED, tested (`2a25835`, ADR-004) |
+| OpenAPI contract | Overwritten body descriptions, untyped enums, missing traceId schema, incomplete 429 docs | Transformers, response metadata, parity tests (`da69f02`, `9f5a168`) |
+| In-doubt commits | Inconclusive verification dropped events before the lock settled them | The doubt is kept until a conclusive read (`55ca317`) |
+| Cancellation recovery | An in-doubt commit was forgotten after another transient fault | Request-lifetime written-version marker (`2c055e1`) |
+| Startup diagnostics | Validators and fallback logs leaked raw configuration values | Member, index, path and type names only (`cdc2e96`) |
+| Operating hours | Sub-minute hours produced starts that booking rejected | Whole-minute guards and a database CHECK (`d8b0417`) |
+| Readiness | Healthy with an unmigrated database | Connectivity plus pending-migration check (`bff9fc4`, `64f159f`) |
+| Horizon bounds | An extreme UTC start overflowed to 500 before validation | Bound the start before slot arithmetic (`f34f5c8`) |
+| Optional keys | The design promised unkeyed retries could never double-book | Corrected semantics, spare-capacity tests, a stable UI key (`8dac682`) |
+| Request correlation | The promised X-Request-Id echo and log scopes were absent | Bounded UUID echo, CORS exposure, Activity tags (`beb971c`) |
+| HSTS | Tests stayed green with HSTS removed | Deployment cases proven RED by middleware removal (`2622631`) |
+| AOT bounds | Trim-sensitive TimeSpan validation | Typed bounds through the generated validator (`533b1e0`) |
+| Frontend theme and client | The theme ignored system changes; a lazy-import test was vacuous; generation could delete runtime config | Behaviour tests, an import probe, `output.clean=false` (`19fdf75`, `773103a`) |
+| Frontend interceptors | One request id per session; auto dealership selection cancelled a pending navigation | Per-request interceptor, navigation-aware selection (`773103a`) |
+| Qualification locks | A booking could commit with a resource that lost its qualification while it waited; dealership ids on metric labels; policy churn answered 500 | Admin writes under the dealership lock (`5b70e67`), bounded labels (`de3c6f4`), retryable `409` (`0593c46`) |
+| Live rollout | A request during a version hand-over got a raw 500 from the edge | RFC 9457 `503` with `Retry-After`, one retry for safe methods (`c3e9e02`) |
+| Whole-branch review | A booking could commit after its start passed while waiting for the lock | Window revalidated under the lock (`894bf89`) |
+| Whole-branch review | Catalogue and triage used the legacy HV certificate; availability and booking used levels | One qualification model with parity tests (`91417fb`) |
+| Whole-branch review | Runtime grants allowed audit updates and appointment deletes; deploy verification passed with a migration missing | Per-table grants with 15 role tests, an `/api/ready` gate, an inventory from the pinned bundle (`71b5f7d`) |
+| Clean-clone gate | Role tests exhausted the test server's connections; a journey's booking sorted onto page 2 | Pools released per test (`5049620`), search before asserting (`f5c6fb1`) |
 
-All fixes above are integrated on `main`, the scope-disposal assertion observes a full request flow in `RequestCorrelationTests`, and the booking UI's stable idempotency key is covered by component tests.
+All fixes are integrated on `main`.
 
 ### Rejections and trade-offs
 
-- A mediator and assembly scanning were rejected in favor of direct handlers and explicit registration (ADR-001/016).
-- Row locks as the primary booking guarantee, SERIALIZABLE retry storms and a single-writer application queue were rejected after comparing correctness, contention and operational cost. Exclusion constraints alone remain correct but can cause mutual waits; the advisory lock supplies the normal serialization path (§7.2/7.3).
-- Replacing Microsoft's DI container with Jab/Pure.DI was rejected because swapping the hosting container added risk for limited gain. EF compiled models and `PublishAot` were deferred; they require more than suppressing warnings.
-- Same-VIN or body-based deduplication was not added to disguise the unkeyed retry defect. Independent same-vehicle bookings remain valid; the optional-key contract stays explicit.
-- MiroTalk's AGPL code was not copied. The MIT Vite template supplied reusable UI patterns; unrelated auth, chat, mail, landing, pricing and billing apps were excluded. Keyloop logos and proprietary images were excluded from the inspired theme.
-- The product lock-disable switch was not added merely for a test. Scratch mutation evidence demonstrates the trade-off without introducing a production escape hatch.
+- A mediator and assembly scanning: rejected for direct handlers and explicit registration (ADR-001/016).
+- Row locks as the primary guarantee, SERIALIZABLE retry storms and a single-writer queue: rejected on correctness, contention and operational cost. Exclusion constraints alone are correct but can cause mutual waits; the advisory lock supplies the normal serialisation path (§7.2/7.3).
+- Jab or Pure.DI in place of Microsoft's container: rejected as risk for limited gain. EF compiled models and `PublishAot`: deferred, they need more than suppressed warnings.
+- Same-VIN or body-based deduplication to disguise the unkeyed retry defect: not added. Independent same-vehicle bookings stay valid; the optional-key contract stays explicit.
+- MiroTalk's AGPL code: never copied. The MIT template's auth, chat, mail, landing, pricing and billing apps, and Keyloop's logos and images: excluded.
+- A product switch for disabling the lock: not added for a test. Scratch mutation evidence demonstrates the trade-off without a production escape hatch.
 
 ### Process incidents and lessons
 
-The ledger records a controller error: `SendMessage` to workflow implementers resumed duplicate agents in the same worktrees instead of reaching the intended running instances. Both backend twins ran AppHost work, and one cleared the persisted database password. It was restored from the running container and checked without displaying it. In the frontend lane, a stop message reached the original instance and blocked its workflow while the resumed twin later completed the board. A checkout-style sweep instruction could have discarded the original's uncommitted work; the ledger explicitly records that no checkout occurred and the files remained intact. The adopted rule is to communicate mid-run changes through briefs/global constraints and workflow results rather than that messaging path, and verify exclusive worktree ownership before destructive maintenance.
+- **Duplicate agents.** A message to running implementers resumed duplicates in the same worktrees. One cleared the persisted database password, which was restored from the running container without displaying it. Rule adopted: pass mid-run changes through briefs and workflow results, and verify exclusive worktree ownership before destructive maintenance.
+- **Colliding edits.** A hand-applied punctuation sweep collided with concurrent edits and corrupted text in `CLAUDE.md`. The repair reapplied the exact replacement to committed text, then rebuilt and tested before a separate style commit per lane (`c156b83`, `a38342e`). Lesson: no broad edits over an active implementer's files, and validate the whole diff.
+- **Leftovers.** A killed mutation run left temporary mutants, restored before committing. A documentation commit polluted a review range, and the review package was rebuilt without it.
 
-Separately, a hand-applied punctuation sweep collided with concurrent edits and corrupted ordinary text in `CLAUDE.md`. The repair waited for implementation commits, reapplied the exact character replacement deterministically to committed text, then rebuilt, regenerated contracts and tested before a separate style commit in each lane (`c156b83`, `a38342e`). The lesson is to avoid broad edits over an active implementer's files and validate the complete diff, not just the intended replacement. A killed frontend mutation run also left temporary mutants; the implementer restored and checked them before committing.
-
-An earlier controller documentation commit polluted a review range; the package was rebuilt to exclude it and later controller commits waited for implementation boundaries. These are process failures with recorded recovery, not examples of a flawless automated workflow.
+These are process failures with recorded recovery, not examples of a flawless automated workflow.
 
 ## Video
 
-The [video walkthrough guide](docs/VIDEO_WALKTHROUGH.md) outlines the 10-minute presentation covering the scenario and dispatch board, system design and C4 architecture, implementation highlights, live booking/conflict/cancellation demo, 30-way concurrency proof, Aspire observability tour, and AI collaboration narrative.
+The [video walkthrough guide](docs/VIDEO_WALKTHROUGH.md) outlines the 10-minute presentation: the scenario and dispatch board, system design and C4 architecture, implementation highlights, a live booking, conflict and cancellation, the 30-way concurrency proof, the Aspire observability tour and the AI collaboration narrative.
 
 ## Licence and attribution
 
-The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template (Vite variant)** by ShadcnStore and the MIT **shadcn/ui** primitives it vendors: the project layout and configuration, the application shell, `components/ui/*`, the Tailwind v4 theme tokens, and several template apps adapted to the generated API client with their sample data removed (dashboard cards for the KPI strip; the dashboard and dashboard-2 apps' page layout, section cards, interactive area chart (redrawn without a chart library), revenue breakdown (as a bar list), recent transactions and quick actions for the Overview; the calendar app's page, header, month grid, list view and new-event action for the Calendar's toolbar, week and month views and phone agenda; the calendar's date picker, calendars list, list view, mobile sheet and event form for the board's date control, lane filter, phone agenda, Filters sheet and booking dialog, with the users app's form dialog; the tasks app's data table for the Appointments list; the users app's page, data table and stat cards for the Appointments figures and the Technicians, Bays and Services pages; the settings app's appearance and account pages; and the errors app's pages). Every file adopted from the template, the configuration, application shell, `components/ui/*` primitives and theme tokens included, opens with a header comment that names its template source and carries the template's copyright line; the primitives' headers also carry shadcn/ui's. `src/Keyloop.ServiceScheduler.Web/src/attribution.test.ts` keeps the list of those files, checks every header on it, and fails when a primitive or a file that refers to the template is missing from the list. `package.json` and `components.json`, started from the template's, are JSON without comment syntax; the notice below covers them. The copyright and permission notice, which must accompany copies of that code, is reproduced at the end of this section. No repository-wide application licence is inferred from the template's licence.
+The dispatch board adapts the **MIT-licensed shadcn-dashboard-landing-template (Vite variant)** by ShadcnStore and the MIT **shadcn/ui** primitives it vendors. That covers the project layout and configuration, the application shell, `components/ui/*`, the Tailwind v4 theme tokens, and the template's dashboard, calendar, tasks, users, settings and errors apps, adapted to the generated API client with their sample data removed.
+
+Every adopted file opens with a header comment naming its template source and carrying the template's copyright line; the primitives' headers also carry shadcn/ui's. `src/Keyloop.ServiceScheduler.Web/src/attribution.test.ts` keeps that list and fails when a header is missing. `package.json` and `components.json`, started from the template's, are covered by the notice below. No repository-wide application licence is inferred from the template's licence.
 
 Reference material, kept outside this repository (one level up, never committed):
 
@@ -630,9 +682,13 @@ Reference material, kept outside this repository (one level up, never committed)
 | carcareco | https://github.com/rene98c/carcareco | see upstream | Domain inspiration only (vehicle/work-order shape); no code copied |
 | MiroTalk WEB (booking module) | https://github.com/miroslavpejic85/mirotalkwebrtc | AGPL-3.0 | Design inspiration only (availability model, DST handling, re-check-then-insert); **no code copied** |
 
-The typefaces are **Plus Jakarta Sans** (Copyright 2020 The Plus Jakarta Sans Project Authors), **IBM Plex Sans** (Copyright 2019 IBM Corp.) and **IBM Plex Mono** (Copyright 2017 IBM Corp.), all under the **SIL Open Font License 1.1**, served from the `@fontsource` packages whose `LICENSE` files carry the full licence text. Original illustrations and backdrops were generated for this project using OpenAI `image_gen.imagegen` via Codex, without third-party source images, logos or real people. The first set is eight WebP files; a second set of ten (wave 2, 2026-10-12) was generated with the same tool, using the first set only as style references, and exported through the same pipeline (1200 × 900 RGBA WebP with a transparent margin of at least 24 px, each under 160,000 bytes, alpha checked pixel for pixel); it contains no written text, logos, trademarks, real people or faces, and its cars are generic and unbranded. All ten wave-2 files ship now: `unauthorized`, `forbidden`, `server-error`, `maintenance` and `not-found` on the error pages, `empty-technicians` on the empty Technicians and Bays lists, `photo-evidence` in the triage photo field, `sign-in-to-book` (alt text "Calendar booking card beside a car key.", 122,858 bytes, copied unchanged from the wave-2 set, prompt P9 in its README) in the sign-in prompt before booking and the details sheet's sign-in panel, `dashboard-insights` (alt text "Workshop bay silhouette with rising blue bars and a simple gauge.", 120,542 bytes, SHA-256 `3a74a9ff86021dd40e1cefe484b087eb3d7fdc27b7aeb67735883381d044f5b7`, copied unchanged from the wave-2 set, prompt P8 in its README) on the Overview when nothing is booked around today, and `empty-calendar` (alt text "Week-view calendar with open slots and a small generic car icon.", 126,736 bytes, SHA-256 `0c7427d558df7e5e8e736947c981a561b86b1b6657af7460e7c638d4f1edeba2`, copied unchanged from the wave-2 set, prompt P7 in its README) on a Calendar week or month with nothing booked. All shipped files are in [the illustration assets](src/Keyloop.ServiceScheduler.Web/src/assets/illustrations); [UI_DESIGN §12](docs/UI_DESIGN.md#12-illustrations-empty-and-error-states) documents their use and alt text, and both images READMEs (prompts, alt text and verification) are kept with the design working files. No image-model version is asserted: the tool did not expose one.
+The typefaces are **Plus Jakarta Sans** (Copyright 2020 The Plus Jakarta Sans Project Authors), **IBM Plex Sans** (Copyright 2019 IBM Corp.) and **IBM Plex Mono** (Copyright 2017 IBM Corp.), all under the **SIL Open Font License 1.1**, served from the `@fontsource` packages whose `LICENSE` files carry the full licence text.
 
-The deployed site's static API reference (`/scalar/v1` on the Cloudflare edge, [edge README](deploy/cloudflare/README.md#static-api-reference)) serves the browser bundle of **Scalar API Reference** (`@scalar/api-reference` 1.72.2, Copyright (c) 2023-present Scalar, **MIT**, https://github.com/scalar/scalar) unmodified from the edge's pinned npm dependency; its copyright and permission notice is published beside it as `/scalar/LICENSE.txt` (source: `deploy/cloudflare/api-reference/SCALAR-LICENSE.txt`). The API's own Development reference uses the MIT `Scalar.AspNetCore` NuGet package by the same authors.
+The illustrations and backdrops were generated for this project with OpenAI's image-generation tool, without third-party source images, logos or real people. The files live in [`src/Keyloop.ServiceScheduler.Web/src/assets/illustrations`](src/Keyloop.ServiceScheduler.Web/src/assets/illustrations), and [UI_DESIGN §12](docs/UI_DESIGN.md#12-illustrations-empty-and-error-states) documents their use and alt text.
+
+The deployed site's static API reference (`/scalar/v1` on the Cloudflare edge, [edge README](deploy/cloudflare/README.md#static-api-reference)) serves the browser bundle of **Scalar API Reference** (`@scalar/api-reference` 1.72.2, Copyright (c) 2023-present Scalar, **MIT**, https://github.com/scalar/scalar) unmodified from the edge's pinned npm dependency.
+
+Its notice is published beside it as `/scalar/LICENSE.txt` (source: `deploy/cloudflare/api-reference/SCALAR-LICENSE.txt`). The API's own Development reference uses the MIT `Scalar.AspNetCore` NuGet package by the same authors.
 
 The author's application licence decision remains separate; there is no repository-wide MIT application licence file.
 

@@ -2,40 +2,58 @@
 
 ## Deploy from GitHub Actions
 
-Task 35 (stakeholder decision, 2026-10-13) moves routine releases to [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml), with the stakeholder approving the `production` environment. The manual core-profile instructions below remain the first-resource/bootstrap and break-glass fallback. CI in `ci.yml` is unchanged.
+Routine releases run from [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml). The `production` environment requires reviewer approval, so nothing reaches the live site without a person approving it. The manual steps further down are the bootstrap path for a first deployment and the break-glass fallback. CI in `ci.yml` is unchanged.
 
-Both `workflow_dispatch` and `workflow_run` require this workflow file on the repository's default branch. Use `main` as that branch. A successful `CI` push run on `main` plans its exact `head_sha`; a manual run must select `main` and prove that exact SHA already passed push CI. Fork/PR completions, other CI event types and failed CI do not plan. Current-main checks before planning, migration and deployment refuse commits superseded while queued or awaiting review, preventing a delayed approval from rolling back a newer commit. Keep main protected and review workflow/configuration changes before merging. Both environments restrict access to branch `main`; build inputs belong to the `plan` environment, with no repository-wide copies.
+**Triggers and guards.**
 
-The job graph is `plan -> [migrate, if manually requested] -> deploy -> verify`; `deploy` explicitly accepts a skipped migration and refuses a failed or cancelled one. `deploy-production` concurrency keeps one run active, with `cancel-in-progress: false` so an active migration/deploy is never interrupted by a newer run. GitHub may replace an older pending run with a newer pending one. All jobs use disposable Ubuntu runners. Global token permissions are `contents: read`; only `plan` adds `actions: read` to check manual dispatch's CI evidence and confirm that `production` has a non-empty required-reviewer rule before publishing the build image. The controller must still select the stakeholder and disable bypass in repository settings.
+- Both `workflow_dispatch` and `workflow_run` need this workflow on the default branch, `main`.
+- A successful `CI` push run on `main` plans its exact `head_sha`. A manual run must select `main` and prove the SHA already passed push CI. Fork and PR completions, other CI events and failed CI never plan.
+- Before planning, migrating and deploying, the workflow checks the commit is still the head of `main`, so a delayed approval cannot roll back a newer commit.
+- Both environments accept branch `main` only. Build inputs live in the `plan` environment, never repository-wide.
 
-- `plan`, main-only `plan` environment without reviewers: native `linux/amd64` API build, immutable 12-character SHA tag, `cf containers push` to the managed registry, same-origin SPA build with OTEL/API-base overrides unset, edge build and `cf deploy --prebuilt --provision=false --dry-run`. Pushing this build image does not roll out an application. Its summary shows the SHA, tag, container policy and the dry run's binding resource labels, with values/account identifiers removed. Build variables are evaluated in the build step after the runner declares the environment, so the push runs outside the project directory (cf would otherwise evaluate `cloudflare.config.ts` without them). A failing cf step prints its error with email addresses, hexadecimal identifiers and token-like strings removed (`scripts/print-redacted-error.sh`).
-- `migrate`, protected `production`, manual `migrate=true` only: restore pinned `dotnet-ef` from `.config/dotnet-tools.json`, build a self-contained `linux-x64` bundle, apply pending migrations as the Neon owner, then reapply and verify `deploy/neon/runtime-role.sql`. Reruns apply only pending migrations and repeat idempotent grants. The runtime role must already exist, created with SQL as described below. Bundle builds set `KEYLOOP_BUILD_MIGRATION_BUNDLE=true` to skip OpenAPI generation for the self-contained target (the document loader cannot load it); ordinary builds/CI still generate and compare the contract. The small `deploy/neon/github-migrate` tool uses Npgsql's keyword parser (including quoted passwords), requires direct-host `SSL Mode=VerifyFull;Channel Binding=Require`, gives `psql` equivalent libpq TLS/channel-binding environment settings, and withholds child output on failure. It never echoes the connection. The bundle's connection is briefly a child process argument on the isolated runner, as in the manual path.
-- `deploy`, protected `production`: rebuild the SPA and edge for the planned SHA, then deploy its own output with `--prebuilt --provision=false --message "<sha> via GitHub Actions run <run_id>"`. Each protected job can require a separate approval. No bundle or `.cloudflare/output` crosses job boundaries.
-- `verify`, main-only `plan` environment, after deployment: curl without cookies and with a normal browser user agent wakes the API, polls actual active instances for the new image and running status, requires `/api/ready` 200 for database/schema readiness and dealerships 200 afterwards, and checks `/` 200, the expected vehicle-aware feature flag, byte-equal committed OpenAPI, and a non-empty seeded anonymous schedule with initials, masked VIN and fully masked registration. Empty schedules do not prove masking. All network/rollout checks share a six-minute deadline; failure fails the run. No smoke response bodies are logged or uploaded.
+**Job graph.** `plan -> [migrate, if manually requested] -> deploy -> verify`.
+`deploy` accepts a skipped migration and refuses a failed or cancelled one.
+The `deploy-production` concurrency group (`cancel-in-progress: false`) never interrupts an active migration or deploy.
+Runners are disposable Ubuntu machines.
+Token permissions are `contents: read`; only `plan` adds `actions: read`, to check a manual run's CI evidence and that `production` has a required reviewer before publishing the image.
 
-Private `.cloudflare/output` and build logs are removed with `if: always()` in both build jobs, including failed builds. No deployment artefact is uploaded. A forcibly terminated runner can skip cleanup; it is disposable, and its filesystem is never published.
+| Job | Environment | What it does |
+| --- | --- | --- |
+| `plan` | `plan`, no reviewers | Builds the `linux/amd64` API image with a 12-character SHA tag and pushes it with `cf containers push` (a push rolls nothing out). Builds the same-origin SPA and the edge, then runs `cf deploy --prebuilt --provision=false --dry-run`. The summary shows SHA, tag, container policy and binding labels, without values or account ids. Failed `cf` output is redacted by `scripts/print-redacted-error.sh` |
+| `migrate` | `production`, only with manual `migrate=true` | Restores the pinned `dotnet-ef`, builds a self-contained `linux-x64` bundle (`KEYLOOP_BUILD_MIGRATION_BUNDLE=true` skips OpenAPI generation), applies pending migrations as the Neon owner, then reapplies and verifies `deploy/neon/runtime-role.sql`. The runtime role must already exist ([step 1](#1-neon-database-migrations-and-the-runtime-role)). `deploy/neon/github-migrate` requires a direct host with `SSL Mode=VerifyFull;Channel Binding=Require` and never echoes the connection |
+| `deploy` | `production` | Rebuilds the SPA and edge for the planned SHA and deploys with `--prebuilt --provision=false --message "<sha> via GitHub Actions run <run_id>"`. No bundle or `.cloudflare/output` crosses jobs |
+| `verify` | `plan` | Within six minutes: polls the instances until they run the new image, then requires `/api/ready` 200, dealerships 200, `/` 200, the expected vehicle-aware flag, a byte-equal OpenAPI document and a non-empty anonymous schedule with initials, masked VIN and masked registration. Logs no response bodies |
 
-### Controller setup and first run
+Both build jobs delete `.cloudflare/output` and build logs with `if: always()`. No deployment artefact is uploaded.
 
-1. Complete the existing resource prerequisites with the stakeholder: Neon direct endpoint, migrations/runtime role, Cloudflare Container application, Secrets Store scoped secrets, Access application, custom domain and Email binding onboarding. For a migration-requiring release, choose manual `migrate=true` before approving a deploy; automatic runs do not migrate. Reject/cancel the automatically queued deployment if its schema is not ready, then dispatch the migration run. Use additive migrations that leave the previous API compatible while migration and deployment are separately approved.
-2. In GitHub **Settings -> Environments -> New environment**, create exactly `plan` and `production`. For both, under **Deployment branches and tags**, select **Selected branches and tags**, add branch `main` only, and remove all other branch/tag allowances. Leave `plan` without required reviewers or a wait timer. In `production`, add the stakeholder under **Required reviewers** and save. Keep **Prevent self-review** off for this single-reviewer demo so the stakeholder can dispatch and then approve; enable it only with another authorized initiator/reviewer available. Disable administrator bypass of production protection rules. Required reviewers are supported for this public repository on GitHub Free. Verify both environments' branch policies and production's reviewer rule before enabling deployment, since YAML alone cannot enforce them. [GitHub environment protection](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
-3. Create scoped Cloudflare API tokens as below. Authenticate `gh` with a controller account able to administer this repository's environment and set its secrets/variables. Set the non-sensitive variables locally, and supply secrets through local environment values the controller already holds or the script's hidden prompts. Do not put literal credentials/role lists into history. The script makes GitHub writes, so only the authorized controller runs it:
+### Repository setup and first run
+
+1. **Resources.** Complete the prerequisites with the account owner: Neon direct endpoint, migrations and runtime role, Container application, Secrets Store secrets, Access application, custom domain and Email onboarding.
+2. **Environments.** In **Settings -> Environments**, create `plan` and `production`.
+   For both, under **Deployment branches and tags**, choose **Selected branches and tags** and allow branch `main` only.
+   Leave `plan` without reviewers.
+   In `production`, add the approver under **Required reviewers**, keep **Prevent self-review** off while there is a single approver, and disable administrator bypass.
+   Check these settings in the dashboard; YAML cannot enforce them.
+   [GitHub environment protection](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
+3. **Inputs.** Create the tokens described under [Cloudflare token permissions](#cloudflare-token-permissions), authenticate `gh` as a repository administrator, and run the script. Supply secrets through local environment values or its hidden prompts, never as literals in history:
 
    ```sh
    export KEYLOOP_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
    export KEYLOOP_CONTAINER_APPLICATION_ID=<existing container application id>
    # Set the switches/identifiers below to the already approved live profile.
    # CLOUDFLARE_PLAN_API_TOKEN is a separate local input for the plan environment token.
-   bash deploy/cloudflare/scripts/configure-github-environment.sh <owner>/<repo> <stakeholder-github-login>
+   bash deploy/cloudflare/scripts/configure-github-environment.sh <owner>/<repo> <approver-github-login>
    ```
 
-   The script uses `gh api --method PUT repos/{owner}/{repo}/environments/{environment} --input -` for both environments, with no reviewers for `plan` and the numeric stakeholder reviewer for `production`. It adds branch `main` if absent and deletes all other branch/tag policies, including a tag named `main`. It sends each secret through stdin to `gh secret set --env plan` or `--env production`, never `--body`/arguments, and disables shell tracing and `GH_DEBUG`. The PUT API supports reviewers/self-review/branch policy but does not expose the administrator-bypass checkbox; set that in the dashboard. [GitHub environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment), [branch policy API](https://docs.github.com/en/rest/deployments/branch-policies)
-4. Check both environments' own inputs against the complete inventory below. Rerun the script when approved settings change to keep shared settings synchronized. If repository copies were installed by an earlier setup, remove every listed secret and variable from **Settings -> Secrets and variables -> Actions** after confirming the environment inputs. No repository copies are used or written by this workflow/setup. Inspect both main-only policies and production's reviewer rule in the dashboard after setup. Each environment has its own `CLOUDFLARE_API_TOKEN`: `plan` uses the separate registry/inspection token and `production` uses the deploy token.
-5. Merge the reviewed changes onto default `main` through the controller's normal process, wait for `CI` to pass, then inspect the plan summary and approve `production`. For schema changes, dispatch **Deploy public demo -> Run workflow -> main -> migrate=true**, approve migration, wait for its success, then approve deployment. The final `verify` job must pass; its failure does not silently roll back. This implementation performs no live deployment or account setup.
+   The script PUTs both environments (`gh api --method PUT repos/{owner}/{repo}/environments/{environment}`), sets the approver on `production`, keeps only branch `main` in each branch policy, and sends every secret through stdin to `gh secret set --env`.
+   The API cannot set administrator bypass; do that in the dashboard.
+   [Environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment), [branch policy API](https://docs.github.com/en/rest/deployments/branch-policies)
+4. **Check.** Compare both environments with the inventory below. Rerun the script whenever approved settings change. Remove any repository-wide copies left by an earlier setup.
+5. **Release.** Merge to `main`, wait for `CI`, read the plan summary and approve `production`. For a schema change, dispatch **Deploy public demo -> Run workflow -> main -> migrate=true**, approve the migration, wait for it, then approve the deployment. Write additive migrations, so the running API stays compatible in between. `verify` must pass; its failure does not roll back on its own.
 
 ### GitHub configuration inventory
 
-[GitHub environment inputs](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#environment-secrets) are available only to jobs referencing that environment. `plan` and `verify` reference main-only `plan`, without required reviewers; `migrate` and `deploy` reference main-only `production`, with stakeholder review. All shared build settings are stored separately in these environments, never as repository-wide copies. The Neon owner connection stays exclusively in `production`. `plan`'s `CLOUDFLARE_API_TOKEN` uses the separate local `CLOUDFLARE_PLAN_API_TOKEN`; production's value uses the deploy token. Private role/recipient lists stay environment secrets. [Environment configuration variables](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#vars-context) are read in runner steps after the environment is declared.
+Environment inputs are visible only to jobs that reference the environment ([environment secrets](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#environment-secrets)). Shared settings are stored in both environments; the Neon owner connection only in `production`.
 
 | Secret in both `plan` and `production`, except where stated | Purpose |
 | --- | --- |
@@ -60,39 +78,46 @@ Private `.cloudflare/output` and build logs are removed with `if: always()` in b
 | `KEYLOOP_EMAIL_TRANSPORT` | `binding`; `rest` only by explicit selection |
 | `KEYLOOP_EMAIL_MAX_PER_RECIPIENT_PER_DAY`, `KEYLOOP_EMAIL_MAX_PER_DAY` | `10`, `100`; approved caps below the account quota |
 
-`KEYLOOP_API_IMAGE` is derived separately in each build job as `registry.cloudflare.com/<account id>/keyloop-scheduler-api:<12-char SHA>`; never set it in GitHub. Database/AI/email/OTLP credential values stay in Cloudflare Secrets Store (`keyloop_prod_db_url`, optional `keyloop_prod_ai_token`, `keyloop_prod_email_api_token`, `keyloop_prod_api_otlp_token`, `grafana-otlp-basic-browser`); deployment binds references only. `NEON_OWNER_CONNECTION` is the migration owner's separate credential, not the runtime database secret.
+`KEYLOOP_API_IMAGE` is derived in each build job as `registry.cloudflare.com/<account id>/keyloop-scheduler-api:<12-char SHA>`; never set it in GitHub. Runtime credentials stay in Cloudflare Secrets Store (`keyloop_prod_db_url`, optional `keyloop_prod_ai_token`, `keyloop_prod_email_api_token`, `keyloop_prod_api_otlp_token`, `grafana-otlp-basic-browser`), and deployment binds references only.
 
 ### Cloudflare token permissions
 
-Checked against official documentation on 2026-10-13, not exercised against the live account. Use custom tokens scoped to this account and, for zone permissions, only `kylesmile.me`. `cf` beta names can differ between the dashboard and API: the permission reference calls the account capability **Containers Write**, while endpoint security lists **Workers Containers Write**. Select the matching account Containers edit/write capability; do not grant unrelated account permissions. [Permission reference](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
+Checked against Cloudflare's documentation on 2026-10-13; the first approved Actions run is the first live proof.
+Scope custom tokens to this account and, for zone permissions, to `kylesmile.me`.
+The dashboard calls the container capability **Containers Write** and endpoint security calls it **Workers Containers Write**; they are the same.
+[Permission reference](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
 
-| Permission | Token | Evidence / confidence |
+| Permission | Token | Why |
 | --- | --- | --- |
-| Account Workers Scripts Write (or Editor scoped to the existing Worker) | Production | Verified in [Workers authorization](https://developers.cloudflare.com/workers/authorization/): deploy existing Worker and resource bindings |
-| Account Containers Write / Workers Containers Write | Both | Verified for [application updates](https://developers.cloudflare.com/api/resources/containers/subresources/applications/methods/edit/) and [instance inspection](https://developers.cloudflare.com/api/resources/containers/subresources/applications/subresources/instances/methods/list/). Required for registry credential generation/push is inferred from [registry credentials](https://developers.cloudflare.com/api/resources/containers/subresources/registries/subresources/credentials/methods/generate/), registry API security and the pinned CLI implementation; the credentials request restricts its managed-registry JWT to push/pull. There is no separately documented registry-only API token permission. This broad Containers capability can also change applications; protect trusted main workflows accordingly |
-| Account Settings Read | Both | Permission existence verified in the reference; inclusion for CLI account/entitlement lookup is inferred. Account selection is explicit |
-| Zone Workers Routes Write, zone `kylesmile.me` only | Production | Verified for changing routes/custom domains in [Workers authorization](https://developers.cloudflare.com/workers/authorization/workers/). Existing unchanged domain connections need only Worker Editor, but the pinned deployment reconciles the configured domain, so retain this zone capability for this pipeline |
-| Zone Read, zone `kylesmile.me` only | Production | Existence verified in the reference; needed for beta CLI domain-to-zone resolution is inferred |
-| Account Secrets Store Edit (API may label it Secrets Store Write) | Production | Verified in [Secrets Store access control](https://developers.cloudflare.com/secrets-store/access-control/): binding existing secrets still requires Edit and their `workers` scope; Read alone fails |
+| Account Workers Scripts Write (or Editor scoped to the Worker) | Production | Deploy the Worker and its bindings ([Workers authorization](https://developers.cloudflare.com/workers/authorization/)) |
+| Account Containers Write | Both | [Application updates](https://developers.cloudflare.com/api/resources/containers/subresources/applications/methods/edit/), [instance inspection](https://developers.cloudflare.com/api/resources/containers/subresources/applications/subresources/instances/methods/list/), and (inferred) [registry credentials](https://developers.cloudflare.com/api/resources/containers/subresources/registries/subresources/credentials/methods/generate/) for push. It can also change applications, so trusted workflows must stay protected |
+| Account Settings Read | Both | CLI account and entitlement lookup (inferred) |
+| Zone Workers Routes Write, `kylesmile.me` only | Production | The deploy reconciles the custom domain ([routes](https://developers.cloudflare.com/workers/authorization/workers/)) |
+| Zone Read, `kylesmile.me` only | Production | CLI domain-to-zone resolution (inferred) |
+| Account Secrets Store Edit | Production | Binding existing secrets needs Edit and their `workers` scope; Read fails ([Secrets Store access](https://developers.cloudflare.com/secrets-store/access-control/)) |
 
-Do not grant R2 Write or AI Gateway Edit just to deploy: [Workers bindings authorization](https://developers.cloudflare.com/workers/authorization/#bindings) says binding existing resources needs Worker Editor, without separate permissions on those resources. Here `--provision=false` forbids auto-provisioning; R2 is an existing binding and AI Gateway id/account are text settings, not a gateway-management operation. No deploy-time AI token, Workers AI execution permission, Access edit, DNS edit, Email send or Grafana permission is requested. If the pinned beta CLI reports an additional metadata lookup requiring R2 Read, that would be an unverified CLI-specific requirement to diagnose on the first controller run, not a reason to grant resource write access in advance. The separate runtime AI token and optional runtime email token retain their existing scopes.
-
-[cf CI authentication](https://developers.cloudflare.com/cf/ci/) and [unattended agents](https://developers.cloudflare.com/cf/agents/#authenticate-unattended-agents) explicitly confirm that `CLOUDFLARE_API_TOKEN` takes priority over stored OAuth, with no interactive login in CI; `CLOUDFLARE_ACCOUNT_ID` selects the account. Node 22.23.3 and `cf` 1.0.0-beta.14 remain pinned. No OAuth file is used or copied. The first real token-scope/registry/rollout proof belongs to the controller's approved Actions run.
+No R2 Write, AI Gateway Edit, AI execution, Access edit, DNS edit, Email send or Grafana permission is needed: binding an existing resource needs only Worker Editor ([bindings](https://developers.cloudflare.com/workers/authorization/#bindings)), and `--provision=false` forbids auto-provisioning.
+`CLOUDFLARE_API_TOKEN` takes priority over stored OAuth in CI ([cf CI authentication](https://developers.cloudflare.com/cf/ci/)) and `CLOUDFLARE_ACCOUNT_ID` selects the account.
+Node 22.23.3 and `cf` 1.0.0-beta.14 are pinned.
 
 ## Manual core profile fallback
 
-This is the ordered command list for the first deployment of the scheduler to `keyloop.kylesmile.me`: the board, booking and Access sign-in. Intake triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last on afterwards. The database is Neon Free PostgreSQL 17 in Frankfurt (AWS `eu-central-1`). [README.md](README.md) holds the configuration contract and the reasoning; this file only orders the work.
+The ordered commands for the first deployment to `keyloop.kylesmile.me`: the board, booking and Access sign-in.
+Triage, email, the browser OTLP relay and API telemetry stay off; [Enable API telemetry](#enable-api-telemetry) turns the last one on afterwards.
+The database is Neon Free PostgreSQL 17 in Frankfurt (AWS `eu-central-1`).
+[README.md](README.md) holds the configuration contract and the reasoning.
 
-Every step marked **REQUIRES USER CONFIRMATION** changes the Cloudflare or Neon account. Run it only after the stakeholder has confirmed that step. Everything else is local. This file names no account, identifier, email address or secret: `<...>` marks a value you supply, and the role lists stay outside the repository.
+Every step marked **REQUIRES USER CONFIRMATION** changes the Cloudflare or Neon account; run it only after the account owner confirms it. Everything else is local. `<...>` marks a value you supply; this file names no account, identifier, email address or secret.
 
 ## 0. Ground rules for this session
 
-- Use a clean checkout of the commit you deploy, from the repository root. Record it: `export KL_SHA=$(git rev-parse --short=12 HEAD)`.
-- Type every secret into a hidden prompt (`read -rs NAME`) and refer to it only as `"$NAME"`. Never write a secret, email list or connection string as a literal in a command, a file in the repository or a ticket. `unset` each one when its step is done.
-- Two connection-string forms are needed. `psql` takes a `postgresql://` URI (without the password, which travels in `PGPASSWORD`). The migration bundle and the runtime secret take the Npgsql keyword form `Host=...;Port=5432;Database=...;Username=...;Password=...;SSL Mode=VerifyFull;Channel Binding=Require`. The API refuses a URI at startup, and an older image printed the whole URI, password included, in its crash output, so never give it one.
-- Use Neon's **direct** endpoint host, the one without `-pooler` (ADR-022: direct TLS). The API keeps its own Npgsql pool, and the migration bundle needs a direct connection.
-- If any command fails, read its output for secrets before you copy it anywhere.
-- Tools: .NET SDK 10.0.100 or later, Node 22 through nvm, pnpm 12.9.1, Docker (on this Mac, Colima: `colima status`), `jq`, `curl`, `uuidgen`. For `psql`, either `brew install libpq` (then `export PATH="$(brew --prefix libpq)/bin:$PATH"`) or the `postgres:17` image through `alias psql='docker run --rm -it -e PGPASSWORD -v "$PWD/deploy/neon:/repo/deploy/neon:ro" -w /repo postgres:17 psql'`; that image has no CA bundle, so with it replace `sslmode=verify-full&sslrootcert=system` below by `sslmode=require` (encrypted, but the server certificate is not verified).
+- Use a clean checkout of the commit you deploy, from the repository root: `export KL_SHA=$(git rev-parse --short=12 HEAD)`.
+- Type every secret into a hidden prompt (`read -rs NAME`), use it only as `"$NAME"`, and `unset` it when its step is done. Never write a secret, email list or connection string as a literal in a command, file or ticket.
+- `psql` takes a `postgresql://` URI with the password in `PGPASSWORD`. The migration bundle and the runtime secret take the Npgsql keyword form `Host=...;Port=5432;Database=...;Username=...;Password=...;SSL Mode=VerifyFull;Channel Binding=Require`. The API refuses a URI at startup; never give it one.
+- Use Neon's **direct** endpoint host, without `-pooler` (ADR-022). The API keeps its own Npgsql pool.
+- If a command fails, read its output for secrets before copying it anywhere.
+- Tools: .NET SDK 10.0.100 or later, Node 22 through nvm, pnpm 12.9.1, Docker (Colima on this Mac), `jq`, `curl`, `uuidgen`, and `psql` from `brew install libpq` (then `export PATH="$(brew --prefix libpq)/bin:$PATH"`).
+  The `postgres:17` image also works, `alias psql='docker run --rm -it -e PGPASSWORD -v "$PWD/deploy/neon:/repo/deploy/neon:ro" -w /repo postgres:17 psql'`, but it has no CA bundle: replace `sslmode=verify-full&sslrootcert=system` below by `sslmode=require` (encrypted, certificate not verified).
 - The `cf` CLI is pinned in this project:
 
 ```sh
@@ -104,13 +129,13 @@ alias cf="$PWD/node_modules/.bin/cf"
 cd ../..
 ```
 
-Use `--dry-run` on a `cf` command first whenever it offers one. If your login sees more than one account, set `CLOUDFLARE_ACCOUNT_ID` for the session (an identifier, not a credential).
+Run `--dry-run` first whenever a `cf` command offers it. If your login sees several accounts, set `CLOUDFLARE_ACCOUNT_ID` for the session.
 
 ## 1. Neon: database, migrations and the runtime role
 
-1. **REQUIRES USER CONFIRMATION (stakeholder):** the Neon Free project on PostgreSQL 17 in AWS Frankfurt (`eu-central-1`; London `eu-west-2` was planned but not offered, so pick the nearest EU region Neon offers), the database `keyloop_scheduler` owned by the owner role, and compute fixed at 0.25 CU (autoscaling minimum and maximum both 0.25). Scale to zero stays on.
+1. **REQUIRES USER CONFIRMATION:** create the Neon Free project on PostgreSQL 17 in AWS Frankfurt (`eu-central-1`, the nearest EU region Neon offers), the database `keyloop_scheduler` owned by the owner role, and compute fixed at 0.25 CU (autoscaling minimum and maximum both 0.25). Scale to zero stays on.
 
-2. Enter the connection parts (hidden where secret):
+2. Enter the connection parts:
 
 ```sh
 read -r  NEON_HOST       # direct endpoint host, without -pooler
@@ -118,7 +143,7 @@ read -r  NEON_OWNER      # the owner role's name
 read -rs NEON_OWNER_PW   # the owner role's password (hidden)
 ```
 
-3. Build the migration bundle locally. It is a self-contained macOS arm64 executable of about 160 MB under the ignored `artifacts/` directory; never commit it.
+3. Build the migration bundle, a self-contained macOS arm64 executable of about 160 MB under the ignored `artifacts/` directory, and list its inventory offline:
 
 ```sh
 dotnet tool restore
@@ -128,14 +153,12 @@ KEYLOOP_BUILD_MIGRATION_BUNDLE=true dotnet ef migrations bundle --project src/Ke
   --self-contained --target-runtime osx-arm64 --output artifacts/keyloop-efbundle-osx-arm64 --force
 ```
 
-Before applying the bundle, list its inventory from the same pinned checkout and Release build (the bundle does not have a list command). This offline command uses the restored `dotnet-ef` version and compiled migration assembly, without connecting to a database:
-
 ```sh
 dotnet ef migrations list --no-connect --no-build --configuration Release \
   --project src/Keyloop.ServiceScheduler.Infrastructure --startup-project src/Keyloop.ServiceScheduler.Api
 ```
 
-4. **REQUIRES USER CONFIRMATION:** apply the migrations as the owner. The connection string is assembled from the variables, so neither the password nor the string reaches the shell history. It is visible to local `ps` for the few seconds the bundle runs.
+4. **REQUIRES USER CONFIRMATION:** apply the migrations as the owner. The string is assembled from variables, so it never reaches shell history; local `ps` can see it for the few seconds the bundle runs.
 
 ```sh
 export KEYLOOP_OWNER_CONN="Host=$NEON_HOST;Port=5432;Database=keyloop_scheduler;Username=$NEON_OWNER;Password=$NEON_OWNER_PW;SSL Mode=VerifyFull;Channel Binding=Require"
@@ -143,9 +166,11 @@ export KEYLOOP_OWNER_CONN="Host=$NEON_HOST;Port=5432;Database=keyloop_scheduler;
 unset KEYLOOP_OWNER_CONN
 ```
 
-An empty database applies every migration in that inventory, followed by `Done.`. An upgrade applies every inventory entry missing from `__EFMigrationsHistory`, in order; a deployment with the first five still needs `AdminEditing` and the subsequent `CustomerLookupIndexes`, `CustomerLookupPhoneNormalization` and `CustomerLookupScopedNamePrefixes` migrations. Do not infer readiness from a fixed count or from a working catalogue read. To see the pending entries against the target before application, run the same command without `--no-connect`, with `--connection "$KEYLOOP_OWNER_CONN"` while step 4's owner variable is set; this is an authorized owner database read and has the same brief process-list exposure as the bundle. A second bundle run applies nothing. Apply all pending entries before a newer image serves traffic: the API runs with `Database__MigrateOnStartup=false`, and the deploy verifier requires schema readiness.
+The bundle applies every inventory entry missing from `__EFMigrationsHistory`, in order, then prints `Done.`; a second run applies nothing.
+To see what is pending first, run the list command without `--no-connect` and with `--connection "$KEYLOOP_OWNER_CONN"`.
+Apply everything before a newer image serves traffic: the API runs with `Database__MigrateOnStartup=false`, and the verifier requires schema readiness.
 
-5. **REQUIRES USER CONFIRMATION:** create the runtime role **with SQL**. A role created in the Neon Console, CLI or API joins `neon_superuser` and is not DML-only; `runtime-role.sql` refuses such a role. If `scheduler_app` already exists from the Console, delete it there first. Generate its password into a variable and the clipboard, paste it at both hidden `\password` prompts, then clear the clipboard:
+5. **REQUIRES USER CONFIRMATION:** create the runtime role **with SQL**. A role made in the Neon Console, CLI or API joins `neon_superuser`, and `runtime-role.sql` refuses it; delete such a `scheduler_app` first. Paste the generated password at both hidden `\password` prompts:
 
 ```sh
 export PGPASSWORD="$NEON_OWNER_PW"
@@ -157,30 +182,37 @@ psql "$KEYLOOP_OWNER_URI" -c '\password scheduler_app'
 pbcopy < /dev/null
 ```
 
-6. **REQUIRES USER CONFIRMATION:** grant DML only. The script checks that the role is a plain login role with no memberships, that it runs as the owner of the migrated tables, then grants and verifies in one transaction. Run it again after every future migration bundle.
+6. **REQUIRES USER CONFIRMATION:** grant DML only. The script checks the role is a plain login role with no memberships, then grants and verifies in one transaction. Run it again after every future migration bundle.
 
 ```sh
 psql "$KEYLOOP_OWNER_URI" -v ON_ERROR_STOP=1 -f deploy/neon/runtime-role.sql
 ```
 
-Expected: `NOTICE: scheduler_app: explicit runtime grants, append-only audits/policies, no appointment DELETE, no default grants or DDL`, then `COMMIT`. The script revokes previous blanket table/sequence and default grants before granting the reviewed matrix. Audit tables and immutable policies receive SELECT/INSERT only; appointments, bays, technicians and the outbox additionally receive UPDATE; only idempotency keys receive DELETE for expiry replacement. Reference catalogue INSERT supports the live demo's startup seeding. No sequence is used. Future tables need explicit review/grants after migration. The destructive Development-only reseed uses the developer role, never `scheduler_app`. Actions also runs `deploy/neon/verify-runtime-role.sql` independently, asserting both required and forbidden effective privileges.
+Expected: `NOTICE: scheduler_app: explicit runtime grants, append-only audits/policies, no appointment DELETE, no default grants or DDL`, then `COMMIT`. The grant matrix:
 
-7. Check from the runtime role's side, with the password still in `KL_APP_PW`, that it can read but cannot change the schema:
+- Audit tables and immutable policies: SELECT and INSERT only.
+- Appointments, bays, technicians and the outbox: also UPDATE.
+- Idempotency keys only: DELETE, for expiry replacement.
+- Reference catalogue: INSERT, for startup seeding.
+
+New tables need explicit grants after migration. Actions also runs `deploy/neon/verify-runtime-role.sql`, which asserts both required and forbidden privileges.
+
+7. Check from the runtime role's side that it can read but not change the schema:
 
 ```sh
 PGPASSWORD="$KL_APP_PW" psql "postgresql://scheduler_app@$NEON_HOST/keyloop_scheduler?sslmode=verify-full&sslrootcert=system" \
   -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId"' -c 'CREATE TABLE public.ddl_probe (id int)'
 ```
 
-Expected: the same migration IDs as the pinned inventory above, then `ERROR: permission denied for schema public`. Require `/api/ready` 200 after rollout as well.
+Expected: the inventory's migration IDs, then `ERROR: permission denied for schema public`.
 
 8. Keep `KL_APP_PW` and `NEON_HOST` for step 2.3, then: `unset PGPASSWORD NEON_OWNER_PW KEYLOOP_OWNER_URI NEON_OWNER`.
 
 ## 2. Cloudflare login and Secrets Store
 
 1. Log in (opens the browser): `cf auth login`.
-2. **REQUIRES USER CONFIRMATION:** the Secrets Store. List first with `cf secrets-store stores list`; reuse the account's store if one exists. Otherwise create one in the dashboard (Secrets Store) or with `npx wrangler secrets-store store create keyloop-scheduler --remote` (the `cf` CLI has no store-create command). Then `export KEYLOOP_SECRETS_STORE_ID=<store id>`.
-3. **REQUIRES USER CONFIRMATION (stakeholder enters the value):** the secret `keyloop_prod_db_url` with scope `workers`. Put its value on the clipboard, paste it into the dashboard's value field (preferred) or Wrangler's value prompt, then clear the clipboard. Do not use `cf secrets-store secrets create --body` or Wrangler's `--value`: both take the secret as an argument.
+2. **REQUIRES USER CONFIRMATION:** the Secrets Store. Reuse the account's store if `cf secrets-store stores list` shows one; otherwise create it in the dashboard or with `npx wrangler secrets-store store create keyloop-scheduler --remote` (`cf` has no create command). Then `export KEYLOOP_SECRETS_STORE_ID=<store id>`.
+3. **REQUIRES USER CONFIRMATION (the account owner enters the value):** the secret `keyloop_prod_db_url` with scope `workers`. Paste it from the clipboard into the dashboard (preferred) or Wrangler's prompt. Never use `cf secrets-store secrets create --body` or Wrangler's `--value`, which take the secret as an argument.
 
 ```sh
 printf 'Host=%s;Port=5432;Database=keyloop_scheduler;Username=scheduler_app;Password=%s;SSL Mode=VerifyFull;Channel Binding=Require' \
@@ -200,16 +232,16 @@ mkdir -p deploy/cloudflare/build/access
 cp deploy/cloudflare/access/*.json deploy/cloudflare/build/access/
 ```
 
-1. Team domain: `cf zero-trust organization get` and read `auth_domain`. If there is no Zero Trust organization yet, create it in the dashboard (**REQUIRES USER CONFIRMATION**). Then `export KEYLOOP_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com`.
-2. One-time PIN: `cf zero-trust identity-providers list`. If no provider has `"type": "onetimepin"`, **REQUIRES USER CONFIRMATION:**
+1. Team domain: read `auth_domain` from `cf zero-trust organization get`. If there is no Zero Trust organisation, create it in the dashboard (**REQUIRES USER CONFIRMATION**). Then `export KEYLOOP_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com`.
+2. One-time PIN: if `cf zero-trust identity-providers list` shows no `"type": "onetimepin"` provider, **REQUIRES USER CONFIRMATION:**
 
 ```sh
 cf zero-trust identity-providers create --body "$(cat deploy/cloudflare/build/access/identity-provider-otp.json)"
 ```
 
-Note the provider's `id`. No other identity provider is added for this deployment.
+Note the provider's `id`. No other identity provider is added.
 
-3. **REQUIRES USER CONFIRMATION:** the Allow policy. Replace the `__REVIEWER_EMAIL_n__` placeholders in `build/access/policy-reviewers.template.json` with the approved reviewer emails (add or remove entries; an approved whole domain is `{ "email_domain": { "domain": "<domain>" } }`). Every person in a role list in step 6 must also be allowed here, plus at least one allowed email in no role list for the 403 rehearsal. Never use an unrestricted one-time PIN rule or a Bypass policy.
+3. **REQUIRES USER CONFIRMATION:** the Allow policy. Replace the `__REVIEWER_EMAIL_n__` placeholders in `build/access/policy-reviewers.template.json` with the approved emails (a whole domain is `{ "email_domain": { "domain": "<domain>" } }`). Allow everyone in a role list of step 6, plus one email in no role list for the 403 rehearsal. Never use an unrestricted PIN rule or a Bypass policy.
 
 ```sh
 cf zero-trust access policies create --body "$(cat deploy/cloudflare/build/access/policy-reviewers.template.json)"
@@ -217,13 +249,18 @@ cf zero-trust access policies create --body "$(cat deploy/cloudflare/build/acces
 
 Note the policy `id`.
 
-4. **REQUIRES USER CONFIRMATION:** the application. In `build/access/application.template.json`, replace `__ONE_TIME_PIN_IDP_ID__` and `__REVIEWERS_POLICY_ID__`. The body selects: self-hosted on `keyloop.kylesmile.me/auth/*` only (the board, assets and `/api/v1/*` stay public at Access), session 1 hour (short on purpose: the API validates this bearer token offline until its expiry; the web app renews it through the 24-hour Access account session before it ends, ADR-027 "Session duration and renewal"), one-time PIN as the only allowed IdP with automatic redirect, Cookie Path Attribute **disabled** (`path_cookie_attribute: false`, so the cookie reaches `/api/v1/*`), `HttpOnly`, `SameSite=Lax`, binding cookie off, hidden from the App Launcher.
+4. **REQUIRES USER CONFIRMATION:** the application. Replace `__ONE_TIME_PIN_IDP_ID__` and `__REVIEWERS_POLICY_ID__` in `build/access/application.template.json`. The body selects:
+
+- self-hosted on `keyloop.kylesmile.me/auth/*` only; the board, assets and `/api/v1/*` stay public at Access;
+- a one-hour session, short on purpose because the API validates the token offline until it expires; the web app renews it through the 24-hour Access account session (ADR-027);
+- one-time PIN as the only IdP, with automatic redirect;
+- Cookie Path Attribute **disabled** (`path_cookie_attribute: false`, so the cookie reaches `/api/v1/*`), `HttpOnly`, `SameSite=Lax`, binding cookie off, hidden from the App Launcher.
 
 ```sh
 cf zero-trust access applications create --body "$(cat deploy/cloudflare/build/access/application.template.json)"
 ```
 
-5. Read the AUD tag: `cf zero-trust access applications get <application id>` and take `aud`. Then `export KEYLOOP_ACCESS_AUDIENCE=<aud>`. It is an identifier for the API's token check, not a credential.
+5. Read `aud` from `cf zero-trust access applications get <application id>` and `export KEYLOOP_ACCESS_AUDIENCE=<aud>`. It is an identifier, not a credential.
 
 ## 4. Local builds and checks
 
@@ -244,7 +281,7 @@ timeout 120 docker run --rm --platform linux/amd64 --network none -e DOTNET_Enab
 (cd deploy/cloudflare && npm run typecheck && npm test && npm run validate:build && npm run validate:build:integrations)
 ```
 
-Expected: `amd64` and the `tini` entrypoint; `status 134` within seconds (124 would mean it hangs); all edge checks pass. `DOTNET_EnableWriteXorExecute=0` is only for running the amd64 image under emulation on an Apple silicon Mac, where .NET otherwise stalls; it is never part of the deployment.
+Expected: `amd64` and the `tini` entrypoint, `status 134` within seconds (124 means it hangs), and all edge checks pass. `DOTNET_EnableWriteXorExecute=0` only lets the amd64 image run under emulation on Apple silicon; it is never part of the deployment.
 
 ## 5. Push the API image
 
@@ -256,7 +293,7 @@ cf containers push --tag "keyloop-scheduler-api:$KL_SHA"
 cf containers images list
 ```
 
-Take the pushed reference, `registry.cloudflare.com/<account id>/keyloop-scheduler-api:<KL_SHA>`, and `export KEYLOOP_API_IMAGE=<that reference>`.
+Then `export KEYLOOP_API_IMAGE=registry.cloudflare.com/<account id>/keyloop-scheduler-api:<KL_SHA>`, the pushed reference.
 
 ## 6. Build the edge with the real identifiers
 
@@ -278,25 +315,39 @@ jq '{name, domains, workersDev, previewUrls, triggers, env: (.env | del(.AUTH_AD
 jq '{name, instanceType, maxInstances, constraints, image, schedulingPolicy}' .cloudflare/output/v0/containers/keyloop-scheduler-api/container.config.json
 ```
 
-Check before going on: domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers; `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE` is your pushed image reference; `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours; there is no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `API_OTLP_TOKEN`, `AI_TOKEN` or `TRIAGE_IMAGES` binding; `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED`, `API_OTLP_ENABLED`, `TRIAGE_ENABLED` and `VEHICLE_AWARE_REQUIREMENTS` are `false`; the container is `basic`, one instance, `WEUR`, with your pushed image. `.cloudflare/` is ignored; it holds the role lists in plain text, so do not share it.
+Check before going on:
+
+- domain `keyloop.kylesmile.me`, `workersDev` and `previewUrls` false, no triggers;
+- `DB_URL` is `secret:keyloop_prod_db_url`; `API_IMAGE`, `AUTH_TEAM_DOMAIN` and `AUTH_AUDIENCE` are yours;
+- no `EMAIL_API_TOKEN`, `GRAFANA_OTLP_BASIC_BROWSER`, `API_OTLP_TOKEN`, `AI_TOKEN` or `TRIAGE_IMAGES` binding;
+- `NOTIFICATIONS_ENABLED`, `EMAIL_SENDING_ENABLED`, `OTLP_RELAY_ENABLED`, `API_OTLP_ENABLED`, `TRIAGE_ENABLED` and `VEHICLE_AWARE_REQUIREMENTS` are `false`;
+- the container is `basic`, one instance, `WEUR`, with your pushed image.
+
+`.cloudflare/` is ignored and holds the role lists in plain text; do not share it.
 
 ## 7. Deploy
 
-**REQUIRES USER CONFIRMATION:** inspect the plan, then deploy exactly what was built. `--provision=false` keeps the deployment from creating any resource it was not given (README F10).
+**REQUIRES USER CONFIRMATION:** inspect the plan, then deploy exactly what was built. `--provision=false` stops the deployment creating any resource it was not given.
 
 ```sh
 cf deploy --prebuilt --provision=false --dry-run
 cf deploy --prebuilt --provision=false --message "core profile $KL_SHA"
 ```
 
-This creates the Worker `keyloop-scheduler`, its `ApiContainer` Durable Object class and Container application, and the Custom Domain `keyloop.kylesmile.me` from the configuration's `domains` (DNS record and certificate). The first API request creates the Durable Object `api` with the `weur` hint and cold-starts the container. If the plan shows the `EMAIL` send-email binding needs Email onboarding on the zone, stop: that binding is in every build, and onboarding (README step 2) or making it conditional is a separate decision.
+This creates the Worker `keyloop-scheduler`, its `ApiContainer` Durable Object class and Container application, and the Custom Domain `keyloop.kylesmile.me` with its DNS record and certificate.
+The first API request creates the Durable Object `api` with the `weur` hint and cold-starts the container.
+If the plan says the `EMAIL` binding needs Email onboarding on the zone, stop: onboarding is a separate decision.
 
 ## 8. Redirect HTTP to HTTPS
 
 **REQUIRES USER CONFIRMATION**, one of:
 
 - Zone-wide: `cf zones settings edit always_use_https --zone kylesmile.me --body '{"value":"on"}'`. This redirects every hostname in the zone.
-- This hostname only, a Single Redirect rule. Find the zone's `http_request_dynamic_redirect` entrypoint with `cf rulesets list --zone kylesmile.me`, then add the rule to it with `cf rulesets rules create <ruleset id> --zone kylesmile.me --body "$(cat <rule file>)"`. If there is no such ruleset, create it with `cf rulesets create --zone kylesmile.me --kind zone --phase http_request_dynamic_redirect --name default --rules '[<rule>]'`. Never replace an existing entrypoint, which would drop its other rules. The rule:
+- This hostname only, with a Single Redirect rule.
+  Find the zone's `http_request_dynamic_redirect` entrypoint with `cf rulesets list --zone kylesmile.me` and add the rule with `cf rulesets rules create <ruleset id> --zone kylesmile.me --body "$(cat <rule file>)"`.
+  If it does not exist, create it with `cf rulesets create --zone kylesmile.me --kind zone --phase http_request_dynamic_redirect --name default --rules '[<rule>]'`.
+  Never replace an existing entrypoint; that drops its other rules.
+  The rule:
 
 ```json
 {
@@ -313,57 +364,72 @@ This creates the Worker `keyloop-scheduler`, its `ApiContainer` Durable Object c
 }
 ```
 
-The static assets already send host-only HSTS (`public/_headers`), and browsers record it only from a valid HTTPS response.
+The static assets already send host-only HSTS (`public/_headers`).
 
 ## 9. Rehearsal
 
-Run from the repository root (`cd ../..` after step 7) with `H=https://keyloop.kylesmile.me` and `READING=$(curl -sS "$H/api/v1/dealerships" | jq -r '.[] | select(.name == "Keyloop Motors Reading") | .id')`. Any failure stops the rollout; README's Access checklist (items 7 to 9) is the source for each check.
+Run from the repository root with `H=https://keyloop.kylesmile.me` and `READING=$(curl -sS "$H/api/v1/dealerships" | jq -r '.[] | select(.name == "Keyloop Motors Reading") | .id')`. Any failure stops the rollout; the README's Access checklist (items 7 to 9) is the source of each check.
 
-1. Cold start within 60 s, right after the deploy or after 30 idle minutes: `curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' "$H/api/v1/dealerships"`. Expected `200` in under 60 s; a `503 service-unavailable` means the container did not start or could not be reached (check the Container and Worker logs in the dashboard, which never show the secret). When a deploy changed the configuration of a container that was already running, this first request also waits for the old container to stop: up to 15 s after SIGTERM, then it is killed (`ApiContainerStopTimeout` in the Worker log) and given up to 5 s more, so up to 20 s before the new container starts. The Worker log shows one `ApiContainerRestart` event. If the old container is still running after those 20 s, this request answers `503 service-unavailable`, the previous fingerprint stays recorded, and the next API request tries the restart again.
-2. HTTP to HTTPS and HSTS: `curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' http://keyloop.kylesmile.me/board` gives `301 https://keyloop.kylesmile.me/board`; `curl -sSI "$H/" | grep -i strict-transport-security` gives `max-age=31536000`.
-3. Schema readiness is public only as a bare status: `curl -sS -o /dev/null -w '%{http_code}\n' "$H/api/ready"` must return `200`; `503` means connectivity, pending migrations or API transport needs investigation. GET/HEAD return no body or upstream headers and `Cache-Control: no-store`; other methods return 405. The API global rate limit still bounds database work. The container's `/alive` remains a process probe, so it cannot substitute for this deploy check. Nothing internal is public, and the API reference is: `curl -sS -o /dev/null -w '%{http_code} %{content_type}\n'` on `$H/health` and `$H/alive` answers from Static Assets (the SPA's `index.html`, or a plain 404 for a request that is not a navigation), never with API JSON or a health report; `curl -sS -X POST -o /dev/null -w '%{http_code}\n' "$H/api/v1/admin/demo/reseed"` gives `404`. The static reference and the committed contract are public documentation ([README](README.md#static-api-reference)): `curl -sS "$H/scalar/v1" | grep -c 'src="/scalar/standalone.js"'` gives `1`, and `curl -sS "$H/openapi/v1.json" | cmp - contracts/openapi/v1.json` prints nothing. Open `$H/scalar/v1` in a browser (or the board's sidebar "API reference"): the operations render, the developer tools console shows no Content Security Policy error, and the Network panel shows only requests to this hostname; "Test Request" on "List dealerships" answers `200`.
-4. Signed-out reads are masked: `curl -sS "$H/api/v1/dealerships/$READING/schedule?date=<open weekday>" | jq '.. | objects | select(has("customerName")) | {customerName, vin, registration}' | head`. Names are initials, VINs show only the last six characters, registrations are `*******`; no email or phone appears. `curl -sS "$H/api/v1/me"` gives `"authenticated": false`.
-5. Each role, in a private browser window per person: open `$H/auth/login?returnTo=%2Fboard`, sign in with the one-time PIN, and expect to land on `/board`. Then `$H/api/v1/me` shows that person's role. ServiceAdvisor and Admin can book and cancel; a Viewer sees full names and opens appointment details but cannot book (the UI shows why); every role sees unmasked names.
-6. An allowed email in no role list signs in, `/api/v1/me` shows `"authenticated": true` with `"roles": []`, and the board shows booking unavailable with the reason; the rehearsal script in item 8, given that session, stops with `roles=[]` (the API answers such a write with 403, proven locally).
-7. Sign out at `$H/cdn-cgi/access/logout`: the `CF_Authorization` cookie for the hostname is gone, `/api/v1/me` is anonymous again, reads are masked and writes answer 401.
-8. The 30-way booking: sign in as a ServiceAdvisor, copy the `CF_Authorization` cookie value from the browser's developer tools, then run the script; it asks for the value without echoing it, books one single-capacity slot 30 times at once and cancels the winner.
+1. **Cold start under 60 s**, right after the deploy or after 30 idle minutes: `curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' "$H/api/v1/dealerships"` returns `200`.
+   A `503 service-unavailable` means the container did not start or could not be reached; check the Container and Worker logs.
+   After a configuration change the first request can also wait up to 20 s for the old container to stop ([Later configuration changes](#later-configuration-changes)).
+2. **HTTPS and HSTS:** `curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' http://keyloop.kylesmile.me/board` gives `301 https://keyloop.kylesmile.me/board`; `curl -sSI "$H/" | grep -i strict-transport-security` gives `max-age=31536000`.
+3. **Readiness and the public surface.**
+   - `curl -sS -o /dev/null -w '%{http_code}\n' "$H/api/ready"` returns `200`. A `503` means connectivity, pending migrations or transport. GET and HEAD return no body and `Cache-Control: no-store`; other methods return 405. The container's `/alive` is only a process probe.
+   - `curl -sS -o /dev/null -w '%{http_code} %{content_type}\n'` on `$H/health` and `$H/alive` answers from Static Assets (the SPA, or a plain 404 for a non-navigation), never with API JSON. `curl -sS -X POST -o /dev/null -w '%{http_code}\n' "$H/api/v1/admin/demo/reseed"` gives `404`.
+   - `curl -sS "$H/scalar/v1" | grep -c 'src="/scalar/standalone.js"'` gives `1`, and `curl -sS "$H/openapi/v1.json" | cmp - contracts/openapi/v1.json` prints nothing ([static API reference](README.md#static-api-reference)).
+   - In a browser, `$H/scalar/v1` renders the operations with no Content Security Policy error and requests to this hostname only; "Test Request" on "List dealerships" answers `200`.
+4. **Signed-out reads are masked:** `curl -sS "$H/api/v1/dealerships/$READING/schedule?date=<open weekday>" | jq '.. | objects | select(has("customerName")) | {customerName, vin, registration}' | head`. Names are initials, VINs show the last six characters, registrations are `*******`, and no email or phone appears. `curl -sS "$H/api/v1/me"` gives `"authenticated": false`.
+5. **Each role**, in a private window per person: open `$H/auth/login?returnTo=%2Fboard`, sign in with the PIN, land on `/board`, and check `$H/api/v1/me` shows the role. ServiceAdvisor and Admin can book and cancel; a Viewer sees full names and details but cannot book, and the UI says why.
+6. **No role:** an allowed email in no role list signs in with `"roles": []`, and the board shows booking unavailable with the reason. The script in item 8 stops with `roles=[]`; the API answers such a write with 403.
+7. **Sign out** at `$H/cdn-cgi/access/logout`: the hostname's `CF_Authorization` cookie is gone, `/api/v1/me` is anonymous, reads are masked and writes answer 401.
+8. **The 30-way booking:** sign in as a ServiceAdvisor, copy the `CF_Authorization` cookie value from the developer tools, and run the script. It reads the value without echoing it, books one single-capacity slot 30 times at once and cancels the winner.
 
 ```sh
 deploy/cloudflare/scripts/rehearse-contention.sh "$H"
 ```
 
-Expected: `201: 1   409: 29   other: 0` and `PASS`. The k6 profiles in `tests/load/k6` send no Access identity, so they cannot run writes against this deployment.
+Expected: `201: 1   409: 29   other: 0` and `PASS`. The k6 profiles in `tests/load/k6` carry no Access identity, so they cannot write to this deployment.
 
-9. Clean up local state: `unset NEON_HOST KEYLOOP_ACCESS_ADMIN KEYLOOP_ACCESS_SERVICE_ADVISOR KEYLOOP_ACCESS_VIEWER`, and delete `deploy/cloudflare/build/access/`.
+9. **Clean up:** `unset NEON_HOST KEYLOOP_ACCESS_ADMIN KEYLOOP_ACCESS_SERVICE_ADVISOR KEYLOOP_ACCESS_VIEWER` and delete `deploy/cloudflare/build/access/`.
 
 ## Container unavailability during a rollout
 
-A rollout can stop the outgoing container between its health check and the port fetch. A refused/reset connection, a container not listening yet, or a failed Durable Object/startup call answers `503 Service Unavailable` with `Content-Type: application/problem+json`, `Retry-After: 3` and `Cache-Control: no-store`. The problem type is `https://api.keyloop.example/problems/service-unavailable`; its fixed detail says to try again in a moment. `instance` excludes the query and `traceId` is a validated or generated UUID echoed as `X-Request-Id`. HEAD has the same headers and no body.
+A rollout can stop the outgoing container mid-request.
+The Worker then answers `503 Service Unavailable` as `application/problem+json` with type `https://api.keyloop.example/problems/service-unavailable`, `Retry-After: 3`, `Cache-Control: no-store`, and a `traceId` echoed as `X-Request-Id`.
+Only a rejected GET or HEAD retries once, after 150 ms; writes never retry.
+Any response the API produced, a 500 included, passes through unchanged.
+One `ApiUnavailable` log line records the exhaustion, without exception text, body, URL or personal data.
 
-Only a rejected GET or HEAD may retry once, after 150 ms. Every other method, including POST, PUT, PATCH and DELETE, returns 503 after the first rejection, even if the client supplied an idempotency key. A completed HTTP response is never retried or rewritten, so an API-generated 500 stays 500 and the Worker does not retry a 503 already returned by the Container. Existing readiness and stop windows still apply; the 150 ms limit is the added retry wait, not a replacement request deadline. The fixed `ApiUnavailable` log appears once after exhaustion, without raw exception, request body, URL or personal data.
+What to do:
 
-During an approved rollout, inspect the response status, headers and problem type. A short `service-unavailable` window can be normal hand-over: wait the three-second hint, then repeat a read. Persistent 503s need investigation of Container readiness, configuration, Secrets Store and rollout state using the operator's existing observability access. An API `500 internal-error` needs API diagnosis. The Actions verifier polls the image within its six-minute deadline, then requires `/api/ready` 200 as well as public reads. A reachable API with a missing migration fails verification even if dealerships and schedule return 200. Do not automatically replay a write from an operator script. In the web app, reads retry once and writes offer a manual *Try again*; a booking retry retains its body and idempotency key. Existing bookings remain stored, and the 503 error page asks the user to try again in a moment.
+- A short `service-unavailable` window is normal hand-over: wait three seconds and repeat a read.
+- Persistent 503s: check Container readiness, configuration, Secrets Store and rollout state. An API `500 internal-error` needs API diagnosis.
+- Never replay a write from an operator script. The web app retries reads once and offers *Try again* on writes; a booking retry keeps its body and idempotency key.
+- The Actions verifier requires `/api/ready` 200 as well as public reads, so a missing migration fails verification even when reads work.
 
-Offline proof: `npm test -- test/unavailable.test.ts test/router.test.ts test/container.test.ts` drives rejected native port fetches for rollout exit, not-listening and refused/reset connections, GET/HEAD retry bounds, writes without retry, streamed-response activity, API 500 pass-through and the Worker/Container boundary without duplicate retries or logs. No real rollout is needed for these tests.
+Offline proof: `npm test -- test/unavailable.test.ts test/router.test.ts test/container.test.ts`.
 
 ## Later configuration changes
 
-A running container keeps the environment it was started with; neither a Worker deploy nor the platform's image rollout changes it. The Durable Object compares a fingerprint of the configuration it would start the container with now against the one it last started it with, once per deploy, on the first API request, and restarts the container when they differ ([README](README.md#configuration-changes-and-container-restarts)). To change a setting, for example enabling triage or vehicle-aware booking (`KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=true`):
+A running container keeps the environment it started with.
+On the first API request after each deploy, the Durable Object compares a fingerprint of the configuration it would use now with the one it last started, and restarts the container when they differ ([README](README.md#configuration-changes-and-container-restarts)).
+To change a setting, for example `KEYLOOP_VEHICLE_AWARE_REQUIREMENTS=true` or enabling triage:
 
-1. Set the changed variables with the others from step 6 and run `npm run build`; check the bindings as in step 6.
+1. Set the changed variables with the others from step 6, run `npm run build`, and check the bindings as in step 6.
 2. **REQUIRES USER CONFIRMATION:** deploy as in step 7.
-3. Send one API request, as in rehearsal item 1. It waits for the old container to stop (up to 15 s after SIGTERM, then up to 5 s after a kill) and the new one to start; a `503 service-unavailable` can mean a failed stop, start or transport hand-over. Wait its three-second Retry-After, then repeat this read; a failed stop keeps the previous fingerprint and the next reconciliation tries again.
-4. In the Worker logs (dashboard), confirm one `ApiContainerRestart` event with reason `configuration-changed` (or `unrecorded`, the first time this behaviour is deployed onto a running container). No event means no running container had to be replaced: either it was already running with this configuration, or it was not running (it sleeps after 30 idle minutes), and this request cold-started it with the new settings. Either way, step 5 confirms that the change took effect.
-5. Check the change itself: for triage, signed in as a ServiceAdvisor, describing an issue in the booking dialog returns suggestions instead of the `503 triage-unavailable` fallback to manual selection. For vehicle-aware booking, `curl -sS "$H/api/v1/features"` gives `{"vehicleAwareRequirements":true}`, and, signed in as a ServiceAdvisor, the booking dialog has the vehicle step (with a web build that includes Task 31b).
+3. Send one API request, as in rehearsal item 1. It waits for the old container to stop (up to 15 s after SIGTERM, then 5 s after a kill) and the new one to start. On a `503 service-unavailable`, wait three seconds and repeat; a failed stop keeps the old fingerprint and the next request retries.
+4. In the Worker logs, confirm one `ApiContainerRestart` event with reason `configuration-changed` (or `unrecorded` the first time). No event means no running container had to be replaced, because it was already current or asleep.
+5. Check the effect. Triage: describing an issue in the booking dialog returns suggestions instead of the `503 triage-unavailable` fallback. Vehicle-aware booking: `curl -sS "$H/api/v1/features"` gives `{"vehicleAwareRequirements":true}`, and the booking dialog shows the vehicle step.
 
 ## Enable API telemetry
 
-This turns on the API's OTLP export (traces, metrics and logs) to the stakeholder's Grafana Cloud stack on a running core deployment. The committed dashboards select `job="keyloop-scheduler/api"` and the environment `Production`, which is what this export produces; the variables the container receives and why are in [README](README.md#optional-api-telemetry). Build both the API image and the edge from a commit that contains this change: the Worker code that passes the OTLP settings and the API's quieter Production log levels ship in them. Step 0 still applies; `H=https://keyloop.kylesmile.me`.
+This turns on the API's OTLP export of traces, metrics and logs to Grafana Cloud on a running deployment. The committed dashboards select `job="keyloop-scheduler/api"` and environment `Production`, which this export produces; the container variables are listed in the [README](README.md#optional-api-telemetry). Step 0 still applies.
 
-1. **REQUIRES USER CONFIRMATION (stakeholder, Grafana Cloud):**
-   - Read the stack's OTLP endpoint and instance ID from the stack's **OpenTelemetry** tile (**Configure**) in the Grafana Cloud portal. The endpoint has the form `https://otlp-gateway-<region>.grafana.net/otlp`; the instance ID is a number. Both are identifiers, not secrets.
-   - Create a Cloud access policy whose realm is this stack only, with the scopes `metrics:write`, `logs:write` and `traces:write` and no others, and add one token to it (for example `keyloop-scheduler-api`, with the expiry you choose). Grafana shows the token once. It never goes into chat, a ticket, a file or a command line.
-2. **REQUIRES USER CONFIRMATION (stakeholder, Cloudflare):** add the token to the Secrets Store `keyloop` as `keyloop_prod_api_otlp_token` with the scope **Workers**. Either in the dashboard (Secrets Store, `keyloop`, create secret, paste the token as the value), or from the repository root with the value typed into a hidden prompt. `printf` is a shell builtin, so the token reaches neither the history nor the process list, and Wrangler reads it from standard input when it is not a terminal:
+1. **REQUIRES USER CONFIRMATION (account owner, Grafana Cloud):**
+   - Read the OTLP endpoint (`https://otlp-gateway-<region>.grafana.net/otlp`) and the numeric instance ID from the stack's **OpenTelemetry** tile. Both are identifiers.
+   - Create an access policy for this stack only with `metrics:write`, `logs:write` and `traces:write`, and one token on it, for example `keyloop-scheduler-api`. Grafana shows it once; it never goes into chat, a ticket, a file or a command line.
+2. **REQUIRES USER CONFIRMATION (account owner, Cloudflare):** store the token in Secrets Store `keyloop` as `keyloop_prod_api_otlp_token`, scope **Workers**, in the dashboard or through a hidden prompt (`printf` is a builtin, so the token reaches neither history nor the process list):
 
 ```sh
 export KEYLOOP_SECRETS_STORE_ID=<id of the keyloop store>   # cf secrets-store stores list
@@ -373,10 +439,10 @@ printf '%s' "$KL_API_OTLP_TOKEN" | (cd deploy/cloudflare && npx wrangler secrets
 unset KL_API_OTLP_TOKEN
 ```
 
-Expected: `Creating secret... (Name: keyloop_prod_api_otlp_token, Value: REDACTED, Scopes: workers, ...)`. Never use Wrangler's `--value` or `cf secrets-store secrets create --body`.
+Expected: `Creating secret... (Name: keyloop_prod_api_otlp_token, Value: REDACTED, Scopes: workers, ...)`.
 
-3. Build the API image from that commit and run the local checks of [step 4](#4-local-builds-and-checks). **REQUIRES USER CONFIRMATION:** push it as in [step 5](#5-push-the-api-image) and `export KEYLOOP_API_IMAGE=<the pushed reference>`. The new image carries `appsettings.Production.json`, which keeps one log record per SQL command and per outgoing HTTP request (the exporter's own included) out of the console and Loki.
-4. Build the edge as in [step 6](#6-build-the-edge-with-the-real-identifiers), with the live deployment's settings plus the three telemetry settings:
+3. Build and check the API image as in [step 4](#4-local-builds-and-checks). **REQUIRES USER CONFIRMATION:** push it as in [step 5](#5-push-the-api-image) and export `KEYLOOP_API_IMAGE`. Its `appsettings.Production.json` keeps per-SQL-command and per-HTTP-request logs out of Loki.
+4. Build the edge as in [step 6](#6-build-the-edge-with-the-real-identifiers) with the live settings plus:
 
 ```sh
 export KEYLOOP_API_OTLP_ENABLED=true
@@ -384,31 +450,35 @@ export KEYLOOP_GRAFANA_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/o
 export KEYLOOP_GRAFANA_INSTANCE_ID=<instance id>                                     # digits only
 ```
 
-`KEYLOOP_OTLP_RELAY_ENABLED` stays `false`; the browser relay is a separate decision with its own `traces:write` credential. A malformed endpoint or instance ID fails `npm run build` (`cf build`) with the setting's name. In the `jq` output expect `API_OTLP_TOKEN` as `secret:keyloop_prod_api_otlp_token`, `API_OTLP_ENABLED` `true`, and your `GRAFANA_OTLP_ENDPOINT` and `GRAFANA_INSTANCE_ID`; everything else as in step 6.
+`KEYLOOP_OTLP_RELAY_ENABLED` stays `false`. A malformed endpoint or instance ID fails `npm run build` with the setting's name. Expect `API_OTLP_TOKEN` as `secret:keyloop_prod_api_otlp_token`, `API_OTLP_ENABLED` `true`, and your endpoint and instance ID; everything else as in step 6.
 
-5. **REQUIRES USER CONFIRMATION:** deploy as in [step 7](#7-deploy), with `--message "api telemetry $KL_SHA"`. The dry run should show the new Worker version, the three new bindings and the new image, nothing else. Then send one API request, `curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' "$H/api/v1/dealerships"`, which must answer `200`: the image rollout alone would restart the container with its previous start options, so this request has the Durable Object stop it and start it with the telemetry settings ([Later configuration changes](#later-configuration-changes), steps 3 and 4; one `ApiContainerRestart` event). A `503 service-unavailable` means the container did not start, the old one did not stop, or transport failed (wait its three-second Retry-After, then repeat this read): a missing or malformed `keyloop_prod_api_otlp_token` (whitespace or a non-ASCII character) refuses the start with a message that names only the secret, in the Worker log.
-6. **REQUIRES USER CONFIRMATION:** deploy the Grafana folder and the four dashboards with the export, so its data lands on the reviewed panels. They are unchanged by this work; if they are already pushed and untouched since, the dry run reports no change. Use the stakeholder's authenticated `gcx` context ([observability README](../../observability/grafana/README.md#later-stakeholder-commands)):
+5. **REQUIRES USER CONFIRMATION:** deploy as in [step 7](#7-deploy) with `--message "api telemetry $KL_SHA"`; the dry run shows the new version, three new bindings and the new image.
+   Then `curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' "$H/api/v1/dealerships"` must answer `200`, restarting the container with the telemetry settings (one `ApiContainerRestart` event).
+   A missing or malformed token refuses the start with a Worker log message naming only the secret.
+6. **REQUIRES USER CONFIRMATION:** push the Grafana folder and dashboards with an authenticated `gcx` context ([observability README](../../observability/grafana/README.md#pushing-to-grafana)); an unchanged set reports no change:
 
 ```sh
 gcx resources push --context default -p observability/grafana/folders -p observability/grafana/dashboards --dry-run
 gcx resources push --context default -p observability/grafana/folders -p observability/grafana/dashboards --on-error abort
 ```
 
-7. Verify, read-only, in Grafana Explore after two or three minutes of traffic (metrics are exported every 60 seconds):
-   - Metrics: `count by (job, service_namespace, service_name) (http_server_request_duration_seconds_count{job="keyloop-scheduler/api"})` shows that job, and `count by (deployment_environment_name) (target_info{job="keyloop-scheduler/api"})` shows `Production`.
-   - Logs: `{service_namespace="keyloop-scheduler", service_name="api"}` has the startup event `1102` and no `Executed DbCommand` records.
+7. Verify read-only in Grafana Explore after two or three minutes of traffic (metrics export every 60 s):
+   - Metrics: `count by (job, service_namespace, service_name) (http_server_request_duration_seconds_count{job="keyloop-scheduler/api"})` shows the job, and `count by (deployment_environment_name) (target_info{job="keyloop-scheduler/api"})` shows `Production`.
+   - Logs: `{service_namespace="keyloop-scheduler", service_name="api"}` has startup event `1102` and no `Executed DbCommand` records.
    - Traces: `{ resource.service.namespace = "keyloop-scheduler" && resource.service.name = "api" }` finds the request's server span.
-   - The API health and Booking engine dashboards, Environment `Production`, fill as requests arrive.
+   - The API health and Booking engine dashboards fill as requests arrive.
 
-   If nothing arrives, the container log will not say why: the .NET SDK reports export failures only through its own diagnostics event source. Check the token's realm (this stack) and scopes, the instance ID, and that the endpoint is the stack's own region.
+   The container log never shows export failures. If nothing arrives, check the token's realm and scopes, the instance ID and the endpoint's region.
 
-While telemetry is on, the backlog gauges query the database once per metric export, so Neon stays awake as long as the container runs (up to its 30 idle minutes) instead of suspending after Neon's idle timeout; watch the Free plan's compute hours.
+While telemetry is on, the backlog gauges query the database every export, so Neon stays awake while the container runs; watch the Free plan's compute hours.
 
-To disable, export `KEYLOOP_API_OTLP_ENABLED=false`, rebuild (step 6) and deploy (step 7): the binding disappears, and the first API request restarts the container without any OTEL variable. To rotate, add a new token to the same policy, replace the secret's value (dashboard, or `npx wrangler secrets-store secret update "$KEYLOOP_SECRETS_STORE_ID" --secret-id <id> --remote` with the same `read -rs` and `printf` pattern), redeploy and send one API request so the container restarts with it ([Rollback](#rollback), the secret item), then delete the old token in Grafana. Deleting the token in Grafana stops ingestion at once.
+**Disable:** export `KEYLOOP_API_OTLP_ENABLED=false`, rebuild and deploy. **Rotate:** add a new token to the policy, replace the secret's value (dashboard, or `npx wrangler secrets-store secret update "$KEYLOOP_SECRETS_STORE_ID" --secret-id <id> --remote` with the same `read -rs` and `printf` pattern), redeploy, send one API request, then delete the old token in Grafana.
 
 ## Rollback
 
-- API image: push the previous tag if it is no longer in the registry, set `KEYLOOP_API_IMAGE` to it, rebuild (step 6) and deploy (step 7). The image reference is part of the fingerprint, so the first API request afterwards stops the container and starts the previous image with the current configuration, whatever start options the platform's rollout kept; confirm the `ApiContainerRestart` event as in [Later configuration changes](#later-configuration-changes).
-- A setting: restore the previous value, rebuild and deploy, as in [Later configuration changes](#later-configuration-changes).
-- A bad database secret (or AI or API telemetry token): replace `keyloop_prod_db_url` (or `keyloop_prod_ai_token`, `keyloop_prod_api_otlp_token`) in Secrets Store, then **REQUIRES USER CONFIRMATION:** deploy again, `cf deploy --prebuilt --provision=false --message "rotate secret"` with the existing build output (rebuild as in step 6 if it is gone). A running container keeps its start-time value and the Worker reads Secrets Store only when it checks, so the rotation takes effect at the first API request after this deploy, which restarts the container (confirm the `ApiContainerRestart` event). Without a deploy, it takes effect only at the container's next start, for example after it sleeps.
-- Neon restores within its six-hour Free history window. Access application and policy changes are reversible in the dashboard.
+- **API image:** push the previous tag if the registry no longer has it, set `KEYLOOP_API_IMAGE`, rebuild (step 6) and deploy (step 7). The image is part of the fingerprint, so the first API request restarts the container on it; confirm the `ApiContainerRestart` event.
+- **A setting:** restore the previous value, rebuild and deploy, as in [Later configuration changes](#later-configuration-changes).
+- **A bad secret** (`keyloop_prod_db_url`, `keyloop_prod_ai_token` or `keyloop_prod_api_otlp_token`): replace it in Secrets Store, then **REQUIRES USER CONFIRMATION:** `cf deploy --prebuilt --provision=false --message "rotate secret"` with the existing build output (rebuild as in step 6 if it is gone).
+  The first API request after the deploy restarts the container with the new value.
+  Without a deploy it applies only at the container's next start.
+- **Neon** restores within its six-hour Free history window. Access application and policy changes are reversible in the dashboard.

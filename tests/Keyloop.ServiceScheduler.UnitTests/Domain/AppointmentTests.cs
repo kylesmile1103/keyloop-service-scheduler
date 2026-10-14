@@ -243,6 +243,24 @@ public class AppointmentTests
     }
 
     [Fact]
+    public void Book_names_the_gap_against_the_resolved_requirements_when_a_policy_adds_to_the_service()
+    {
+        // A requirement policy can ask for more than the service type itself; the refusal must name the rule-added gap, not the base one.
+        var requirements = new JobRequirements(
+            new HashSet<BayCapability> { BayCapability.StandardLift, BayCapability.EvHighVoltage },
+            new HashSet<Certification> { Certification.GeneralService, Certification.HighVoltageElectrical },
+            MinimumHvLevel: 0, PolicyVersion: 2, FiredRules: ["hv-powertrain"]);
+
+        var ex = Should.Throw<DomainRuleViolationException>(() => Appointment.Book(
+            Guid.NewGuid(), _reading, _interim, _bay, _technician, LocalSlot(9), _window, _customer, _vehicle, null, Now, requirements));
+
+        ex.RuleCode.ShouldBe("no-qualified-resources");
+        ex.Message.ShouldBe(NoQualifiedResourcesDetail);
+        ex.Extensions["missingCapabilities"].ShouldBe(new[] { BayCapability.EvHighVoltage });
+        ex.Extensions["missingCertifications"].ShouldBe(new[] { Certification.HighVoltageElectrical });
+    }
+
+    [Fact]
     public void Book_rejects_slot_outside_window()
     {
         _window.ShouldBe(new OperatingWindow(Utc(7), Utc(17)));

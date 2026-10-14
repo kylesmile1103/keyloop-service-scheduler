@@ -276,7 +276,7 @@ describe("the automatic renewal's guards", () => {
   })
 })
 
-describe("one renewing tab (review round 2)", () => {
+describe("one renewing tab", () => {
   it("with Web Locks, never lets a tab paused between its check and its claim renew after another tab did", async () => {
     const locks = webLocks()
     const shared = new MemoryStorage()

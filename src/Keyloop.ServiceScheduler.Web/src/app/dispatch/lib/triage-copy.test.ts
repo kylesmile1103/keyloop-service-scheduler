@@ -18,7 +18,7 @@ function generatedUnion(name: string): string[] {
   return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1])
 }
 
-describe("the fixed phrases for what else a description mentioned (Task 32a's closed vocabulary)", () => {
+describe("the fixed phrases for what else a description mentioned (the closed vocabulary)", () => {
   it("has exactly one phrase for every category of the generated client", () => {
     const categories = generatedUnion("TriageUncoveredCategory")
     expect(categories.length).toBeGreaterThan(0)

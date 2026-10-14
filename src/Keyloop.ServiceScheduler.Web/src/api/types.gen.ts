@@ -260,7 +260,7 @@ export type AvailabilityResponse = {
      */
     slotGranularityMinutes: number;
     /**
-     * Bookable start times on the slot grid in ascending order, or empty when closed or fully booked.
+     * Bookable start times on the slot grid in ascending order, or empty when closed, fully booked, or no remaining start is still bookable now (inside the minimum lead time or beyond the booking horizon).
      */
     slots: Array<AvailabilitySlotResponse>;
     /**

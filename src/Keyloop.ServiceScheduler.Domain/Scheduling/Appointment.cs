@@ -153,8 +153,9 @@ public sealed class Appointment : AggregateRoot
                 NoQualifiedResourcesDetail,
                 new Dictionary<string, object?>
                 {
-                    ["missingCapabilities"] = serviceType.RequiredBayCapabilities.Except(bay.Capabilities).Order().ToArray(),
-                    ["missingCertifications"] = serviceType.RequiredCertifications.Except(technician.Certifications).Order().ToArray(),
+                    // Against the resolved requirements when a policy added to the service's own, so the answer names the rule-added gap.
+                    ["missingCapabilities"] = (requirements?.BayCapabilities ?? serviceType.RequiredBayCapabilities).Except(bay.Capabilities).Order().ToArray(),
+                    ["missingCertifications"] = (requirements?.Certifications ?? serviceType.RequiredCertifications).Except(technician.Certifications).Order().ToArray(),
                 });
         }
 

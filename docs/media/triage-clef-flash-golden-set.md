@@ -12,7 +12,7 @@ Date choice accuracy (including NO_SPECIFIC_DATE): 47/49.
 Concrete dates exposed correctly: 3/3; false dates exposed: 0.
 Uncovered given an accepted service: positive 7/10; NONE 30/32.
 Exposed notices given an accepted service: correct 3/10; false 0; missed 7; wrong category 0.
-Stakeholder case (fixture 46): service ACCIDENT-DAMAGE-ASSESSMENT (0.54), uncovered ACCIDENT_OR_BODY_DAMAGE (0.09), exposed NONE outside none; accepted pair: no; correct notice shown: no.
+Product owner's case (fixture 46): service ACCIDENT-DAMAGE-ASSESSMENT (0.54), uncovered ACCIDENT_OR_BODY_DAMAGE (0.09), exposed NONE outside none; accepted pair: no; correct notice shown: no.
 Required abstention/confirmation: 10/10; all abstentions/confirmations: 25/49.
 Latency p50: 589.7 ms; p95: 959.3 ms. Input tokens: 105253; usage missing in 0/49 requests.
 Third question adds 1704 UTF-8 request bytes, approximately 426 input tokens at 4 bytes/token (offline planning estimate, not measured Clef tokenization). One request per fixture; upstream reports total usage, not per-question usage.
