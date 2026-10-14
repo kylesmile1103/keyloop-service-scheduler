@@ -58,7 +58,7 @@ it.each([
         fs.writeFileSync(process.env.MOCK_GH_STATE, JSON.stringify(state));
       } else if (!args.includes('PUT')) throw new Error('Unexpected mock gh API');
     `, { mode: 0o700 });
-    const run = () => spawnSync("/bin/bash", ["scripts/configure-github-environment.sh", "fixture/repo", "stakeholder"], {
+    const run = () => spawnSync("/bin/bash", ["scripts/configure-github-environment.sh", "fixture/repo", "approver"], {
       cwd: process.cwd(), encoding: "utf8", timeout: 15_000,
       env: { ...process.env, ...secretEnv, ...variableValues, CLOUDFLARE_PLAN_API_TOKEN: "fixture-private-plan-token",
         PATH: `${directory}:${process.env.PATH}`, MOCK_GH_LOG: log, MOCK_GH_STATE: state },

@@ -900,7 +900,7 @@ describe("the allocation, explained after booking", () => {
   })
 })
 
-describe("an accident damage assessment (Task 32a)", () => {
+describe("an accident damage assessment", () => {
   // Default policy v2: a hybrid, electric, fuel-cell or Unknown vehicle after a collision needs HV level 3 (hv-post-collision).
   const assessed = (body: BookAppointmentRequest) => ({
     ...bookedFrom(body, { bay: bays.standard, technician: technicians.eva }),

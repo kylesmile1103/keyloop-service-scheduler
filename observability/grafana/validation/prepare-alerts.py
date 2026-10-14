@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--metrics-datasource-uid", required=True)
     parser.add_argument("--environment", required=True)
     parser.add_argument("--api-job", default="keyloop-scheduler/api")
-    parser.add_argument("--receiver", required=True, help="Name of a stakeholder-reviewed existing contact point")
+    parser.add_argument("--receiver", required=True, help="Name of a reviewed existing contact point")
     parser.add_argument("--runbook-base-url", required=True, help="HTTPS URL of the published runbooks.md file, without a fragment")
     parser.add_argument("--output-dir", type=Path, default=ROOT / ".review/alertrules")
     args = parser.parse_args()

@@ -28,7 +28,7 @@ if (!['Development', 'Production'].includes(rateEnvironment)) {
   throw new Error('RATE_LIMIT_ENV must be Development or Production');
 }
 if (!local && (__ENV.REMOTE_APPROVED !== 'true' || rateEnvironment !== 'Production')) {
-  throw new Error('Remote runs require explicit stakeholder approval, REMOTE_APPROVED=true and RATE_LIMIT_ENV=Production');
+  throw new Error('Remote runs require explicit owner approval, REMOTE_APPROVED=true and RATE_LIMIT_ENV=Production');
 }
 
 export const config = {

@@ -5,7 +5,7 @@ set -euo pipefail
 unset GH_DEBUG
 
 repo=${1:?Usage: configure-github-environment.sh OWNER/REPO REVIEWER_LOGIN}
-reviewer=${2:?Supply the stakeholder GitHub login}
+reviewer=${2:?Supply the GitHub login of the approving reviewer}
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 1
 [[ "$reviewer" =~ ^[A-Za-z0-9-]+$ ]] || exit 1
 command -v gh > /dev/null

@@ -8,7 +8,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / 'src/Keyloop.ServiceScheduler.Infrastructure/Persistence/Migrations/20261013151319_CustomerLookupScopedNamePrefixes.cs'
 PROGRAM = ROOT / 'src/Keyloop.ServiceScheduler.Api/Program.cs'
-EVIDENCE = Path('/tmp/kl41')
+EVIDENCE = Path('/tmp/keyloop-mutations/customer-lookup-scope-https')
 EVIDENCE.mkdir(parents=True, exist_ok=True)
 ENV = {**os.environ, 'TMPDIR': str(EVIDENCE)}
 ORIGINALS = {path: path.read_bytes() for path in (MIGRATION, PROGRAM)}
