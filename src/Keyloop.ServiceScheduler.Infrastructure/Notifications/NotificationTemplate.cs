@@ -19,7 +19,8 @@ internal static class NotificationTemplate
         using var stream = typeof(NotificationTemplate).Assembly.GetManifestResourceStream(TemplateResource)
             ?? throw new InvalidOperationException($"Embedded email template '{TemplateResource}' is missing.");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
+        // Trimmed: a line ending here would be rewritten in transit (SMTP uses CRLF) and break the byte-for-byte round trip.
+        return reader.ReadToEnd().Trim();
     }
 
     public static EmailMessage Render(Guid notificationId, NotificationKind kind, NotificationDetails details)
