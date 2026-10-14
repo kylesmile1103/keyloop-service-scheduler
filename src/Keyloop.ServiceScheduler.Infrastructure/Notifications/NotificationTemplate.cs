@@ -5,11 +5,22 @@ using System.Text;
 namespace Keyloop.ServiceScheduler.Infrastructure.Notifications;
 
 /// <summary>
-/// Renders fixed, accessible multipart email content in British English at dispatch time.
+/// Renders fixed, accessible multipart email content in British English at dispatch time: plain text built here and HTML from
+/// the embedded MJML build (Templates/Notification.mjml), so the layout survives Outlook, Gmail and phone clients.
 /// </summary>
 internal static class NotificationTemplate
 {
     private const string Support = "For help with your booking, please contact the dealership and quote your booking reference.";
+    private const string TemplateResource = "Keyloop.ServiceScheduler.Infrastructure.Notifications.Templates.Notification.html";
+    private static readonly string HtmlTemplate = LoadTemplate();
+
+    private static string LoadTemplate()
+    {
+        using var stream = typeof(NotificationTemplate).Assembly.GetManifestResourceStream(TemplateResource)
+            ?? throw new InvalidOperationException($"Embedded email template '{TemplateResource}' is missing.");
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
+    }
 
     public static EmailMessage Render(Guid notificationId, NotificationKind kind, NotificationDetails details)
     {
@@ -35,19 +46,33 @@ internal static class NotificationTemplate
             ("VIN", "*************" + details.VinLastFour),
         ];
         var text = new StringBuilder().AppendLine("Keyloop Service Scheduler").AppendLine().AppendLine(heading).AppendLine(introduction).AppendLine();
-        var html = new StringBuilder("<!doctype html><html lang=\"en-GB\"><head><meta charset=\"utf-8\"><title>")
-            .Append(WebUtility.HtmlEncode(heading))
-            .Append("</title></head><body style=\"font-family:Arial,sans-serif;font-size:16px;color:#17202a;background:#ffffff;line-height:1.6\">")
-            .Append("<main style=\"max-width:640px;margin:0 auto;padding:24px\"><p>Keyloop Service Scheduler</p><h1 style=\"font-size:24px\">")
-            .Append(WebUtility.HtmlEncode(heading)).Append("</h1><p>").Append(WebUtility.HtmlEncode(introduction)).Append("</p><dl>");
         foreach (var (label, value) in fields)
         {
             text.Append(label).Append(": ").AppendLine(value);
-            html.Append("<dt style=\"font-weight:bold\">").Append(WebUtility.HtmlEncode(label))
-                .Append("</dt><dd style=\"margin:0 0 12px\">").Append(WebUtility.HtmlEncode(value)).Append("</dd>");
         }
         text.AppendLine().AppendLine(Support);
-        html.Append("</dl><p>").Append(WebUtility.HtmlEncode(Support)).Append("</p></main></body></html>");
+
+        // The HTML part is the MJML build (Templates/Notification.html): responsive table layout with inline styles, no images,
+        // no external assets. Every dynamic value is HTML-encoded; the status colours are fixed per kind.
+        var (statusLabel, statusBackground, statusForeground) = kind == NotificationKind.BookingConfirmation
+            ? ("Confirmed", "#d8fdeb", "#007653")
+            : ("Cancelled", "#fdecec", "#bb061e");
+        var html = new StringBuilder(HtmlTemplate)
+            .Replace("{{Heading}}", WebUtility.HtmlEncode(heading))
+            .Replace("{{PreviewText}}", WebUtility.HtmlEncode($"{details.ServiceName} at {details.DealershipName}, {fields[2].Value}"))
+            .Replace("{{Introduction}}", WebUtility.HtmlEncode(introduction))
+            .Replace("{{StatusLabel}}", statusLabel)
+            .Replace("{{StatusBg}}", statusBackground)
+            .Replace("{{StatusFg}}", statusForeground)
+            .Replace("{{Service}}", WebUtility.HtmlEncode(details.ServiceName))
+            .Replace("{{Start}}", WebUtility.HtmlEncode(fields[2].Value))
+            .Replace("{{End}}", WebUtility.HtmlEncode(fields[3].Value))
+            .Replace("{{Dealership}}", WebUtility.HtmlEncode(details.DealershipName))
+            .Replace("{{Registration}}", WebUtility.HtmlEncode(details.Registration))
+            .Replace("{{Vin}}", WebUtility.HtmlEncode(fields[7].Value))
+            .Replace("{{Reference}}", WebUtility.HtmlEncode(reference))
+            .Replace("{{AppointmentId}}", WebUtility.HtmlEncode(details.AppointmentId.ToString("D")))
+            .Replace("{{Support}}", WebUtility.HtmlEncode(Support));
         return new EmailMessage(notificationId, details.Recipient, $"{heading} - {reference}", text.ToString(), html.ToString());
     }
 
