@@ -5,8 +5,11 @@ import { afterEach } from "vitest"
 
 import { matchesWidth } from "@/test/media-query"
 
-// Raise async utility timeout above 1s so lazy-route compilation and dialog renders do not flake under parallel load.
-configure({ asyncUtilTimeout: 3000 })
+// Async utilities (waitFor, findBy*) poll every 50 ms and return as soon as their condition holds, so this budget costs
+// passing tests nothing; it only bounds how long a genuinely failing wait takes to report. 3 s was not enough: CI run
+// 38559039472 (2026-10-14) ran the suite at half its usual speed and single successful waits took up to 3.4 s, so two
+// route-change tests timed out. 10 s keeps 3x headroom over that while staying inside Vitest's 15 s per-test budget.
+configure({ asyncUtilTimeout: 10_000 })
 
 afterEach(() => {
   cleanup()
