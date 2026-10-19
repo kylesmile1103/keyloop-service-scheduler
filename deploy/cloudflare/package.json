@@ -16,13 +16,13 @@
   "dependencies": { "@cloudflare/containers": "0.3.7" },
   "devDependencies": {
     "cf": "1.0.0-beta.14",
-    "wrangler": "4.149.0",
+    "wrangler": "4.151.1",
     "typescript": "5.9.3",
     "vitest": "4.1.11",
     "miniflare": "5.20261006.1-alpha",
-    "esbuild": "0.25.12",
+    "esbuild": "0.28.2",
     "@types/node": "22.19.15",
-    "@cloudflare/workers-types": "5.20261012.1",
-    "@scalar/api-reference": "1.72.2"
+    "@cloudflare/workers-types": "5.20261016.1",
+    "@scalar/api-reference": "1.75.0"
   }
 }
