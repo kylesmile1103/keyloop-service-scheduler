@@ -3,11 +3,11 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <AspireVersion>13.6.1</AspireVersion>
-    <AspNetCoreVersion>10.0.12</AspNetCoreVersion>
-    <EfCoreVersion>10.0.12</EfCoreVersion>
-    <OtelVersion>1.19.1</OtelVersion>
-    <OtelInstrumentationVersion>1.19.0</OtelInstrumentationVersion>
-    <ExtensionsVersion>10.10.0</ExtensionsVersion>
+    <AspNetCoreVersion>10.0.13</AspNetCoreVersion>
+    <EfCoreVersion>10.0.13</EfCoreVersion>
+    <OtelVersion>1.20.0</OtelVersion>
+    <OtelInstrumentationVersion>1.20.0</OtelInstrumentationVersion>
+    <ExtensionsVersion>10.11.0</ExtensionsVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="$(AspireVersion)" />
@@ -26,18 +26,18 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="$(OtelInstrumentationVersion)" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="$(OtelInstrumentationVersion)" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="$(AspNetCoreVersion)" />
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
     <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="$(AspNetCoreVersion)" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="$(EfCoreVersion)" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="FluentValidation" Version="12.2.0" />
-    <PackageVersion Include="Scalar.AspNetCore" Version="2.17.14" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.18.0" />
     <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="Microsoft.Playwright" Version="1.63.0" />
-    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.13.0" />
+    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.14.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="$(AspNetCoreVersion)" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
