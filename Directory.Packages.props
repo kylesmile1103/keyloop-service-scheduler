@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <AspireVersion>13.6.1</AspireVersion>
-    <AspNetCoreVersion>10.0.12</AspNetCoreVersion>
+    <AspNetCoreVersion>11.0.0</AspNetCoreVersion>
     <EfCoreVersion>10.0.12</EfCoreVersion>
     <OtelVersion>1.19.1</OtelVersion>
     <OtelInstrumentationVersion>1.19.0</OtelInstrumentationVersion>
